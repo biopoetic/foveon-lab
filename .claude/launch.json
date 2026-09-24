@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "foveon-lab",
+      "runtimeExecutable": "go",
+      "runtimeArgs": ["run", ".", "-no-open", "-port", "8777"],
+      "cwd": "C:\\Users\\Korisnik\\PycharmProjects\\foveon-lab",
+      "port": 8777
+    }
+  ]
+}

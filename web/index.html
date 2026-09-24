@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="hr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foveon Lab</title>
+<style>
+:root{
+  --bg:#141414; --panel:#1c1c1c; --panel2:#232323; --line:#2e2e2e;
+  --text:#e6e6e6; --dim:#9a9a9a; --accent:#d9a441; --accent2:#5aa0d6; --bad:#e06c6c;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.4 system-ui,Segoe UI,sans-serif}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:#555}
+button.primary{background:var(--accent);color:#1a1300;border-color:var(--accent);font-weight:600}
+select,input[type=text],input[type=search]{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+#app{display:grid;grid-template-columns:230px 1fr;grid-template-rows:auto 1fr;height:100vh}
+header{grid-column:1/3;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:15px;margin:0;letter-spacing:.5px}
+header h1 span{color:var(--accent)}
+#photoTitle{font-weight:600}
+#photoInfo{color:var(--dim)}
+.spacer{flex:1}
+label.chk{display:flex;gap:5px;align-items:center;color:var(--dim);cursor:pointer}
+aside{border-right:1px solid var(--line);overflow:auto;background:var(--panel)}
+.folder{position:sticky;top:0;background:var(--panel2);padding:5px 10px;font-weight:600;color:var(--accent);border-bottom:1px solid var(--line);z-index:1}
+.ph{display:flex;gap:8px;align-items:center;padding:5px 8px;cursor:pointer;border-bottom:1px solid #202020}
+.ph:hover{background:#242424}
+.ph.sel{background:#3a2f18}
+.ph img{width:72px;height:48px;object-fit:cover;border-radius:3px;background:#000;flex:none}
+.ph small{display:block;color:var(--dim)}
+main{overflow:auto;position:relative}
+#bar{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:2}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{padding:2px 8px;border-radius:12px;border:1px solid var(--line);cursor:pointer;color:var(--dim);user-select:none}
+.chip.on{background:var(--accent);color:#1a1300;border-color:var(--accent)}
+.note{color:var(--dim);font-size:12px;padding:6px 12px}
+.note b{color:var(--accent)}
+#grid{display:grid;gap:10px;padding:10px 12px 40px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:pointer}
+.tile:hover{border-color:var(--accent)}
+.tile .img{aspect-ratio:3/2;background:#000;display:flex}
+.tile img{width:100%;height:100%;object-fit:contain}
+.tile .cap{padding:5px 8px}
+.tile .cap small{display:block;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.ref{border-color:#444;border-style:dashed}
+#detail{display:none;height:100%;grid-template-columns:1fr 300px}
+#detail.on{display:grid}
+#view{display:flex;flex-direction:column;min-width:0;min-height:0}
+#stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#0b0b0b;position:relative}
+#stage img{max-width:100%;max-height:100%;object-fit:contain}
+#stageTag{position:absolute;top:8px;left:8px;background:#000a;padding:3px 8px;border-radius:4px;font-size:12px}
+#busy{position:absolute;top:8px;right:8px;color:var(--dim);font-size:12px;display:none}
+#nav{display:flex;gap:8px;align-items:center;padding:8px 10px;border-top:1px solid var(--line)}
+#nav .name{flex:1;text-align:center;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#panel{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:10px 12px}
+#panel h3{margin:4px 0 2px;font-size:13px}
+#panel .src{color:var(--dim);font-size:12px;margin-bottom:8px;word-break:break-all}
+.row{margin:9px 0}
+.row .lab{display:flex;justify-content:space-between;color:var(--dim)}
+.row .lab b{color:var(--text);font-weight:500;cursor:pointer}
+.row input[type=range]{width:100%;accent-color:var(--accent)}
+.row.changed .lab span{color:var(--accent)}
+.btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.kbd{color:var(--dim);font-size:11px;margin-top:14px;line-height:1.7}
+.kbd code{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:0 4px}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#2a2a2a;border:1px solid #444;padding:8px 14px;border-radius:8px;display:none;z-index:9;max-width:80vw}
+#toast a{color:var(--accent2);cursor:pointer;margin-left:8px}
+.empty{padding:40px;color:var(--dim);text-align:center}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>FOVEON <span>LAB</span></h1>
+    <div><span id="photoTitle">—</span> <span id="photoInfo"></span></div>
+    <div class="spacer"></div>
+    <label class="chk" title="Poništi Vivid/kontrast/zasićenje koje je aparat ugradio u JPEG pregled, da preseti krenu od neutralnije baze (bliže SPP-u)"><input type="checkbox" id="comp" checked> Kompenziraj JPEG aparata</label>
+    <label class="chk">Veličina <input type="range" id="tileSize" min="220" max="560" step="20" value="340"></label>
+  </header>
+  <aside id="photos"></aside>
+  <main id="main">
+    <section id="gridView">
+      <div id="bar">
+        <select id="camSel" title="Za koji aparat su preseti">
+          <option value="auto">Aparat: auto</option><option value="SD1">SD1</option><option value="SD15">SD15</option><option value="all">Svi preseti</option>
+        </select>
+        <select id="srcSel"><option value="">Sve datoteke</option></select>
+        <input type="search" id="q" placeholder="Traži preset…" size="18">
+        <div class="chips" id="chips"></div>
+        <span id="count" style="color:var(--dim)"></span>
+      </div>
+      <div class="note">Pregled je <b>emulacija</b> SPP postavki na JPEG-u ugrađenom u X3F (Sigma algoritmi nisu javni). Služi za izbor i usporedbu preseta; konačnu sliku razvij u SPP-u. White Balance / ColorTemp se ne emuliraju.</div>
+      <div id="grid"></div>
+    </section>
+    <section id="detail">
+      <div id="view">
+        <div id="stage"><img id="big" alt=""><div id="stageTag"></div><div id="busy">renderiram…</div></div>
+        <div id="nav">
+          <button id="back" title="Esc">← Mreža</button>
+          <button id="prev" title="←">‹</button>
+          <div class="name" id="dName"></div>
+          <button id="next" title="→">›</button>
+          <button id="orig" title="Drži O">Original</button>
+        </div>
+      </div>
+      <div id="panel">
+        <h3 id="pName"></h3>
+        <div class="src" id="pSrc"></div>
+        <div id="sliders"></div>
+        <div class="row"><div class="lab">Color mode <span id="modeNote"></span></div>
+          <select id="mode" style="width:100%">
+            <option value="4">Standard (4)</option><option value="6">Portrait (6)</option><option value="7">Landscape (7)</option><option value="0">Nepoznat (0) → kao Standard</option>
+          </select>
+        </div>
+        <div class="src" id="wbNote"></div>
+        <div class="btns">
+          <button id="reset">Vrati preset</button>
+          <button id="save" class="primary">Spremi kao preset</button>
+          <button id="export">Izvezi JPEG</button>
+        </div>
+        <div class="kbd">
+          <code>←</code> <code>→</code> prethodni / sljedeći preset<br>
+          <code>O</code> drži za original iz aparata<br>
+          <code>Esc</code> natrag na mrežu · <code>PgUp</code>/<code>PgDn</code> druga slika<br>
+          Dvoklik na vrijednost = reset klizača
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toast"></div>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d){ try { const v = localStorage.getItem("fl."+k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v){ try { localStorage.setItem("fl."+k, JSON.stringify(v)); } catch {} },
+};
+
+const SLIDERS = [
+  ["exposure","Exposure",-2,2,.01],
+  ["contrast","Contrast",-2,2,.01],
+  ["blackness","Shadow (Blackness)",-2,2,.01],
+  ["highlight","Highlight",-2,2,.01],
+  ["fillLight","X3 Fill Light",-2,2,.01],
+  ["saturation","Saturation",-2,2,.01],
+  ["sharpness","Sharpness",-2,2,.01],
+  ["r","Color adjust R",.7,1.3,.005],
+  ["g","Color adjust G",.7,1.3,.005],
+  ["b","Color adjust B",.7,1.3,.005],
+];
+const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4};
+
+const S = {
+  photos: [], presets: [], photo: null,
+  groups: new Set(store.get("groups", [])),
+  cam: store.get("cam","auto"), src: store.get("src",""), q: "",
+  list: [], idx: -1, params: null, base: null,
+};
+
+function toast(html, ms=4000){
+  const t = $("#toast"); t.innerHTML = html; t.style.display = "block";
+  clearTimeout(toast.h); toast.h = setTimeout(()=> t.style.display="none", ms);
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const comp = () => $("#comp").checked ? "1" : "0";
+const tileW = () => Math.min(1600, Math.round(+$("#tileSize").value * (window.devicePixelRatio||1) / 40) * 40);
+function renderURL(opts){
+  const u = new URLSearchParams({id: S.photo.id, w: opts.w, comp: opts.comp ?? comp()});
+  if (opts.preset) u.set("preset", opts.preset);
+  if (opts.params) u.set("p", JSON.stringify(opts.params));
+  return "/api/render?" + u;
+}
+
+// ---------- photos ----------
+async function loadPhotos(){
+  S.photos = await (await fetch("/api/photos")).json();
+  const box = $("#photos"); box.innerHTML = "";
+  if (!S.photos.length){ box.innerHTML = '<div class="empty">Nema X3F slika.</div>'; return; }
+  let folder = null;
+  for (const p of S.photos){
+    if (p.folder !== folder){ folder = p.folder; box.insertAdjacentHTML("beforeend", `<div class="folder">${esc(folder)}</div>`); }
+    const el = document.createElement("div");
+    el.className = "ph"; el.dataset.id = p.id;
+    el.innerHTML = `<img loading="lazy" src="/api/thumb?id=${p.id}"><div>${esc(p.name)}<small>${esc([p.info.ISO && "ISO "+p.info.ISO, p.info.SH_DESC, p.info.AP_DESC && "f/"+p.info.AP_DESC].filter(Boolean).join(" · "))}</small></div>`;
+    el.onclick = () => selectPhoto(p.id);
+    box.appendChild(el);
+  }
+}
+
+function selectPhoto(id){
+  const p = S.photos.find(x => x.id === id) || S.photos[0];
+  if (!p) return;
+  S.photo = p; store.set("photo", p.id);
+  document.querySelectorAll(".ph").forEach(e => e.classList.toggle("sel", e.dataset.id === p.id));
+  document.querySelector(`.ph[data-id="${p.id}"]`)?.scrollIntoView({block:"nearest"});
+  $("#photoTitle").textContent = `${p.folder} / ${p.name}`;
+  const i = p.info;
+  $("#photoInfo").textContent = [i.CAMMODEL, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.TIME].filter(Boolean).join(" · ");
+  refreshList();
+  if ($("#detail").classList.contains("on")) renderBig(); else drawGrid();
+}
+
+function stepPhoto(d){
+  const i = S.photos.findIndex(x => x === S.photo);
+  const n = S.photos[i + d];
+  if (n) selectPhoto(n.id);
+}
+
+// ---------- presets ----------
+async function loadPresets(reload){
+  const data = await (await fetch("/api/presets" + (reload ? "?reload=1" : ""))).json();
+  S.presets = data.presets || [];
+  if (data.errors?.length) toast("Greške u XML-ovima: " + esc(data.errors.join("; ")), 8000);
+  const sel = $("#srcSel"); const cur = S.src;
+  sel.innerHTML = '<option value="">Sve datoteke</option>' + [...new Set(S.presets.map(p => p.source))].sort().map(s => `<option>${esc(s)}</option>`).join("");
+  sel.value = [...sel.options].some(o => o.value === cur) ? cur : "";
+  S.src = sel.value;
+  drawChips();
+}
+
+function camFilter(){
+  if (S.cam === "all") return null;
+  if (S.cam === "auto") return S.photo?.camera || null;
+  return S.cam;
+}
+
+function baseFiltered(){
+  const cam = camFilter();
+  const q = S.q.toLowerCase();
+  return S.presets.filter(p =>
+    (!cam || !p.camera || p.camera === cam) &&
+    (!S.src || p.source === S.src) &&
+    (!q || p.name.toLowerCase().includes(q)));
+}
+
+function drawChips(){
+  const counts = {};
+  for (const p of baseFiltered()) counts[p.group] = (counts[p.group]||0) + 1;
+  const groups = Object.keys(counts).sort();
+  $("#chips").innerHTML = groups.map(g => `<span class="chip ${S.groups.has(g)?"on":""}" data-g="${esc(g)}">${esc(g)} ${counts[g]}</span>`).join("");
+  document.querySelectorAll(".chip").forEach(c => c.onclick = () => {
+    const g = c.dataset.g; S.groups.has(g) ? S.groups.delete(g) : S.groups.add(g);
+    store.set("groups", [...S.groups]); refreshList(); drawGrid(); drawChips();
+  });
+}
+
+function refreshList(){
+  S.list = baseFiltered().filter(p => !S.groups.size || S.groups.has(p.group));
+  $("#count").textContent = `${S.list.length} preseta`;
+}
+
+// ---------- grid ----------
+function drawGrid(){
+  const g = $("#grid");
+  if (!S.photo){ g.innerHTML = '<div class="empty">Odaberi sliku lijevo.</div>'; return; }
+  g.style.gridTemplateColumns = `repeat(auto-fill,minmax(${$("#tileSize").value}px,1fr))`;
+  const w = tileW();
+  const tiles = [
+    `<div class="tile ref" data-i="-2"><div class="img"><img src="${renderURL({w, comp:"0"})}"></div><div class="cap">Original (JPEG iz aparata)<small>bez ikakve obrade</small></div></div>`,
+    `<div class="tile ref" data-i="-1"><div class="img"><img src="${renderURL({w})}"></div><div class="cap">Neutralno${comp()==="1"?" (kompenzirano)":""}<small>polazna točka za presete</small></div></div>`,
+  ];
+  S.list.forEach((p, i) => tiles.push(
+    `<div class="tile" data-i="${i}"><div class="img"><img loading="lazy" src="${renderURL({w, preset:p.id})}"></div><div class="cap">${esc(p.name)}<small>${esc(p.source)}${p.dupes?` · +${p.dupes} kopija`:""}</small></div></div>`));
+  g.innerHTML = tiles.join("");
+  g.querySelectorAll(".tile").forEach(t => t.onclick = () => openDetail(+t.dataset.i));
+}
+
+// ---------- detail ----------
+function buildSliders(){
+  $("#sliders").innerHTML = SLIDERS.map(([k,label,min,max,step]) =>
+    `<div class="row" data-k="${k}"><div class="lab"><span>${label}</span><b title="dvoklik = reset">0</b></div><input type="range" min="${min}" max="${max}" step="${step}"></div>`).join("");
+  document.querySelectorAll("#sliders .row").forEach(row => {
+    const k = row.dataset.k, inp = row.querySelector("input");
+    inp.oninput = () => { S.params[k] = +inp.value; syncSliders(); scheduleRender(); };
+    row.querySelector("b").ondblclick = () => { S.params[k] = S.base[k]; syncSliders(); scheduleRender(); };
+  });
+  $("#mode").onchange = () => { S.params.colorMode = +$("#mode").value; syncSliders(); scheduleRender(); };
+}
+
+function syncSliders(){
+  for (const row of document.querySelectorAll("#sliders .row")){
+    const k = row.dataset.k, v = S.params[k];
+    row.querySelector("input").value = v;
+    row.querySelector("b").textContent = (k.length === 1 ? v.toFixed(3) : (v > 0 ? "+" : "") + v.toFixed(2));
+    row.classList.toggle("changed", Math.abs(v - S.base[k]) > 1e-9);
+  }
+  const m = S.params.colorMode;
+  $("#mode").value = [4,6,7].includes(m) ? m : 0;
+  $("#modeNote").textContent = [4,6,7].includes(m) ? "" : `(kod ${m})`;
+  $("#wbNote").textContent = `WhiteBalance ${S.params.whiteBalance} · ColorTemp ${S.params.colorTemp || "—"} (spremaju se, ne emuliraju)`;
+}
+
+function current(){ return S.idx >= 0 ? S.list[S.idx] : null; }
+function dirty(){ return Object.keys(NEUTRAL).some(k => Math.abs(S.params[k] - S.base[k]) > 1e-9); }
+
+function openDetail(i){
+  S.idx = i;
+  const p = current();
+  S.base = {...NEUTRAL, ...(p ? p.params : {})};
+  S.params = {...S.base};
+  $("#pName").textContent = p ? p.name : (i === -2 ? "Original (JPEG iz aparata)" : "Neutralno");
+  $("#pSrc").textContent = p ? p.source : "Kreni od nule i podesi klizačima.";
+  $("#dName").textContent = p ? `${i+1}/${S.list.length} · ${p.name}` : $("#pName").textContent;
+  $("#gridView").style.display = "none";
+  $("#detail").classList.add("on");
+  syncSliders();
+  renderBig();
+}
+
+function closeDetail(){
+  $("#detail").classList.remove("on");
+  $("#gridView").style.display = "";
+  drawGrid();
+  const t = document.querySelector(`.tile[data-i="${S.idx}"]`); t?.scrollIntoView({block:"center"});
+}
+
+function stepPreset(d){
+  if (!S.list.length) return;
+  const n = S.idx < 0 ? (d > 0 ? 0 : S.list.length-1) : (S.idx + d + S.list.length) % S.list.length;
+  openDetail(n);
+}
+
+function bigW(){ const st = $("#stage"); return Math.min(1600, Math.round(st.clientWidth * (window.devicePixelRatio||1) / 40) * 40); }
+
+let renderSeq = 0, renderTimer = 0;
+function scheduleRender(){ clearTimeout(renderTimer); renderTimer = setTimeout(renderBig, 70); }
+function renderBig(showOrig){
+  if (!S.photo) return;
+  const seq = ++renderSeq;
+  const p = current();
+  let url;
+  if (showOrig || S.idx === -2 && !dirty()) url = renderURL({w: bigW(), comp: "0"});
+  else if (p && !dirty()) url = renderURL({w: bigW(), preset: p.id});
+  else url = renderURL({w: bigW(), params: S.params});
+  $("#stageTag").textContent = showOrig ? "ORIGINAL IZ APARATA" : (dirty() ? "podešeno" : (p ? "preset" : ""));
+  $("#stageTag").style.display = $("#stageTag").textContent ? "" : "none";
+  const img = new Image();
+  const busy = setTimeout(() => $("#busy").style.display = "block", 150);
+  img.onload = () => { clearTimeout(busy); $("#busy").style.display = "none"; if (seq === renderSeq) $("#big").src = img.src; };
+  img.onerror = () => { clearTimeout(busy); $("#busy").style.display = "none"; toast("Render nije uspio."); };
+  img.src = url;
+}
+
+async function savePreset(){
+  const p = current();
+  const cam = S.photo.camera || "";
+  const suggested = p ? p.name.replace(/\s*\(FL\)$/, "") + " (FL)" : `[MOJ]${cam ? "["+cam+"]" : ""} Novi preset`;
+  const name = prompt("Ime preseta (ovako će se zvati u SPP-u):", suggested);
+  if (!name) return;
+  const res = await fetch("/api/presets", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({name, camera: (p && p.camera) || cam, params: S.params})});
+  if (!res.ok){ toast("Spremanje nije uspjelo: " + esc(await res.text())); return; }
+  const data = await res.json();
+  S.presets = data.presets; await loadPresets(false); refreshList();
+  const i = S.list.findIndex(x => x.name === name);
+  toast(`Spremljeno u <b>${esc(data.savedTo)}</b> — uvezi tu datoteku u SPP.`, 7000);
+  if (i >= 0) openDetail(i);
+}
+
+async function exportJPEG(){
+  const p = current();
+  toast("Izvozim punu rezoluciju…", 20000);
+  const body = {id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2};
+  const res = await fetch("/api/export", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+  if (!res.ok){ toast("Izvoz nije uspio: " + esc(await res.text())); return; }
+  const {path} = await res.json();
+  toast(`Spremljeno: ${esc(path)} <a id="reveal">Otvori mapu</a>`, 8000);
+  $("#reveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(path));
+}
+
+// ---------- wiring ----------
+function bind(){
+  buildSliders();
+  $("#camSel").value = S.cam;
+  $("#camSel").onchange = e => { S.cam = e.target.value; store.set("cam", S.cam); refreshList(); drawChips(); drawGrid(); };
+  $("#srcSel").onchange = e => { S.src = e.target.value; store.set("src", S.src); refreshList(); drawChips(); drawGrid(); };
+  let qt; $("#q").oninput = e => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value; refreshList(); drawChips(); drawGrid(); }, 200); };
+  $("#tileSize").value = store.get("tile", 340);
+  $("#tileSize").onchange = e => { store.set("tile", +e.target.value); drawGrid(); };
+  $("#comp").checked = store.get("comp", true);
+  $("#comp").onchange = e => { store.set("comp", e.target.checked); $("#detail").classList.contains("on") ? renderBig() : drawGrid(); };
+  $("#back").onclick = closeDetail;
+  $("#prev").onclick = () => stepPreset(-1);
+  $("#next").onclick = () => stepPreset(1);
+  const orig = $("#orig");
+  orig.onmousedown = () => renderBig(true);
+  orig.onmouseup = orig.onmouseleave = () => renderBig();
+  $("#reset").onclick = () => { S.params = {...S.base}; syncSliders(); renderBig(); };
+  $("#save").onclick = savePreset;
+  $("#export").onclick = exportJPEG;
+  let origDown = false;
+  document.addEventListener("keydown", e => {
+    if (e.target.matches("input[type=text],input[type=search],select")) return;
+    const inDetail = $("#detail").classList.contains("on");
+    if (e.key === "PageDown"){ e.preventDefault(); stepPhoto(1); }
+    else if (e.key === "PageUp"){ e.preventDefault(); stepPhoto(-1); }
+    else if (!inDetail) return;
+    else if (e.key === "Escape") closeDetail();
+    else if (e.key === "ArrowRight" && !e.target.matches("input[type=range]")) stepPreset(1);
+    else if (e.key === "ArrowLeft" && !e.target.matches("input[type=range]")) stepPreset(-1);
+    else if ((e.key === "o" || e.key === "O") && !origDown){ origDown = true; renderBig(true); }
+  });
+  document.addEventListener("keyup", e => { if ((e.key === "o" || e.key === "O") && origDown){ origDown = false; renderBig(); } });
+  let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if ($("#detail").classList.contains("on")) renderBig(); }, 300); });
+}
+
+(async function init(){
+  bind();
+  await Promise.all([loadPhotos(), loadPresets(false)]);
+  refreshList();
+  selectPhoto(store.get("photo", S.photos[0]?.id));
+})();
+</script>
+</body>
+</html>
