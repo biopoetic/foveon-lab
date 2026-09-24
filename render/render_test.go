@@ -5,7 +5,7 @@ import (
 	"image/color"
 	"testing"
 
-	"foveon-lab/preset"
+	"github.com/biopoetic/foveon-lab/preset"
 )
 
 func testImage() *image.RGBA {

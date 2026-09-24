@@ -58,7 +58,7 @@ func ModeName(m int) string {
 	case ModeLandscape:
 		return "Landscape"
 	}
-	return fmt.Sprintf("Nepoznat (%d)", m)
+	return fmt.Sprintf("Unknown (%d)", m)
 }
 
 // Preset is one named SPP setting.
@@ -94,7 +94,7 @@ type xmlField struct {
 }
 
 // num parses SPP numbers, which use the Windows locale decimal separator
-// (a comma on a Croatian system).
+// (a comma on many European systems).
 func num(s string) (float64, bool) {
 	s = strings.TrimSpace(strings.ReplaceAll(s, ",", "."))
 	v, err := strconv.ParseFloat(s, 64)
@@ -204,7 +204,7 @@ func groupOf(name string) string {
 			return g
 		}
 	}
-	return "OSTALO"
+	return "OTHER"
 }
 
 // LoadDir loads every *.xml under root. Presets that are identical (same
@@ -299,7 +299,7 @@ func Append(path, name string, p Params) error {
 	}
 	existing, err := Parse(data)
 	if err != nil {
-		return fmt.Errorf("%s nije ispravan SPP XML: %w", filepath.Base(path), err)
+		return fmt.Errorf("%s is not valid SPP XML: %w", filepath.Base(path), err)
 	}
 	var blocks []string
 	for _, e := range existing {

@@ -12,8 +12,8 @@ import (
 
 	"golang.org/x/image/tiff"
 
-	"foveon-lab/preset"
-	"foveon-lab/render"
+	"github.com/biopoetic/foveon-lab/preset"
+	"github.com/biopoetic/foveon-lab/render"
 )
 
 func TestStepsAreSingleChange(t *testing.T) {
@@ -165,7 +165,7 @@ func TestRoundTrip(t *testing.T) {
 		t.Errorf("fill light did not show as local lift: %v", fl)
 	}
 	rep := res.Report()
-	for _, want := range []string{"A03", "FillLight", "Upozorenja"} {
+	for _, want := range []string{"A03", "FillLight", "Warnings"} {
 		if !strings.Contains(rep, want) {
 			t.Errorf("report lacks %q", want)
 		}

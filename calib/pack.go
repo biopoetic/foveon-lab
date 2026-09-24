@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"foveon-lab/render"
-	"foveon-lab/x3f"
+	"github.com/biopoetic/foveon-lab/render"
+	"github.com/biopoetic/foveon-lab/x3f"
 )
 
 // Candidate is an image scored for calibration usefulness.
@@ -74,72 +74,79 @@ func Suggest(paths []string) []Candidate {
 		score := spread + math.Min(fd, 0.15) + math.Min(fb, 0.15) + 2*mc - 3*fc
 		out = append(out, Candidate{
 			Path: p, Camera: f.Camera(), Score: score,
-			Why: fmt.Sprintf("raspon %.0f%%, sjene %.0f%%, svjetla %.0f%%, boja %.2f, pregorjelo %.1f%%", spread*100, fd*100, fb*100, mc, fc*100),
+			Why: fmt.Sprintf("range %.0f%%, shadows %.0f%%, highlights %.0f%%, colour %.2f, clipped %.1f%%", spread*100, fd*100, fb*100, mc, fc*100),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Score > out[j].Score })
 	return out
 }
 
+// Files and folders of a calibration pack.
+const (
+	PackFile         = "FoveonLab_CALIBRATION.xml"
+	InstructionsFile = "INSTRUCTIONS.txt"
+	ExportsDir       = "exports"
+)
+
 // WritePack creates dir with the SPP preset XML, instructions and an empty
-// export folder. It never overwrites the export folder's contents.
+// exports folder. It never touches files already in the exports folder.
 func WritePack(dir string, candidates []Candidate) (string, error) {
-	if err := os.MkdirAll(filepath.Join(dir, "izvoz"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ExportsDir), 0o755); err != nil {
 		return "", err
 	}
 	steps := Steps()
-	xmlPath := filepath.Join(dir, "FoveonLab_KALIBRACIJA.xml")
+	xmlPath := filepath.Join(dir, PackFile)
 	if err := os.WriteFile(xmlPath, []byte(PackXML(steps)), 0o644); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "UPUTE.txt"), []byte(Instructions(steps, candidates)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, InstructionsFile), []byte(Instructions(steps, candidates)), 0o644); err != nil {
 		return "", err
 	}
 	return xmlPath, nil
 }
 
-// Instructions is the Croatian how-to shipped with the pack.
+// Instructions is the how-to shipped with the pack.
 func Instructions(steps []Step, cands []Candidate) string {
 	var b strings.Builder
-	b.WriteString(`FOVEON LAB — KALIBRACIJA SPP-a
-================================
+	b.WriteString(`FOVEON LAB — SPP CALIBRATION
+============================
 
-Cilj: izmjeriti što Sigma Photo Pro točno radi s pojedinim klizačem, da
-Foveon Lab emulira SPP krivuljama izmjerenim na tvojim slikama, umjesto
-procjenom. Svaki [CAL] preset mijenja SAMO JEDNU postavku; sve ostalo je
-jednako neutralnom presetu A00.
+Goal: measure exactly what Sigma Photo Pro does with each slider, so Foveon
+Lab can emulate SPP with curves measured on your own photos instead of
+guesses. Every [CAL] preset changes ONE setting only; everything else is
+identical to the neutral preset A00.
 
-KORACI
-1. U SPP-u uvezi "FoveonLab_KALIBRACIJA.xml" (isto kao ostale XML
-   presete). Uvezi ga SAMO JEDNOM — ponovni uvoz duplicira presete.
-2. Otvori jednu sliku (prijedlozi dolje). Uvijek ISTU sliku.
-3. Za svaki kod redom: primijeni preset "[CAL] <kod> ...", pa spremi kao
-   TIFF u mapu "izvoz" pored ove datoteke, s imenom:
+STEPS
+1. In SPP, import "` + PackFile + `" (like any other preset XML).
+   Import it ONCE — importing again duplicates the presets.
+2. Open one photo (suggestions below). Always the SAME photo.
+3. For each code in turn: apply preset "[CAL] <code> ...", then save as
+   TIFF into the "` + ExportsDir + `" folder next to this file, named:
 
-       <ime slike>_<kod>.tif      npr.  SDIM0031_A00.tif, SDIM0031_A03.tif
+       <photo name>_<code>.tif      e.g.  SDIM0031_A00.tif, SDIM0031_A03.tif
 
-   Postavke spremanja — ISTE za sve izvoze:
-     - TIFF (8 ili 16 bit, svejedno), prostor boja sRGB
-     - puna veličina, bez rezanja i promjene veličine
-   (JPEG najviše kvalitete također radi, TIFF je bolji.)
-4. Kad završiš, pokreni:   foveon-lab.exe analiza
-   ili mi samo javi da je gotovo — pokrenut ću ja.
+   Save settings — the SAME for every export:
+     - TIFF (8 or 16 bit, either is fine), sRGB colour space
+     - full size, no cropping or resizing
+   (Highest-quality JPEG also works; TIFF is better.)
+4. When done, run:   foveon-lab analyze
+   It writes report.txt and calibration.json into this folder.
 
-NAJVAŽNIJE: A00 (neutralno) mora postojati — sve se mjeri prema njemu.
-Nemoj ručno dirati klizače između izvoza; samo klikni preset i spremi.
+MOST IMPORTANT: A00 (neutral) must exist — everything is measured against it.
+Do not touch sliders by hand between exports; just click the preset and save.
 
-PRIORITETI
-  A00–A22  obavezno (23 izvoza, jedna slika) — pokriva sve glavne klizače
-  B01–B22  poželjno — krajnje vrijednosti, Sharpness
-  C00–C12  istraživanje: što znače nepoznati ColorMode kodovi. Kad
-           primijeniš C preset, zapiši što SPP pokazuje u izborniku
-           Color Mode (npr. "C05 = Vivid") u datoteku izvoz\colormode.txt
-  Ako imaš vremena: ponovi A00–A22 i na drugoj slici (ili SD15 slici) —
-  SPP može drukčije obrađivati SD1 i SD15.
+PRIORITIES
+  A00–A22  required (23 exports, one photo) — covers every main slider
+  B01–B22  nice to have — extreme values, Sharpness
+  C00–C12  exploration: what the undocumented ColorMode codes mean. When
+           you apply a C preset, note what SPP shows in its Color Mode
+           menu (e.g. "C05 = Vivid") in ` + ExportsDir + `\colormode.txt
+  If you have time: repeat A00–A22 on a second photo (or an SD15 photo) —
+  SPP may process SD1 and SD15 files differently.
 
 `)
 	if len(cands) > 0 {
-		b.WriteString("PREDLOŽENE SLIKE (širok raspon tonova i boja, malo pregorjelog):\n")
+		b.WriteString("SUGGESTED PHOTOS (wide tonal and colour range, little clipping):\n")
 		per := map[string]int{}
 		for _, c := range cands {
 			if per[c.Camera] >= 3 {
@@ -150,7 +157,7 @@ PRIORITETI
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("POPIS PRESETA\n")
+	b.WriteString("PRESET LIST\n")
 	for _, s := range steps {
 		fmt.Fprintf(&b, "  %s  %s\n", s.Code, s.Label)
 	}

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="hr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -77,33 +77,33 @@ main{overflow:auto;position:relative}
     <h1>FOVEON <span>LAB</span></h1>
     <div><span id="photoTitle">—</span> <span id="photoInfo"></span></div>
     <div class="spacer"></div>
-    <label class="chk" title="Poništi Vivid/kontrast/zasićenje koje je aparat ugradio u JPEG pregled, da preseti krenu od neutralnije baze (bliže SPP-u)"><input type="checkbox" id="comp" checked> Kompenziraj JPEG aparata</label>
-    <label class="chk">Veličina <input type="range" id="tileSize" min="220" max="560" step="20" value="340"></label>
+    <label class="chk" title="Undo the Vivid mode / contrast / saturation the camera baked into its JPEG preview, so presets start from a more neutral base (closer to SPP)"><input type="checkbox" id="comp" checked> Compensate camera JPEG</label>
+    <label class="chk">Size <input type="range" id="tileSize" min="220" max="560" step="20" value="340"></label>
   </header>
   <aside id="photos"></aside>
   <main id="main">
     <section id="gridView">
       <div id="bar">
-        <select id="camSel" title="Za koji aparat su preseti">
-          <option value="auto">Aparat: auto</option><option value="SD1">SD1</option><option value="SD15">SD15</option><option value="all">Svi preseti</option>
+        <select id="camSel" title="Which camera the presets are for">
+          <option value="auto">Camera: auto</option><option value="SD1">SD1</option><option value="SD15">SD15</option><option value="all">All presets</option>
         </select>
-        <select id="srcSel"><option value="">Sve datoteke</option></select>
-        <input type="search" id="q" placeholder="Traži preset…" size="18">
+        <select id="srcSel"><option value="">All files</option></select>
+        <input type="search" id="q" placeholder="Search presets…" size="18">
         <div class="chips" id="chips"></div>
         <span id="count" style="color:var(--dim)"></span>
       </div>
-      <div class="note">Pregled je <b>emulacija</b> SPP postavki na JPEG-u ugrađenom u X3F (Sigma algoritmi nisu javni). Služi za izbor i usporedbu preseta; konačnu sliku razvij u SPP-u. White Balance / ColorTemp se ne emuliraju.</div>
+      <div class="note">The preview is an <b>emulation</b> of SPP settings on the JPEG embedded in the X3F (Sigma's algorithms are not public). Use it to pick and compare presets; develop the final image in SPP. White Balance / ColorTemp are not emulated.</div>
       <div id="grid"></div>
     </section>
     <section id="detail">
       <div id="view">
-        <div id="stage"><img id="big" alt=""><div id="stageTag"></div><div id="busy">renderiram…</div></div>
+        <div id="stage"><img id="big" alt=""><div id="stageTag"></div><div id="busy">rendering…</div></div>
         <div id="nav">
-          <button id="back" title="Esc">← Mreža</button>
+          <button id="back" title="Esc">← Grid</button>
           <button id="prev" title="←">‹</button>
           <div class="name" id="dName"></div>
           <button id="next" title="→">›</button>
-          <button id="orig" title="Drži O">Original</button>
+          <button id="orig" title="Hold O">Original</button>
         </div>
       </div>
       <div id="panel">
@@ -112,20 +112,20 @@ main{overflow:auto;position:relative}
         <div id="sliders"></div>
         <div class="row"><div class="lab">Color mode <span id="modeNote"></span></div>
           <select id="mode" style="width:100%">
-            <option value="4">Standard (4)</option><option value="6">Portrait (6)</option><option value="7">Landscape (7)</option><option value="0">Nepoznat (0) → kao Standard</option>
+            <option value="4">Standard (4)</option><option value="6">Portrait (6)</option><option value="7">Landscape (7)</option><option value="0">Unknown (0) → as Standard</option>
           </select>
         </div>
         <div class="src" id="wbNote"></div>
         <div class="btns">
-          <button id="reset">Vrati preset</button>
-          <button id="save" class="primary">Spremi kao preset</button>
-          <button id="export">Izvezi JPEG</button>
+          <button id="reset">Reset to preset</button>
+          <button id="save" class="primary">Save as preset</button>
+          <button id="export">Export JPEG</button>
         </div>
         <div class="kbd">
-          <code>←</code> <code>→</code> prethodni / sljedeći preset<br>
-          <code>O</code> drži za original iz aparata<br>
-          <code>Esc</code> natrag na mrežu · <code>PgUp</code>/<code>PgDn</code> druga slika<br>
-          Dvoklik na vrijednost = reset klizača
+          <code>←</code> <code>→</code> previous / next preset<br>
+          <code>O</code> hold for the camera original<br>
+          <code>Esc</code> back to grid · <code>PgUp</code>/<code>PgDn</code> other photo<br>
+          Double-click a value = reset that slider
         </div>
       </div>
     </section>
@@ -179,7 +179,7 @@ function renderURL(opts){
 async function loadPhotos(){
   S.photos = await (await fetch("/api/photos")).json();
   const box = $("#photos"); box.innerHTML = "";
-  if (!S.photos.length){ box.innerHTML = '<div class="empty">Nema X3F slika.</div>'; return; }
+  if (!S.photos.length){ box.innerHTML = '<div class="empty">No X3F photos found.</div>'; return; }
   let folder = null;
   for (const p of S.photos){
     if (p.folder !== folder){ folder = p.folder; box.insertAdjacentHTML("beforeend", `<div class="folder">${esc(folder)}</div>`); }
@@ -214,9 +214,9 @@ function stepPhoto(d){
 async function loadPresets(reload){
   const data = await (await fetch("/api/presets" + (reload ? "?reload=1" : ""))).json();
   S.presets = data.presets || [];
-  if (data.errors?.length) toast("Greške u XML-ovima: " + esc(data.errors.join("; ")), 8000);
+  if (data.errors?.length) toast("XML errors: " + esc(data.errors.join("; ")), 8000);
   const sel = $("#srcSel"); const cur = S.src;
-  sel.innerHTML = '<option value="">Sve datoteke</option>' + [...new Set(S.presets.map(p => p.source))].sort().map(s => `<option>${esc(s)}</option>`).join("");
+  sel.innerHTML = '<option value="">All files</option>' + [...new Set(S.presets.map(p => p.source))].sort().map(s => `<option>${esc(s)}</option>`).join("");
   sel.value = [...sel.options].some(o => o.value === cur) ? cur : "";
   S.src = sel.value;
   drawChips();
@@ -250,21 +250,21 @@ function drawChips(){
 
 function refreshList(){
   S.list = baseFiltered().filter(p => !S.groups.size || S.groups.has(p.group));
-  $("#count").textContent = `${S.list.length} preseta`;
+  $("#count").textContent = `${S.list.length} presets`;
 }
 
 // ---------- grid ----------
 function drawGrid(){
   const g = $("#grid");
-  if (!S.photo){ g.innerHTML = '<div class="empty">Odaberi sliku lijevo.</div>'; return; }
+  if (!S.photo){ g.innerHTML = '<div class="empty">Pick a photo on the left.</div>'; return; }
   g.style.gridTemplateColumns = `repeat(auto-fill,minmax(${$("#tileSize").value}px,1fr))`;
   const w = tileW();
   const tiles = [
-    `<div class="tile ref" data-i="-2"><div class="img"><img src="${renderURL({w, comp:"0"})}"></div><div class="cap">Original (JPEG iz aparata)<small>bez ikakve obrade</small></div></div>`,
-    `<div class="tile ref" data-i="-1"><div class="img"><img src="${renderURL({w})}"></div><div class="cap">Neutralno${comp()==="1"?" (kompenzirano)":""}<small>polazna točka za presete</small></div></div>`,
+    `<div class="tile ref" data-i="-2"><div class="img"><img src="${renderURL({w, comp:"0"})}"></div><div class="cap">Original (camera JPEG)<small>no processing at all</small></div></div>`,
+    `<div class="tile ref" data-i="-1"><div class="img"><img src="${renderURL({w})}"></div><div class="cap">Neutral${comp()==="1"?" (compensated)":""}<small>starting point for presets</small></div></div>`,
   ];
   S.list.forEach((p, i) => tiles.push(
-    `<div class="tile" data-i="${i}"><div class="img"><img loading="lazy" src="${renderURL({w, preset:p.id})}"></div><div class="cap">${esc(p.name)}<small>${esc(p.source)}${p.dupes?` · +${p.dupes} kopija`:""}</small></div></div>`));
+    `<div class="tile" data-i="${i}"><div class="img"><img loading="lazy" src="${renderURL({w, preset:p.id})}"></div><div class="cap">${esc(p.name)}<small>${esc(p.source)}${p.dupes?` · +${p.dupes} copies`:""}</small></div></div>`));
   g.innerHTML = tiles.join("");
   g.querySelectorAll(".tile").forEach(t => t.onclick = () => openDetail(+t.dataset.i));
 }
@@ -272,7 +272,7 @@ function drawGrid(){
 // ---------- detail ----------
 function buildSliders(){
   $("#sliders").innerHTML = SLIDERS.map(([k,label,min,max,step]) =>
-    `<div class="row" data-k="${k}"><div class="lab"><span>${label}</span><b title="dvoklik = reset">0</b></div><input type="range" min="${min}" max="${max}" step="${step}"></div>`).join("");
+    `<div class="row" data-k="${k}"><div class="lab"><span>${label}</span><b title="double-click = reset">0</b></div><input type="range" min="${min}" max="${max}" step="${step}"></div>`).join("");
   document.querySelectorAll("#sliders .row").forEach(row => {
     const k = row.dataset.k, inp = row.querySelector("input");
     inp.oninput = () => { S.params[k] = +inp.value; syncSliders(); scheduleRender(); };
@@ -290,8 +290,8 @@ function syncSliders(){
   }
   const m = S.params.colorMode;
   $("#mode").value = [4,6,7].includes(m) ? m : 0;
-  $("#modeNote").textContent = [4,6,7].includes(m) ? "" : `(kod ${m})`;
-  $("#wbNote").textContent = `WhiteBalance ${S.params.whiteBalance} · ColorTemp ${S.params.colorTemp || "—"} (spremaju se, ne emuliraju)`;
+  $("#modeNote").textContent = [4,6,7].includes(m) ? "" : `(code ${m})`;
+  $("#wbNote").textContent = `WhiteBalance ${S.params.whiteBalance} · ColorTemp ${S.params.colorTemp || "—"} (saved, not emulated)`;
 }
 
 function current(){ return S.idx >= 0 ? S.list[S.idx] : null; }
@@ -302,8 +302,8 @@ function openDetail(i){
   const p = current();
   S.base = {...NEUTRAL, ...(p ? p.params : {})};
   S.params = {...S.base};
-  $("#pName").textContent = p ? p.name : (i === -2 ? "Original (JPEG iz aparata)" : "Neutralno");
-  $("#pSrc").textContent = p ? p.source : "Kreni od nule i podesi klizačima.";
+  $("#pName").textContent = p ? p.name : (i === -2 ? "Original (camera JPEG)" : "Neutral");
+  $("#pSrc").textContent = p ? p.source : "Start from zero and tune with the sliders.";
   $("#dName").textContent = p ? `${i+1}/${S.list.length} · ${p.name}` : $("#pName").textContent;
   $("#gridView").style.display = "none";
   $("#detail").classList.add("on");
@@ -336,39 +336,39 @@ function renderBig(showOrig){
   if (showOrig || S.idx === -2 && !dirty()) url = renderURL({w: bigW(), comp: "0"});
   else if (p && !dirty()) url = renderURL({w: bigW(), preset: p.id});
   else url = renderURL({w: bigW(), params: S.params});
-  $("#stageTag").textContent = showOrig ? "ORIGINAL IZ APARATA" : (dirty() ? "podešeno" : (p ? "preset" : ""));
+  $("#stageTag").textContent = showOrig ? "CAMERA ORIGINAL" : (dirty() ? "tuned" : (p ? "preset" : ""));
   $("#stageTag").style.display = $("#stageTag").textContent ? "" : "none";
   const img = new Image();
   const busy = setTimeout(() => $("#busy").style.display = "block", 150);
   img.onload = () => { clearTimeout(busy); $("#busy").style.display = "none"; if (seq === renderSeq) $("#big").src = img.src; };
-  img.onerror = () => { clearTimeout(busy); $("#busy").style.display = "none"; toast("Render nije uspio."); };
+  img.onerror = () => { clearTimeout(busy); $("#busy").style.display = "none"; toast("Render failed."); };
   img.src = url;
 }
 
 async function savePreset(){
   const p = current();
   const cam = S.photo.camera || "";
-  const suggested = p ? p.name.replace(/\s*\(FL\)$/, "") + " (FL)" : `[MOJ]${cam ? "["+cam+"]" : ""} Novi preset`;
-  const name = prompt("Ime preseta (ovako će se zvati u SPP-u):", suggested);
+  const suggested = p ? p.name.replace(/\s*\(FL\)$/, "") + " (FL)" : `[MY]${cam ? "["+cam+"]" : ""} New preset`;
+  const name = prompt("Preset name (as it will appear in SPP):", suggested);
   if (!name) return;
   const res = await fetch("/api/presets", {method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({name, camera: (p && p.camera) || cam, params: S.params})});
-  if (!res.ok){ toast("Spremanje nije uspjelo: " + esc(await res.text())); return; }
+  if (!res.ok){ toast("Saving failed: " + esc(await res.text())); return; }
   const data = await res.json();
   S.presets = data.presets; await loadPresets(false); refreshList();
   const i = S.list.findIndex(x => x.name === name);
-  toast(`Spremljeno u <b>${esc(data.savedTo)}</b> — uvezi tu datoteku u SPP.`, 7000);
+  toast(`Saved to <b>${esc(data.savedTo)}</b> — import that file into SPP.`, 7000);
   if (i >= 0) openDetail(i);
 }
 
 async function exportJPEG(){
   const p = current();
-  toast("Izvozim punu rezoluciju…", 20000);
+  toast("Exporting full resolution…", 20000);
   const body = {id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2};
   const res = await fetch("/api/export", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
-  if (!res.ok){ toast("Izvoz nije uspio: " + esc(await res.text())); return; }
+  if (!res.ok){ toast("Export failed: " + esc(await res.text())); return; }
   const {path} = await res.json();
-  toast(`Spremljeno: ${esc(path)} <a id="reveal">Otvori mapu</a>`, 8000);
+  toast(`Saved: ${esc(path)} <a id="reveal">Show in folder</a>`, 8000);
   $("#reveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(path));
 }
 

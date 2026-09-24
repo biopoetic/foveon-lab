@@ -33,10 +33,10 @@ import (
 	"sync"
 	"time"
 
-	"foveon-lab/calib"
-	"foveon-lab/preset"
-	"foveon-lab/render"
-	"foveon-lab/x3f"
+	"github.com/biopoetic/foveon-lab/calib"
+	"github.com/biopoetic/foveon-lab/preset"
+	"github.com/biopoetic/foveon-lab/render"
+	"github.com/biopoetic/foveon-lab/x3f"
 )
 
 //go:embed web
@@ -153,7 +153,7 @@ func loadMeta(ph *Photo) bool {
 	if ph.Kind == "x3f" {
 		f, err := x3f.Open(ph.path)
 		if err != nil {
-			log.Printf("preskacem %s: %v", ph.path, err)
+			log.Printf("skipping %s: %v", ph.path, err)
 			return false
 		}
 		ph.props, ph.Camera, ph.rotation = f.Props, f.Camera(), f.Rotation
@@ -261,7 +261,7 @@ func (s *server) loadPresets() {
 	s.pmu.Lock()
 	s.presets, s.pByID, s.pErrs = ps, m, es
 	s.pmu.Unlock()
-	log.Printf("učitano %d preseta iz %s (%d grešaka)", len(ps), s.presetsDir, len(errs))
+	log.Printf("loaded %d presets from %s (%d errors)", len(ps), s.presetsDir, len(errs))
 }
 
 func decodePreview(ph *Photo) (image.Image, error) {
@@ -329,7 +329,7 @@ func httpErr(w http.ResponseWriter, code int, err error) {
 func (s *server) photo(r *http.Request) (*Photo, error) {
 	ph := s.byID[r.URL.Query().Get("id")]
 	if ph == nil {
-		return nil, errors.New("nepoznata slika")
+		return nil, errors.New("unknown photo")
 	}
 	return ph, nil
 }
@@ -344,18 +344,18 @@ func (s *server) params(presetID, pJSON string) (preset.Params, string, error) {
 		pr, ok := s.pByID[presetID]
 		s.pmu.RUnlock()
 		if !ok {
-			return p, "", errors.New("nepoznat preset")
+			return p, "", errors.New("unknown preset")
 		}
 		p, label = pr.Params, pr.Name
 	}
 	if pJSON != "" {
 		if err := json.Unmarshal([]byte(pJSON), &p); err != nil {
-			return p, "", fmt.Errorf("parametri: %w", err)
+			return p, "", fmt.Errorf("params: %w", err)
 		}
 		if presetID != "" {
-			label += " (podešeno)"
+			label += " (tuned)"
 		} else {
-			label = "podešeno"
+			label = "tuned"
 		}
 	}
 	return p, label, nil
@@ -453,7 +453,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 	ph := s.byID[req.ID]
 	if ph == nil {
-		httpErr(w, 404, errors.New("nepoznata slika"))
+		httpErr(w, 404, errors.New("unknown photo"))
 		return
 	}
 	pj := ""
@@ -493,7 +493,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 500, err)
 		return
 	}
-	log.Printf("izvezeno %s", path)
+	log.Printf("exported %s", path)
 	writeJSON(w, map[string]string{"path": path})
 }
 
@@ -501,7 +501,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleReveal(w http.ResponseWriter, r *http.Request) {
 	p := filepath.Clean(r.URL.Query().Get("path"))
 	if filepath.Base(filepath.Dir(p)) != "foveon-lab" || !strings.EqualFold(filepath.Ext(p), ".jpg") {
-		httpErr(w, 403, errors.New("dopušteno samo za izvezene slike"))
+		httpErr(w, 403, errors.New("only allowed for exported images"))
 		return
 	}
 	if runtime.GOOS == "windows" {
@@ -535,7 +535,7 @@ func (s *server) handlePresets(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Name = strings.TrimSpace(req.Name)
 		if req.Name == "" || s.presetsDir == "" {
-			httpErr(w, 400, errors.New("ime preseta i mapa preseta su obavezni"))
+			httpErr(w, 400, errors.New("a preset name and a presets folder are required"))
 			return
 		}
 		cam := req.Camera
@@ -547,7 +547,7 @@ func (s *server) handlePresets(w http.ResponseWriter, r *http.Request) {
 			httpErr(w, 500, err)
 			return
 		}
-		log.Printf("spremljen preset %q u %s", req.Name, path)
+		log.Printf("saved preset %q to %s", req.Name, path)
 		s.loadPresets()
 		payload := s.presetsPayload().(map[string]any)
 		payload["savedTo"] = path
@@ -581,18 +581,18 @@ func openBrowser(url string) {
 	}
 }
 
-// calibCommand handles "kalibracija" (write the SPP calibration pack) and
-// "analiza" (measure the exports). It reports whether it handled argv.
+// calibCommand handles "calibrate" (write the SPP calibration pack) and
+// "analyze" (measure the exports). It reports whether it handled argv.
 func calibCommand(desk string) bool {
-	if len(os.Args) < 2 || (os.Args[1] != "kalibracija" && os.Args[1] != "analiza") {
+	if len(os.Args) < 2 || (os.Args[1] != "calibrate" && os.Args[1] != "analyze") {
 		return false
 	}
 	fsFlags := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
-	dir := fsFlags.String("dir", filepath.Join(desk, "foveon-kalibracija"), "mapa kalibracije")
-	photos := fsFlags.String("photos", desk, "mape sa X3F slikama (za prijedlog slika)")
+	dir := fsFlags.String("dir", filepath.Join(desk, "foveon-calibration"), "calibration folder")
+	photos := fsFlags.String("photos", desk, "folders with X3F photos (for suggesting source images)")
 	fsFlags.Parse(os.Args[2:])
 
-	if os.Args[1] == "kalibracija" {
+	if os.Args[1] == "calibrate" {
 		var paths []string
 		for _, p := range scanPhotos(strings.Split(*photos, ";")) {
 			if p.Kind == "x3f" {
@@ -603,20 +603,20 @@ func calibCommand(desk string) bool {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("Kalibracijski pack: %s\nUpute: %s\nIzvoze spremaj u: %s\n",
-			xmlPath, filepath.Join(*dir, "UPUTE.txt"), filepath.Join(*dir, "izvoz"))
+		fmt.Printf("Calibration pack: %s\nInstructions: %s\nSave exports to: %s\n",
+			xmlPath, filepath.Join(*dir, calib.InstructionsFile), filepath.Join(*dir, calib.ExportsDir))
 		return true
 	}
 
-	exportDir := filepath.Join(*dir, "izvoz")
-	fmt.Printf("Analiziram %s …\n", exportDir)
+	exportDir := filepath.Join(*dir, calib.ExportsDir)
+	fmt.Printf("Analyzing %s …\n", exportDir)
 	res, err := calib.Analyze(exportDir, os.Stdout)
 	if err != nil {
 		log.Fatal(err)
 	}
 	js, _ := json.MarshalIndent(res, "", " ")
-	jsonPath := filepath.Join(*dir, "kalibracija.json")
-	reportPath := filepath.Join(*dir, "izvjestaj.txt")
+	jsonPath := filepath.Join(*dir, "calibration.json")
+	reportPath := filepath.Join(*dir, "report.txt")
 	if err := os.WriteFile(jsonPath, js, 0o644); err != nil {
 		log.Fatal(err)
 	}
@@ -625,7 +625,7 @@ func calibCommand(desk string) bool {
 		log.Fatal(err)
 	}
 	fmt.Println(rep)
-	fmt.Printf("Spremljeno: %s, %s\n", reportPath, jsonPath)
+	fmt.Printf("Saved: %s, %s\n", reportPath, jsonPath)
 	return true
 }
 
@@ -638,10 +638,10 @@ func main() {
 	if _, err := os.Stat(defPresets); err != nil {
 		defPresets = ""
 	}
-	photos := flag.String("photos", desk, "mape sa X3F slikama (odvojene sa ;)")
-	presetsDir := flag.String("presets", defPresets, "mapa sa SPP preset XML datotekama")
-	port := flag.Int("port", 8777, "početni port")
-	noOpen := flag.Bool("no-open", false, "ne otvaraj preglednik")
+	photos := flag.String("photos", desk, "folders with X3F photos (separated by ;)")
+	presetsDir := flag.String("presets", defPresets, "folder with SPP preset XML files")
+	port := flag.Int("port", 8777, "first port to try")
+	noOpen := flag.Bool("no-open", false, "do not open the browser")
 	flag.Parse()
 
 	log.SetFlags(log.Ltime)
@@ -658,7 +658,7 @@ func main() {
 	for _, p := range s.photos {
 		s.byID[p.ID] = p
 	}
-	log.Printf("pronađeno %d slika za %v", len(s.photos), time.Since(start).Round(time.Millisecond))
+	log.Printf("found %d photos in %v", len(s.photos), time.Since(start).Round(time.Millisecond))
 	s.loadPresets()
 
 	mux := http.NewServeMux()
@@ -676,7 +676,7 @@ func main() {
 		log.Fatal(err)
 	}
 	url := "http://" + ln.Addr().String() + "/"
-	fmt.Printf("\n  Foveon Lab radi na %s\n  Zatvori ovaj prozor za izlaz.\n\n", url)
+	fmt.Printf("\n  Foveon Lab is running at %s\n  Close this window to quit.\n\n", url)
 	if !*noOpen {
 		openBrowser(url)
 	}

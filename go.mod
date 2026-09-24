@@ -1,4 +1,4 @@
-module foveon-lab
+module github.com/biopoetic/foveon-lab
 
 go 1.25
 

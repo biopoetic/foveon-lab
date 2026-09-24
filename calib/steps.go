@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"foveon-lab/preset"
+	"github.com/biopoetic/foveon-lab/preset"
 )
 
 // Step is one calibration preset.
@@ -114,7 +114,7 @@ func Steps() []Step {
 	for i, s := range a {
 		add(fmt.Sprintf("A%02d", i), s)
 	}
-	out[len(out)-1].Label = "Neutral (provjera)"
+	out[len(out)-1].Label = "Neutral (check)"
 	for i, s := range b {
 		add(fmt.Sprintf("B%02d", i+1), s)
 	}

@@ -15,7 +15,7 @@ import (
 
 	_ "golang.org/x/image/tiff"
 
-	"foveon-lab/render"
+	"github.com/biopoetic/foveon-lab/render"
 )
 
 // AnalysisW is the working width: exports are box-downscaled to this, which
@@ -81,7 +81,7 @@ func findExports(dir string) (map[string][]export, error) {
 		code := strings.ToUpper(stem[m[4]:m[5]])
 		img := strings.Trim(stem[:m[4]]+stem[m[5]:], " _-.")
 		if img == "" {
-			img = "slika"
+			img = "photo"
 		}
 		groups[img] = append(groups[img], export{path: filepath.Join(dir, e.Name()), image: img, code: code})
 	}
@@ -132,7 +132,7 @@ func localMean(l *render.Linear) []float32 {
 func measure(ref, out *render.Linear, refLocal []float32) (Measurement, error) {
 	var m Measurement
 	if ref.W != out.W || ref.H != out.H {
-		return m, fmt.Errorf("druga veličina (%dx%d vs referenca %dx%d) — izvozi moraju biti iste rezolucije i bez rezanja", out.W, out.H, ref.W, ref.H)
+		return m, fmt.Errorf("size differs (%dx%d vs reference %dx%d) — exports must share one resolution, uncropped", out.W, out.H, ref.W, ref.H)
 	}
 	var sum, sum2, cnt, cOut, cRef [Bins]float64
 	var loc, locN [8][8]float64
@@ -286,7 +286,7 @@ func Analyze(dir string, progress io.Writer) (*Result, error) {
 		return nil, err
 	}
 	if len(groups) == 0 {
-		return nil, errors.New("nema izvoza s kodom (npr. SDIM0031_A03.tif) u " + dir)
+		return nil, errors.New("no exports named with a step code (e.g. SDIM0031_A03.tif) in " + dir)
 	}
 	steps := ByCode(Steps())
 	res := &Result{Dir: dir}
@@ -305,7 +305,7 @@ func Analyze(dir string, progress io.Writer) (*Result, error) {
 			}
 		}
 		if refPath == "" {
-			res.Warnings = append(res.Warnings, fmt.Sprintf("%s: nema %s (neutralne reference) — preskačem %d izvoza", name, Reference, len(exps)))
+			res.Warnings = append(res.Warnings, fmt.Sprintf("%s: no %s (neutral reference) — skipping %d exports", name, Reference, len(exps)))
 			continue
 		}
 		ref, err := load(refPath)
@@ -320,7 +320,7 @@ func Analyze(dir string, progress io.Writer) (*Result, error) {
 			}
 			s, ok := steps[e.code]
 			if !ok {
-				res.Warnings = append(res.Warnings, fmt.Sprintf("%s: nepoznat kod %s", filepath.Base(e.path), e.code))
+				res.Warnings = append(res.Warnings, fmt.Sprintf("%s: unknown code %s", filepath.Base(e.path), e.code))
 				continue
 			}
 			fmt.Fprintf(progress, "  %s %s %s\n", name, s.Code, s.Label)
@@ -359,12 +359,12 @@ func curveAt(c [Bins]float64, v float64) float64 {
 // Report renders a human-readable summary.
 func (r *Result) Report() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Foveon Lab — kalibracijski izvještaj\n%s\n\n", r.Dir)
-	b.WriteString("Promjena = koliko je SPP promijenio sliku u odnosu na A00 (0-255, prosjek po kanalu).\n")
-	b.WriteString("Greška emulacije = koliko se naša emulacija razlikuje od SPP-a za isti klizač (manje = bolje).\n")
-	b.WriteString("Krivulja = izlazna svjetlina (0-255) za ulaz 25 / 64 / 128 / 191 / 230. Neutralno bi bilo 25 64 128 191 230.\n")
-	b.WriteString("Lokalno = raspršenost izlaza za isti ulaz; neutralno ~2-3; bitno veće znači lokalni operator, ne globalna krivulja.\n\n")
-	fmt.Fprintf(&b, "%-10s %-4s %-24s %8s %8s  %-24s %6s %7s %8s\n", "slika", "kod", "postavka", "promjena", "emu.gr.", "krivulja", "sat×", "lokalno", "matr.gr.")
+	fmt.Fprintf(&b, "Foveon Lab — calibration report\n%s\n\n", r.Dir)
+	b.WriteString("change    = how much SPP altered the image vs A00 (0-255, mean per channel).\n")
+	b.WriteString("emu.err   = how far our emulation of the same slider is from SPP (lower = better).\n")
+	b.WriteString("curve     = output brightness (0-255) for input 25 / 64 / 128 / 191 / 230 (neutral: 25 64 128 191 230).\n")
+	b.WriteString("local     = spread of output for equal input; neutral ~2-3, clearly higher = a local operator, not a global curve.\n\n")
+	fmt.Fprintf(&b, "%-10s %-4s %-24s %8s %8s  %-24s %6s %7s %8s\n", "photo", "code", "setting", "change", "emu.err", "curve", "sat×", "local", "mat.err")
 	for _, m := range r.Measurements {
 		var pts []string
 		for _, v := range []float64{25, 64, 128, 191, 230} {
@@ -390,9 +390,9 @@ func (r *Result) Report() string {
 		if m.Param != "FillLight" {
 			continue
 		}
-		fmt.Fprintf(&b, "\n%s %s — pomak svjetline (0-255) po svjetlini piksela (stupci) i svjetlini okoline (retci):\n", m.Code, m.Label)
+		fmt.Fprintf(&b, "\n%s %s — brightness shift (0-255) by pixel brightness (columns) and surrounding brightness (rows):\n", m.Code, m.Label)
 		for l := 0; l < 8; l++ {
-			fmt.Fprintf(&b, "  okolina %3d-%3d:", l*32, l*32+31)
+			fmt.Fprintf(&b, "  surround %3d-%3d:", l*32, l*32+31)
 			for p := 0; p < 8; p++ {
 				if v := m.Local[l][p]; v > -9 {
 					fmt.Fprintf(&b, " %+5.1f", v*255)
@@ -404,7 +404,7 @@ func (r *Result) Report() string {
 		}
 	}
 	if len(r.Warnings) > 0 {
-		b.WriteString("\nUpozorenja:\n")
+		b.WriteString("\nWarnings:\n")
 		for _, w := range r.Warnings {
 			b.WriteString("  - " + w + "\n")
 		}

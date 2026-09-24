@@ -56,9 +56,9 @@ func TestTags(t *testing.T) {
 	cases := []struct{ name, file, cam, group string }{
 		{"[SLIDE][SD1] Velvia50", "x.xml", "SD1", "SLIDE"},
 		{"[FOVEON] SD15 3D Pop", "x.xml", "SD15", "FOVEON"},
-		{"Plain name", "SD15_BASE.xml", "SD15", "OSTALO"},
-		{"Plain name", "SD1_BASE.xml", "SD1", "OSTALO"},
-		{"Plain", "SOTA.xml", "", "OSTALO"},
+		{"Plain name", "SD15_BASE.xml", "SD15", "OTHER"},
+		{"Plain name", "SD1_BASE.xml", "SD1", "OTHER"},
+		{"Plain", "SOTA.xml", "", "OTHER"},
 	}
 	for _, c := range cases {
 		if got := cameraOf(c.name, c.file); got != c.cam {

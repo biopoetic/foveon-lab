@@ -15,7 +15,7 @@ import (
 	"strings"
 	"sync"
 
-	"foveon-lab/preset"
+	"github.com/biopoetic/foveon-lab/preset"
 )
 
 // Linear is an RGB image in linear light, 3 float32 per pixel.
