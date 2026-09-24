@@ -72,6 +72,12 @@ func lut(t *[lutN + 1]float32, x float32) float32 {
 func enc(x float32) float32 { return lut(&encLUT, x) }
 func dec(x float32) float32 { return lut(&decLUT, x) }
 
+// ToSRGB encodes a linear value in [0,1] to sRGB [0,1].
+func ToSRGB(x float32) float32 { return enc(x) }
+
+// ToLinear decodes an sRGB value in [0,1] to linear light.
+func ToLinear(x float32) float32 { return dec(x) }
+
 // parallelRows runs fn over row ranges on all CPUs.
 func parallelRows(h int, fn func(y0, y1 int)) {
 	n := runtime.GOMAXPROCS(0)
@@ -157,6 +163,21 @@ func pixelGetter(img image.Image) func(x, y int) (uint8, uint8, uint8) {
 		return func(x, y int) (uint8, uint8, uint8) {
 			i := m.PixOffset(x, y)
 			return m.Pix[i], m.Pix[i+1], m.Pix[i+2]
+		}
+	case *image.NRGBA:
+		return func(x, y int) (uint8, uint8, uint8) {
+			i := m.PixOffset(x, y)
+			return m.Pix[i], m.Pix[i+1], m.Pix[i+2]
+		}
+	case *image.RGBA64: // 16-bit TIFF (high byte first)
+		return func(x, y int) (uint8, uint8, uint8) {
+			i := m.PixOffset(x, y)
+			return m.Pix[i], m.Pix[i+2], m.Pix[i+4]
+		}
+	case *image.NRGBA64:
+		return func(x, y int) (uint8, uint8, uint8) {
+			i := m.PixOffset(x, y)
+			return m.Pix[i], m.Pix[i+2], m.Pix[i+4]
 		}
 	}
 	return func(x, y int) (uint8, uint8, uint8) {

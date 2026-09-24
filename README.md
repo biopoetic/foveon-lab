@@ -27,6 +27,17 @@ foveon-lab.exe -photos "D:\Foto;E:\Sigma" -presets "D:\preseti" -port 8777
 - Color mode kodovi: 4 = Standard, 6 = Portrait, 7 = Landscape (izvedeno iz dokumentacije packa); ostali nepoznati.
 - WhiteBalance / ColorTemp se čuvaju i zapisuju, ali se ne emuliraju.
 
+## Kalibracija (mjerenje SPP-a)
+
+```
+foveon-lab.exe kalibracija   # Desktop\foveon-kalibracija: XML pack + UPUTE.txt + izvoz\
+foveon-lab.exe analiza       # mjeri izvoze → izvjestaj.txt + kalibracija.json
+```
+
+Svaki `[CAL]` preset mijenja jedan klizač. Izvozi iz SPP-a (`<slika>_<kod>.tif`) mjere se prema
+SPP-ovom neutralnom izvozu `A00`: tonska krivulja, pojačanje zasićenja, 3×3 matrica boja,
+lokalnost (Fill Light) i greška naše emulacije za isti klizač.
+
 ## Struktura
 
 - `x3f/` — X3F kontejner: direktorij sekcija, ugrađeni JPEG-ovi, PROP metapodaci

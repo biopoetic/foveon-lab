@@ -33,6 +33,7 @@ import (
 	"sync"
 	"time"
 
+	"foveon-lab/calib"
 	"foveon-lab/preset"
 	"foveon-lab/render"
 	"foveon-lab/x3f"
@@ -580,8 +581,59 @@ func openBrowser(url string) {
 	}
 }
 
+// calibCommand handles "kalibracija" (write the SPP calibration pack) and
+// "analiza" (measure the exports). It reports whether it handled argv.
+func calibCommand(desk string) bool {
+	if len(os.Args) < 2 || (os.Args[1] != "kalibracija" && os.Args[1] != "analiza") {
+		return false
+	}
+	fsFlags := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
+	dir := fsFlags.String("dir", filepath.Join(desk, "foveon-kalibracija"), "mapa kalibracije")
+	photos := fsFlags.String("photos", desk, "mape sa X3F slikama (za prijedlog slika)")
+	fsFlags.Parse(os.Args[2:])
+
+	if os.Args[1] == "kalibracija" {
+		var paths []string
+		for _, p := range scanPhotos(strings.Split(*photos, ";")) {
+			if p.Kind == "x3f" {
+				paths = append(paths, p.path)
+			}
+		}
+		xmlPath, err := calib.WritePack(*dir, calib.Suggest(paths))
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Kalibracijski pack: %s\nUpute: %s\nIzvoze spremaj u: %s\n",
+			xmlPath, filepath.Join(*dir, "UPUTE.txt"), filepath.Join(*dir, "izvoz"))
+		return true
+	}
+
+	exportDir := filepath.Join(*dir, "izvoz")
+	fmt.Printf("Analiziram %s …\n", exportDir)
+	res, err := calib.Analyze(exportDir, os.Stdout)
+	if err != nil {
+		log.Fatal(err)
+	}
+	js, _ := json.MarshalIndent(res, "", " ")
+	jsonPath := filepath.Join(*dir, "kalibracija.json")
+	reportPath := filepath.Join(*dir, "izvjestaj.txt")
+	if err := os.WriteFile(jsonPath, js, 0o644); err != nil {
+		log.Fatal(err)
+	}
+	rep := res.Report()
+	if err := os.WriteFile(reportPath, []byte(rep), 0o644); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(rep)
+	fmt.Printf("Spremljeno: %s, %s\n", reportPath, jsonPath)
+	return true
+}
+
 func main() {
 	desk := desktopDir()
+	if calibCommand(desk) {
+		return
+	}
 	defPresets := filepath.Join(desk, "foveon pack")
 	if _, err := os.Stat(defPresets); err != nil {
 		defPresets = ""
