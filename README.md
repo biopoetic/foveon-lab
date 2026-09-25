@@ -35,6 +35,17 @@ foveon-lab -photos "D:\Photos;E:\Sigma" -presets "D:\SPP presets" -port 8777 -no
 
 Photos are found up to 4 levels below each `-photos` folder.
 
+## Open in Sigma Photo Pro (Windows, SPP 6)
+
+**Open in SPP ↗** in the editor hands the current preset straight to SPP: it adds it to SPP's preset
+list, makes it SPP's current adjustment and launches SPP on the photo — no XML import step.
+
+How it works: SPP keeps no per-photo edits. Its preset list is
+`%LOCALAPPDATA%\SIGMA\SIGMA_PhotoPro6\X3F_Setting.xml` and its current adjustment is the `X3F_*` keys in
+`SPhotoPro.xml` there. Foveon Lab edits both **only while SPP is closed** (SPP rewrites them on exit),
+backs them up first to `foveon-lab-backups\` next to them (last 10 kept), and prefixes everything it
+writes with `[FL]` so your own SPP presets are never overwritten. Your X3F files are never modified.
+
 ## AI agent: pick and tune a preset for you
 
 Click **✦ AI pick** (grid) or **✦ AI** (editor). A vision model looks at the photo, shortlists presets
@@ -101,6 +112,7 @@ little clipping). This is black-box measurement of SPP's output; nothing is deco
 | `render/` | linear-light float pipeline emulating the SPP sliders |
 | `calib/` | calibration preset pack, export analysis, source-photo suggestions |
 | `agent/` | vision-model agent loop (tools: `render_presets`, `render`, `finish`) |
+| `spp/` | hand-off to an installed Sigma Photo Pro 6 (preset list + current setting) |
 | `web/index.html` | the UI (embedded into the binary) |
 
 ```

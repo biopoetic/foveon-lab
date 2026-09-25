@@ -145,6 +145,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="reset">Reset to preset</button>
           <button id="save" class="primary">Save as preset</button>
           <button id="export">Export JPEG</button>
+          <button id="sppOpen" title="Put this preset into Sigma Photo Pro's list as its current setting, then open the photo in SPP (SPP must be closed)" style="display:none">Open in SPP ↗</button>
         </div>
         <div class="kbd">
           <code>←</code> <code>→</code> previous / next preset<br>
@@ -231,6 +232,7 @@ function selectPhoto(id){
   const p = S.photos.find(x => x.id === id) || S.photos[0];
   if (!p) return;
   S.photo = p; store.set("photo", p.id);
+  sppButton();
   document.querySelectorAll(".ph").forEach(e => e.classList.toggle("sel", e.dataset.id === p.id));
   document.querySelector(`.ph[data-id="${p.id}"]`)?.scrollIntoView({block:"nearest"});
   $("#photoTitle").textContent = `${p.folder} / ${p.name}`;
@@ -409,6 +411,34 @@ async function exportJPEG(){
   $("#reveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(path));
 }
 
+// ---------- Sigma Photo Pro hand-off ----------
+let SPP = {available: false};
+async function sppInit(){
+  try { SPP = await (await fetch("/api/spp/status")).json(); } catch { SPP = {available: false}; }
+  sppButton();
+}
+function sppButton(){ $("#sppOpen").style.display = SPP.available && S.photo?.kind === "x3f" ? "" : "none"; }
+
+// Everything Foveon Lab writes into SPP is prefixed [FL], so the user's own
+// SPP presets are never overwritten.
+function sppName(){
+  const p = current();
+  if (!p) return "[FL] Neutral" + (dirty() ? " (tuned)" : "");
+  const base = p.name.startsWith("[FL] ") ? p.name.slice(5) : p.name;
+  return "[FL] " + base + (dirty() ? " (tuned)" : "");
+}
+
+async function openInSPP(){
+  const name = sppName();
+  const res = await fetch("/api/spp/open", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({id: S.photo.id, name, params: S.params})});
+  const text = await res.text();
+  if (res.status === 409){ toast("Close Sigma Photo Pro first — it rewrites its settings when it exits.", 7000); return; }
+  if (!res.ok){ toast("Could not open in SPP: " + esc(text), 8000); return; }
+  const r = JSON.parse(text);
+  toast(`Opening in SPP with <b>${esc(r.name)}</b> as the current setting. Backup of SPP's settings: ${esc(r.backup)}`, 9000);
+}
+
 // ---------- AI agent ----------
 const AI = {status: null, es: null};
 
@@ -516,6 +546,7 @@ function bind(){
   $("#reset").onclick = () => { S.params = {...S.base}; syncSliders(); renderBig(); };
   $("#save").onclick = savePreset;
   $("#export").onclick = exportJPEG;
+  $("#sppOpen").onclick = openInSPP;
   $("#aiOpen").onclick = $("#aiOpen2").onclick = aiOpen;
   $("#aiClose").onclick = () => $("#aiPanel").classList.remove("on");
   $("#aiStart").onclick = startAgent;
@@ -538,7 +569,7 @@ function bind(){
 
 (async function init(){
   bind();
-  await Promise.all([loadPhotos(), loadPresets(false), aiInit()]);
+  await Promise.all([loadPhotos(), loadPresets(false), aiInit(), sppInit()]);
   // Deep link: ?photo=<id or file name>&groups=SLIDE,BW&q=velvia&tile=400
   const qp = new URLSearchParams(location.search);
   if (qp.has("groups")) S.groups = new Set(qp.get("groups").split(",").filter(Boolean).map(g => g.toUpperCase()));

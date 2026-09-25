@@ -38,6 +38,7 @@ import (
 	"github.com/biopoetic/foveon-lab/calib"
 	"github.com/biopoetic/foveon-lab/preset"
 	"github.com/biopoetic/foveon-lab/render"
+	"github.com/biopoetic/foveon-lab/spp"
 	"github.com/biopoetic/foveon-lab/x3f"
 )
 
@@ -561,6 +562,59 @@ func (s *server) handlePresets(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *server) handleSPPStatus(w http.ResponseWriter, r *http.Request) {
+	in, err := spp.Detect()
+	if err != nil {
+		writeJSON(w, map[string]any{"available": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]any{"available": true, "running": in.Running(), "settingsDir": in.Dir})
+}
+
+// handleSPPOpen writes the preset into SPP's list, makes it SPP's current
+// adjustment (both with a backup) and launches SPP on the photo.
+func (s *server) handleSPPOpen(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID     string        `json:"id"`
+		Name   string        `json:"name"`
+		Params preset.Params `json:"params"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpErr(w, 400, err)
+		return
+	}
+	ph := s.byID[req.ID]
+	if ph == nil || ph.Kind != "x3f" {
+		httpErr(w, 400, errors.New("only X3F photos can be opened in SPP"))
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		httpErr(w, 400, errors.New("preset name required"))
+		return
+	}
+	in, err := spp.Detect()
+	if err != nil {
+		httpErr(w, 404, err)
+		return
+	}
+	backup, err := in.Apply(name, req.Params)
+	if errors.Is(err, spp.ErrRunning) {
+		httpErr(w, 409, err)
+		return
+	}
+	if err != nil {
+		httpErr(w, 500, err)
+		return
+	}
+	if err := in.Launch(ph.path); err != nil {
+		httpErr(w, 500, fmt.Errorf("settings written, but SPP did not start: %w", err))
+		return
+	}
+	log.Printf("SPP: preset %q applied (backup %s), opened %s", name, backup, ph.path)
+	writeJSON(w, map[string]string{"name": name, "backup": backup})
+}
+
 // agentCandidates returns the presets that fit the photo's camera.
 func (s *server) agentCandidates(ph *Photo) []preset.Preset {
 	s.pmu.RLock()
@@ -755,6 +809,8 @@ func main() {
 		writeJSON(w, map[string]any{"enabled": s.ai.APIKey != "", "model": s.ai.Model, "host": host, "keyEnv": *aiKeyEnv})
 	})
 	mux.HandleFunc("/api/agent", s.handleAgent)
+	mux.HandleFunc("/api/spp/status", s.handleSPPStatus)
+	mux.HandleFunc("/api/spp/open", s.handleSPPOpen)
 
 	ln, err := listen(*port)
 	if err != nil {

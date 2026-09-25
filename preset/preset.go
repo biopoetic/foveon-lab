@@ -246,7 +246,9 @@ func LoadDir(root string) ([]Preset, []error) {
 	return out, errs
 }
 
-// fmtNum writes a value the way SPP does on a comma-decimal locale.
+// FormatNumber writes a value the way SPP does on a comma-decimal locale.
+func FormatNumber(v float64) string { return fmtNum(v) }
+
 func fmtNum(v float64) string {
 	s := strconv.FormatFloat(v, 'f', 2, 64)
 	s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
