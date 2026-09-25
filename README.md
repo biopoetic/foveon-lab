@@ -46,8 +46,9 @@ How it works: SPP keeps no per-photo edits. Its preset list is
 backs them up first to `foveon-lab-backups\` next to them (last 10 kept), and prefixes everything it
 writes with `[FL]` so your own SPP presets are never overwritten. Your X3F files are never modified.
 Black & white presets (the packs mark them with Saturation −1, or tick **Monochrome** in the editor)
-open in SPP's real Monochrome mode (`X3F_FilterMode` 3, `X3F_*BW` sliders); SPP's colour mode would
-render Saturation −1 as merely muted colour.
+are handed over with Saturation −2: in SPP −1 is only muted colour, −2 is fully grey. (SPP's separate
+Monochrome mode can't be used — SPP always opens photos in Color mode, whatever its saved
+`X3F_FilterMode` says.)
 If SPP is already open, Foveon Lab offers to close it the normal way (a window close, never a forced
 kill — SPP can still ask about unsaved work) and reopen it with the preset.
 

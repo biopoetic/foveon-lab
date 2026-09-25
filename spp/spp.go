@@ -327,40 +327,20 @@ func roundTrip(p preset.Params) preset.Params {
 	return p
 }
 
-// SPP's X3F_FilterMode values, observed by switching modes in SPP 6.9.
-const (
-	filterColor = "1"
-	filterMono  = "3"
-)
+// filterColor is SPP's X3F_FilterMode for Color (3 is Monochrome, observed
+// by switching modes in SPP 6.9; SPP opens photos in Color regardless).
+const filterColor = "1"
 
-// SetCurrent returns SPhotoPro.xml with SPP's current adjustment set to p:
-// Color mode with the X3F_* colour keys, or — for a Mono preset — Monochrome
-// mode with the X3F_*BW keys. Only existing keys are changed; the file must
+// SetCurrent returns SPhotoPro.xml with SPP's current colour adjustment set
+// to p (a Mono preset as Saturation -2, which is fully grey in SPP). SPP is
+// also put back in Color mode. Only existing keys are changed; the file must
 // contain the core ones or the format is considered unknown.
 func SetCurrent(text, name string, p preset.Params) (string, error) {
 	n := preset.FormatNumber
-	if p.Mono {
-		set := [][2]string{
-			{"X3F_FilterMode", filterMono},
-			{"X3F_BrightnessBW", n(p.Exposure)}, {"X3F_ContrastBW", n(p.Contrast)}, {"X3F_ShadowBW", n(p.Blackness)},
-			{"X3F_HilightBW", n(p.Highlight)}, {"X3F_SharpnessBW", n(p.Sharpness)}, {"X3F_FillLightBW", n(p.FillLight)},
-			// SPP's own state for slider values that are not a saved B&W
-			// preset (Foveon Lab's presets live in the colour list).
-			{"X3F_NameBW", "Current Unsaved Setting"}, {"X3F_NameBW_Num", "1"},
-		}
-		for _, kv := range set {
-			nt, ok := setTag(text, kv[0], kv[1])
-			if !ok {
-				return "", fmt.Errorf("SPhotoPro.xml has no <%s> — unknown SPP version, not touching it", kv[0])
-			}
-			text = nt
-		}
-		return text, nil
-	}
 	set := [][2]string{
 		{"X3F_FilterMode", filterColor},
 		{"X3F_Brightness", n(p.Exposure)}, {"X3F_Contrast", n(p.Contrast)}, {"X3F_Shadow", n(p.Blackness)},
-		{"X3F_Hilight", n(p.Highlight)}, {"X3F_Saturation", n(p.Saturation)}, {"X3F_Sharpness", n(p.Sharpness)},
+		{"X3F_Hilight", n(p.Highlight)}, {"X3F_Saturation", n(preset.XMLSaturation(p))}, {"X3F_Sharpness", n(p.Sharpness)},
 		{"X3F_FillLight", n(p.FillLight)}, {"X3F_ColorR", n(p.R)}, {"X3F_ColorG", n(p.G)}, {"X3F_ColorB", n(p.B)},
 		{"X3F_WhiteBalancePreset", strconv.Itoa(p.WhiteBalance)}, {"X3F_ColorMode", strconv.Itoa(p.ColorMode)},
 		{"X3F_Name", escape(name)},

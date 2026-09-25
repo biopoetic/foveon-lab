@@ -132,24 +132,25 @@ func TestSetCurrentMono(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"<X3F_FilterMode>3</X3F_FilterMode>", "<X3F_BrightnessBW>0,1</X3F_BrightnessBW>",
-		"<X3F_ContrastBW>0,75</X3F_ContrastBW>", "<X3F_ShadowBW>0,28</X3F_ShadowBW>", "<X3F_HilightBW>-0,8</X3F_HilightBW>",
-		"<X3F_FillLightBW>0,25</X3F_FillLightBW>", "<X3F_NameBW>Current Unsaved Setting</X3F_NameBW>",
-		"<X3F_NameBW_Num>1</X3F_NameBW_Num>",
-		"<X3F_Brightness>0,2</X3F_Brightness>"} { // colour settings left alone
+	// SPP always opens in Color mode, so B&W is Color mode + Saturation -2
+	// (fully grey in SPP); the Monochrome-mode keys are left alone.
+	for _, want := range []string{"<X3F_FilterMode>1</X3F_FilterMode>", "<X3F_Saturation>-2</X3F_Saturation>",
+		"<X3F_Contrast>0,75</X3F_Contrast>", "<X3F_Shadow>0,28</X3F_Shadow>",
+		"<X3F_ContrastBW>-0,2</X3F_ContrastBW>", "<X3F_NameBW>[FOVEON][SD1] 3D Pop Master</X3F_NameBW>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %s", want)
 		}
 	}
-	// A Mono preset still lands in SPP's (colour) preset list, marked by
-	// the pack convention Saturation -1, and reads back as Mono.
-	p.Saturation = 0 // toggled to Mono in Foveon Lab without touching saturation
+	// In SPP's preset list a Mono preset is also stored as Saturation -2,
+	// even if toggled to Mono without touching saturation, and reads back
+	// as Mono.
+	p.Saturation = 0
 	s, err := UpsertPreset(settings, "[FL] Mono Depth", p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ps, _ := preset.Parse([]byte(s))
-	if last := ps[len(ps)-2]; last.Name != "[FL] Mono Depth" || !last.Params.Mono || last.Params.Saturation != -1 {
+	if last := ps[len(ps)-2]; last.Name != "[FL] Mono Depth" || !last.Params.Mono || last.Params.Saturation != -2 {
 		t.Errorf("mono preset in list = %+v", last)
 	}
 }

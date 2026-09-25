@@ -34,15 +34,21 @@ type Params struct {
 	WhiteBalance int `json:"whiteBalance"`
 	ColorTemp    int `json:"colorTemp"`
 	ColorMode    int `json:"colorMode"`
-	// Mono marks a black & white preset: rendered monochrome and handed to
-	// SPP in its Monochrome mode. SPP's XML has no such flag; preset packs
-	// mark B&W presets with Saturation -1 (which SPP's colour mode renders
-	// as merely muted colour), so that is how Mono is read and written.
+	// Mono marks a black & white preset. SPP's XML has no such flag: preset
+	// packs mark B&W with Saturation -1, which SPP actually renders as muted
+	// colour; -2 is fully grey in SPP (checked by eye). So Mono is READ from
+	// Saturation <= -1 and WRITTEN as -2. SPP's separate Monochrome mode
+	// can't be used — SPP always opens photos in Color mode, whatever its
+	// saved X3F_FilterMode says (tested).
 	Mono bool `json:"mono"`
 }
 
-// MonoSaturation is the saturation value B&W presets carry in SPP XML.
-const MonoSaturation = -1
+const (
+	// MonoSaturationRead: packs mark B&W presets with this saturation.
+	MonoSaturationRead = -1
+	// MonoSaturationWrite: fully desaturated in SPP's colour mode.
+	MonoSaturationWrite = -2
+)
 
 // Neutral returns the do-nothing parameter set.
 func Neutral() Params { return Params{R: 1, G: 1, B: 1, ColorMode: ModeStandard} }
@@ -176,7 +182,7 @@ func Parse(data []byte) ([]Preset, error) {
 					pp.ColorMode = int(v)
 				}
 			}
-			p.Params.Mono = section == "BW" || p.Params.Saturation <= MonoSaturation
+			p.Params.Mono = section == "BW" || p.Params.Saturation <= MonoSaturationRead
 			if p.Name != "" {
 				out = append(out, p)
 			}
@@ -255,11 +261,12 @@ func LoadDir(root string) ([]Preset, []error) {
 	return out, errs
 }
 
-// XMLSaturation is the saturation to store in SPP XML: a Mono preset must
-// carry at most MonoSaturation so it reads back as Mono.
+// XMLSaturation is the saturation to give SPP: a Mono preset is written as
+// MonoSaturationWrite, so it is truly black & white in SPP and still reads
+// back as Mono.
 func XMLSaturation(p Params) float64 {
-	if p.Mono && p.Saturation > MonoSaturation {
-		return MonoSaturation
+	if p.Mono && p.Saturation > MonoSaturationWrite {
+		return MonoSaturationWrite
 	}
 	return p.Saturation
 }
