@@ -145,8 +145,8 @@ func TestRoundTrip(t *testing.T) {
 	if s := curveAt(got["A13"].Chroma, 0.5); s < 1.2 {
 		t.Errorf("saturation +1 chroma gain %.2f", s)
 	}
-	if s := curveAt(got["A15"].Chroma, 0.5); s > 0.05 {
-		t.Errorf("saturation -1 chroma gain %.2f, want ~0 (mono)", s)
+	if s := curveAt(got["A15"].Chroma, 0.5); s < 0.3 || s > 0.7 {
+		t.Errorf("saturation -1 chroma gain %.2f, want about half (muted, not mono)", s)
 	}
 	// Fill Light is local: dark surroundings lift more than bright ones at
 	// the same pixel brightness.

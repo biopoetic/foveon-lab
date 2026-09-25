@@ -47,13 +47,24 @@ func TestDirections(t *testing.T) {
 	}
 
 	p = preset.Neutral()
-	p.Saturation = -1
+	p.Saturation = -2
 	mono := Render(base, p, noComp())
 	for _, pt := range [][2]int{{5, 5}, {40, 30}} {
 		c := mono.RGBAAt(pt[0], pt[1])
 		if c.R != c.G || c.G != c.B {
-			t.Errorf("saturation -1 not monochrome at %v: %v", pt, c)
+			t.Errorf("saturation -2 not monochrome at %v: %v", pt, c)
 		}
+	}
+
+	// -1 is muted colour in SPP, not black & white.
+	spread := func(img *image.RGBA, x, y int) int {
+		c := img.RGBAAt(x, y)
+		return int(max(c.R, c.G, c.B)) - int(min(c.R, c.G, c.B))
+	}
+	p.Saturation = -1
+	muted := Render(base, p, noComp())
+	if s, full := spread(muted, 40, 30), spread(ref, 40, 30); s == 0 || s >= full {
+		t.Errorf("saturation -1 chroma spread %d, want between 0 and %d", s, full)
 	}
 
 	p = preset.Neutral()

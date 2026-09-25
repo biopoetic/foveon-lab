@@ -383,12 +383,16 @@ func Render(b *Base, p preset.Params, c Compensation) *image.RGBA {
 	blk := float32(math.Max(-0.3, math.Min(0.3, p.Blackness*0.08)))
 	ct := float32(math.Max(-1, math.Min(1, (p.Contrast+c.Contrast)*1.2)))
 
+	// SPP's saturation slider spans -2..+2 and -1 is visibly still colour
+	// (confirmed by eye in SPP; exact curve pending calibration steps A15 and
+	// B13), so the negative side is scaled over the full -2 range and only
+	// -2 is treated as monochrome.
 	sat := p.Saturation + c.Saturation
 	var satF float64
-	mono := p.Saturation <= -1
+	mono := p.Saturation <= -2
 	switch {
 	case sat < 0:
-		satF = math.Max(0, 1+sat)
+		satF = math.Max(0, 1+sat/2)
 	default:
 		satF = 1 + 0.6*sat
 	}

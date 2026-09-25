@@ -198,7 +198,7 @@ func paramSchema(extra map[string]any, required ...string) map[string]any {
 		"shadow":         num("SPP 'Shadow'/Blackness: + deepens blacks, - lifts them (matte). -2..2, typical -0.1..0.2"),
 		"highlight":      num("- pulls highlights down / recovers, + brightens them. -2..2, typical -0.9..0"),
 		"fill_light":     num("X3 Fill Light: + lifts shadows locally. -2..2, typical 0..0.7"),
-		"saturation":     num("-2..2; -1 = black & white"),
+		"saturation":     num("-2..2; -1 is muted colour (about half), -2 = black & white"),
 		"sharpness":      num("-2..2, usually 0"),
 		"color_adjust_r": num("red multiplier 0.7..1.3 (1 = none)"),
 		"color_adjust_g": num("green multiplier 0.7..1.3"),
