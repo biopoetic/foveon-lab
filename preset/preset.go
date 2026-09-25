@@ -34,7 +34,15 @@ type Params struct {
 	WhiteBalance int `json:"whiteBalance"`
 	ColorTemp    int `json:"colorTemp"`
 	ColorMode    int `json:"colorMode"`
+	// Mono marks a black & white preset: rendered monochrome and handed to
+	// SPP in its Monochrome mode. SPP's XML has no such flag; preset packs
+	// mark B&W presets with Saturation -1 (which SPP's colour mode renders
+	// as merely muted colour), so that is how Mono is read and written.
+	Mono bool `json:"mono"`
 }
+
+// MonoSaturation is the saturation value B&W presets carry in SPP XML.
+const MonoSaturation = -1
 
 // Neutral returns the do-nothing parameter set.
 func Neutral() Params { return Params{R: 1, G: 1, B: 1, ColorMode: ModeStandard} }
@@ -168,6 +176,7 @@ func Parse(data []byte) ([]Preset, error) {
 					pp.ColorMode = int(v)
 				}
 			}
+			p.Params.Mono = section == "BW" || p.Params.Saturation <= MonoSaturation
 			if p.Name != "" {
 				out = append(out, p)
 			}
@@ -246,6 +255,15 @@ func LoadDir(root string) ([]Preset, []error) {
 	return out, errs
 }
 
+// XMLSaturation is the saturation to store in SPP XML: a Mono preset must
+// carry at most MonoSaturation so it reads back as Mono.
+func XMLSaturation(p Params) float64 {
+	if p.Mono && p.Saturation > MonoSaturation {
+		return MonoSaturation
+	}
+	return p.Saturation
+}
+
 // FormatNumber writes a value the way SPP does on a comma-decimal locale.
 func FormatNumber(v float64) string { return fmtNum(v) }
 
@@ -269,7 +287,7 @@ func SettingXML(name string, p Params) string {
 	row("Contrast", fmtNum(p.Contrast))
 	row("Exposure", fmtNum(p.Exposure))
 	row("Highlight", fmtNum(p.Highlight))
-	row("Saturation", fmtNum(p.Saturation))
+	row("Saturation", fmtNum(XMLSaturation(p)))
 	row("Sharpness", fmtNum(p.Sharpness))
 	row("FillLight", fmtNum(p.FillLight))
 	row("ColorAdjustR", fmtNum(p.R))

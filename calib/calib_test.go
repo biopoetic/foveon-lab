@@ -51,6 +51,9 @@ func TestStepsAreSingleChange(t *testing.T) {
 		t.Fatalf("pack XML parses to %d presets (%v), want %d", len(ps), err, len(steps))
 	}
 	for i := range ps {
+		// Saturation <= -1 reads back as a Mono preset (pack convention);
+		// calibration steps deliberately measure SPP's colour-mode slider.
+		ps[i].Params.Mono = false
 		if ps[i].Params != steps[i].Params {
 			t.Errorf("%s round-trips as %+v, want %+v", steps[i].Code, ps[i].Params, steps[i].Params)
 		}

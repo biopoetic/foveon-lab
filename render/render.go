@@ -385,11 +385,11 @@ func Render(b *Base, p preset.Params, c Compensation) *image.RGBA {
 
 	// SPP's saturation slider spans -2..+2 and -1 is visibly still colour
 	// (confirmed by eye in SPP; exact curve pending calibration steps A15 and
-	// B13), so the negative side is scaled over the full -2 range and only
-	// -2 is treated as monochrome.
+	// B13), so the negative side is scaled over the full -2 range. True B&W
+	// is SPP's separate Monochrome mode, i.e. p.Mono.
 	sat := p.Saturation + c.Saturation
 	var satF float64
-	mono := p.Saturation <= -2
+	mono := p.Mono || p.Saturation <= -2
 	switch {
 	case sat < 0:
 		satF = math.Max(0, 1+sat/2)

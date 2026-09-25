@@ -199,7 +199,7 @@ func coreFields(p preset.Params) [][2]string {
 	n := preset.FormatNumber
 	return [][2]string{
 		{"Blackness", n(p.Blackness)}, {"Contrast", n(p.Contrast)}, {"Exposure", n(p.Exposure)},
-		{"Highlight", n(p.Highlight)}, {"Saturation", n(p.Saturation)}, {"Sharpness", n(p.Sharpness)},
+		{"Highlight", n(p.Highlight)}, {"Saturation", n(preset.XMLSaturation(p))}, {"Sharpness", n(p.Sharpness)},
 		{"FillLight", n(p.FillLight)}, {"ColorAdjustR", n(p.R)}, {"ColorAdjustG", n(p.G)},
 		{"ColorAdjustB", n(p.B)}, {"WhiteBalance", strconv.Itoa(p.WhiteBalance)},
 		{"ColorTemp", strconv.Itoa(p.ColorTemp)}, {"ColorMode", strconv.Itoa(p.ColorMode)},
@@ -316,6 +316,7 @@ func verify(text, name string, p preset.Params) error {
 
 // roundTrip applies the same 2-decimal rounding the XML format uses.
 func roundTrip(p preset.Params) preset.Params {
+	p.Saturation = preset.XMLSaturation(p)
 	r := func(v float64) float64 {
 		f, _ := strconv.ParseFloat(strings.ReplaceAll(preset.FormatNumber(v), ",", "."), 64)
 		return f
@@ -326,12 +327,38 @@ func roundTrip(p preset.Params) preset.Params {
 	return p
 }
 
-// SetCurrent returns SPhotoPro.xml with SPP's current colour adjustment set
-// to p. Only existing X3F_* keys are changed; the file must contain the core
-// ones or the format is considered unknown.
+// SPP's X3F_FilterMode values, observed by switching modes in SPP 6.9.
+const (
+	filterColor = "1"
+	filterMono  = "3"
+)
+
+// SetCurrent returns SPhotoPro.xml with SPP's current adjustment set to p:
+// Color mode with the X3F_* colour keys, or — for a Mono preset — Monochrome
+// mode with the X3F_*BW keys. Only existing keys are changed; the file must
+// contain the core ones or the format is considered unknown.
 func SetCurrent(text, name string, p preset.Params) (string, error) {
 	n := preset.FormatNumber
+	if p.Mono {
+		set := [][2]string{
+			{"X3F_FilterMode", filterMono},
+			{"X3F_BrightnessBW", n(p.Exposure)}, {"X3F_ContrastBW", n(p.Contrast)}, {"X3F_ShadowBW", n(p.Blackness)},
+			{"X3F_HilightBW", n(p.Highlight)}, {"X3F_SharpnessBW", n(p.Sharpness)}, {"X3F_FillLightBW", n(p.FillLight)},
+			// SPP's own state for slider values that are not a saved B&W
+			// preset (Foveon Lab's presets live in the colour list).
+			{"X3F_NameBW", "Current Unsaved Setting"}, {"X3F_NameBW_Num", "1"},
+		}
+		for _, kv := range set {
+			nt, ok := setTag(text, kv[0], kv[1])
+			if !ok {
+				return "", fmt.Errorf("SPhotoPro.xml has no <%s> — unknown SPP version, not touching it", kv[0])
+			}
+			text = nt
+		}
+		return text, nil
+	}
 	set := [][2]string{
+		{"X3F_FilterMode", filterColor},
 		{"X3F_Brightness", n(p.Exposure)}, {"X3F_Contrast", n(p.Contrast)}, {"X3F_Shadow", n(p.Blackness)},
 		{"X3F_Hilight", n(p.Highlight)}, {"X3F_Saturation", n(p.Saturation)}, {"X3F_Sharpness", n(p.Sharpness)},
 		{"X3F_FillLight", n(p.FillLight)}, {"X3F_ColorR", n(p.R)}, {"X3F_ColorG", n(p.G)}, {"X3F_ColorB", n(p.B)},
@@ -341,7 +368,7 @@ func SetCurrent(text, name string, p preset.Params) (string, error) {
 	if p.ColorTemp > 0 {
 		set = append(set, [2]string{"X3F_WhiteBalanceTemp", strconv.Itoa(p.ColorTemp)})
 	}
-	required := map[string]bool{"X3F_Brightness": true, "X3F_Contrast": true, "X3F_Hilight": true, "X3F_FillLight": true, "X3F_Saturation": true}
+	required := map[string]bool{"X3F_FilterMode": true, "X3F_Brightness": true, "X3F_Contrast": true, "X3F_Hilight": true, "X3F_FillLight": true, "X3F_Saturation": true}
 	for _, kv := range set {
 		nt, ok := setTag(text, kv[0], kv[1])
 		if !ok && required[kv[0]] {

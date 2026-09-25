@@ -140,6 +140,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
             <option value="4">Standard (4)</option><option value="6">Portrait (6)</option><option value="7">Landscape (7)</option><option value="0">Unknown (0) → as Standard</option>
           </select>
         </div>
+        <div class="row"><label class="chk" title="Black & white: rendered monochrome here and opened in SPP's Monochrome mode. Pack B&W presets (Saturation -1) have it on."><input type="checkbox" id="mono"> Monochrome (SPP B&amp;W mode)</label></div>
         <div class="src" id="wbNote"></div>
         <div class="btns">
           <button id="reset">Reset to preset</button>
@@ -189,7 +190,7 @@ const SLIDERS = [
   ["g","Color adjust G",.7,1.3,.005],
   ["b","Color adjust B",.7,1.3,.005],
 ];
-const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4};
+const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false};
 
 const S = {
   photos: [], presets: [], photo: null,
@@ -318,6 +319,7 @@ function buildSliders(){
     row.querySelector("b").ondblclick = () => { S.params[k] = S.base[k]; syncSliders(); scheduleRender(); };
   });
   $("#mode").onchange = () => { S.params.colorMode = +$("#mode").value; syncSliders(); scheduleRender(); };
+  $("#mono").onchange = () => { S.params.mono = $("#mono").checked; syncSliders(); scheduleRender(); };
 }
 
 function syncSliders(){
@@ -327,6 +329,7 @@ function syncSliders(){
     row.querySelector("b").textContent = (k.length === 1 ? v.toFixed(3) : (v > 0 ? "+" : "") + v.toFixed(2));
     row.classList.toggle("changed", Math.abs(v - S.base[k]) > 1e-9);
   }
+  $("#mono").checked = !!S.params.mono;
   const m = S.params.colorMode;
   $("#mode").value = [4,6,7].includes(m) ? m : 0;
   $("#modeNote").textContent = [4,6,7].includes(m) ? "" : `(code ${m})`;

@@ -93,7 +93,10 @@ func TestUpsertEmptyList(t *testing.T) {
 	}
 }
 
-const prefs = "<?xml version=\"1.0\"?>\r\n<Pref>\r\n  <X3F_Brightness>0,2</X3F_Brightness>\r\n  <X3F_Contrast>0</X3F_Contrast>\r\n" +
+const prefs = "<?xml version=\"1.0\"?>\r\n<Pref>\r\n  <X3F_FilterMode>3</X3F_FilterMode>\r\n  <X3F_Brightness>0,2</X3F_Brightness>\r\n  <X3F_Contrast>0</X3F_Contrast>\r\n" +
+	"  <X3F_ContrastBW>-0,2</X3F_ContrastBW>\r\n  <X3F_ShadowBW>1,7</X3F_ShadowBW>\r\n  <X3F_HilightBW>-1,2</X3F_HilightBW>\r\n" +
+	"  <X3F_SharpnessBW>0,1</X3F_SharpnessBW>\r\n  <X3F_FillLightBW>0,2</X3F_FillLightBW>\r\n  <X3F_NameBW_Num>3</X3F_NameBW_Num>\r\n" +
+	"  <X3F_NameBW>[FOVEON][SD1] 3D Pop Master</X3F_NameBW>\r\n" +
 	"  <X3F_Shadow>0</X3F_Shadow>\r\n  <X3F_Hilight>-0,8</X3F_Hilight>\r\n  <X3F_Saturation>0,2</X3F_Saturation>\r\n" +
 	"  <X3F_Sharpness>0</X3F_Sharpness>\r\n  <X3F_FillLight>0,6</X3F_FillLight>\r\n  <X3F_ColorR>1,039978</X3F_ColorR>\r\n" +
 	"  <X3F_ColorG>1</X3F_ColorG>\r\n  <X3F_ColorB>0,8799744</X3F_ColorB>\r\n  <X3F_WhiteBalancePreset>1</X3F_WhiteBalancePreset>\r\n" +
@@ -114,8 +117,40 @@ func TestSetCurrent(t *testing.T) {
 			t.Errorf("missing %s", want)
 		}
 	}
+	if !strings.Contains(out, "<X3F_FilterMode>1</X3F_FilterMode>") {
+		t.Error("colour preset did not switch SPP to Color mode")
+	}
 	if _, err := SetCurrent("<Pref></Pref>", "x", tuned()); err == nil {
 		t.Error("unknown prefs format accepted")
+	}
+}
+
+func TestSetCurrentMono(t *testing.T) {
+	p := tuned()
+	p.Mono, p.Saturation, p.Contrast, p.Blackness = true, -1, 0.75, 0.28
+	out, err := SetCurrent(prefs, "[FL] Mono Depth", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<X3F_FilterMode>3</X3F_FilterMode>", "<X3F_BrightnessBW>0,1</X3F_BrightnessBW>",
+		"<X3F_ContrastBW>0,75</X3F_ContrastBW>", "<X3F_ShadowBW>0,28</X3F_ShadowBW>", "<X3F_HilightBW>-0,8</X3F_HilightBW>",
+		"<X3F_FillLightBW>0,25</X3F_FillLightBW>", "<X3F_NameBW>Current Unsaved Setting</X3F_NameBW>",
+		"<X3F_NameBW_Num>1</X3F_NameBW_Num>",
+		"<X3F_Brightness>0,2</X3F_Brightness>"} { // colour settings left alone
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	// A Mono preset still lands in SPP's (colour) preset list, marked by
+	// the pack convention Saturation -1, and reads back as Mono.
+	p.Saturation = 0 // toggled to Mono in Foveon Lab without touching saturation
+	s, err := UpsertPreset(settings, "[FL] Mono Depth", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps, _ := preset.Parse([]byte(s))
+	if last := ps[len(ps)-2]; last.Name != "[FL] Mono Depth" || !last.Params.Mono || last.Params.Saturation != -1 {
+		t.Errorf("mono preset in list = %+v", last)
 	}
 }
 
