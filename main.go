@@ -22,6 +22,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,6 +34,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/biopoetic/foveon-lab/agent"
 	"github.com/biopoetic/foveon-lab/calib"
 	"github.com/biopoetic/foveon-lab/preset"
 	"github.com/biopoetic/foveon-lab/render"
@@ -242,6 +244,8 @@ type server struct {
 	bases   *lru // id|w → *render.Base
 	thumbs  *lru // id → []byte
 	sem     chan struct{}
+
+	ai agent.Config
 }
 
 func (s *server) loadPresets() {
@@ -557,6 +561,75 @@ func (s *server) handlePresets(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// agentCandidates returns the presets that fit the photo's camera.
+func (s *server) agentCandidates(ph *Photo) []preset.Preset {
+	s.pmu.RLock()
+	defer s.pmu.RUnlock()
+	var out []preset.Preset
+	for _, p := range s.presets {
+		if p.Camera == "" || ph.Camera == "" || p.Camera == ph.Camera {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// handleAgent streams an AI agent run as Server-Sent Events. Closing the
+// browser's EventSource cancels the run.
+func (s *server) handleAgent(w http.ResponseWriter, r *http.Request) {
+	ph, err := s.photo(r)
+	if err != nil {
+		httpErr(w, 404, err)
+		return
+	}
+	if s.ai.APIKey == "" {
+		httpErr(w, 400, errors.New("no AI API key configured"))
+		return
+	}
+	fl, ok := w.(http.Flusher)
+	if !ok {
+		httpErr(w, 500, errors.New("streaming unsupported"))
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	var mu sync.Mutex
+	send := func(e agent.Event) {
+		b, _ := json.Marshal(e)
+		mu.Lock()
+		fmt.Fprintf(w, "data: %s\n\n", b)
+		fl.Flush()
+		mu.Unlock()
+	}
+	comp := s.compensation(ph, r.URL.Query().Get("comp") == "1")
+	renderFn := func(p preset.Params, width int) (*image.RGBA, error) {
+		s.sem <- struct{}{}
+		defer func() { <-s.sem }()
+		b, err := s.base(ph, width)
+		if err != nil {
+			return nil, err
+		}
+		return render.Render(b, p, comp), nil
+	}
+	info := map[string]string{}
+	for k, v := range ph.Info {
+		if k != "TIME" {
+			info[k] = v
+		}
+	}
+	log.Printf("AI agent: %s (%s, %s)", ph.Name, s.ai.Model, s.ai.BaseURL)
+	_, err = agent.Run(r.Context(), s.ai, agent.Photo{Name: ph.Name, Camera: ph.Camera, Info: info},
+		r.URL.Query().Get("dir"), s.agentCandidates(ph), renderFn, send)
+	if err != nil {
+		if r.Context().Err() == nil {
+			log.Printf("AI agent failed: %v", err)
+			send(agent.Event{Type: "error", Text: err.Error()})
+		}
+		return
+	}
+	send(agent.Event{Type: "done"})
+}
+
 // listen binds 127.0.0.1 on the first free port from start.
 func listen(start int) (net.Listener, error) {
 	var last error
@@ -642,6 +715,9 @@ func main() {
 	presetsDir := flag.String("presets", defPresets, "folder with SPP preset XML files")
 	port := flag.Int("port", 8777, "first port to try")
 	noOpen := flag.Bool("no-open", false, "do not open the browser")
+	aiBase := flag.String("ai-base", "https://api.deepseek.com", "OpenAI-compatible API base URL for the AI agent")
+	aiModel := flag.String("ai-model", "deepseek-flash", "vision model for the AI agent")
+	aiKeyEnv := flag.String("ai-key-env", "DEEPSEEK_API_KEY", "environment variable holding the AI API key")
 	flag.Parse()
 
 	log.SetFlags(log.Ltime)
@@ -653,6 +729,7 @@ func main() {
 		bases:      newLRU(40),
 		thumbs:     newLRU(2000),
 		sem:        make(chan struct{}, max(2, runtime.NumCPU()/2)),
+		ai:         agent.Config{BaseURL: *aiBase, Model: *aiModel, APIKey: os.Getenv(*aiKeyEnv), MaxSteps: 12},
 	}
 	s.photos = scanPhotos(strings.Split(*photos, ";"))
 	for _, p := range s.photos {
@@ -670,15 +747,23 @@ func main() {
 	mux.HandleFunc("/api/render", s.handleRender)
 	mux.HandleFunc("/api/export", s.handleExport)
 	mux.HandleFunc("/api/reveal", s.handleReveal)
+	mux.HandleFunc("/api/agent/status", func(w http.ResponseWriter, r *http.Request) {
+		host := s.ai.BaseURL
+		if u, err := url.Parse(s.ai.BaseURL); err == nil {
+			host = u.Host
+		}
+		writeJSON(w, map[string]any{"enabled": s.ai.APIKey != "", "model": s.ai.Model, "host": host, "keyEnv": *aiKeyEnv})
+	})
+	mux.HandleFunc("/api/agent", s.handleAgent)
 
 	ln, err := listen(*port)
 	if err != nil {
 		log.Fatal(err)
 	}
-	url := "http://" + ln.Addr().String() + "/"
-	fmt.Printf("\n  Foveon Lab is running at %s\n  Close this window to quit.\n\n", url)
+	addr := "http://" + ln.Addr().String() + "/"
+	fmt.Printf("\n  Foveon Lab is running at %s\n  Close this window to quit.\n\n", addr)
 	if !*noOpen {
-		openBrowser(url)
+		openBrowser(addr)
 	}
 	log.Fatal(http.Serve(ln, mux))
 }

@@ -33,6 +33,28 @@ foveon-lab -photos "D:\Photos;E:\Sigma" -presets "D:\SPP presets" -port 8777 -no
 
 Photos are found up to 4 levels below each `-photos` folder.
 
+## AI agent: pick and tune a preset for you
+
+Click **✦ AI pick** (grid) or **✦ AI** (editor). A vision model looks at the photo, shortlists presets
+by rendering them on it, compares the renders (each comes with objective stats: clipping, crushed
+shadows, brightness, saturation, warmth), fine-tunes the best one, and explains its choice. You watch
+every step live, then **Open in editor** to save it as an SPP preset or export it. You can give it a
+direction, e.g. *"warm film look"*, *"moody"*, *"natural skin"*.
+
+It works with any OpenAI-compatible Chat Completions API that accepts images and tool calls. The
+default is DeepSeek's `deepseek-flash`:
+
+```
+set DEEPSEEK_API_KEY=sk-...          # Windows (export ... on macOS/Linux)
+foveon-lab
+foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-env OPENAI_API_KEY
+```
+
+- Downscaled renders of the photo (≤ 768 px) are sent to the model provider.
+- A run is typically 4–8 model calls, ~60–100k input tokens — about 1–2 US cents on DeepSeek
+  (September 2026 pricing).
+- The agent judges the emulated preview, so its choices inherit the emulation's limits (see below).
+
 ## Limitations — read this
 
 - **The preview is an emulation, not SPP.** Sigma's algorithms (X3 Fill Light, colour modes, highlight
@@ -76,6 +98,7 @@ little clipping). This is black-box measurement of SPP's output; nothing is deco
 | `preset/` | SPP preset XML reading/writing |
 | `render/` | linear-light float pipeline emulating the SPP sliders |
 | `calib/` | calibration preset pack, export analysis, source-photo suggestions |
+| `agent/` | vision-model agent loop (tools: `render_presets`, `render`, `finish`) |
 | `web/index.html` | the UI (embedded into the binary) |
 
 ```
