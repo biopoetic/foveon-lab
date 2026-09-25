@@ -158,11 +158,20 @@ func (in *Install) Close(timeout time.Duration) error {
 	if !in.Running() {
 		return nil
 	}
-	// taskkill without /F sends WM_CLOSE to the app's windows.
-	exec.Command("taskkill", "/IM", exeName).Run()
+	// SPP has several top-level windows (browser, review); closing one can
+	// leave the others, so keep asking — each window at most every 3 s.
+	lastAsked := map[uintptr]time.Time{}
+	resend := func(h uintptr) bool {
+		if t, ok := lastAsked[h]; ok && time.Since(t) < 3*time.Second {
+			return false
+		}
+		lastAsked[h] = time.Now()
+		return true
+	}
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		time.Sleep(300 * time.Millisecond)
+		requestClose(resend)
+		time.Sleep(400 * time.Millisecond)
 		if !in.Running() {
 			// SPP writes its settings files while exiting; give the OS a
 			// moment to finish flushing them before we edit them.
