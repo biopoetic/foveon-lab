@@ -111,7 +111,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <option value="auto">Camera: auto</option><option value="SD1">SD1</option><option value="SD15">SD15</option><option value="all">All presets</option>
         </select>
         <select id="srcSel"><option value="">All files</option></select>
-        <input type="search" id="q" placeholder="Search presets…" size="18">
+        <input type="search" id="q" placeholder="Search presets… (a|b = either)" size="18">
         <div class="chips" id="chips"></div>
         <span id="count" style="color:var(--dim)"></span>
         <button class="ai" id="aiOpen" title="Let an AI agent pick and tune the best preset for this photo">✦ AI pick</button>
@@ -266,11 +266,12 @@ function camFilter(){
 
 function baseFiltered(){
   const cam = camFilter();
-  const q = S.q.toLowerCase();
+  // "velvia|portra" matches either term.
+  const terms = S.q.toLowerCase().split("|").map(t => t.trim()).filter(Boolean);
   return S.presets.filter(p =>
     (!cam || !p.camera || p.camera === cam) &&
     (!S.src || p.source === S.src) &&
-    (!q || p.name.toLowerCase().includes(q)));
+    (!terms.length || terms.some(t => p.name.toLowerCase().includes(t))));
 }
 
 function drawChips(){
@@ -538,8 +539,16 @@ function bind(){
 (async function init(){
   bind();
   await Promise.all([loadPhotos(), loadPresets(false), aiInit()]);
+  // Deep link: ?photo=<id or file name>&groups=SLIDE,BW&q=velvia&tile=400
+  const qp = new URLSearchParams(location.search);
+  if (qp.has("groups")) S.groups = new Set(qp.get("groups").split(",").filter(Boolean).map(g => g.toUpperCase()));
+  if (qp.has("q")) { S.q = qp.get("q"); $("#q").value = S.q; }
+  if (qp.has("tile")) $("#tileSize").value = qp.get("tile");
+  const want = qp.get("photo");
+  const linked = want && S.photos.find(p => p.id === want || p.name.toLowerCase() === want.toLowerCase());
+  drawChips();
   refreshList();
-  selectPhoto(store.get("photo", S.photos[0]?.id));
+  selectPhoto(linked ? linked.id : store.get("photo", S.photos[0]?.id));
 })();
 </script>
 </body>
