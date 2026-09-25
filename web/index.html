@@ -150,8 +150,9 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         </div>
         <div class="kbd">
           <code>←</code> <code>→</code> previous / next preset<br>
+          <code>↑</code> <code>↓</code> previous / next photo (same preset)<br>
           <code>O</code> hold for the camera original<br>
-          <code>Esc</code> back to grid · <code>PgUp</code>/<code>PgDn</code> other photo<br>
+          <code>Esc</code> back to grid<br>
           Double-click a value = reset that slider
         </div>
       </div>
@@ -239,8 +240,19 @@ function selectPhoto(id){
   $("#photoTitle").textContent = `${p.folder} / ${p.name}`;
   const i = p.info;
   $("#photoInfo").textContent = [i.CAMMODEL, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.TIME].filter(Boolean).join(" · ");
+  // In the editor keep the SAME preset (by id, not list position — the list
+  // can change with the camera) and any slider tweaks.
+  const keep = current()?.id;
   refreshList();
-  if ($("#detail").classList.contains("on")) renderBig(); else drawGrid();
+  if ($("#detail").classList.contains("on")){
+    const i = keep ? S.list.findIndex(x => x.id === keep) : -1;
+    if (i >= 0){
+      S.idx = i;
+      $("#dName").textContent = `${i+1}/${S.list.length} · ${S.list[i].name}`;
+      renderBig();
+    } else if (S.idx < 0) renderBig();
+    else openDetail(S.list.length ? 0 : -1); // preset not offered for this camera
+  } else drawGrid();
 }
 
 function stepPhoto(d){
@@ -316,9 +328,12 @@ function buildSliders(){
   document.querySelectorAll("#sliders .row").forEach(row => {
     const k = row.dataset.k, inp = row.querySelector("input");
     inp.oninput = () => { S.params[k] = +inp.value; syncSliders(); scheduleRender(); };
+    // Release focus after a drag so the arrow keys go back to photo/preset
+    // navigation instead of nudging this slider.
+    inp.onchange = () => inp.blur();
     row.querySelector("b").ondblclick = () => { S.params[k] = S.base[k]; syncSliders(); scheduleRender(); };
   });
-  $("#mode").onchange = () => { S.params.colorMode = +$("#mode").value; syncSliders(); scheduleRender(); };
+  $("#mode").onchange = () => { S.params.colorMode = +$("#mode").value; $("#mode").blur(); syncSliders(); scheduleRender(); };
   $("#mono").onchange = () => { S.params.mono = $("#mono").checked; syncSliders(); scheduleRender(); };
 }
 
@@ -562,14 +577,16 @@ function bind(){
   $("#aiStop").onclick = () => { stopAgent(); aiLog("Stopped.", "status"); };
   let origDown = false;
   document.addEventListener("keydown", e => {
-    if (e.target.matches("input[type=text],input[type=search],select")) return;
+    if (e.target.matches("input[type=text],input[type=search],select,textarea,input[type=range]")) return;
     const inDetail = $("#detail").classList.contains("on");
-    if (e.key === "PageDown"){ e.preventDefault(); stepPhoto(1); }
-    else if (e.key === "PageUp"){ e.preventDefault(); stepPhoto(-1); }
+    // ↑/↓ = previous/next photo, ←/→ = previous/next preset (in the grid
+    // ←/→ opens the editor on the first/last preset).
+    if (e.key === "ArrowDown" || e.key === "PageDown"){ e.preventDefault(); stepPhoto(1); }
+    else if (e.key === "ArrowUp" || e.key === "PageUp"){ e.preventDefault(); stepPhoto(-1); }
+    else if (e.key === "ArrowRight"){ e.preventDefault(); stepPreset(1); }
+    else if (e.key === "ArrowLeft"){ e.preventDefault(); stepPreset(-1); }
     else if (!inDetail) return;
     else if (e.key === "Escape") closeDetail();
-    else if (e.key === "ArrowRight" && !e.target.matches("input[type=range]")) stepPreset(1);
-    else if (e.key === "ArrowLeft" && !e.target.matches("input[type=range]")) stepPreset(-1);
     else if ((e.key === "o" || e.key === "O") && !origDown){ origDown = true; renderBig(true); }
   });
   document.addEventListener("keyup", e => { if ((e.key === "o" || e.key === "O") && origDown){ origDown = false; renderBig(); } });
