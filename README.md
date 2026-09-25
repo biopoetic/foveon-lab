@@ -3,6 +3,8 @@
 Try Sigma Photo Pro (SPP) presets on your Sigma SD1 / SD15 **X3F** files, side by side, in the browser —
 without importing, clicking and waiting in SPP for every preset.
 
+![Foveon Lab: one SD1 Merrill photo rendered through ten SPP presets side by side](docs/screenshot.jpg)
+
 - Scans your folders for `.X3F` files and reads the **full-size JPEG embedded in each X3F**
   (SD1 Merrill: 4704×3136, SD15: 2640×1760). No Foveon raw decoding needed.
 - Loads every SPP preset XML it finds (comma or dot decimals, identical duplicates folded),
