@@ -428,12 +428,18 @@ function sppName(){
   return "[FL] " + base + (dirty() ? " (tuned)" : "");
 }
 
-async function openInSPP(){
+async function openInSPP(restart){
   const name = sppName();
+  if (restart) toast("Closing Sigma Photo Pro…", 30000);
   const res = await fetch("/api/spp/open", {method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({id: S.photo.id, name, params: S.params})});
+    body: JSON.stringify({id: S.photo.id, name, params: S.params, restart: !!restart})});
   const text = await res.text();
-  if (res.status === 409){ toast("Close Sigma Photo Pro first — it rewrites its settings when it exits.", 7000); return; }
+  if (res.status === 409){
+    if (restart){ toast(esc(text), 10000); return; }
+    // SPP is open: it holds these settings in memory and rewrites them on exit.
+    if (confirm("Sigma Photo Pro is open.\n\nClose it and reopen this photo with the preset?\n\nSPP is closed normally (like clicking X), so it can ask about anything unsaved — it is never force-closed.")) openInSPP(true);
+    return;
+  }
   if (!res.ok){ toast("Could not open in SPP: " + esc(text), 8000); return; }
   const r = JSON.parse(text);
   toast(`Opening in SPP with <b>${esc(r.name)}</b> as the current setting. Backup of SPP's settings: ${esc(r.backup)}`, 9000);
@@ -546,7 +552,7 @@ function bind(){
   $("#reset").onclick = () => { S.params = {...S.base}; syncSliders(); renderBig(); };
   $("#save").onclick = savePreset;
   $("#export").onclick = exportJPEG;
-  $("#sppOpen").onclick = openInSPP;
+  $("#sppOpen").onclick = () => openInSPP(false);
   $("#aiOpen").onclick = $("#aiOpen2").onclick = aiOpen;
   $("#aiClose").onclick = () => $("#aiPanel").classList.remove("on");
   $("#aiStart").onclick = startAgent;

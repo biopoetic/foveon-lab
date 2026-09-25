@@ -45,6 +45,8 @@ How it works: SPP keeps no per-photo edits. Its preset list is
 `SPhotoPro.xml` there. Foveon Lab edits both **only while SPP is closed** (SPP rewrites them on exit),
 backs them up first to `foveon-lab-backups\` next to them (last 10 kept), and prefixes everything it
 writes with `[FL]` so your own SPP presets are never overwritten. Your X3F files are never modified.
+If SPP is already open, Foveon Lab offers to close it the normal way (a window close, never a forced
+kill — SPP can still ask about unsaved work) and reopen it with the preset.
 
 ## AI agent: pick and tune a preset for you
 

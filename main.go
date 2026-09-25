@@ -575,9 +575,10 @@ func (s *server) handleSPPStatus(w http.ResponseWriter, r *http.Request) {
 // adjustment (both with a backup) and launches SPP on the photo.
 func (s *server) handleSPPOpen(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ID     string        `json:"id"`
-		Name   string        `json:"name"`
-		Params preset.Params `json:"params"`
+		ID      string        `json:"id"`
+		Name    string        `json:"name"`
+		Params  preset.Params `json:"params"`
+		Restart bool          `json:"restart"` // close a running SPP first
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpErr(w, 400, err)
@@ -597,6 +598,13 @@ func (s *server) handleSPPOpen(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httpErr(w, 404, err)
 		return
+	}
+	if req.Restart {
+		log.Printf("SPP: asking the running SPP to close")
+		if err := in.Close(25 * time.Second); err != nil {
+			httpErr(w, 409, err)
+			return
+		}
 	}
 	backup, err := in.Apply(name, req.Params)
 	if errors.Is(err, spp.ErrRunning) {

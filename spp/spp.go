@@ -147,6 +147,32 @@ func (in *Install) Apply(name string, p preset.Params) (backup string, err error
 	return backup, nil
 }
 
+// ErrStillOpen means SPP did not exit after being asked to close — it is
+// probably showing a dialog. It is never force-killed.
+var ErrStillOpen = errors.New("Sigma Photo Pro did not close — it may be asking something (unsaved work?). Answer it or close SPP yourself, then try again")
+
+// Close asks SPP to exit the normal way (a window close, like clicking X —
+// never a forced kill) and waits for it, so SPP can save its own settings
+// and prompt about anything unsaved.
+func (in *Install) Close(timeout time.Duration) error {
+	if !in.Running() {
+		return nil
+	}
+	// taskkill without /F sends WM_CLOSE to the app's windows.
+	exec.Command("taskkill", "/IM", exeName).Run()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		time.Sleep(300 * time.Millisecond)
+		if !in.Running() {
+			// SPP writes its settings files while exiting; give the OS a
+			// moment to finish flushing them before we edit them.
+			time.Sleep(700 * time.Millisecond)
+			return nil
+		}
+	}
+	return ErrStillOpen
+}
+
 // Launch starts SPP with the given X3F.
 func (in *Install) Launch(x3f string) error {
 	return exec.Command(in.Exe, x3f).Start()
