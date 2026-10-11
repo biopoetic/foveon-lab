@@ -224,7 +224,7 @@ async function loadPhotos(){
     if (p.folder !== folder){ folder = p.folder; box.insertAdjacentHTML("beforeend", `<div class="folder">${esc(folder)}</div>`); }
     const el = document.createElement("div");
     el.className = "ph"; el.dataset.id = p.id;
-    const sub = p.unsupported ? "not supported yet" : [p.lowRes && "low-res preview", p.info.ISO && "ISO "+p.info.ISO, p.info.SH_DESC, p.info.AP_DESC && "f/"+p.info.AP_DESC].filter(Boolean).join(" · ");
+    const sub = p.unsupported ? "not supported yet" : [p.lowRes && "low-res preview", p.rawDecoded && "raw-decoded", p.info.ISO && "ISO "+p.info.ISO, p.info.SH_DESC, p.info.AP_DESC && "f/"+p.info.AP_DESC].filter(Boolean).join(" · ");
     el.innerHTML = `<img loading="lazy" src="/api/thumb?id=${p.id}" onerror="this.style.visibility='hidden'"><div>${esc(p.name)}<small>${esc(sub)}</small></div>`;
     if (p.unsupported) el.style.opacity = .55;
     el.onclick = () => selectPhoto(p.id);
@@ -241,7 +241,7 @@ function selectPhoto(id){
   document.querySelector(`.ph[data-id="${p.id}"]`)?.scrollIntoView({block:"nearest"});
   $("#photoTitle").textContent = `${p.folder} / ${p.name}`;
   const i = p.info;
-  $("#photoInfo").textContent = [p.lowRes && "LOW-RES PREVIEW (567 px — no full-size preview in SD9/SD10 files)", i.CAMMODEL, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.TIME].filter(Boolean).join(" · ");
+  $("#photoInfo").textContent = [p.lowRes && "LOW-RES PREVIEW (567 px — no full-size preview in SD9/SD10 files)", p.rawDecoded && "RAW-DECODED (x3f_extract — no in-camera look)", i.CAMMODEL, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.TIME].filter(Boolean).join(" · ");
   // In the editor keep the SAME preset (by id, not list position — the list
   // can change with the camera) and any slider tweaks.
   const keep = current()?.id;

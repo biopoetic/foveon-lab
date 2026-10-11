@@ -1,0 +1,23 @@
+diff --git a/crates/x3f-sys/src/load.rs b/crates/x3f-sys/src/load.rs
+index d22725b..3128f0a 100644
+--- a/crates/x3f-sys/src/load.rs
++++ b/crates/x3f-sys/src/load.rs
+@@ -479,12 +479,16 @@ unsafe fn decode_camf(camf: &mut x3f_camf_t, control: Control<'_>) -> Result<()>
+     if camf.type_ == 2 {
+         camf.decoded_data_size = camf.data_size;
+         camf.decoded_data = unsafe { alloc::<u8>(data.len()) }?.cast();
+-        let mut key = unsafe { camf.__bindgen_anon_1.t2.crypt_key } as u64;
++        // The C original keeps the key in a uint32_t, so `key * 1597` wraps
++        // on the first step (crypt_key is a full 32-bit value); widening to
++        // u64 here produced a different key stream and garbage CAMF for
++        // SD9/SD10/SD14 files.
++        let mut key = unsafe { camf.__bindgen_anon_1.t2.crypt_key } as u32;
+         for (i, &old) in data.iter().enumerate() {
+             if i % 4096 == 0 {
+                 control.check()?;
+             }
+-            key = (key * 1597 + 51749) % 244944;
++            key = key.wrapping_mul(1597).wrapping_add(51749) % 244944;
+             let tmp = ((key as i64) * 301_593_171_i64 >> 24) as u32;
+             let a = ((key as u32) << 8).wrapping_sub(tmp);
+             let mix = ((a >> 1).wrapping_add(tmp)) >> 17;

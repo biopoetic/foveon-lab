@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/biopoetic/foveon-lab/agent"
@@ -57,11 +58,15 @@ type Photo struct {
 	// LowRes: only a small preview exists (SD9/SD10 carry a 567 px one and
 	// no full-size JPEG), so renders are low resolution.
 	LowRes bool `json:"lowRes,omitempty"`
-	Info   map[string]string `json:"info"`
+	// RawDecoded: shown from its raw data via x3f_extract (full resolution,
+	// no in-camera styling) because the file has no full-size preview.
+	RawDecoded bool              `json:"rawDecoded,omitempty"`
+	Info       map[string]string `json:"info"`
 
-	path     string
-	rotation int
-	props    map[string]string
+	path      string
+	rotation  int
+	props     map[string]string
+	rawFailed atomic.Bool // raw decode failed once; stay on the preview
 }
 
 // infoKeys are the PROP fields shown in the UI.
@@ -169,7 +174,13 @@ func loadMeta(ph *Photo) bool {
 		case !f.HasPreview():
 			ph.Unsupported = "This X3F has no preview Foveon Lab can decode yet."
 		case !f.HasFullPreview():
-			ph.LowRes = true // SD9/SD10: only the camera's 567 px preview
+			// SD9/SD10: only the camera's 567 px preview — decode the raw
+			// data instead when x3f_extract is available.
+			if rawTool != "" {
+				ph.RawDecoded = true
+			} else {
+				ph.LowRes = true
+			}
 		}
 		if r, err := strconv.Atoi(f.Props["ROTATION"]); err == nil && (r == 90 || r == 180 || r == 270) {
 			ph.rotation = r
@@ -285,6 +296,14 @@ func decodePreview(ph *Photo) (image.Image, error) {
 		return nil, errors.New(ph.Unsupported)
 	}
 	if ph.Kind == "x3f" {
+		if ph.RawDecoded && !ph.rawFailed.Load() {
+			img, err := decodeRaw(ph)
+			if err == nil {
+				return img, nil
+			}
+			log.Printf("raw decode of %s failed, using its small preview: %v", ph.Name, err)
+			ph.rawFailed.Store(true)
+		}
 		f, err := x3f.Open(ph.path)
 		if err != nil {
 			return nil, err
@@ -328,7 +347,8 @@ func (s *server) base(ph *Photo, w int) (*render.Base, error) {
 }
 
 func (s *server) compensation(ph *Photo, on bool) render.Compensation {
-	if !on || ph.props == nil {
+	// A raw decode carries no in-camera styling, so there is nothing to undo.
+	if !on || ph.props == nil || (ph.RawDecoded && !ph.rawFailed.Load()) {
 		return render.Compensation{SatFactor: 1}
 	}
 	return render.CompensationFor(ph.props)
@@ -802,7 +822,12 @@ func main() {
 	aiBase := flag.String("ai-base", "https://api.deepseek.com", "OpenAI-compatible API base URL for the AI agent")
 	aiModel := flag.String("ai-model", "deepseek-flash", "vision model for the AI agent")
 	aiKeyEnv := flag.String("ai-key-env", "DEEPSEEK_API_KEY", "environment variable holding the AI API key")
+	rawToolPath := flag.String("x3f-extract", "", "path to x3f_extract (x3fuse-core) for SD9/SD10 raw decoding; default: next to this program or on PATH")
 	flag.Parse()
+	rawTool = findRawTool(*rawToolPath)
+	if rawTool != "" {
+		log.Printf("raw decoding for SD9/SD10 via %s", rawTool)
+	}
 
 	log.SetFlags(log.Ltime)
 	start := time.Now()
