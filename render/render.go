@@ -367,8 +367,42 @@ func hueWeight(h, center, half float64) float64 {
 
 // Render applies p to the base image and returns 8-bit sRGB.
 func Render(b *Base, p preset.Params, c Compensation) *image.RGBA {
+	out := image.NewRGBA(image.Rect(0, 0, b.W, b.H))
+	renderInto(b, p, c, func(i int, r, g, bl float32) {
+		o := out.Pix[i*4:]
+		o[0] = uint8(enc(r)*255 + 0.5)
+		o[1] = uint8(enc(g)*255 + 0.5)
+		o[2] = uint8(enc(bl)*255 + 0.5)
+		o[3] = 255
+	})
+	if p.Sharpness != 0 {
+		sharpen(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5))))
+	}
+	return out
+}
+
+// Render16 is Render with 16-bit sRGB output (for TIFF export): no 8-bit
+// rounding, so edited gradients don't band.
+func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
+	out := image.NewRGBA64(image.Rect(0, 0, b.W, b.H))
+	renderInto(b, p, c, func(i int, r, g, bl float32) {
+		o := out.Pix[i*8:]
+		for ch, v := range [3]float32{r, g, bl} {
+			u := uint16(enc(v)*65535 + 0.5)
+			o[ch*2], o[ch*2+1] = uint8(u>>8), uint8(u)
+		}
+		o[6], o[7] = 0xff, 0xff
+	})
+	if p.Sharpness != 0 {
+		sharpen16(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5))))
+	}
+	return out
+}
+
+// renderInto runs the adjustment pipeline and hands every pixel (index,
+// linear RGB clamped later by the sink's encoding) to put.
+func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, bl float32)) {
 	w, h := b.W, b.H
-	out := image.NewRGBA(image.Rect(0, 0, w, h))
 
 	// Colour adjust: normalised so it tints without changing brightness.
 	k := 1 / (0.2126*p.R + 0.7152*p.G + 0.0722*p.B)
@@ -462,19 +496,31 @@ func Render(b *Base, p preset.Params, c Compensation) *image.RGBA {
 					r, g, bl = Y+(r-Y)*ff, Y+(g-Y)*ff, Y+(bl-Y)*ff
 				}
 
-				o := out.Pix[(y*w+x)*4:]
-				o[0] = uint8(enc(r)*255 + 0.5)
-				o[1] = uint8(enc(g)*255 + 0.5)
-				o[2] = uint8(enc(bl)*255 + 0.5)
-				o[3] = 255
+				put(y*w+x, r, g, bl)
 			}
 		}
 	})
+}
 
-	if p.Sharpness != 0 {
-		sharpen(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5))))
-	}
-	return out
+// sharpen16 is sharpen for 16-bit images (big-endian samples).
+func sharpen16(img *image.RGBA64, amount float32) {
+	w, h := img.Rect.Dx(), img.Rect.Dy()
+	src := make([]uint8, len(img.Pix))
+	copy(src, img.Pix)
+	at := func(i int) float32 { return float32(uint16(src[i])<<8 | uint16(src[i+1])) }
+	parallelRows(h, func(y0, y1 int) {
+		for y := max(1, y0); y < min(h-1, y1); y++ {
+			for x := 1; x < w-1; x++ {
+				i := (y*w + x) * 8
+				for c := 0; c < 6; c += 2 {
+					v := at(i + c)
+					n := (at(i+c-8) + at(i+c+8) + at(i+c-w*8) + at(i+c+w*8)) / 4
+					u := uint16(max(0, min(65535, v+amount*(v-n))) + 0.5)
+					img.Pix[i+c], img.Pix[i+c+1] = uint8(u>>8), uint8(u)
+				}
+			}
+		}
+	})
 }
 
 // sharpen applies a 3x3 cross unsharp mask (amount < 0 softens).

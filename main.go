@@ -9,6 +9,7 @@ package main
 import (
 	"bytes"
 	"container/list"
+	"context"
 	"crypto/sha1"
 	"embed"
 	"encoding/hex"
@@ -490,6 +491,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		Preset string          `json:"preset"`
 		Params json.RawMessage `json:"params"`
 		Comp   bool            `json:"comp"`
+		Format string          `json:"format"` // "jpeg" (default), "tiff", "dng"
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpErr(w, 400, err)
@@ -498,6 +500,16 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 	ph := s.byID[req.ID]
 	if ph == nil {
 		httpErr(w, 404, errors.New("unknown photo"))
+		return
+	}
+	dir := filepath.Join(filepath.Dir(ph.path), "foveon-lab")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		httpErr(w, 500, err)
+		return
+	}
+	stem := strings.TrimSuffix(ph.Name, filepath.Ext(ph.Name))
+	if req.Format == "dng" {
+		s.exportDNG(w, ph, dir, stem)
 		return
 	}
 	pj := ""
@@ -516,20 +528,23 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 500, err)
 		return
 	}
-	out := render.Render(render.NewBase(render.FromImage(img, 0, ph.rotation)), p, s.compensation(ph, req.Comp))
-	dir := filepath.Join(filepath.Dir(ph.path), "foveon-lab")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		httpErr(w, 500, err)
-		return
+	base := render.NewBase(render.FromImage(img, 0, ph.rotation))
+	comp := s.compensation(ph, req.Comp)
+	ext := ".jpg"
+	if req.Format == "tiff" {
+		ext = ".tif"
 	}
-	name := strings.TrimSuffix(ph.Name, filepath.Ext(ph.Name)) + "_" + safeName(label) + ".jpg"
-	path := filepath.Join(dir, name)
+	path := filepath.Join(dir, stem+"_"+safeName(label)+ext)
 	f, err := os.Create(path)
 	if err != nil {
 		httpErr(w, 500, err)
 		return
 	}
-	err = jpeg.Encode(f, out, &jpeg.Options{Quality: 95})
+	if req.Format == "tiff" {
+		err = render.WriteTIFF16(f, render.Render16(base, p, comp))
+	} else {
+		err = jpeg.Encode(f, render.Render(base, p, comp), &jpeg.Options{Quality: 95})
+	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -541,10 +556,49 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"path": path})
 }
 
+// exportDNG converts the X3F's raw data to a DNG with x3f_extract, for
+// Lightroom / Capture One / darktable. It is raw: presets are not applied.
+func (s *server) exportDNG(w http.ResponseWriter, ph *Photo, dir, stem string) {
+	if ph.Kind != "x3f" {
+		httpErr(w, 400, errors.New("DNG export needs an X3F file"))
+		return
+	}
+	if rawTool == "" {
+		httpErr(w, 400, errors.New("DNG export needs x3f_extract (shipped next to Foveon Lab in the release downloads)"))
+		return
+	}
+	s.sem <- struct{}{}
+	defer func() { <-s.sem }()
+	tmp, err := os.MkdirTemp(dir, ".dng-")
+	if err != nil {
+		httpErr(w, 500, err)
+		return
+	}
+	defer os.RemoveAll(tmp)
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, rawTool, "-q", "-dng", "-compress", "-o", tmp, ph.path).CombinedOutput()
+	produced := filepath.Join(tmp, ph.Name+".dng")
+	if _, statErr := os.Stat(produced); err != nil || statErr != nil {
+		httpErr(w, 500, fmt.Errorf("x3f_extract: %v %s", err, trimOutput(out)))
+		return
+	}
+	path := filepath.Join(dir, stem+".dng")
+	os.Remove(path)
+	if err := os.Rename(produced, path); err != nil {
+		httpErr(w, 500, err)
+		return
+	}
+	log.Printf("exported %s (DNG, %v)", path, time.Since(start).Round(100*time.Millisecond))
+	writeJSON(w, map[string]string{"path": path})
+}
+
 // handleReveal opens Explorer on a file this app exported.
 func (s *server) handleReveal(w http.ResponseWriter, r *http.Request) {
 	p := filepath.Clean(r.URL.Query().Get("path"))
-	if filepath.Base(filepath.Dir(p)) != "foveon-lab" || !strings.EqualFold(filepath.Ext(p), ".jpg") {
+	ext := strings.ToLower(filepath.Ext(p))
+	if filepath.Base(filepath.Dir(p)) != "foveon-lab" || (ext != ".jpg" && ext != ".tif" && ext != ".dng") {
 		httpErr(w, 403, errors.New("only allowed for exported images"))
 		return
 	}
@@ -866,6 +920,9 @@ func main() {
 	mux.HandleFunc("/api/agent", s.handleAgent)
 	mux.HandleFunc("/api/spp/status", s.handleSPPStatus)
 	mux.HandleFunc("/api/spp/open", s.handleSPPOpen)
+	mux.HandleFunc("/api/caps", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]bool{"rawTool": rawTool != ""})
+	})
 
 	ln, err := listen(*port)
 	if err != nil {

@@ -145,7 +145,9 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div class="btns">
           <button id="reset">Reset to preset</button>
           <button id="save" class="primary">Save as preset</button>
-          <button id="export">Export JPEG</button>
+          <button id="export" title="Full-resolution JPEG with the preset applied">Export JPEG</button>
+          <button id="exportTiff" title="Full-resolution 16-bit TIFF with the preset applied — no 8-bit rounding, for further editing">Export TIFF 16-bit</button>
+          <button id="exportDng" title="The raw data as DNG for Lightroom / Capture One / darktable (presets are not applied — it's raw)" style="display:none">Export DNG (raw)</button>
           <button id="sppOpen" title="Put this preset into Sigma Photo Pro's list as its current setting, then open the photo in SPP (SPP must be closed)" style="display:none">Open in SPP ↗</button>
         </div>
         <div class="kbd">
@@ -236,7 +238,7 @@ function selectPhoto(id){
   const p = S.photos.find(x => x.id === id) || S.photos[0];
   if (!p) return;
   S.photo = p; store.set("photo", p.id);
-  sppButton();
+  sppButton(); exportButtons();
   document.querySelectorAll(".ph").forEach(e => e.classList.toggle("sel", e.dataset.id === p.id));
   document.querySelector(`.ph[data-id="${p.id}"]`)?.scrollIntoView({block:"nearest"});
   $("#photoTitle").textContent = `${p.folder} / ${p.name}`;
@@ -422,10 +424,18 @@ async function savePreset(){
   if (i >= 0) openDetail(i);
 }
 
-async function exportJPEG(){
+let CAPS = {rawTool: false};
+async function capsInit(){
+  try { CAPS = await (await fetch("/api/caps")).json(); } catch {}
+  exportButtons();
+}
+function exportButtons(){ $("#exportDng").style.display = CAPS.rawTool && S.photo?.kind === "x3f" ? "" : "none"; }
+
+async function exportImage(format){
   const p = current();
-  toast("Exporting full resolution…", 20000);
-  const body = {id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2};
+  toast(format === "dng" ? "Converting the raw data to DNG (can take up to ~30 s on Merrill/Quattro files)…"
+                         : `Exporting full-resolution ${format === "tiff" ? "16-bit TIFF" : "JPEG"}…`, 60000);
+  const body = {format, id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2};
   const res = await fetch("/api/export", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
   if (!res.ok){ toast("Export failed: " + esc(await res.text())); return; }
   const {path} = await res.json();
@@ -437,7 +447,7 @@ async function exportJPEG(){
 let SPP = {available: false};
 async function sppInit(){
   try { SPP = await (await fetch("/api/spp/status")).json(); } catch { SPP = {available: false}; }
-  sppButton();
+  sppButton(); exportButtons();
 }
 function sppButton(){ $("#sppOpen").style.display = SPP.available && S.photo?.kind === "x3f" ? "" : "none"; }
 
@@ -573,7 +583,9 @@ function bind(){
   orig.onmouseup = orig.onmouseleave = () => renderBig();
   $("#reset").onclick = () => { S.params = {...S.base}; syncSliders(); renderBig(); };
   $("#save").onclick = savePreset;
-  $("#export").onclick = exportJPEG;
+  $("#export").onclick = () => exportImage("jpeg");
+  $("#exportTiff").onclick = () => exportImage("tiff");
+  $("#exportDng").onclick = () => exportImage("dng");
   $("#sppOpen").onclick = () => openInSPP(false);
   $("#aiOpen").onclick = $("#aiOpen2").onclick = aiOpen;
   $("#aiClose").onclick = () => $("#aiPanel").classList.remove("on");
@@ -599,7 +611,7 @@ function bind(){
 
 (async function init(){
   bind();
-  await Promise.all([loadPhotos(), loadPresets(false), aiInit(), sppInit()]);
+  await Promise.all([loadPhotos(), loadPresets(false), aiInit(), sppInit(), capsInit()]);
   // Deep link: ?photo=<id or file name>&groups=SLIDE,BW&q=velvia&tile=400
   const qp = new URLSearchParams(location.search);
   if (qp.has("groups")) S.groups = new Set(qp.get("groups").split(",").filter(Boolean).map(g => g.toUpperCase()));

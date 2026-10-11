@@ -13,7 +13,12 @@ without importing, clicking and waiting in SPP for every preset.
   `←`/`→` steps through presets, hold `O` for the camera original.
 - **Save as preset** writes an SPP-importable XML (`FoveonLab_SD1.xml` / `FoveonLab_SD15.xml` in the
   presets folder; saving the same name replaces it instead of duplicating).
-- **Export JPEG** renders the full preview resolution next to the photo, in a `foveon-lab/` folder.
+- **Export** next to the photo, in a `foveon-lab/` folder:
+  - **JPEG** — full resolution, preset applied;
+  - **TIFF 16-bit** — full resolution, preset applied, no 8-bit rounding (Deflate-compressed RGB, no
+    alpha) for further editing in Photoshop, Affinity, GIMP…;
+  - **DNG (raw)** — the X3F's raw data as a DNG 1.4 with colour matrices, for Lightroom / Capture
+    One / darktable (any Foveon body; it's raw, so presets are not applied).
 - **Calibration tools** measure what SPP actually does, to replace guesses with measured curves (below).
 
 Single Go binary, no runtime dependencies, runs locally on `127.0.0.1` only.
