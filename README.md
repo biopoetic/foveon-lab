@@ -30,8 +30,11 @@ unpack it and run it — no installation, nothing else needed:
 | macOS (Intel) | `foveon-lab-…-macos-intel.tar.gz` |
 | Linux | `foveon-lab-…-linux-x64.tar.gz` |
 
-It opens in your browser. The binaries are not code-signed: on Windows, SmartScreen may warn — click
-*More info → Run anyway*; on macOS, right-click the file → *Open* the first time.
+It opens in your browser. The Windows build is Authenticode-signed and the macOS builds are signed
+with a Developer ID and notarized by Apple.
+
+Releases are cut locally with `go run ./tools/release -version vX.Y.Z -publish` (signing keys never
+leave the maintainer's machine; it refuses to publish unsigned binaries).
 
 ### Build from source
 
