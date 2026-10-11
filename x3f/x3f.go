@@ -27,8 +27,9 @@ type Image struct {
 	Section
 	ImgType uint32 // 2 = processed preview, 1/3 = raw
 	Format  uint32 // 18 = JPEG, 30 = TRUE raw
-	Width   uint32
-	Height  uint32
+	Width     uint32
+	Height    uint32
+	RowStride uint32 // bytes per row for uncompressed data; 0 = compressed
 }
 
 // FormatJPEG is the image-section format code of an embedded JPEG.
@@ -127,8 +128,9 @@ func parse(r io.ReaderAt, size int64, path string) (*File, error) {
 				Section: s,
 				ImgType: le.Uint32(ih[8:12]),
 				Format:  le.Uint32(ih[12:16]),
-				Width:   le.Uint32(ih[16:20]),
-				Height:  le.Uint32(ih[20:24]),
+				Width:     le.Uint32(ih[16:20]),
+				Height:    le.Uint32(ih[20:24]),
+				RowStride: le.Uint32(ih[24:28]),
 			})
 		case "PROP":
 			buf := make([]byte, s.Length)
@@ -193,8 +195,15 @@ func (f *File) jpegImages() []Image {
 // to work from. SD9/SD10 files only carry a small thumbnail (and not always
 // as JPEG), so presets can't be judged on them without decoding the raw data.
 func (f *File) HasFullPreview() bool {
-	js := f.jpegImages()
-	return len(js) > 0 && js[0].Width >= 1000
+	im, ok := f.bestPreview()
+	return ok && im.Width >= 1000
+}
+
+// HasPreview reports whether any decodable preview exists (SD9/SD10 have a
+// small one).
+func (f *File) HasPreview() bool {
+	_, ok := f.bestPreview()
+	return ok
 }
 
 // PreviewJPEG returns the bytes of the largest embedded JPEG (on the SD1 and
@@ -211,8 +220,10 @@ func (f *File) PreviewJPEG() ([]byte, Image, error) {
 // ThumbJPEG returns the smallest embedded JPEG (a ~221x147 thumbnail).
 func (f *File) ThumbJPEG() ([]byte, error) {
 	js := f.jpegImages()
-	if len(js) == 0 {
-		return nil, errors.New("x3f: no embedded JPEG thumbnail")
+	// Some bodies (SD14) store the small thumbnail uncompressed and only the
+	// full preview as JPEG; don't hand back a multi-megabyte "thumbnail".
+	if len(js) == 0 || js[len(js)-1].Width > 400 {
+		return nil, errors.New("x3f: no small embedded JPEG thumbnail")
 	}
 	return f.readJPEG(js[len(js)-1])
 }

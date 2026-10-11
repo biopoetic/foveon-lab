@@ -52,9 +52,11 @@ type Photo struct {
 	Folder string            `json:"folder"`
 	Camera string            `json:"camera"`
 	Kind   string            `json:"kind"` // "x3f" or "jpg"
-	// Unsupported explains why the photo can't be previewed (e.g. SD9/SD10
-	// X3F files carry no full-size JPEG); empty when it can.
+	// Unsupported explains why the photo can't be previewed; empty when it can.
 	Unsupported string `json:"unsupported,omitempty"`
+	// LowRes: only a small preview exists (SD9/SD10 carry a 567 px one and
+	// no full-size JPEG), so renders are low resolution.
+	LowRes bool `json:"lowRes,omitempty"`
 	Info   map[string]string `json:"info"`
 
 	path     string
@@ -163,8 +165,11 @@ func loadMeta(ph *Photo) bool {
 			return false
 		}
 		ph.props, ph.Camera, ph.rotation = f.Props, f.Camera(), f.Rotation
-		if !f.HasFullPreview() {
-			ph.Unsupported = "This X3F has no full-size embedded preview (SD9/SD10-era files). Foveon Lab can't show it yet — that needs raw decoding."
+		switch {
+		case !f.HasPreview():
+			ph.Unsupported = "This X3F has no preview Foveon Lab can decode yet."
+		case !f.HasFullPreview():
+			ph.LowRes = true // SD9/SD10: only the camera's 567 px preview
 		}
 		if r, err := strconv.Atoi(f.Props["ROTATION"]); err == nil && (r == 90 || r == 180 || r == 270) {
 			ph.rotation = r
@@ -279,18 +284,16 @@ func decodePreview(ph *Photo) (image.Image, error) {
 	if ph.Unsupported != "" {
 		return nil, errors.New(ph.Unsupported)
 	}
-	var data []byte
-	var err error
 	if ph.Kind == "x3f" {
 		f, err := x3f.Open(ph.path)
 		if err != nil {
 			return nil, err
 		}
-		data, _, err = f.PreviewJPEG()
-		if err != nil {
-			return nil, err
-		}
-	} else if data, err = os.ReadFile(ph.path); err != nil {
+		img, _, err := f.Preview()
+		return img, err
+	}
+	data, err := os.ReadFile(ph.path)
+	if err != nil {
 		return nil, err
 	}
 	return jpeg.Decode(bytes.NewReader(data))
@@ -423,7 +426,10 @@ func (s *server) handleThumb(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return nil, err
 			}
-			return f.ThumbJPEG()
+			// SD9/SD10 thumbnails aren't JPEG; fall through and render one.
+			if b, err := f.ThumbJPEG(); err == nil {
+				return b, nil
+			}
 		}
 		img, err := decodePreview(ph)
 		if err != nil {

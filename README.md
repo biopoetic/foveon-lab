@@ -103,11 +103,12 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
 - **ColorMode codes**: 4 = Standard, 6 = Portrait, 7 = Landscape were inferred from preset packs; other
   codes are unknown (the calibration pack probes them).
 - **White Balance / ColorTemp** are kept and written back but not emulated.
-- Tested with SD1 Merrill (X3F 3.0) and SD15 (X3F 2.3) files. Other Foveon cameras (DP Merrill,
-  Quattro, fp) are untested.
-- **SD9 / SD10 are not supported yet:** their X3F files carry no full-size embedded preview, so they
-  need real raw decoding (planned; the format is known from the open-source x3f tools). They show up
-  in the list marked "not supported yet". Sample SD9/SD10 X3F files would help — please open an issue.
+- **Cameras:** tested on files from the SD9, SD10, SD14, SD15, SD1 Merrill, DP1, DP1 Merrill,
+  dp2 Quattro, DP0 Quattro, sd Quattro and sd Quattro H. Merrill bodies get the SD1 presets,
+  SD14/DP1/DP2 the SD15 presets (same sensor generations).
+- **SD9 / SD10 are low resolution:** their X3F files carry no full-size preview, only the camera's
+  567×378 one (plain RGB on the SD9, Huffman-coded on the SD10), which Foveon Lab decodes. Enough to
+  compare presets; full resolution would need real raw decoding.
 
 ## Calibration: measuring SPP instead of guessing
 
