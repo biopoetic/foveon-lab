@@ -18,7 +18,22 @@ without importing, clicking and waiting in SPP for every preset.
 
 Single Go binary, no runtime dependencies, runs locally on `127.0.0.1` only.
 
-## Install
+## Download
+
+Grab the file for your system from the **[latest release](https://github.com/biopoetic/foveon-lab/releases/latest)**,
+unpack it and run it — no installation, nothing else needed:
+
+| System | File |
+|---|---|
+| Windows | `foveon-lab-…-windows-x64.zip` → double-click `foveon-lab.exe` |
+| macOS (M1/M2/M3…) | `foveon-lab-…-macos-apple-silicon.tar.gz` |
+| macOS (Intel) | `foveon-lab-…-macos-intel.tar.gz` |
+| Linux | `foveon-lab-…-linux-x64.tar.gz` |
+
+It opens in your browser. The binaries are not code-signed: on Windows, SmartScreen may warn — click
+*More info → Run anyway*; on macOS, right-click the file → *Open* the first time.
+
+### Build from source
 
 ```
 go install github.com/biopoetic/foveon-lab@latest

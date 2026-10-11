@@ -1,0 +1,49 @@
+name: release
+
+# Push a tag like v0.1.0 and this builds ready-to-run binaries for Windows,
+# macOS and Linux and attaches them to a GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./... && go test ./...
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -e
+          mkdir dist
+          build() { # goos goarch label ext
+            out="foveon-lab-$VERSION-$3"
+            mkdir "$out"
+            GOOS=$1 GOARCH=$2 go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$out/foveon-lab$4" .
+            cp README.md LICENSE "$out/"
+            if [ "$1" = windows ]; then zip -qr "dist/$out.zip" "$out"; else tar -czf "dist/$out.tar.gz" "$out"; fi
+          }
+          build windows amd64 windows-x64 .exe
+          build darwin  arm64 macos-apple-silicon ""
+          build darwin  amd64 macos-intel ""
+          build linux   amd64 linux-x64 ""
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+          ls -l dist
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/* \
+            --title "Foveon Lab ${{ github.ref_name }}" \
+            --notes "Download the file for your system, unpack it and run \`foveon-lab\` (Windows: double-click \`foveon-lab.exe\`). It opens in your browser. See the README for details.
+
+          Windows may show a SmartScreen warning because the binary is not code-signed: More info → Run anyway. On macOS the first run needs right-click → Open (unsigned)."

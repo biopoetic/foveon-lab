@@ -764,6 +764,9 @@ func calibCommand(desk string) bool {
 	return true
 }
 
+// version is set at release time (-ldflags "-X main.version=v1.2.3").
+var version = "dev"
+
 func main() {
 	desk := desktopDir()
 	if calibCommand(desk) {
@@ -825,7 +828,7 @@ func main() {
 		log.Fatal(err)
 	}
 	addr := "http://" + ln.Addr().String() + "/"
-	fmt.Printf("\n  Foveon Lab is running at %s\n  Close this window to quit.\n\n", addr)
+	fmt.Printf("\n  Foveon Lab %s is running at %s\n  Close this window to quit.\n\n", version, addr)
 	if !*noOpen {
 		openBrowser(addr)
 	}
