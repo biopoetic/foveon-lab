@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"strings"
 	"unicode/utf16"
 )
 
@@ -240,7 +242,24 @@ func (f *File) Camera() string {
 	if m == "" {
 		m = f.Props["CAMNAME"]
 	}
-	return ShortModel(m)
+	return PresetFamily(m)
+}
+
+// PresetFamily maps a camera model to the preset family that suits its
+// sensor: Merrill bodies (SD1, DP1/2/3 Merrill) → "SD1"; the 4.7 MP TRUE II
+// generation (SD14, SD15, DP1/DP2 and their s/x variants) → "SD15". Others
+// (Quattro, SD9/SD10) keep their own tag or "" (any preset).
+func PresetFamily(model string) string {
+	m := strings.ToUpper(model)
+	switch {
+	case strings.Contains(m, "MERRILL"):
+		return "SD1"
+	case strings.Contains(m, "QUATTRO"):
+		return ""
+	case strings.Contains(m, "SD14"), strings.Contains(m, "SD15"), regexp.MustCompile(`\bDP[12][SX]?\b`).MatchString(m):
+		return "SD15"
+	}
+	return ShortModel(model)
 }
 
 // ShortModel turns "SIGMA SD1 Merrill" / "SIGMA SD15" into "SD1" / "SD15".

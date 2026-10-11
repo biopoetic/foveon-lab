@@ -123,6 +123,18 @@ func TestHasFullPreview(t *testing.T) {
 	}
 }
 
+func TestPresetFamily(t *testing.T) {
+	for in, want := range map[string]string{
+		"SIGMA SD1 Merrill": "SD1", "SIGMA DP1 Merrill": "SD1", "SIGMA DP3 Merrill": "SD1",
+		"SIGMA SD15": "SD15", "SIGMA SD14": "SD15", "SIGMA DP1": "SD15", "SIGMA DP2s": "SD15", "SIGMA DP1x": "SD15",
+		"SIGMA dp2 Quattro": "", "SIGMA sd Quattro H": "", "SIGMA SD9": "SD9", "SIGMA SD10": "SD10", "": "",
+	} {
+		if got := PresetFamily(in); got != want {
+			t.Errorf("PresetFamily(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestShortModel(t *testing.T) {
 	for in, want := range map[string]string{
 		"SIGMA SD15": "SD15", "SIGMA SD1 Merrill": "SD1", "SIGMA DP2": "", "": "",
