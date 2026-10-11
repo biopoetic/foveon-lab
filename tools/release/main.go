@@ -140,9 +140,9 @@ func zipFiles(dst, prefix string, files map[string]string) error {
 	return zw.Close()
 }
 
-// tarGz packs files with the executable bit set on the binary — an archive
+// tarGz packs files with the executable bit set on the binaries — an archive
 // made on Windows otherwise loses it and the program won't start on macOS/Linux.
-func tarGz(dst, prefix string, files map[string]string, exe string) error {
+func tarGz(dst, prefix string, files map[string]string, exes ...string) error {
 	f, err := os.Create(dst)
 	if err != nil {
 		return err
@@ -156,8 +156,10 @@ func tarGz(dst, prefix string, files map[string]string, exe string) error {
 			return err
 		}
 		mode := int64(0o644)
-		if name == exe {
-			mode = 0o755
+		for _, e := range exes {
+			if name == e {
+				mode = 0o755
+			}
 		}
 		if err := tw.WriteHeader(&tar.Header{Name: prefix + "/" + name, Mode: mode, Size: st.Size(), ModTime: st.ModTime(), Format: tar.FormatPAX}); err != nil {
 			return err
@@ -195,6 +197,58 @@ func sha256File(p string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// thirdPartyDir holds x3fuse-core's license, notice and the Foveon Lab patch.
+const thirdPartyDir = "third_party/x3fuse-core"
+
+// x3fExtract returns the patched x3f_extract for a target: the local Windows
+// build, or the macOS/Linux build from the latest successful x3f-extract
+// workflow run (downloaded once into dl).
+func x3fExtract(t target, dl string, runID *string) (string, error) {
+	if t.goos == "windows" {
+		p := filepath.Join(thirdPartyDir, "bin", "x3f_extract.exe")
+		if _, err := os.Stat(p); err != nil {
+			return "", fmt.Errorf("%s missing — build it (see %s/README.md)", p, thirdPartyDir)
+		}
+		return p, nil
+	}
+	name := map[string]string{"darwin/arm64": "macos-arm64", "darwin/amd64": "macos-x86_64", "linux/amd64": "linux-x86_64"}[t.goos+"/"+t.goarch]
+	if name == "" {
+		return "", fmt.Errorf("no x3f_extract build for %s/%s", t.goos, t.goarch)
+	}
+	if *runID == "" {
+		id, err := output("gh", "run", "list", "--workflow", "x3f-extract.yml", "--status", "success", "--limit", "1", "--json", "databaseId", "--jq", ".[0].databaseId")
+		if err != nil || id == "" {
+			return "", errors.New("no successful x3f-extract workflow run — push third_party changes or run the workflow first")
+		}
+		*runID = id
+	}
+	art := "x3f_extract-" + name
+	dst := filepath.Join(dl, art)
+	if _, err := os.Stat(filepath.Join(dst, art)); err != nil {
+		if err := run("gh", "run", "download", *runID, "-n", art, "-D", dst); err != nil {
+			return "", fmt.Errorf("download %s: %w", art, err)
+		}
+	}
+	return filepath.Join(dst, art), nil
+}
+
+// copyTo copies src to dst (signing rewrites binaries in place, and the
+// downloaded/local originals must stay untouched).
+func copyTo(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if err := copyFile(out, src); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
 // checkPublishable makes sure the release is cut from pushed, clean main.
 func checkPublishable(version string) error {
 	if s, _ := output("git", "status", "--porcelain"); s != "" {
@@ -219,7 +273,9 @@ func main() {
 	version := flag.String("version", "", "release version, e.g. v0.1.0")
 	publish := flag.Bool("publish", false, "create the GitHub release")
 	allowUnsigned := flag.Bool("allow-unsigned", false, "continue (and allow publishing) if signing is not possible")
+	skipX3F := flag.Bool("skip-x3f-extract", false, "ship without the bundled x3f_extract (SD9/SD10 then stay low-res)")
 	flag.Parse()
+	var x3fRun string
 	log.SetFlags(log.Ltime)
 	if !regexp.MustCompile(`^v\d+\.\d+\.\d+$`).MatchString(*version) {
 		log.Fatal("-version must look like v0.1.0")
@@ -267,13 +323,49 @@ func main() {
 
 		name := fmt.Sprintf("foveon-lab-%s-%s", *version, t.label)
 		files := map[string]string{exe: bin, "README.md": "README.md", "LICENSE": "LICENSE"}
+
+		// The patched x3fuse-core x3f_extract (SD9/SD10 raw decoding), signed
+		// like foveon-lab itself, plus its license, notice and the patch.
+		x3fName := "x3f_extract"
+		if t.goos == "windows" {
+			x3fName += ".exe"
+		}
+		if *skipX3F {
+			log.Printf("%s: shipping WITHOUT x3f_extract (-skip-x3f-extract)", t.label)
+		} else {
+			src, err := x3fExtract(t, filepath.Join("dist", "x3f-extract-artifacts"), &x3fRun)
+			if err != nil {
+				log.Fatalf("%s: x3f_extract: %v (use -skip-x3f-extract to ship without it)", t.label, err)
+			}
+			x3fBin := filepath.Join(dist, t.label, x3fName)
+			if err := copyTo(src, x3fBin); err != nil {
+				log.Fatal(err)
+			}
+			switch t.goos {
+			case "windows":
+				err = signWindows(x3fBin)
+			case "darwin":
+				err = signMac(x3fBin)
+			}
+			if err != nil {
+				if !*allowUnsigned {
+					log.Fatalf("%s x3f_extract: %v — refusing to ship it unsigned", t.label, err)
+				}
+				unsigned = append(unsigned, t.label+" x3f_extract")
+			}
+			files[x3fName] = x3fBin
+			for _, f := range []string{"LICENSE", "NOTICE", "README.md", "fix-type2-camf-key.patch"} {
+				files["third_party/x3fuse-core/"+f] = filepath.Join(thirdPartyDir, f)
+			}
+		}
+
 		var archive string
 		if t.goos == "windows" {
 			archive = filepath.Join(dist, name+".zip")
 			err = zipFiles(archive, name, files)
 		} else {
 			archive = filepath.Join(dist, name+".tar.gz")
-			err = tarGz(archive, name, files, exe)
+			err = tarGz(archive, name, files, exe, x3fName)
 		}
 		if err != nil {
 			log.Fatalf("package %s: %v", t.label, err)

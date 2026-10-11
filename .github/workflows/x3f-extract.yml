@@ -1,0 +1,59 @@
+name: x3f-extract
+
+# Builds the patched x3fuse-core `x3f_extract` (see third_party/x3fuse-core)
+# for macOS and Linux — they can't be built on the maintainer's Windows box.
+# The release tool downloads these artifacts, signs/notarizes the macOS ones
+# locally and ships them next to foveon-lab. The Windows build is made locally.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "third_party/x3fuse-core/**"
+      - ".github/workflows/x3f-extract.yml"
+
+env:
+  X3FUSE_TAG: v0.1.6
+  SD9_SAMPLE: https://raw.pixls.us/data/Sigma/Sigma%20SD9/RAW_SIGMA_SD9_SRGB.X3F
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, target: aarch64-apple-darwin, name: macos-arm64, run: true }
+          - { os: macos-latest, target: x86_64-apple-darwin, name: macos-x86_64, run: false }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, name: linux-x86_64, run: true }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch x3fuse-core and apply the Foveon Lab patch
+        run: |
+          git clone --depth 1 --branch "$X3FUSE_TAG" https://github.com/sagwaco/x3fuse-core.git x3fuse
+          cd x3fuse
+          git apply --whitespace=nowarn ../third_party/x3fuse-core/fix-type2-camf-key.patch
+          git diff --stat
+      - name: Linux build deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev clang
+      - name: Build
+        working-directory: x3fuse
+        run: |
+          rustup target add ${{ matrix.target }}
+          cargo build --release -p x3f-cli --target ${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/x3f_extract ../x3f_extract-${{ matrix.name }}
+          strip ../x3f_extract-${{ matrix.name }} || true
+          ls -l ../x3f_extract-${{ matrix.name }}
+      - name: Verify it decodes an SD9 file (the case the patch fixes)
+        if: matrix.run
+        run: |
+          curl -sSfL -o sd9.X3F "$SD9_SAMPLE"
+          mkdir out
+          ./x3f_extract-${{ matrix.name }} -q -tiff -color sRGB -o out sd9.X3F
+          test -s out/sd9.X3F.tif
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x3f_extract-${{ matrix.name }}
+          path: x3f_extract-${{ matrix.name }}
+          if-no-files-found: error

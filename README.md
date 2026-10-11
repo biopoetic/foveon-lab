@@ -106,9 +106,12 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
 - **Cameras:** tested on files from the SD9, SD10, SD14, SD15, SD1 Merrill, DP1, DP1 Merrill,
   dp2 Quattro, DP0 Quattro, sd Quattro and sd Quattro H. Merrill bodies get the SD1 presets,
   SD14/DP1/DP2 the SD15 presets (same sensor generations).
-- **SD9 / SD10 are low resolution:** their X3F files carry no full-size preview, only the camera's
-  567×378 one (plain RGB on the SD9, Huffman-coded on the SD10), which Foveon Lab decodes. Enough to
-  compare presets; full resolution would need real raw decoding.
+- **SD9 / SD10** carry no full-size preview. Foveon Lab decodes their raw data at full resolution
+  with the bundled `x3f_extract` from [x3fuse-core](https://github.com/sagwaco/x3fuse-core)
+  (Apache-2.0, with a small fix for these older files — see `third_party/x3fuse-core`). The first
+  view of such a photo takes a few seconds, then it is cached. Without `x3f_extract` it falls back to
+  the camera's 567×378 preview. A raw decode has no in-camera look, so it starts more neutral than
+  the JPEG-based previews of the other bodies.
 
 ## Calibration: measuring SPP instead of guessing
 
@@ -153,6 +156,12 @@ Tests that use real X3F files or preset folders skip themselves when those are n
 
 Issues and pull requests are welcome — especially calibration results (`report.txt`) from SPP, and
 X3F samples from other Foveon cameras.
+
+## Third-party software
+
+Release archives include `x3f_extract` from **x3fuse-core** © 2026 Sang Lee, Apache License 2.0,
+itself derived from the Kalpanika x3f tools (BSD-style). Its license, notice and Foveon Lab's
+modification are in `third_party/x3fuse-core/`.
 
 ## Legal
 
