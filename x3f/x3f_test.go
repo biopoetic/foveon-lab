@@ -98,6 +98,31 @@ func TestParseSynthetic(t *testing.T) {
 	}
 }
 
+// TestHasFullPreview: a file with only a small thumbnail (like SD9/SD10)
+// is recognised as unsupported; the real SD1/SD15 files are not.
+func TestHasFullPreview(t *testing.T) {
+	jpg := []byte{0xFF, 0xD8, 0xFF, 0xD9}
+	path := filepath.Join(t.TempDir(), "old.X3F")
+	if err := os.WriteFile(path, buildX3F(t, jpg, nil), 0o644); err != nil { // 4x2 "preview"
+		t.Fatal(err)
+	}
+	f, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.HasFullPreview() {
+		t.Error("tiny preview counted as full-size")
+	}
+	home, _ := os.UserHomeDir()
+	for _, dir := range []string{"SD1", "SD15"} {
+		if m, _ := filepath.Glob(filepath.Join(home, "Desktop", dir, "*.X3F")); len(m) > 0 {
+			if f, err := Open(m[0]); err == nil && !f.HasFullPreview() {
+				t.Errorf("%s: real file reported without full preview", m[0])
+			}
+		}
+	}
+}
+
 func TestShortModel(t *testing.T) {
 	for in, want := range map[string]string{
 		"SIGMA SD15": "SD15", "SIGMA SD1 Merrill": "SD1", "SIGMA DP2": "", "": "",

@@ -187,6 +187,14 @@ func (f *File) jpegImages() []Image {
 	return js
 }
 
+// HasFullPreview reports whether the file embeds a JPEG preview big enough
+// to work from. SD9/SD10 files only carry a small thumbnail (and not always
+// as JPEG), so presets can't be judged on them without decoding the raw data.
+func (f *File) HasFullPreview() bool {
+	js := f.jpegImages()
+	return len(js) > 0 && js[0].Width >= 1000
+}
+
 // PreviewJPEG returns the bytes of the largest embedded JPEG (on the SD1 and
 // SD15 this is a full-size, in-camera-processed rendering of the shot).
 func (f *File) PreviewJPEG() ([]byte, Image, error) {

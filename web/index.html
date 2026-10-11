@@ -224,7 +224,9 @@ async function loadPhotos(){
     if (p.folder !== folder){ folder = p.folder; box.insertAdjacentHTML("beforeend", `<div class="folder">${esc(folder)}</div>`); }
     const el = document.createElement("div");
     el.className = "ph"; el.dataset.id = p.id;
-    el.innerHTML = `<img loading="lazy" src="/api/thumb?id=${p.id}"><div>${esc(p.name)}<small>${esc([p.info.ISO && "ISO "+p.info.ISO, p.info.SH_DESC, p.info.AP_DESC && "f/"+p.info.AP_DESC].filter(Boolean).join(" · "))}</small></div>`;
+    const sub = p.unsupported ? "not supported yet (no full-size preview)" : [p.info.ISO && "ISO "+p.info.ISO, p.info.SH_DESC, p.info.AP_DESC && "f/"+p.info.AP_DESC].filter(Boolean).join(" · ");
+    el.innerHTML = `<img loading="lazy" src="/api/thumb?id=${p.id}" onerror="this.style.visibility='hidden'"><div>${esc(p.name)}<small>${esc(sub)}</small></div>`;
+    if (p.unsupported) el.style.opacity = .55;
     el.onclick = () => selectPhoto(p.id);
     box.appendChild(el);
   }
@@ -244,6 +246,7 @@ function selectPhoto(id){
   // can change with the camera) and any slider tweaks.
   const keep = current()?.id;
   refreshList();
+  if ($("#detail").classList.contains("on") && p.unsupported){ closeDetail(); return; }
   if ($("#detail").classList.contains("on")){
     const i = keep ? S.list.findIndex(x => x.id === keep) : -1;
     if (i >= 0){
@@ -309,6 +312,7 @@ function refreshList(){
 function drawGrid(){
   const g = $("#grid");
   if (!S.photo){ g.innerHTML = '<div class="empty">Pick a photo on the left.</div>'; return; }
+  if (S.photo.unsupported){ g.innerHTML = `<div class="empty">${esc(S.photo.unsupported)}</div>`; return; }
   g.style.gridTemplateColumns = `repeat(auto-fill,minmax(${$("#tileSize").value}px,1fr))`;
   const w = tileW();
   const tiles = [

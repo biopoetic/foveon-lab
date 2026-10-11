@@ -52,6 +52,9 @@ type Photo struct {
 	Folder string            `json:"folder"`
 	Camera string            `json:"camera"`
 	Kind   string            `json:"kind"` // "x3f" or "jpg"
+	// Unsupported explains why the photo can't be previewed (e.g. SD9/SD10
+	// X3F files carry no full-size JPEG); empty when it can.
+	Unsupported string `json:"unsupported,omitempty"`
 	Info   map[string]string `json:"info"`
 
 	path     string
@@ -160,6 +163,9 @@ func loadMeta(ph *Photo) bool {
 			return false
 		}
 		ph.props, ph.Camera, ph.rotation = f.Props, f.Camera(), f.Rotation
+		if !f.HasFullPreview() {
+			ph.Unsupported = "This X3F has no full-size embedded preview (SD9/SD10-era files). Foveon Lab can't show it yet — that needs raw decoding."
+		}
 		if r, err := strconv.Atoi(f.Props["ROTATION"]); err == nil && (r == 90 || r == 180 || r == 270) {
 			ph.rotation = r
 		}
@@ -270,6 +276,9 @@ func (s *server) loadPresets() {
 }
 
 func decodePreview(ph *Photo) (image.Image, error) {
+	if ph.Unsupported != "" {
+		return nil, errors.New(ph.Unsupported)
+	}
 	var data []byte
 	var err error
 	if ph.Kind == "x3f" {
@@ -370,6 +379,10 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	ph, err := s.photo(r)
 	if err != nil {
 		httpErr(w, 404, err)
+		return
+	}
+	if ph.Unsupported != "" {
+		httpErr(w, 422, errors.New(ph.Unsupported))
 		return
 	}
 	q := r.URL.Query()

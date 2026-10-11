@@ -105,6 +105,9 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
 - **White Balance / ColorTemp** are kept and written back but not emulated.
 - Tested with SD1 Merrill (X3F 3.0) and SD15 (X3F 2.3) files. Other Foveon cameras (DP Merrill,
   Quattro, fp) are untested.
+- **SD9 / SD10 are not supported yet:** their X3F files carry no full-size embedded preview, so they
+  need real raw decoding (planned; the format is known from the open-source x3f tools). They show up
+  in the list marked "not supported yet". Sample SD9/SD10 X3F files would help — please open an issue.
 
 ## Calibration: measuring SPP instead of guessing
 
