@@ -961,8 +961,34 @@ func calibCommand(desk string) bool {
 	dir := fsFlags.String("dir", filepath.Join(desk, "foveon-calibration"), "calibration folder")
 	photos := fsFlags.String("photos", desk, "folders with X3F photos (for suggesting source images)")
 	intoSPP := fsFlags.Bool("spp", false, "also add the [CAL] presets straight into Sigma Photo Pro's preset list (SPP must be closed; its settings are backed up first)")
+	auto := fsFlags.Bool("auto", false, "export the steps from SPP automatically: open -photo in SPP first, then don't touch mouse or keyboard")
+	autoPhoto := fsFlags.String("photo", "", "with -auto: the photo open in SPP, e.g. SDIM0260")
+	autoSteps := fsFlags.String("steps", "A", "with -auto: step groups (A, B, C, V, W) and/or codes, comma-separated, e.g. A or A,W or A00,A16")
 	fsFlags.Parse(os.Args[2:])
 
+	if os.Args[1] == "calibrate" && *auto {
+		if *autoPhoto == "" {
+			log.Fatal("-auto needs -photo (the file open in SPP, e.g. SDIM0260)")
+		}
+		var codes []string
+		for _, want := range strings.Split(*autoSteps, ",") {
+			want = strings.ToUpper(strings.TrimSpace(want))
+			for _, st := range calib.Steps() {
+				if st.Code == want || (len(want) == 1 && strings.HasPrefix(st.Code, want)) {
+					codes = append(codes, st.Code)
+				}
+			}
+		}
+		if len(codes) == 0 {
+			log.Fatalf("no calibration steps match %q", *autoSteps)
+		}
+		out := filepath.Join(*dir, calib.ExportsDir)
+		fmt.Printf("Exporting %d steps of %s from SPP into %s (existing files are skipped). Don't touch mouse or keyboard.\n", len(codes), *autoPhoto, out)
+		if err := spp.AutoExport(*autoPhoto, codes, out, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return true
+	}
 	if os.Args[1] == "calibrate" {
 		var paths []string
 		for _, p := range scanPhotos(strings.Split(*photos, ";"), false) {

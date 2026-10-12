@@ -169,9 +169,12 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
 foveon-lab calibrate -spp   # creates Desktop/foveon-calibration and adds the [CAL] presets to SPP
 foveon-lab analyze          # measures the exports → report.txt, calibration.json, model_<photo>.json
 foveon-lab fit-raw          # from <photo>_A00.tif exports: fits + tests the raw base per camera → rawbase.json
+foveon-lab calibrate -auto -photo SDIM0260 -steps A,W   # Windows: drives SPP itself to make the exports
 ```
 
-`model_<photo>.json` is the measured emulation; copy it to `render/model.json` and rebuild to use it
+**`-auto`** does the exporting for you: open the photo in SPP, run it, and don't touch mouse or
+keyboard — it picks each `[CAL]` setting in SPP's list, presses Ctrl+S and fills in SPP's "Save Images
+As" dialog (about 40 s per export, existing files are skipped). `model_<photo>.json` is the measured emulation; copy it to `render/model.json` and rebuild to use it
 (the shipped one was measured on an SD1 Merrill photo). Each `[CAL]` preset moves exactly **one** SPP control to a known value (e.g. Contrast +0.5); everything
 else matches the neutral preset `A00`. You apply each preset in SPP to the same photo and save it as
 `<photo>_<code>.tif`. `analyze` then compares every export with SPP's own neutral `A00` export and
