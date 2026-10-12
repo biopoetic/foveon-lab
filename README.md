@@ -14,6 +14,11 @@ without importing, clicking and waiting in SPP for every preset.
   are not affiliated with any film maker.
 - **Grid view:** one photo through every preset at once. Click a tile for a large view with sliders;
   `←`/`→` steps through presets, hold `O` for the camera original.
+- **Distinct looks:** many presets are near-copies (V2/V3 of one idea, SD1/SD15 twins). This renders
+  them all on *your* photo, groups the ones you couldn't tell apart, and shows one tile per look
+  (e.g. 184 SD1 presets → ~50 looks), with **+N similar** to open a group.
+- **Editor tools:** before/after **Split** (`S`, follow the mouse), an RGB histogram, the share of
+  clipped highlights / crushed shadows, and **Clipping** marks on the photo (`C`).
 - **Save as preset** writes an SPP-importable XML (`FoveonLab_SD1.xml` / `FoveonLab_SD15.xml` in the
   presets folder; saving the same name replaces it instead of duplicating).
 - **Export** next to the photo, in a `foveon-lab/` folder:
@@ -21,7 +26,14 @@ without importing, clicking and waiting in SPP for every preset.
   - **TIFF 16-bit** — full resolution, preset applied, no 8-bit rounding (Deflate-compressed RGB, no
     alpha) for further editing in Photoshop, Affinity, GIMP…;
   - **DNG (raw)** — the X3F's raw data as a DNG 1.4 with colour matrices, for Lightroom / Capture
-    One / darktable (any Foveon body; it's raw, so presets are not applied).
+    One / darktable (any Foveon body). A raw file can't carry the preset, so a **`.cube` LUT of the
+    preset** is written next to it;
+  - **LUT (.cube)** — any preset or tuned look as a 33³ 3D LUT for darktable (*lut 3D*),
+    Photoshop (*Color Lookup*), Camera Raw / Lightroom (via a profile made in Camera Raw), DaVinci
+    Resolve, Affinity… Apply it to a neutral rendering. It is the preview's own per-pixel maths
+    (within 0.5/255 of the preview); Fill Light becomes a global shadow lift and Sharpness is left out.
+- **Batch export:** one preset (or your tuned settings) on a whole folder or every photo, as JPEG or
+  16-bit TIFF.
 - **Calibration tools** measure what SPP actually does, to replace guesses with measured curves (below).
 
 Single Go binary, no runtime dependencies, runs locally on `127.0.0.1` only.
@@ -91,7 +103,9 @@ Click **✦ AI pick** (grid) or **✦ AI** (editor). A vision model looks at the
 by rendering them on it, compares the renders (each comes with objective stats: clipping, crushed
 shadows, brightness, saturation, warmth), fine-tunes the best one, and explains its choice. You watch
 every step live, then **Open in editor** to save it as an SPP preset or export it. You can give it a
-direction, e.g. *"warm film look"*, *"moody"*, *"natural skin"*.
+direction, e.g. *"warm film look"*, *"moody"*, *"natural skin"*. **Whole folder** makes it judge a
+contact sheet of up to 6 photos from the folder and pick one look for the whole series (then use
+**Batch export…**).
 
 **Connect a provider in the app:** open the AI panel, pick **DeepSeek**, **OpenAI**, **Google
 Gemini**, **OpenRouter** or any other OpenAI-compatible API (it must accept images and tool calls),

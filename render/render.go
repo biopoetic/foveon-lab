@@ -403,103 +403,126 @@ func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 // linear RGB clamped later by the sink's encoding) to put.
 func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, bl float32)) {
 	w, h := b.W, b.H
+	op := newPixOp(p, c)
+	parallelRows(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			for x := 0; x < w; x++ {
+				i := (y*w + x) * 3
+				var m float32
+				if op.fill != 0 {
+					m = b.m.at(x, y)
+				}
+				r, g, bl := op.apply(b.Pix[i], b.Pix[i+1], b.Pix[i+2], m)
+				put(y*w+x, r, g, bl)
+			}
+		}
+	})
+}
 
+// pixOp is the per-pixel part of a render (everything but sharpening);
+// the Fill Light mask value comes from the caller.
+type pixOp struct {
+	cr, cg, cb, maskScale, fill, hl, blk, ct float32
+	satF                                     float64
+	mono                                     bool
+	mode                                     int
+}
+
+func newPixOp(p preset.Params, c Compensation) pixOp {
 	// Colour adjust: normalised so it tints without changing brightness.
 	k := 1 / (0.2126*p.R + 0.7152*p.G + 0.0722*p.B)
 	if p.R <= 0 || p.G <= 0 || p.B <= 0 || math.IsInf(k, 0) {
 		p.R, p.G, p.B, k = 1, 1, 1, 1
 	}
 	expGain := math.Exp2(p.Exposure)
-	cr, cg, cb := float32(p.R*k*expGain), float32(p.G*k*expGain), float32(p.B*k*expGain)
-	maskScale := float32(math.Exp2(p.Exposure / 2.2))
-	fill := float32(p.FillLight * 1.5)
-	hl := float32(p.Highlight * 0.35)
-	blk := float32(math.Max(-0.3, math.Min(0.3, p.Blackness*0.08)))
-	ct := float32(math.Max(-1, math.Min(1, (p.Contrast+c.Contrast)*1.2)))
+	op := pixOp{
+		cr: float32(p.R * k * expGain), cg: float32(p.G * k * expGain), cb: float32(p.B * k * expGain),
+		maskScale: float32(math.Exp2(p.Exposure / 2.2)),
+		fill:      float32(p.FillLight * 1.5),
+		hl:        float32(p.Highlight * 0.35),
+		blk:       float32(math.Max(-0.3, math.Min(0.3, p.Blackness*0.08))),
+		ct:        float32(math.Max(-1, math.Min(1, (p.Contrast+c.Contrast)*1.2))),
+		mode:      p.ColorMode,
+	}
 
 	// SPP's saturation slider spans -2..+2 and -1 is visibly still colour
 	// (confirmed by eye in SPP; exact curve pending calibration steps A15 and
 	// B13), so the negative side is scaled over the full -2 range. True B&W
 	// is SPP's separate Monochrome mode, i.e. p.Mono.
 	sat := p.Saturation + c.Saturation
-	var satF float64
-	mono := p.Mono || p.Saturation <= -2
+	op.mono = p.Mono || p.Saturation <= -2
 	switch {
 	case sat < 0:
-		satF = math.Max(0, 1+sat/2)
+		op.satF = math.Max(0, 1+sat/2)
 	default:
-		satF = 1 + 0.6*sat
+		op.satF = 1 + 0.6*sat
 	}
 	if c.SatFactor > 0 {
-		satF *= c.SatFactor
+		op.satF *= c.SatFactor
 	}
-	mode := p.ColorMode
+	return op
+}
 
-	parallelRows(h, func(y0, y1 int) {
-		for y := y0; y < y1; y++ {
-			for x := 0; x < w; x++ {
-				i := (y*w + x) * 3
-				r, g, bl := b.Pix[i]*cr, b.Pix[i+1]*cg, b.Pix[i+2]*cb
+// apply maps one linear pixel; m is the blurred perceptual luminance around
+// it (Fill Light's mask).
+func (op *pixOp) apply(r, g, bl, m float32) (float32, float32, float32) {
+	r, g, bl = r*op.cr, g*op.cg, bl*op.cb
 
-				if fill != 0 {
-					m := min(1, b.m.at(x, y)*maskScale)
-					wt := (1 - m) * (1 - m)
-					gain := float32(math.Exp2(float64(fill * wt)))
-					r, g, bl = r*gain, g*gain, bl*gain
-				}
+	if op.fill != 0 {
+		m := min(1, m*op.maskScale)
+		wt := (1 - m) * (1 - m)
+		gain := float32(math.Exp2(float64(op.fill * wt)))
+		r, g, bl = r*gain, g*gain, bl*gain
+	}
 
-				Y := 0.2126*r + 0.7152*g + 0.0722*bl
-				if Y > 1e-6 {
-					Y2 := Y
-					if hl < 0 {
-						Y2 = Y / (1 - hl*Y*Y)
-					} else if hl > 0 {
-						Y2 = Y * (1 + hl*Y*Y)
-					}
-					v := enc(Y2)
-					if blk != 0 {
-						v = max(0, (v-blk)/(1-blk))
-					}
-					if ct != 0 {
-						v = min(1, max(0, v))
-						s := v * v * (3 - 2*v)
-						v += ct * (s - v)
-					}
-					Y3 := dec(v)
-					kk := Y3 / Y
-					r, g, bl = r*kk, g*kk, bl*kk
-					Y = Y3
-				}
-
-				f := satF
-				if mode == preset.ModePortrait || mode == preset.ModeLandscape {
-					hx := float64(r) - 0.5*float64(g+bl)
-					hy := 0.8660254 * float64(g-bl)
-					hue := math.Atan2(hy, hx) * 180 / math.Pi
-					if hue < 0 {
-						hue += 360
-					}
-					if mode == preset.ModePortrait {
-						// Softer colour overall, skin tones kept.
-						skin := hueWeight(hue, 30, 35)
-						f *= 0.86 + 0.12*skin
-					} else {
-						// Landscape: greens and blues pushed.
-						gb := math.Max(hueWeight(hue, 110, 60), hueWeight(hue, 215, 45))
-						f *= 1.05 + 0.15*gb
-					}
-				}
-				if mono {
-					r, g, bl = Y, Y, Y
-				} else if f != 1 {
-					ff := float32(f)
-					r, g, bl = Y+(r-Y)*ff, Y+(g-Y)*ff, Y+(bl-Y)*ff
-				}
-
-				put(y*w+x, r, g, bl)
-			}
+	Y := 0.2126*r + 0.7152*g + 0.0722*bl
+	if Y > 1e-6 {
+		Y2 := Y
+		if op.hl < 0 {
+			Y2 = Y / (1 - op.hl*Y*Y)
+		} else if op.hl > 0 {
+			Y2 = Y * (1 + op.hl*Y*Y)
 		}
-	})
+		v := enc(Y2)
+		if op.blk != 0 {
+			v = max(0, (v-op.blk)/(1-op.blk))
+		}
+		if op.ct != 0 {
+			v = min(1, max(0, v))
+			s := v * v * (3 - 2*v)
+			v += op.ct * (s - v)
+		}
+		Y3 := dec(v)
+		kk := Y3 / Y
+		r, g, bl = r*kk, g*kk, bl*kk
+		Y = Y3
+	}
+
+	f := op.satF
+	if op.mode == preset.ModePortrait || op.mode == preset.ModeLandscape {
+		hx := float64(r) - 0.5*float64(g+bl)
+		hy := 0.8660254 * float64(g-bl)
+		hue := math.Atan2(hy, hx) * 180 / math.Pi
+		if hue < 0 {
+			hue += 360
+		}
+		if op.mode == preset.ModePortrait {
+			// Softer colour overall, skin tones kept.
+			skin := hueWeight(hue, 30, 35)
+			f *= 0.86 + 0.12*skin
+		} else {
+			// Landscape: greens and blues pushed.
+			gb := math.Max(hueWeight(hue, 110, 60), hueWeight(hue, 215, 45))
+			f *= 1.05 + 0.15*gb
+		}
+	}
+	if op.mono {
+		r, g, bl = Y, Y, Y
+	} else if f != 1 {
+		ff := float32(f)
+		r, g, bl = Y+(r-Y)*ff, Y+(g-Y)*ff, Y+(bl-Y)*ff
+	}
+	return r, g, bl
 }
 
 // sharpen16 is sharpen for 16-bit images (big-endian samples).

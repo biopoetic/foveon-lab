@@ -180,6 +180,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="save" class="primary">Save as preset</button>
           <button id="export" title="Full-resolution JPEG with the preset applied">Export JPEG</button>
           <button id="exportTiff" title="Full-resolution 16-bit TIFF with the preset applied — no 8-bit rounding, for further editing">Export TIFF 16-bit</button>
+          <button id="lutBtn" title="Download this look as a 3D LUT (.cube) for darktable, Photoshop, Camera Raw / Lightroom profiles, DaVinci Resolve, Affinity…">Export LUT (.cube)</button>
           <button id="batchBtn" title="Apply this preset to many photos and export them all">Batch export…</button>
           <button id="exportDng" title="The raw data as DNG for Lightroom / Capture One / darktable (presets are not applied — it's raw)" style="display:none">Export DNG (raw)</button>
           <button id="sppOpen" title="Put this preset into Sigma Photo Pro's list as its current setting, then open the photo in SPP (SPP must be closed)" style="display:none">Open in SPP ↗</button>
@@ -678,8 +679,8 @@ async function exportImage(format){
   const body = {format, id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2};
   const res = await fetch("/api/export", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
   if (!res.ok){ toast("Export failed: " + esc(await res.text())); return; }
-  const {path} = await res.json();
-  toast(`Saved: ${esc(path)} <a id="reveal">Show in folder</a>`, 8000);
+  const {path, lut} = await res.json();
+  toast(`Saved: ${esc(path)}${lut ? `<br>+ the preset as a LUT for your raw editor: ${esc(lut.split(/[\\/]/).pop())}` : ""} <a id="reveal">Show in folder</a>`, 9000);
   $("#reveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(path));
 }
 
@@ -974,6 +975,11 @@ function bind(){
   $("#aiKey").onkeydown = e => { if (e.key === "Enter") aiSave(); };
   $("#aiStop").onclick = () => { stopAgent(); aiLog("Stopped.", "status"); };
   $("#batchBtn").onclick = batchOpen;
+  $("#lutBtn").onclick = () => {
+    const p = current(), u = new URLSearchParams();
+    if (p && !dirty()) u.set("preset", p.id); else u.set("p", JSON.stringify(S.params));
+    const a = document.createElement("a"); a.href = "/api/lut?" + u; a.download = ""; document.body.appendChild(a); a.click(); a.remove();
+  };
   $("#bStart").onclick = batchStart;
   $("#bClose").onclick = batchClose;
   $("#splitBtn").onclick = () => { VIEW.split = !VIEW.split; setView(); $("#splitBtn").blur(); };

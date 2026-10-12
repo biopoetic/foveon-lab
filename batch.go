@@ -5,7 +5,21 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+
+	"github.com/biopoetic/foveon-lab/render"
 )
+
+// handleLUT downloads the preset (or tuned parameters) as a .cube 3D LUT.
+func (s *server) handleLUT(w http.ResponseWriter, r *http.Request) {
+	p, label, err := s.params(r.URL.Query().Get("preset"), r.URL.Query().Get("p"))
+	if err != nil {
+		httpErr(w, 400, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+safeName(label)+`.cube"`)
+	render.WriteCube(w, label, p, 33)
+}
 
 // handleExportBatch exports several photos with one preset (or tuned
 // parameters), streaming one JSON line per photo so the page can show

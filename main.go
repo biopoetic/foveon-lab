@@ -538,10 +538,6 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stem := strings.TrimSuffix(ph.Name, filepath.Ext(ph.Name))
-	if req.Format == "dng" {
-		s.exportDNG(w, ph, dir, stem)
-		return
-	}
 	pj := ""
 	if len(req.Params) > 0 && string(req.Params) != "null" {
 		pj = string(req.Params)
@@ -549,6 +545,10 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 	p, label, err := s.params(req.Preset, pj)
 	if err != nil {
 		httpErr(w, 400, err)
+		return
+	}
+	if req.Format == "dng" {
+		s.exportDNG(w, ph, dir, stem, p, label)
 		return
 	}
 	path, err := s.exportImage(ph, p, label, req.Comp, req.Format)
@@ -601,8 +601,9 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 }
 
 // exportDNG converts the X3F's raw data to a DNG with x3f_extract, for
-// Lightroom / Capture One / darktable. It is raw: presets are not applied.
-func (s *server) exportDNG(w http.ResponseWriter, ph *Photo, dir, stem string) {
+// Lightroom / Capture One / darktable. It is raw, so the preset can't be
+// baked in; it goes alongside as a .cube LUT to apply in that program.
+func (s *server) exportDNG(w http.ResponseWriter, ph *Photo, dir, stem string, p preset.Params, label string) {
 	if ph.Kind != "x3f" {
 		httpErr(w, 400, errors.New("DNG export needs an X3F file"))
 		return
@@ -635,7 +636,20 @@ func (s *server) exportDNG(w http.ResponseWriter, ph *Photo, dir, stem string) {
 		return
 	}
 	log.Printf("exported %s (DNG, %v)", path, time.Since(start).Round(100*time.Millisecond))
-	writeJSON(w, map[string]string{"path": path})
+	cube := filepath.Join(dir, stem+"_"+safeName(label)+".cube")
+	if f, err := os.Create(cube); err == nil {
+		err = render.WriteCube(f, label, p, 33)
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			log.Printf("LUT next to the DNG: %v", err)
+			cube = ""
+		}
+	} else {
+		cube = ""
+	}
+	writeJSON(w, map[string]string{"path": path, "lut": cube})
 }
 
 // handleReveal opens Explorer on a file this app exported.
@@ -1005,6 +1019,7 @@ func main() {
 	mux.HandleFunc("/api/allimages", s.handleAllImages)
 	mux.HandleFunc("/api/looks", s.handleLooks)
 	mux.HandleFunc("/api/export/batch", s.handleExportBatch)
+	mux.HandleFunc("/api/lut", s.handleLUT)
 	mux.HandleFunc("/api/quit", handleQuit)
 	mux.HandleFunc("/api/presets", s.handlePresets)
 	mux.HandleFunc("/api/thumb", s.handleThumb)
