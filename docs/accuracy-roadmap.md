@@ -16,6 +16,9 @@ fitted part did **not** see (held out). SPP itself repeats to within 0.5.
 Visibility: under ~3 is invisible, 5–10 shows only side by side, 25+ is obvious. Before the
 calibration work the end-to-end error was ~28.
 
+**Exports are automatic now:** `foveon-lab calibrate -auto -photo <name> -steps A,B,C,V,W` drives SPP
+itself (~40 s per export, unattended), so every step below that "needs exports" costs only time.
+
 ## Steps, by expected gain
 
 ### 1. SD15: its own slider calibration (gain: large, for every SD15 user)
@@ -50,12 +53,12 @@ Sliders were measured one at a time and chained. Measure a few pairs (Exposure+C
 Highlight+Fill, Contrast+Saturation) and correct the chaining order/strength where it misses.
 - Effort: ~6 exports.
 
-### 6. What is not modelled at all yet (gain: small but visible)
-- **Sharpness** (B21/B22 exports exist in the pack; needs a local sharpen model).
-- **Saturation beyond ±1, Exposure/Contrast beyond ±1** (B steps: extrapolated today).
-- **Colour modes other than Standard / Portrait / Landscape** (C steps: unknown codes).
-- **Fine WB grid offsets** some presets rely on (SPP keeps them outside the XML).
-- Effort: the B and C exports already listed in the calibration pack (~35).
+### 6. ~~What is not modelled at all yet~~ — done (October 2026, via `calibrate -auto`)
+- **Sharpness**: SPP sharpens the full image, so on reduced views it nearly vanishes; ours now
+  scales with view size (6.7 → 1.8).
+- **Beyond ±1**: B steps measured (Exposure/Contrast/Highlight/Shadow ±2, Fill Light 0.25/2/−1).
+- **All colour modes**: measured; 0–3 and 9–12 are one default look, 5 and 8 distinct; all ≤1.8.
+- Still open: **fine WB grid offsets** some presets rely on (SPP keeps them outside the XML).
 
 ### 7. Other bodies (gain: whole new user groups)
 DP Merrill (same sensor as SD1: likely shares the SD1 model, verify with 2–3 A00 exports),

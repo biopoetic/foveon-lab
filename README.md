@@ -144,8 +144,9 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
   view of a photo shows the JPEG at once and swaps in the accurate preview when the raw decode is
   done (~10–25 s, cached). For SD15 the same approach measured *worse* than the camera JPEG
   (22.7 vs 17.0), so SD15 stays on the JPEG. A damaged embedded JPEG falls back to the raw data.
-- **ColorMode codes**: 4 = Standard, 6 = Portrait, 7 = Landscape (6 and 7 measured); other codes are
-  unknown (the calibration pack's C steps probe them).
+- **ColorMode codes**: all measured in SPP. 4 = Standard, 6 = Portrait, 7 = Landscape; 5 and 8 are
+  two further looks (8 is more saturated with hue shifts); 0–3 and 9–12 all render like one default
+  mode. Each is emulated within ~1–2/255.
 - **White Balance** is emulated as measured in SPP: in presets, WhiteBalance 0 and 1 look the same,
   2 and 6 shift colour strongly (both measured, now within ~2–3/255). **ColorTemp** stored in a
   preset has no visible effect in SPP at all (3000/5000/7000 K exported identically), so it is

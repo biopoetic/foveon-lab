@@ -336,7 +336,7 @@ func Analyze(dir string, progress io.Writer) (*Result, error) {
 				continue
 			}
 			m.Code, m.Label, m.Param, m.Value, m.Image = s.Code, s.Label, s.Param, s.Value, name
-			if s.Param == "WhiteBalance" && m.Change > 1 {
+			if (s.Param == "WhiteBalance" || s.Param == "ColorMode") && m.Change > 1 {
 				fit := fitRaw([]RawPair{{Raw: ref, SPP: out}})
 				m.WBFit = &fit
 			}

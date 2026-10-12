@@ -43,6 +43,23 @@ type Model struct {
 	// WB: SPP's WhiteBalance codes that change the image (the neutral 1 and
 	// 0 don't; ColorTemp has no effect at all), as a colour mapping.
 	WB map[string]*RawCorrection `json:"wb,omitempty"`
+	// Mode: colour-mode mappings (matrix + curves) for modes whose effect
+	// includes hue shifts the brightness/colourfulness steps can't express.
+	Mode map[string]*RawCorrection `json:"mode,omitempty"`
+}
+
+// UseModeMapping lists the colour modes rendered with their colour mapping
+// instead of tone steps, chosen by measured error on SPP exports: mode 8
+// 7.9 -> 1.8, Landscape (7) 1.3 -> 0.6 and its real preset 3.5 -> 2.2. Not
+// Portrait (6): alone it's a tie, inside real presets the mapping was worse
+// (6.0 -> 8.9). Modes 0-3 and 9-12 all render like one default mode.
+var UseModeMapping = map[int]bool{0: true, 1: true, 2: true, 3: true, 5: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true}
+
+func modeFor(mode int) *RawCorrection {
+	if model == nil || !UseModeMapping[mode] {
+		return nil
+	}
+	return model.Mode[fmt.Sprint(mode)]
 }
 
 // wbFor is the measured mapping for WhiteBalance code wb, or nil.

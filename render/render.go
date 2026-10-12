@@ -442,6 +442,7 @@ type pixOp struct {
 	// Measured emulation (model.go), when a model is embedded.
 	measured   bool
 	wb         *RawCorrection // measured WhiteBalance code mapping
+	modeMap    *RawCorrection // measured colour-mode mapping (when used)
 	tint       [3]float32     // colour adjust, brightness-neutral
 	pre, post  []toneOp       // tone steps before / after Fill Light
 	fillM      *fillOp
@@ -493,7 +494,11 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 			op.post = append(op.post, newToneOp(t.param, t.v)...)
 		}
 		if p.ColorMode != preset.ModeStandard {
-			op.post = append(op.post, newToneOp(fmt.Sprintf("ColorMode%d", p.ColorMode), 1)...)
+			if m := modeFor(p.ColorMode); m != nil {
+				op.modeMap = m
+			} else {
+				op.post = append(op.post, newToneOp(fmt.Sprintf("ColorMode%d", p.ColorMode), 1)...)
+			}
 		}
 		// Measured: Saturation ±0.5 → ×1.25 / ×0.75, ±1 → ×1.5 / ×0.5.
 		op.satMeasure = math.Max(0, 1+0.5*sat)
@@ -509,6 +514,9 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 func (op *pixOp) applyMeasured(r, g, bl, m float32) (float32, float32, float32) {
 	if op.wb != nil {
 		r, g, bl = op.wb.Pixel(r, g, bl)
+	}
+	if op.modeMap != nil {
+		r, g, bl = op.modeMap.Pixel(r, g, bl)
 	}
 	r, g, bl = r*op.tint[0], g*op.tint[1], bl*op.tint[2]
 	Y := 0.2126*r + 0.7152*g + 0.0722*bl

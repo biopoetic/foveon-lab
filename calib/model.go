@@ -37,6 +37,14 @@ func BuildModel(res *Result, image string) (*render.Model, error) {
 		key, ok := toneParams[m.Param]
 		if m.Param == "ColorMode" {
 			key, ok = fmt.Sprintf("ColorMode%d", int(m.Value)), true
+			// Colour modes also shift hues (e.g. 8): keep a colour mapping
+			// too; the renderer uses it where it fits better.
+			if m.WBFit != nil {
+				if mod.Mode == nil {
+					mod.Mode = map[string]*render.RawCorrection{}
+				}
+				mod.Mode[fmt.Sprint(int(m.Value))] = m.WBFit
+			}
 		}
 		switch {
 		case ok:
