@@ -3,7 +3,6 @@ package calib
 import (
 	"errors"
 	"fmt"
-	"image"
 	_ "image/jpeg"
 	"io"
 	"math"
@@ -89,12 +88,11 @@ func findExports(dir string) (map[string][]export, error) {
 }
 
 func load(path string) (*render.Linear, error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	img, _, err := image.Decode(f)
+	img, _, err := render.DecodeImage(data)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", filepath.Base(path), err)
 	}

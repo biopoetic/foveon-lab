@@ -887,6 +887,7 @@ func calibCommand(desk string) bool {
 	fsFlags := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	dir := fsFlags.String("dir", filepath.Join(desk, "foveon-calibration"), "calibration folder")
 	photos := fsFlags.String("photos", desk, "folders with X3F photos (for suggesting source images)")
+	intoSPP := fsFlags.Bool("spp", false, "also add the [CAL] presets straight into Sigma Photo Pro's preset list (SPP must be closed; its settings are backed up first)")
 	fsFlags.Parse(os.Args[2:])
 
 	if os.Args[1] == "calibrate" {
@@ -902,6 +903,22 @@ func calibCommand(desk string) bool {
 		}
 		fmt.Printf("Calibration pack: %s\nInstructions: %s\nSave exports to: %s\n",
 			xmlPath, filepath.Join(*dir, calib.InstructionsFile), filepath.Join(*dir, calib.ExportsDir))
+		if *intoSPP {
+			in, err := spp.Detect()
+			if err != nil {
+				log.Fatal(err)
+			}
+			var names []string
+			var ps []preset.Params
+			for _, st := range calib.Steps() {
+				names, ps = append(names, calib.PresetName(st)), append(ps, st.Params)
+			}
+			backup, err := in.AddPresets(names, ps)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("Added %d [CAL] presets to SPP (backup of its settings: %s) - skip step 1 of the instructions.\n", len(names), backup)
+		}
 		return true
 	}
 
@@ -923,6 +940,26 @@ func calibCommand(desk string) bool {
 	}
 	fmt.Println(rep)
 	fmt.Printf("Saved: %s, %s\n", reportPath, jsonPath)
+	// The measured emulation, one model.json per photo (copy the one you
+	// trust to render/model.json and rebuild to use it).
+	seen := map[string]bool{}
+	for _, m := range res.Measurements {
+		if seen[m.Image] {
+			continue
+		}
+		seen[m.Image] = true
+		mod, err := calib.BuildModel(res, m.Image)
+		if err != nil {
+			fmt.Printf("No model for %s: %v\n", m.Image, err)
+			continue
+		}
+		mj, _ := json.MarshalIndent(mod, "", " ")
+		p := filepath.Join(*dir, "model_"+m.Image+".json")
+		if err := os.WriteFile(p, mj, 0o644); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Model: %s\n", p)
+	}
 	return true
 }
 

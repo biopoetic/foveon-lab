@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/biopoetic/foveon-lab/render"
 	_ "golang.org/x/image/tiff" // registers TIFF for image.Decode
 )
 
@@ -58,7 +59,7 @@ func decodeImageFile(path string) (image.Image, error) {
 	if err != nil {
 		return nil, err
 	}
-	img, _, err := image.Decode(bytes.NewReader(data))
+	img, _, err := render.DecodeImage(data)
 	return img, err
 }
 

@@ -127,14 +127,19 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
 
 ## Limitations — read this
 
-- **The preview is an emulation, not SPP.** Sigma's algorithms (X3 Fill Light, colour modes, highlight
-  handling) are not public. The emulation (`render/`) gets the direction and relative strength of each
-  preset right, not the exact pixels. Use it to choose and compare presets; develop final images in SPP.
+- **The preview is an emulation, not SPP** — but a **measured** one. Sigma's algorithms are not
+  public, so every slider was measured in SPP 6.9 itself (see *Calibration* below): its effect on
+  brightness and colourfulness, and for X3 Fill Light on each pixel *and its surroundings*. On the
+  measurement photo (SD1 Merrill) the preview is now within ~1–2/255 of SPP for Exposure, Contrast,
+  Highlight, Shadow, Saturation and the colour modes, and ~4–7/255 for Fill Light (was 10–33 with
+  the earlier hand-written formulas). Held-out settings, predicted by interpolation, land within the
+  same range. Measured on one SD1 photo so far; SD15 files may differ slightly. Develop final images
+  in SPP.
 - **The source is the camera's own JPEG**, which already has the in-camera colour mode applied (often
   *Vivid*). "Compensate camera JPEG" undoes that approximately, from the X3F metadata
   (`CM_DESC`, `SATU_DESC`, `CONT_DESC`), so presets start from a more neutral base.
-- **ColorMode codes**: 4 = Standard, 6 = Portrait, 7 = Landscape were inferred from preset packs; other
-  codes are unknown (the calibration pack probes them).
+- **ColorMode codes**: 4 = Standard, 6 = Portrait, 7 = Landscape (6 and 7 measured); other codes are
+  unknown (the calibration pack's C steps probe them).
 - **White Balance / ColorTemp** are kept and written back but not emulated.
 - **Cameras:** tested on files from the SD9, SD10, SD14, SD15, SD1 Merrill, DP1, DP1 Merrill,
   dp2 Quattro, DP0 Quattro, sd Quattro and sd Quattro H. Merrill bodies get the SD1 presets,
@@ -149,11 +154,12 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
 ## Calibration: measuring SPP instead of guessing
 
 ```
-foveon-lab calibrate   # creates Desktop/foveon-calibration: preset pack + INSTRUCTIONS.txt + exports/
-foveon-lab analyze     # measures the exports → report.txt + calibration.json
+foveon-lab calibrate -spp   # creates Desktop/foveon-calibration and adds the [CAL] presets to SPP
+foveon-lab analyze          # measures the exports → report.txt, calibration.json, model_<photo>.json
 ```
 
-Each `[CAL]` preset moves exactly **one** SPP control to a known value (e.g. Contrast +0.5); everything
+`model_<photo>.json` is the measured emulation; copy it to `render/model.json` and rebuild to use it
+(the shipped one was measured on an SD1 Merrill photo). Each `[CAL]` preset moves exactly **one** SPP control to a known value (e.g. Contrast +0.5); everything
 else matches the neutral preset `A00`. You apply each preset in SPP to the same photo and save it as
 `<photo>_<code>.tif`. `analyze` then compares every export with SPP's own neutral `A00` export and
 reports, per control:

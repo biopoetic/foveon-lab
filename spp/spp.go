@@ -164,6 +164,29 @@ func (in *Install) Apply(name string, p preset.Params) (backup string, err error
 	return backup, nil
 }
 
+// AddPresets puts the given presets into SPP's preset list (replacing any
+// with the same name), after backing up its settings. SPP must be closed.
+func (in *Install) AddPresets(names []string, ps []preset.Params) (backup string, err error) {
+	if in.Running() {
+		return "", ErrRunning
+	}
+	sPath := filepath.Join(in.Dir, settingsFile)
+	b, err := os.ReadFile(sPath)
+	if err != nil {
+		return "", err
+	}
+	text := string(b)
+	for i, name := range names {
+		if text, err = UpsertPreset(text, name, ps[i]); err != nil {
+			return "", err
+		}
+	}
+	if backup, err = in.Backup(); err != nil {
+		return "", fmt.Errorf("backup failed, nothing changed: %w", err)
+	}
+	return backup, writeAtomic(sPath, text)
+}
+
 // ErrStillOpen means SPP did not exit after being asked to close — it is
 // probably showing a dialog. It is never force-killed.
 var ErrStillOpen = errors.New("Sigma Photo Pro did not close — it may be asking something (unsaved work?). Answer it or close SPP yourself, then try again")
@@ -341,6 +364,9 @@ func roundTrip(p preset.Params) preset.Params {
 	p.Exposure, p.Contrast, p.Blackness, p.Highlight = r(p.Exposure), r(p.Contrast), r(p.Blackness), r(p.Highlight)
 	p.Saturation, p.Sharpness, p.FillLight = r(p.Saturation), r(p.Sharpness), r(p.FillLight)
 	p.R, p.G, p.B = r(p.R), r(p.G), r(p.B)
+	// Reading marks Saturation <= -1 as B&W (how packs flag it), so a plain
+	// colour preset at -1 (e.g. calibration step A15) reads back as Mono.
+	p.Mono = p.Mono || p.Saturation <= preset.MonoSaturationRead
 	return p
 }
 

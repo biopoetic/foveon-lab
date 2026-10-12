@@ -7,6 +7,7 @@
 package render
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -409,7 +410,7 @@ func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, 
 			for x := 0; x < w; x++ {
 				i := (y*w + x) * 3
 				var m float32
-				if op.fill != 0 {
+				if op.fill != 0 || op.fillM != nil {
 					m = b.m.at(x, y)
 				}
 				r, g, bl := op.apply(b.Pix[i], b.Pix[i+1], b.Pix[i+2], m)
@@ -426,6 +427,13 @@ type pixOp struct {
 	satF                                     float64
 	mono                                     bool
 	mode                                     int
+
+	// Measured emulation (model.go), when a model is embedded.
+	measured   bool
+	tint       [3]float32 // colour adjust, brightness-neutral
+	pre, post  []toneOp   // tone steps before / after Fill Light
+	fillM      *fillOp
+	satMeasure float64
 }
 
 func newPixOp(p preset.Params, c Compensation) pixOp {
@@ -460,12 +468,64 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	if c.SatFactor > 0 {
 		op.satF *= c.SatFactor
 	}
+	if model != nil {
+		op.measured = true
+		op.tint = [3]float32{float32(p.R * k), float32(p.G * k), float32(p.B * k)}
+		op.pre = newToneOp("Exposure", p.Exposure)
+		op.fillM = newFillOp(p.FillLight)
+		for _, t := range []struct {
+			param string
+			v     float64
+		}{{"Highlight", p.Highlight}, {"Blackness", p.Blackness}, {"Contrast", p.Contrast + c.Contrast}} {
+			op.post = append(op.post, newToneOp(t.param, t.v)...)
+		}
+		if p.ColorMode != preset.ModeStandard {
+			op.post = append(op.post, newToneOp(fmt.Sprintf("ColorMode%d", p.ColorMode), 1)...)
+		}
+		// Measured: Saturation ±0.5 → ×1.25 / ×0.75, ±1 → ×1.5 / ×0.5.
+		op.satMeasure = math.Max(0, 1+0.5*sat)
+		if c.SatFactor > 0 {
+			op.satMeasure *= c.SatFactor
+		}
+	}
 	return op
+}
+
+// applyMeasured is apply for the measured model: tone steps work on
+// perceptual brightness and scale colourfulness by their measured ratio.
+func (op *pixOp) applyMeasured(r, g, bl, m float32) (float32, float32, float32) {
+	r, g, bl = r*op.tint[0], g*op.tint[1], bl*op.tint[2]
+	Y := 0.2126*r + 0.7152*g + 0.0722*bl
+	cr, cg, cb := r-Y, g-Y, bl-Y
+	x := float64(enc(Y))
+	chroma := 1.0
+	var k float64
+	for i := range op.pre {
+		x, k = op.pre[i].apply(x)
+		chroma *= k
+	}
+	if op.fillM != nil {
+		x, k = op.fillM.apply(x, float64(m))
+		chroma *= k
+	}
+	for i := range op.post {
+		x, k = op.post[i].apply(x)
+		chroma *= k
+	}
+	Y2 := dec(float32(x))
+	if op.mono {
+		return Y2, Y2, Y2
+	}
+	f := float32(chroma * op.satMeasure)
+	return Y2 + cr*f, Y2 + cg*f, Y2 + cb*f
 }
 
 // apply maps one linear pixel; m is the blurred perceptual luminance around
 // it (Fill Light's mask).
 func (op *pixOp) apply(r, g, bl, m float32) (float32, float32, float32) {
+	if op.measured {
+		return op.applyMeasured(r, g, bl, m)
+	}
 	r, g, bl = r*op.cr, g*op.cg, bl*op.cb
 
 	if op.fill != 0 {
