@@ -8,8 +8,11 @@ package agent
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
 	"strings"
@@ -23,6 +26,9 @@ type Config struct {
 	APIKey  string
 	// MaxSteps bounds the number of model calls in one run.
 	MaxSteps int
+	// CompletionTokens sends the output limit as max_completion_tokens
+	// (OpenAI's newer models reject max_tokens).
+	CompletionTokens bool
 	// HTTP is optional (tests inject one).
 	HTTP *http.Client
 }
@@ -77,6 +83,8 @@ type chatRequest struct {
 	Tools      []Tool    `json:"tools,omitempty"`
 	ToolChoice any       `json:"tool_choice,omitempty"`
 	MaxTokens  int       `json:"max_tokens,omitempty"`
+
+	MaxCompletionTokens int `json:"max_completion_tokens,omitempty"`
 }
 
 // Usage is the token accounting of one or more calls.
@@ -97,6 +105,9 @@ type chatResponse struct {
 }
 
 func (c *Config) chat(ctx context.Context, req chatRequest) (*chatResponse, error) {
+	if c.CompletionTokens {
+		req.MaxCompletionTokens, req.MaxTokens = req.MaxTokens, 0
+	}
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
@@ -156,6 +167,25 @@ func (c *Config) chat(ctx context.Context, req chatRequest) (*chatResponse, erro
 		return &out, nil
 	}
 	return nil, lastErr
+}
+
+// Ping checks the key, model and image support with one tiny request (a
+// 16×16 picture and a one-word answer).
+func Ping(ctx context.Context, c Config) error {
+	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	for i := range img.Pix {
+		img.Pix[i] = 128
+	}
+	var buf bytes.Buffer
+	png.Encode(&buf, img)
+	msg := Message{Role: "user", Content: []Part{
+		{Type: "text", Text: "Connection test. Reply with the single word OK."},
+		{Type: "image_url", ImageURL: &ImageURL{URL: "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())}},
+	}}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	_, err := c.chat(ctx, chatRequest{Model: c.Model, Messages: []Message{msg}})
+	return err
 }
 
 func trim(s string, n int) string {

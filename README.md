@@ -93,12 +93,16 @@ shadows, brightness, saturation, warmth), fine-tunes the best one, and explains 
 every step live, then **Open in editor** to save it as an SPP preset or export it. You can give it a
 direction, e.g. *"warm film look"*, *"moody"*, *"natural skin"*.
 
-It works with any OpenAI-compatible Chat Completions API that accepts images and tool calls. The
-default is DeepSeek's `deepseek-flash`:
+**Connect a provider in the app:** open the AI panel, pick **DeepSeek**, **OpenAI**, **Google
+Gemini**, **OpenRouter** or any other OpenAI-compatible API (it must accept images and tool calls),
+paste your API key and click **Test & save**. Foveon Lab checks the key with one tiny request before
+saving it. The key stays in Foveon Lab's settings file on your computer and is sent only to the
+provider you chose; **Remove key** deletes it. You pay the provider directly.
+
+Alternatively set an environment variable (used when nothing is saved in the app):
 
 ```
 set DEEPSEEK_API_KEY=sk-...          # Windows (export ... on macOS/Linux)
-foveon-lab
 foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-env OPENAI_API_KEY
 ```
 

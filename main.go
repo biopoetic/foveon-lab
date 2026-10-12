@@ -23,7 +23,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -287,7 +286,7 @@ type server struct {
 	thumbs  *lru // id → []byte
 	sem     chan struct{}
 
-	ai agent.Config
+	ai aiState
 }
 
 func (s *server) loadPresets() {
@@ -768,7 +767,8 @@ func (s *server) handleAgent(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 404, err)
 		return
 	}
-	if s.ai.APIKey == "" {
+	ai := s.ai.get()
+	if ai.APIKey == "" {
 		httpErr(w, 400, errors.New("no AI API key configured"))
 		return
 	}
@@ -803,8 +803,8 @@ func (s *server) handleAgent(w http.ResponseWriter, r *http.Request) {
 			info[k] = v
 		}
 	}
-	log.Printf("AI agent: %s (%s, %s)", ph.Name, s.ai.Model, s.ai.BaseURL)
-	_, err = agent.Run(r.Context(), s.ai, agent.Photo{Name: ph.Name, Camera: ph.Camera, Info: info},
+	log.Printf("AI agent: %s (%s, %s)", ph.Name, ai.Model, ai.BaseURL)
+	_, err = agent.Run(r.Context(), ai, agent.Photo{Name: ph.Name, Camera: ph.Camera, Info: info},
 		r.URL.Query().Get("dir"), s.agentCandidates(ph), renderFn, send)
 	if err != nil {
 		if r.Context().Err() == nil {
@@ -957,9 +957,20 @@ func main() {
 		bases:      newLRU(40),
 		thumbs:     newLRU(2000),
 		sem:        make(chan struct{}, max(2, runtime.NumCPU()/2)),
-		ai:         agent.Config{BaseURL: *aiBase, Model: *aiModel, APIKey: os.Getenv(*aiKeyEnv), MaxSteps: 12},
 	}
-	s.setPhotos(photoRoots, cfg.AllImages)
+	// AI agent: what was set in the app wins over the environment variable.
+	s.ai.cfg = agent.Config{BaseURL: *aiBase, Model: *aiModel, APIKey: os.Getenv(*aiKeyEnv), MaxSteps: 12}
+	s.ai.keyEnv = *aiKeyEnv
+	if s.ai.cfg.APIKey != "" {
+		s.ai.source, s.ai.provider = "env", "custom"
+		if strings.Contains(*aiBase, "deepseek") {
+			s.ai.provider = "deepseek"
+		}
+	}
+	if cfg.AI != nil && cfg.AI.Key != "" {
+		s.ai.apply(*cfg.AI)
+	}
+		s.setPhotos(photoRoots, cfg.AllImages)
 	s.loadPresets()
 
 	mux := http.NewServeMux()
@@ -974,13 +985,7 @@ func main() {
 	mux.HandleFunc("/api/render", s.handleRender)
 	mux.HandleFunc("/api/export", s.handleExport)
 	mux.HandleFunc("/api/reveal", s.handleReveal)
-	mux.HandleFunc("/api/agent/status", func(w http.ResponseWriter, r *http.Request) {
-		host := s.ai.BaseURL
-		if u, err := url.Parse(s.ai.BaseURL); err == nil {
-			host = u.Host
-		}
-		writeJSON(w, map[string]any{"enabled": s.ai.APIKey != "", "model": s.ai.Model, "host": host, "keyEnv": *aiKeyEnv})
-	})
+	mux.HandleFunc("/api/agent/status", s.handleAISettings)
 	mux.HandleFunc("/api/agent", s.handleAgent)
 	mux.HandleFunc("/api/spp/status", s.handleSPPStatus)
 	mux.HandleFunc("/api/spp/open", s.handleSPPOpen)
@@ -1003,7 +1008,7 @@ func main() {
 	}
 	upd.restart = func() { relaunch(ln, upd.inst) }
 	go upd.loop()
-	err = http.Serve(ln, mux)
+	err = http.Serve(ln, sameOrigin(mux))
 	if restarting.Load() {
 		select {} // relaunch closed the listener and exits the process
 	}

@@ -14,8 +14,9 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/
 button,select,input{font:inherit;color:inherit}
 button{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
 button:hover{border-color:#555}
+button:disabled{opacity:.45;cursor:default}
 button.primary{background:var(--accent);color:#1a1300;border-color:var(--accent);font-weight:600}
-select,input[type=text],input[type=search]{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+select,input[type=text],input[type=password],input[type=search]{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
 #app{display:grid;grid-template-columns:230px 1fr;grid-template-rows:auto 1fr;height:100vh}
 header{grid-column:1/3;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel)}
 header h1{font-size:15px;margin:0;letter-spacing:.5px}
@@ -76,6 +77,13 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 #aiPanel .hd{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
 #aiPanel .hd b{flex:1}
 #aiPanel .ctl{padding:10px 12px;border-bottom:1px solid var(--line)}
+#aiSetup{display:none;flex-direction:column;gap:7px;padding:10px 12px;border-bottom:1px solid var(--line)}
+#aiSetup.on{display:flex}
+#aiSetup label{display:flex;flex-direction:column;gap:3px;color:var(--dim);font-size:12px}
+#aiSetup input,#aiSetup select{width:100%}
+#aiSetup .note{color:var(--dim);font-size:11px}
+#aiConf{color:var(--dim);font-size:12px;margin-bottom:6px}
+#aiConf a,#aiSetup a{color:var(--accent2);cursor:pointer}
 #aiPanel textarea{width:100%;min-height:52px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--text);font:inherit;padding:6px 8px;resize:vertical}
 #aiPanel .priv{color:var(--dim);font-size:11px;margin:6px 0}
 #aiLog{flex:1;overflow:auto;padding:8px 12px 20px}
@@ -168,7 +176,18 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 </div>
 <div id="aiPanel">
   <div class="hd"><b>✦ AI agent</b><span id="aiModel" style="color:var(--dim);font-size:12px"></span><button id="aiClose">✕</button></div>
+  <div id="aiSetup">
+    <b>Connect an AI provider</b>
+    <label>Provider <select id="aiProv"></select></label>
+    <label>API key <input type="password" id="aiKey" autocomplete="off" spellcheck="false" placeholder="paste your key"></label>
+    <div class="note" id="aiKeyLink"></div>
+    <label>Model <input type="text" id="aiModelIn" spellcheck="false"></label>
+    <label id="aiBaseRow">API address <input type="text" id="aiBase" spellcheck="false" placeholder="https://…/v1"></label>
+    <div><button class="primary" id="aiSave">Test &amp; save</button> <button id="aiCancel">Cancel</button></div>
+    <div class="note" id="aiSetupMsg">The key is saved only on this computer (Foveon Lab's settings file) and sent only to the provider you pick. You pay the provider for what you use.</div>
+  </div>
   <div class="ctl">
+    <div id="aiConf"></div>
     <textarea id="aiDir" placeholder="Direction (optional): e.g. warm film look, moody, natural skin, punchy landscape…"></textarea>
     <div class="priv" id="aiPriv"></div>
     <button class="primary" id="aiStart">Pick &amp; tune for this photo</button>
@@ -560,16 +579,73 @@ async function openInSPP(restart){
 const AI = {status: null, es: null};
 
 async function aiInit(){
-  try { AI.status = await (await fetch("/api/agent/status")).json(); } catch { AI.status = {enabled:false}; }
+  try { AI.status = await (await fetch("/api/agent/status")).json(); } catch { AI.status = {enabled:false, providers:[]}; }
+  aiShow();
+}
+
+function aiShow(){
   const s = AI.status;
-  $("#aiModel").textContent = s.enabled ? `${s.model} @ ${s.host}` : "not configured";
+  $("#aiModel").textContent = s.enabled ? `${s.model} @ ${s.host}` : "not connected";
   $("#aiPriv").textContent = s.enabled
     ? `Sends downscaled renders of this photo to ${s.host}. A run is typically 4–8 model calls (~60–100k input tokens; about 1–2 US cents on DeepSeek).`
-    : `Set the ${s.keyEnv || "DEEPSEEK_API_KEY"} environment variable and restart Foveon Lab to enable the agent.`;
+    : "";
+  $("#aiConf").innerHTML = s.enabled
+    ? `Connected: <b>${esc(s.model)}</b> @ ${esc(s.host)}${s.keyHint ? " · key " + esc(s.keyHint) : ""}${s.source === "env" ? " (from " + esc(s.keyEnv) + ")" : ""} · <a id="aiChange">Change</a>${s.source === "app" ? ' · <a id="aiRemove">Remove key</a>' : ""}`
+    : `Not connected. <a id="aiChange">Connect a provider…</a>`;
+  $("#aiChange").onclick = () => aiSetup(true);
+  if ($("#aiRemove")) $("#aiRemove").onclick = aiRemove;
   $("#aiStart").disabled = !s.enabled;
 }
 
-function aiOpen(){ $("#aiPanel").classList.add("on"); }
+function aiSetup(on){
+  const box = $("#aiSetup");
+  box.classList.toggle("on", on);
+  if (!on) return;
+  const s = AI.status, sel = $("#aiProv");
+  sel.innerHTML = (s.providers || []).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
+  sel.value = s.provider && s.provider !== "" ? s.provider : "deepseek";
+  const fill = keepModel => {
+    const p = (s.providers || []).find(x => x.id === sel.value) || {};
+    const same = keepModel && sel.value === s.provider;
+    $("#aiModelIn").value = same ? s.model : (p.model || "");
+    $("#aiBase").value = same ? s.baseURL : (p.baseURL || "");
+    $("#aiBaseRow").style.display = sel.value === "custom" ? "" : "none";
+    $("#aiKey").value = "";
+    $("#aiKey").placeholder = same && s.source === "app" ? "leave empty to keep the saved key" : "paste your key";
+    $("#aiKeyLink").innerHTML = p.keyURL ? `No key yet? <a href="${esc(p.keyURL)}" target="_blank" rel="noopener">Create one at ${esc(p.name)}</a> (needs an account with a little credit).` : "Any OpenAI-compatible API with image input and tool calling.";
+  };
+  sel.onchange = () => fill(false);
+  fill(true);
+  $("#aiSetupMsg").textContent = "The key is saved only on this computer (Foveon Lab's settings file) and sent only to the provider you pick. You pay the provider for what you use.";
+  $("#aiKey").focus();
+}
+
+async function aiSave(){
+  const btn = $("#aiSave");
+  btn.disabled = true;
+  $("#aiSetupMsg").textContent = "Testing the key with one tiny request…";
+  try {
+    const res = await fetch("/api/agent/status", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({provider: $("#aiProv").value, key: $("#aiKey").value.trim(), model: $("#aiModelIn").value.trim(), baseURL: $("#aiBase").value.trim()})});
+    if (!res.ok){ $("#aiSetupMsg").textContent = await res.text(); return; }
+    AI.status = await res.json();
+    $("#aiKey").value = "";
+    aiSetup(false);
+    aiShow();
+    toast("AI agent connected: " + esc(AI.status.model), 4000);
+  } finally { btn.disabled = false; }
+}
+
+async function aiRemove(){
+  if (!confirm("Remove the saved API key from this computer?")) return;
+  const res = await fetch("/api/agent/status", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({remove: true})});
+  if (res.ok){ AI.status = await res.json(); aiShow(); }
+}
+
+function aiOpen(){
+  $("#aiPanel").classList.add("on");
+  if (AI.status && !AI.status.enabled) aiSetup(true);
+}
 function aiLog(html, cls){
   const d = document.createElement("div");
   d.className = "ev " + (cls||""); d.innerHTML = html;
@@ -671,10 +747,13 @@ function bind(){
   $("#aiOpen").onclick = $("#aiOpen2").onclick = aiOpen;
   $("#aiClose").onclick = () => $("#aiPanel").classList.remove("on");
   $("#aiStart").onclick = startAgent;
+  $("#aiSave").onclick = aiSave;
+  $("#aiCancel").onclick = () => aiSetup(false);
+  $("#aiKey").onkeydown = e => { if (e.key === "Enter") aiSave(); };
   $("#aiStop").onclick = () => { stopAgent(); aiLog("Stopped.", "status"); };
   let origDown = false;
   document.addEventListener("keydown", e => {
-    if (e.target.matches("input[type=text],input[type=search],select,textarea,input[type=range]")) return;
+    if (e.target.matches("input[type=text],input[type=password],input[type=search],select,textarea,input[type=range]")) return;
     const inDetail = $("#detail").classList.contains("on");
     // ↑/↓ = previous/next photo, ←/→ = previous/next preset (in the grid
     // ←/→ opens the editor on the first/last preset).

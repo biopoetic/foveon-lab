@@ -19,6 +19,8 @@ type appConfig struct {
 	Presets string   `json:"presets"`
 	// AllImages also lists ordinary JPEG/TIFF/PNG files (look preview only).
 	AllImages bool `json:"allImages,omitempty"`
+	// AI is the agent's provider, model and API key as set in the app.
+	AI *aiSettings `json:"ai,omitempty"`
 }
 
 func configPath() string {
@@ -44,7 +46,7 @@ func saveConfig(c appConfig) error {
 		return err
 	}
 	data, _ := json.MarshalIndent(c, "", "  ")
-	return os.WriteFile(p, data, 0o644)
+	return os.WriteFile(p, data, 0o600) // may hold an API key
 }
 
 // defaultPhotoRoots: the Desktop plus the Pictures folder when present.
@@ -122,7 +124,9 @@ func (s *server) handleFolders(w http.ResponseWriter, r *http.Request) {
 		s.photoMu.RLock()
 		all := s.allImages
 		s.photoMu.RUnlock()
-		if err := saveConfig(appConfig{Photos: roots, Presets: presets, AllImages: all}); err != nil {
+		cfg, _ := loadConfig()
+		cfg.Photos, cfg.Presets, cfg.AllImages = roots, presets, all
+		if err := saveConfig(cfg); err != nil {
 			httpErr(w, 500, err)
 			return
 		}
