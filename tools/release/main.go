@@ -276,7 +276,14 @@ func main() {
 	skipX3F := flag.Bool("skip-x3f-extract", false, "ship without the bundled x3f_extract (SD9/SD10 then stay low-res)")
 	skipDMG := flag.Bool("skip-dmg", false, "do not build the macOS .app/.dmg")
 	genKey := flag.Bool("gen-update-key", false, "create the self-update signing key (once) and print its public key")
+	icoOut := flag.String("write-ico", "", "only write the Windows icon (.ico) to this path")
 	flag.Parse()
+	if *icoOut != "" {
+		if err := writeICO(*icoOut); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if *genKey {
 		if err := genUpdateKey(); err != nil {
 			log.Fatal(err)
@@ -336,6 +343,13 @@ func main() {
 
 		name := fmt.Sprintf("foveon-lab-%s-%s", *version, t.label)
 		files := map[string]string{exe: bin, "README.md": "README.md", "LICENSE": "LICENSE"}
+		if t.goos == "windows" {
+			ico := filepath.Join(dist, t.label, "foveon-lab.ico")
+			if err := writeICO(ico); err != nil {
+				log.Fatal(err)
+			}
+			files["foveon-lab.ico"] = ico
+		}
 
 		// The patched x3fuse-core x3f_extract (SD9/SD10 raw decoding), signed
 		// like foveon-lab itself, plus its license, notice and the patch.

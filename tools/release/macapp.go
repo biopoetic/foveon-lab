@@ -130,6 +130,43 @@ func writeICNS(path string) error {
 	return os.WriteFile(path, out.Bytes(), 0o644)
 }
 
+// writeICO writes a Windows .ico with PNG entries (16–256 px).
+func writeICO(path string) error {
+	big := drawIcon(256)
+	sizes := []int{16, 24, 32, 48, 64, 128, 256}
+	var imgs [][]byte
+	for _, sz := range sizes {
+		img := image.Image(big)
+		if sz != 256 {
+			small := image.NewRGBA(image.Rect(0, 0, sz, sz))
+			xdraw.CatmullRom.Scale(small, small.Bounds(), big, big.Bounds(), xdraw.Src, nil)
+			img = small
+		}
+		var p bytes.Buffer
+		if err := png.Encode(&p, img); err != nil {
+			return err
+		}
+		imgs = append(imgs, p.Bytes())
+	}
+	var out bytes.Buffer
+	binary.Write(&out, binary.LittleEndian, []uint16{0, 1, uint16(len(sizes))})
+	off := 6 + 16*len(sizes)
+	for i, sz := range sizes {
+		dim := byte(sz)
+		if sz >= 256 {
+			dim = 0 // 0 means 256
+		}
+		out.Write([]byte{dim, dim, 0, 0})
+		binary.Write(&out, binary.LittleEndian, []uint16{1, 32})
+		binary.Write(&out, binary.LittleEndian, []uint32{uint32(len(imgs[i])), uint32(off)})
+		off += len(imgs[i])
+	}
+	for _, b := range imgs {
+		out.Write(b)
+	}
+	return os.WriteFile(path, out.Bytes(), 0o644)
+}
+
 // buildMacApp assembles, signs, notarizes and staples Foveon Lab.app from the
 // per-architecture binaries, returning the app's path.
 func buildMacApp(dist, version, fooArm, fooAmd, x3fArm, x3fAmd string) (string, error) {
