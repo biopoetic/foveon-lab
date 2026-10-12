@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+      <Setting>
+        <Name>[SLIDE] Vivid 50 V4</Name>
+        <Contrast>0,45</Contrast>
+        <Exposure>0</Exposure>
+        <Highlight>-0,35</Highlight>
+        <Saturation>0,55</Saturation>
+        <FillLight>0</FillLight>
+        <ColorAdjustR>0,95</ColorAdjustR>
+        <ColorAdjustG>1,05</ColorAdjustG>
+        <ColorAdjustB>0,92</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>7</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[SLIDE] True 100 V4</Name>
+        <Contrast>0,22</Contrast>
+        <Exposure>0,1</Exposure>
+        <Highlight>-0,4</Highlight>
+        <Saturation>0,32</Saturation>
+        <FillLight>0,15</FillLight>
+        <ColorAdjustR>0,94</ColorAdjustR>
+        <ColorAdjustG>1</ColorAdjustG>
+        <ColorAdjustB>0,9</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>4</ColorMode>
+      </Setting>
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

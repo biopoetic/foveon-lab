@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+      <Setting>
+        <Name>[PORTRAIT] Pastel 400 V4</Name>
+        <Contrast>-0,1</Contrast>
+        <Exposure>0,2</Exposure>
+        <Highlight>-0,8</Highlight>
+        <Saturation>0,12</Saturation>
+        <FillLight>0,6</FillLight>
+        <ColorAdjustR>0,91</ColorAdjustR>
+        <ColorAdjustG>1</ColorAdjustG>
+        <ColorAdjustB>0,88</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>6</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[PORTRAIT] Soft Skin V4</Name>
+        <Contrast>-0,15</Contrast>
+        <Exposure>0,25</Exposure>
+        <Highlight>-0,85</Highlight>
+        <Saturation>0,1</Saturation>
+        <FillLight>0,65</FillLight>
+        <ColorAdjustR>0,9</ColorAdjustR>
+        <ColorAdjustG>1</ColorAdjustG>
+        <ColorAdjustB>0,9</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>6</ColorMode>
+      </Setting>
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

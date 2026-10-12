@@ -1,0 +1,89 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+
+      <Setting>
+        <Name>[SIG] Foveon 3D Pop</Name>
+        <Blackness>0,08</Blackness>
+        <Contrast>0,25</Contrast>
+        <Exposure>0,05</Exposure>
+        <Highlight>-0,55</Highlight>
+        <Saturation>0,18</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,15</FillLight>
+        <ColorAdjustR>0,95</ColorAdjustR>
+        <ColorAdjustG>1,02</ColorAdjustG>
+        <ColorAdjustB>0,92</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SIG] Foveon Cine Soft</Name>
+        <Blackness>-0,04</Blackness>
+        <Contrast>-0,05</Contrast>
+        <Exposure>0,25</Exposure>
+        <Highlight>-0,85</Highlight>
+        <Saturation>0,10</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,65</FillLight>
+        <ColorAdjustR>1,02</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,88</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SIG] Foveon Nature Deep</Name>
+        <Blackness>0,04</Blackness>
+        <Contrast>0,22</Contrast>
+        <Exposure>0,08</Exposure>
+        <Highlight>-0,60</Highlight>
+        <Saturation>0,28</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,25</FillLight>
+        <ColorAdjustR>0,90</ColorAdjustR>
+        <ColorAdjustG>1,05</ColorAdjustG>
+        <ColorAdjustB>0,98</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>6</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SIG] Foveon Golden Depth</Name>
+        <Blackness>0,00</Blackness>
+        <Contrast>0,12</Contrast>
+        <Exposure>0,20</Exposure>
+        <Highlight>-0,75</Highlight>
+        <Saturation>0,22</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,45</FillLight>
+        <ColorAdjustR>1,05</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,85</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>6</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SIG] Foveon Mono Depth</Name>
+        <Blackness>0,20</Blackness>
+        <Contrast>0,60</Contrast>
+        <Exposure>0,05</Exposure>
+        <Highlight>-0,50</Highlight>
+        <Saturation>-1</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,00</FillLight>
+        <ColorAdjustR>1</ColorAdjustR>
+        <ColorAdjustG>1</ColorAdjustG>
+        <ColorAdjustB>1</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

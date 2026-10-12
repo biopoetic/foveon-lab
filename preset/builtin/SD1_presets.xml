@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+      <Setting><Name>SD1 Sunny 200</Name><Contrast>0,1</Contrast><Exposure>0,2</Exposure><Highlight>-0,5</Highlight><Saturation>0,3</Saturation><FillLight>0,4</FillLight><ColorMode>6</ColorMode></Setting>
+      <Setting><Name>SD1 Pastel 400</Name><Contrast>0</Contrast><Exposure>0,2</Exposure><Highlight>-0,6</Highlight><Saturation>0,2</Saturation><FillLight>0,5</FillLight><ColorMode>6</ColorMode></Setting>
+      <Setting><Name>SD1 Verdant 400</Name><Contrast>0,2</Contrast><Exposure>0,2</Exposure><Highlight>-0,5</Highlight><Saturation>0,3</Saturation><FillLight>0,4</FillLight><ColorMode>6</ColorMode></Setting>
+      <Setting><Name>SD1 Vivid 50</Name><Contrast>0,4</Contrast><Exposure>0,1</Exposure><Highlight>-0,3</Highlight><Saturation>0,5</Saturation><FillLight>0</FillLight><ColorMode>7</ColorMode></Setting>
+      <Setting><Name>SD1 True 100</Name><Contrast>0,2</Contrast><Exposure>0,1</Exposure><Highlight>-0,4</Highlight><Saturation>0,3</Saturation><FillLight>0,1</FillLight><ColorMode>4</ColorMode></Setting>
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

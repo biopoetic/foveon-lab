@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -222,40 +223,90 @@ func groupOf(name string) string {
 	return "OTHER"
 }
 
-// LoadDir loads every *.xml under root. Presets that are identical (same
-// name and values) across files are kept once, with Dupes counting copies.
+// Source is one place presets come from.
+type Source struct {
+	Label string // shown before the file name, e.g. "Built-in" or "SPP"
+	FS    fs.FS
+	// Match picks the files to read (default: every *.xml).
+	Match func(path string) bool
+	// Skip drops presets by name (e.g. ones Foveon Lab itself wrote).
+	Skip func(name string) bool
+}
+
+// LoadDir loads every *.xml under root.
 func LoadDir(root string) ([]Preset, []error) {
-	var files []string
-	var errs []error
-	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && strings.EqualFold(filepath.Ext(p), ".xml") {
-			files = append(files, p)
-		}
-		return nil
-	})
-	sort.Strings(files)
+	return Load(Source{FS: os.DirFS(root)})
+}
+
+// Load reads the sources in order. A preset identical to one already loaded
+// (same name and values) is kept once, with Dupes counting copies; one with
+// the same values from an EARLIER source under another name is dropped too,
+// so a renamed copy of the same pack doesn't show twice.
+func Load(sources ...Source) ([]Preset, []error) {
 	var out []Preset
-	seen := map[string]int{}
-	for _, f := range files {
-		ps, err := ParseFile(f)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", filepath.Base(f), err))
+	var errs []error
+	seen := map[string]int{}       // name|params → index
+	seenParams := map[string]int{} // params → source number
+	for si, src := range sources {
+		if src.FS == nil {
 			continue
 		}
-		rel, _ := filepath.Rel(root, f)
-		for _, p := range ps {
-			key := fmt.Sprintf("%s|%+v", p.Name, p.Params)
-			if i, ok := seen[key]; ok {
-				out[i].Dupes++
+		var files []string
+		fs.WalkDir(src.FS, ".", func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				if p != "." && strings.HasPrefix(d.Name(), ".") {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			ok := strings.EqualFold(path.Ext(p), ".xml")
+			if src.Match != nil {
+				ok = src.Match(p)
+			}
+			if ok {
+				files = append(files, p)
+			}
+			return nil
+		})
+		sort.Strings(files)
+		for _, f := range files {
+			data, err := fs.ReadFile(src.FS, f)
+			var ps []Preset
+			if err == nil {
+				ps, err = Parse(data)
+			}
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", path.Join(src.Label, f), err))
 				continue
 			}
-			p.Source = filepath.ToSlash(rel)
-			p.Camera = cameraOf(p.Name, f)
-			p.Group = groupOf(p.Name)
-			h := sha1.Sum([]byte(p.Source + "\x00" + key))
-			p.ID = hex.EncodeToString(h[:6])
-			seen[key] = len(out)
-			out = append(out, p)
+			rel := path.Join(src.Label, f)
+			for _, p := range ps {
+				if src.Skip != nil && src.Skip(p.Name) {
+					continue
+				}
+				pkey := fmt.Sprintf("%+v", p.Params)
+				key := p.Name + "|" + pkey
+				if i, ok := seen[key]; ok {
+					out[i].Dupes++
+					continue
+				}
+				if s0, ok := seenParams[pkey]; ok && s0 < si {
+					continue
+				}
+				p.Source = rel
+				p.Camera = cameraOf(p.Name, f)
+				p.Group = groupOf(p.Name)
+				h := sha1.Sum([]byte(p.Source + "\x00" + key))
+				p.ID = hex.EncodeToString(h[:6])
+				seen[key] = len(out)
+				if _, ok := seenParams[pkey]; !ok {
+					seenParams[pkey] = si
+				}
+				out = append(out, p)
+			}
 		}
 	}
 	return out, errs

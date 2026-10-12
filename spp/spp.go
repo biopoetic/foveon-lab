@@ -32,6 +32,10 @@ const (
 	keepBackups  = 10
 )
 
+// PresetPrefix starts the names of presets Foveon Lab hands to SPP (the UI
+// adds it), so they aren't read back from SPP as presets of their own.
+const PresetPrefix = "[FL] "
+
 // ErrRunning means SPP is open, so its files must not be touched.
 var ErrRunning = errors.New("Sigma Photo Pro is running — close it first (it rewrites its settings when it exits)")
 
@@ -63,6 +67,19 @@ func Detect() (*Install, error) {
 		}
 	}
 	return in, nil
+}
+
+// SettingsFile is SPP's own preset list (X3F_Setting.xml) when it exists,
+// whether or not SPP itself is installed here; "" otherwise.
+func SettingsFile() string {
+	if runtime.GOOS != "windows" {
+		return ""
+	}
+	p := filepath.Join(os.Getenv("LOCALAPPDATA"), "SIGMA", "SIGMA_PhotoPro6", settingsFile)
+	if _, err := os.Stat(p); err != nil {
+		return ""
+	}
+	return p
 }
 
 // Running reports whether SPP is currently open.

@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+      <Setting><Name>[NEG] SD1 Sunny 200 V2</Name><Contrast>0</Contrast><Exposure>0,3</Exposure><Highlight>-0,7</Highlight><Saturation>0,25</Saturation><FillLight>0,5</FillLight><ColorMode>6</ColorMode><WhiteBalance>1</WhiteBalance><ColorTemp>0</ColorTemp></Setting>
+      <Setting><Name>[PORTRAIT] SD1 Pastel 400 V2</Name><Contrast>-0,1</Contrast><Exposure>0,2</Exposure><Highlight>-0,8</Highlight><Saturation>0,15</Saturation><FillLight>0,6</FillLight><ColorMode>6</ColorMode><WhiteBalance>1</WhiteBalance><ColorTemp>0</ColorTemp></Setting>
+      <Setting><Name>[NEG] SD1 Verdant 400 V2</Name><Contrast>0,2</Contrast><Exposure>0,2</Exposure><Highlight>-0,5</Highlight><Saturation>0,3</Saturation><FillLight>0,4</FillLight><ColorMode>6</ColorMode><WhiteBalance>1</WhiteBalance><ColorTemp>0</ColorTemp></Setting>
+      <Setting><Name>[SLIDE] SD1 Vivid 50 V2</Name><Contrast>0,4</Contrast><Exposure>0,0</Exposure><Highlight>-0,3</Highlight><Saturation>0,5</Saturation><FillLight>0,0</FillLight><ColorMode>7</ColorMode><WhiteBalance>1</WhiteBalance><ColorTemp>0</ColorTemp></Setting>
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

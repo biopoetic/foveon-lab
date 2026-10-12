@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+      <Setting>
+        <Name>[PORTRAIT] SD15 Pastel 400 V4</Name>
+        <Contrast>-0,05</Contrast>
+        <Exposure>0,18</Exposure>
+        <Highlight>-0,75</Highlight>
+        <Saturation>0,18</Saturation>
+        <FillLight>0,5</FillLight>
+        <ColorAdjustR>0,92</ColorAdjustR>
+        <ColorAdjustG>1</ColorAdjustG>
+        <ColorAdjustB>0,88</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>6</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[PORTRAIT] SD15 Soft Skin V4</Name>
+        <Contrast>-0,1</Contrast>
+        <Exposure>0,22</Exposure>
+        <Highlight>-0,8</Highlight>
+        <Saturation>0,14</Saturation>
+        <FillLight>0,58</FillLight>
+        <ColorAdjustR>0,91</ColorAdjustR>
+        <ColorAdjustG>1</ColorAdjustG>
+        <ColorAdjustB>0,89</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>6</ColorMode>
+      </Setting>
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

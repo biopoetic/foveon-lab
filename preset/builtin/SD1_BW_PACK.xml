@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+      <Setting>
+        <Name>[BW] SD1 Neutral Mono</Name>
+        <Blackness>0,05</Blackness><Contrast>0,15</Contrast><Exposure>0,15</Exposure><Highlight>-0,6</Highlight>
+        <Saturation>-1</Saturation><Sharpness>0</Sharpness><FillLight>0,25</FillLight>
+        <ColorAdjustR>1</ColorAdjustR><ColorAdjustG>1</ColorAdjustG><ColorAdjustB>1</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance><ColorTemp>0</ColorTemp><ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[BW] SD1 Contrast Mono</Name>
+        <Blackness>0,15</Blackness><Contrast>0,45</Contrast><Exposure>0,1</Exposure><Highlight>-0,5</Highlight>
+        <Saturation>-1</Saturation><Sharpness>0</Sharpness><FillLight>0,05</FillLight>
+        <ColorAdjustR>1</ColorAdjustR><ColorAdjustG>1</ColorAdjustG><ColorAdjustB>1</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance><ColorTemp>0</ColorTemp><ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[BW] SD1 Matte Fade Mono</Name>
+        <Blackness>-0,05</Blackness><Contrast>-0,05</Contrast><Exposure>0,25</Exposure><Highlight>-0,7</Highlight>
+        <Saturation>-1</Saturation><Sharpness>0</Sharpness><FillLight>0,55</FillLight>
+        <ColorAdjustR>1</ColorAdjustR><ColorAdjustG>1</ColorAdjustG><ColorAdjustB>1</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance><ColorTemp>0</ColorTemp><ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[BW] SD1 Punch Street</Name>
+        <Blackness>0,18</Blackness><Contrast>0,55</Contrast><Exposure>0,05</Exposure><Highlight>-0,45</Highlight>
+        <Saturation>-1</Saturation><Sharpness>0</Sharpness><FillLight>0</FillLight>
+        <ColorAdjustR>1</ColorAdjustR><ColorAdjustG>1</ColorAdjustG><ColorAdjustB>1</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance><ColorTemp>0</ColorTemp><ColorMode>4</ColorMode>
+      </Setting>
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

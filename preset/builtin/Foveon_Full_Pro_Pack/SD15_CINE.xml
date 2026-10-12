@@ -1,0 +1,88 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+      <Setting>
+        <Name>[CINE][SD15] Neutral Fade</Name>
+        <Blackness>-0,08</Blackness>
+        <Contrast>-0,08</Contrast>
+        <Exposure>0,22</Exposure>
+        <Highlight>-0,72</Highlight>
+        <Saturation>0,12</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,56</FillLight>
+        <ColorAdjustR>0,95</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,98</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[CINE][SD15] Cool Fade</Name>
+        <Blackness>-0,06</Blackness>
+        <Contrast>-0,06</Contrast>
+        <Exposure>0,20</Exposure>
+        <Highlight>-0,70</Highlight>
+        <Saturation>0,12</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,52</FillLight>
+        <ColorAdjustR>0,92</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>1,03</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[CINE][SD15] Warm Filmic</Name>
+        <Blackness>-0,02</Blackness>
+        <Contrast>-0,02</Contrast>
+        <Exposure>0,22</Exposure>
+        <Highlight>-0,78</Highlight>
+        <Saturation>0,12</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,48</FillLight>
+        <ColorAdjustR>1,02</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,89</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[CINE][SD15] Urban Muted</Name>
+        <Blackness>-0,02</Blackness>
+        <Contrast>0,02</Contrast>
+        <Exposure>0,16</Exposure>
+        <Highlight>-0,64</Highlight>
+        <Saturation>0,12</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,38</FillLight>
+        <ColorAdjustR>0,97</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,99</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[CINE][SD15] Indoor WarmCine</Name>
+        <Blackness>0,00</Blackness>
+        <Contrast>0,02</Contrast>
+        <Exposure>0,18</Exposure>
+        <Highlight>-0,72</Highlight>
+        <Saturation>0,12</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,48</FillLight>
+        <ColorAdjustR>1,02</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,89</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

@@ -7,8 +7,11 @@ without importing, clicking and waiting in SPP for every preset.
 
 - Scans your folders for `.X3F` files and reads the **full-size JPEG embedded in each X3F**
   (SD1 Merrill: 4704×3136, SD15: 2640×1760). No Foveon raw decoding needed.
-- Loads every SPP preset XML it finds (comma or dot decimals, identical duplicates folded),
-  filters by camera, `[GROUP]` tag, file or name.
+- **Presets from three places:** your own preset folder, a **built-in pack of ~290 SD1/SD15
+  presets** (base, negative/slide/portrait film looks, cine, B&W, white balance, scene), and the
+  presets you saved in SPP itself (Windows). Comma or dot decimals; identical duplicates folded.
+  Filter by camera, `[GROUP]` tag, file or name. The film-look names describe the look only and
+  are not affiliated with any film maker.
 - **Grid view:** one photo through every preset at once. Click a tile for a large view with sliders;
   `←`/`→` steps through presets, hold `O` for the camera original.
 - **Save as preset** writes an SPP-importable XML (`FoveonLab_SD1.xml` / `FoveonLab_SD15.xml` in the

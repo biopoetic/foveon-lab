@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+      <Setting>
+        <Name>[BASE][SD15] Neutral Pro</Name>
+        <Blackness>0</Blackness>
+        <Contrast>0,10</Contrast>
+        <Exposure>0,18</Exposure>
+        <Highlight>-0,58</Highlight>
+        <Saturation>0,14</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,20</FillLight>
+        <ColorAdjustR>0,98</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,93</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[BASE][SD15] Warm Base</Name>
+        <Blackness>0</Blackness>
+        <Contrast>0,06</Contrast>
+        <Exposure>0,18</Exposure>
+        <Highlight>-0,60</Highlight>
+        <Saturation>0,16</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,24</FillLight>
+        <ColorAdjustR>1,01</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,88</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[BASE][SD15] Cool Base</Name>
+        <Blackness>0</Blackness>
+        <Contrast>0,06</Contrast>
+        <Exposure>0,14</Exposure>
+        <Highlight>-0,58</Highlight>
+        <Saturation>0,14</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,18</FillLight>
+        <ColorAdjustR>0,95</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>1,00</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

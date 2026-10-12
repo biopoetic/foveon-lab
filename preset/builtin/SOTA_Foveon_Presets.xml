@@ -1,0 +1,116 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+
+      <!-- CORE BASE -->
+      <Setting>
+        <Name>[BASE] Neutral Pro</Name>
+        <Blackness>0</Blackness>
+        <Contrast>0,1</Contrast>
+        <Exposure>0,2</Exposure>
+        <Highlight>-0,6</Highlight>
+        <Saturation>0,1</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,3</FillLight>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <!-- FILM NEGATIVE -->
+      <Setting>
+        <Name>[NEG] Sunny 200 V2</Name>
+        <Blackness>0</Blackness>
+        <Contrast>0</Contrast>
+        <Exposure>0,3</Exposure>
+        <Highlight>-0,7</Highlight>
+        <Saturation>0,25</Saturation>
+        <FillLight>0,5</FillLight>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>6</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[PORTRAIT] Pastel 400 V2</Name>
+        <Blackness>0</Blackness>
+        <Contrast>-0,1</Contrast>
+        <Exposure>0,2</Exposure>
+        <Highlight>-0,8</Highlight>
+        <Saturation>0,15</Saturation>
+        <FillLight>0,6</FillLight>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>6</ColorMode>
+      </Setting>
+
+      <!-- SLIDE -->
+      <Setting>
+        <Name>[SLIDE] Vivid 50 V2</Name>
+        <Blackness>0</Blackness>
+        <Contrast>0,4</Contrast>
+        <Exposure>0</Exposure>
+        <Highlight>-0,3</Highlight>
+        <Saturation>0,5</Saturation>
+        <FillLight>0</FillLight>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>7</ColorMode>
+      </Setting>
+
+      <!-- FOVEON SPECIAL -->
+      <Setting>
+        <Name>[FOVEON] 3D Pop Pro</Name>
+        <Blackness>-0,05</Blackness>
+        <Contrast>0,35</Contrast>
+        <Exposure>0,1</Exposure>
+        <Highlight>-0,9</Highlight>
+        <Saturation>0,05</Saturation>
+        <Sharpness>0,15</Sharpness>
+        <FillLight>0,15</FillLight>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <!-- CINEMATIC -->
+      <Setting>
+        <Name>[CINE] Cool Fade</Name>
+        <Blackness>0</Blackness>
+        <Contrast>-0,05</Contrast>
+        <Exposure>0,2</Exposure>
+        <Highlight>-0,7</Highlight>
+        <Saturation>0,05</Saturation>
+        <FillLight>0,6</FillLight>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <!-- BLACK & WHITE -->
+      <Setting>
+        <Name>[BW] Classic Mono</Name>
+        <Blackness>0,1</Blackness>
+        <Contrast>0,3</Contrast>
+        <Exposure>0,1</Exposure>
+        <Highlight>-0,6</Highlight>
+        <Saturation>-1</Saturation>
+        <Sharpness>0,1</Sharpness>
+        <FillLight>0,2</FillLight>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>0</ColorMode>
+      </Setting>
+
+      <!-- WHITE BALANCE LOOK -->
+      <Setting>
+        <Name>[WB] Warm Sunny</Name>
+        <Blackness>0</Blackness>
+        <Contrast>0,1</Contrast>
+        <Exposure>0,2</Exposure>
+        <Highlight>-0,6</Highlight>
+        <Saturation>0,2</Saturation>
+        <FillLight>0,3</FillLight>
+        <WhiteBalance>6</WhiteBalance>
+        <ColorTemp>5200</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

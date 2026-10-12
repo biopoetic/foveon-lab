@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+      <Setting>
+        <Name>[CINE] Fade V4</Name>
+        <Contrast>-0,2</Contrast>
+        <Exposure>0,2</Exposure>
+        <Highlight>-0,7</Highlight>
+        <Saturation>0,08</Saturation>
+        <FillLight>0,6</FillLight>
+        <ColorAdjustR>0,92</ColorAdjustR>
+        <ColorAdjustG>1</ColorAdjustG>
+        <ColorAdjustB>0,95</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>4</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[CINE] Cool Film V4</Name>
+        <Contrast>0,1</Contrast>
+        <Exposure>0,1</Exposure>
+        <Highlight>-0,6</Highlight>
+        <Saturation>0,15</Saturation>
+        <FillLight>0,4</FillLight>
+        <ColorAdjustR>0,9</ColorAdjustR>
+        <ColorAdjustG>1</ColorAdjustG>
+        <ColorAdjustB>1,05</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorMode>4</ColorMode>
+      </Setting>
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

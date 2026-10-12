@@ -3,8 +3,10 @@ package preset
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 const sample = `<?xml version="1.0"?>
@@ -119,5 +121,57 @@ func TestRealPack(t *testing.T) {
 	t.Logf("%d unique presets, %d duplicates folded; cameras=%v groups=%v", len(ps), dupes, cams, groups)
 	if len(ps) < 100 {
 		t.Errorf("expected well over 100 presets, got %d", len(ps))
+	}
+}
+
+func TestLoadSources(t *testing.T) {
+	one := func(name, sat string) string {
+		return `<?xml version="1.0"?><Custom><Adj><Color><Setting><Name>` + name + `</Name><Saturation>` + sat + `</Saturation></Setting></Color></Adj></Custom>`
+	}
+	mine := fstest.MapFS{
+		"a.xml": {Data: []byte(one("[SLIDE] Velvia 50", "0,3"))},
+	}
+	builtin := fstest.MapFS{
+		"a.xml": {Data: []byte(one("[SLIDE] Vivid 50", "0,3"))}, // same values, renamed: dropped
+		"b.xml": {Data: []byte(one("[BASE] Neutral", "0"))},     // new: kept
+		"c.xml": {Data: []byte(one("[BASE] Neutral", "0"))},     // same name+values: a dupe
+		"x.txt": {Data: []byte("not a preset")},
+	}
+	spp := fstest.MapFS{
+		"X3F_Setting.xml": {Data: []byte(one("[FL] Mine", "0,5"))},
+		"other.xml":       {Data: []byte(one("[WB] Ignored", "0,1"))},
+	}
+	ps, errs := Load(
+		Source{FS: mine},
+		Source{Label: "Built-in", FS: builtin},
+		Source{Label: "SPP", FS: spp, Match: func(p string) bool { return p == "X3F_Setting.xml" },
+			Skip: func(n string) bool { return strings.HasPrefix(n, "[FL] ") }},
+	)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	var got []string
+	for _, p := range ps {
+		got = append(got, p.Source+": "+p.Name)
+	}
+	want := []string{"a.xml: [SLIDE] Velvia 50", "Built-in/b.xml: [BASE] Neutral"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("got %q", got)
+	}
+	if ps[1].Dupes != 1 {
+		t.Fatalf("dupes = %d", ps[1].Dupes)
+	}
+}
+
+func TestBuiltinPack(t *testing.T) {
+	ps, errs := Load(Source{FS: Builtin()})
+	if len(errs) != 0 || len(ps) < 200 {
+		t.Fatalf("built-in pack: %d presets, errors %v", len(ps), errs)
+	}
+	brands := regexp.MustCompile(`(?i)kodak|fuji|portra([^i]|$)|velvia|provia|astia|ektar|superia|ultramax|\bgold\b|gold\d`)
+	for _, p := range ps {
+		if brands.MatchString(p.Name) {
+			t.Errorf("built-in preset carries a film brand: %q", p.Name)
+		}
 	}
 }

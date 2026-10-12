@@ -1,0 +1,319 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+
+      <!-- ===== SD1 SOTA SIGNATURE ===== -->
+
+      <Setting>
+        <Name>[SOTA][SD1] Foveon 3D Pop Master</Name>
+        <Blackness>0,08</Blackness>
+        <Contrast>0,25</Contrast>
+        <Exposure>0,05</Exposure>
+        <Highlight>-0,55</Highlight>
+        <Saturation>0,18</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,15</FillLight>
+        <ColorAdjustR>0,95</ColorAdjustR>
+        <ColorAdjustG>1,02</ColorAdjustG>
+        <ColorAdjustB>0,92</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD1] Foveon Cine Soft</Name>
+        <Blackness>-0,04</Blackness>
+        <Contrast>-0,05</Contrast>
+        <Exposure>0,25</Exposure>
+        <Highlight>-0,85</Highlight>
+        <Saturation>0,10</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,65</FillLight>
+        <ColorAdjustR>1,02</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,88</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD1] Foveon Nature Deep</Name>
+        <Blackness>0,04</Blackness>
+        <Contrast>0,22</Contrast>
+        <Exposure>0,08</Exposure>
+        <Highlight>-0,60</Highlight>
+        <Saturation>0,28</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,25</FillLight>
+        <ColorAdjustR>0,90</ColorAdjustR>
+        <ColorAdjustG>1,05</ColorAdjustG>
+        <ColorAdjustB>0,98</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD1] Foveon Golden Depth</Name>
+        <Blackness>0,00</Blackness>
+        <Contrast>0,12</Contrast>
+        <Exposure>0,20</Exposure>
+        <Highlight>-0,75</Highlight>
+        <Saturation>0,22</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,45</FillLight>
+        <ColorAdjustR>1,05</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,85</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD1] Foveon Mono Depth</Name>
+        <Blackness>0,20</Blackness>
+        <Contrast>0,60</Contrast>
+        <Exposure>0,05</Exposure>
+        <Highlight>-0,50</Highlight>
+        <Saturation>-1</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,00</FillLight>
+        <ColorAdjustR>1</ColorAdjustR>
+        <ColorAdjustG>1</ColorAdjustG>
+        <ColorAdjustB>1</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD1] Sunny200 Sun 3D</Name>
+        <Blackness>0,03</Blackness>
+        <Contrast>0,10</Contrast>
+        <Exposure>0,10</Exposure>
+        <Highlight>-0,68</Highlight>
+        <Saturation>0,26</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,38</FillLight>
+        <ColorAdjustR>0,97</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,82</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD1] Pastel400 Overcast SoftSkin</Name>
+        <Blackness>-0,06</Blackness>
+        <Contrast>-0,12</Contrast>
+        <Exposure>0,26</Exposure>
+        <Highlight>-0,86</Highlight>
+        <Saturation>0,10</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,68</FillLight>
+        <ColorAdjustR>1,00</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,90</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD1] Verdant400 Overcast Deep</Name>
+        <Blackness>-0,03</Blackness>
+        <Contrast>0,04</Contrast>
+        <Exposure>0,22</Exposure>
+        <Highlight>-0,78</Highlight>
+        <Saturation>0,24</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,58</FillLight>
+        <ColorAdjustR>0,92</ColorAdjustR>
+        <ColorAdjustG>1,04</ColorAdjustG>
+        <ColorAdjustB>0,96</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD1] Vivid50 Sun Pop</Name>
+        <Blackness>0,05</Blackness>
+        <Contrast>0,30</Contrast>
+        <Exposure>0,00</Exposure>
+        <Highlight>-0,38</Highlight>
+        <Saturation>0,50</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,06</FillLight>
+        <ColorAdjustR>0,92</ColorAdjustR>
+        <ColorAdjustG>1,02</ColorAdjustG>
+        <ColorAdjustB>1,05</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>7</ColorMode>
+      </Setting>
+
+      <!-- ===== SD15 SOTA SIGNATURE ===== -->
+
+      <Setting>
+        <Name>[SOTA][SD15] Foveon 3D Pop Master</Name>
+        <Blackness>0,02</Blackness>
+        <Contrast>0,08</Contrast>
+        <Exposure>0,18</Exposure>
+        <Highlight>-0,72</Highlight>
+        <Saturation>0,22</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,48</FillLight>
+        <ColorAdjustR>0,95</ColorAdjustR>
+        <ColorAdjustG>1,02</ColorAdjustG>
+        <ColorAdjustB>0,89</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD15] Foveon Cine Soft</Name>
+        <Blackness>-0,02</Blackness>
+        <Contrast>-0,02</Contrast>
+        <Exposure>0,22</Exposure>
+        <Highlight>-0,78</Highlight>
+        <Saturation>0,15</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,58</FillLight>
+        <ColorAdjustR>0,96</ColorAdjustR>
+        <ColorAdjustG>1,01</ColorAdjustG>
+        <ColorAdjustB>0,91</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD15] Foveon Nature Deep</Name>
+        <Blackness>0,04</Blackness>
+        <Contrast>0,12</Contrast>
+        <Exposure>0,10</Exposure>
+        <Highlight>-0,64</Highlight>
+        <Saturation>0,26</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,36</FillLight>
+        <ColorAdjustR>0,94</ColorAdjustR>
+        <ColorAdjustG>1,03</ColorAdjustG>
+        <ColorAdjustB>0,91</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>7</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD15] Foveon Golden Depth</Name>
+        <Blackness>0,02</Blackness>
+        <Contrast>0,06</Contrast>
+        <Exposure>0,12</Exposure>
+        <Highlight>-0,72</Highlight>
+        <Saturation>0,22</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,42</FillLight>
+        <ColorAdjustR>1,03</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,86</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD15] Foveon Mono Depth</Name>
+        <Blackness>0,20</Blackness>
+        <Contrast>0,58</Contrast>
+        <Exposure>0,05</Exposure>
+        <Highlight>-0,40</Highlight>
+        <Saturation>-1</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,00</FillLight>
+        <ColorAdjustR>1</ColorAdjustR>
+        <ColorAdjustG>1</ColorAdjustG>
+        <ColorAdjustB>1</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD15] Sunny200 Sun 3D</Name>
+        <Blackness>0,08</Blackness>
+        <Contrast>0,18</Contrast>
+        <Exposure>0,04</Exposure>
+        <Highlight>-0,58</Highlight>
+        <Saturation>0,26</Saturation>
+        <Sharpness>0,03</Sharpness>
+        <FillLight>0,22</FillLight>
+        <ColorAdjustR>0,96</ColorAdjustR>
+        <ColorAdjustG>1,01</ColorAdjustG>
+        <ColorAdjustB>0,89</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD15] Pastel400 Overcast SoftSkin</Name>
+        <Blackness>-0,06</Blackness>
+        <Contrast>-0,04</Contrast>
+        <Exposure>0,24</Exposure>
+        <Highlight>-0,84</Highlight>
+        <Saturation>0,12</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,64</FillLight>
+        <ColorAdjustR>0,97</ColorAdjustR>
+        <ColorAdjustG>1,01</ColorAdjustG>
+        <ColorAdjustB>0,94</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD15] Verdant400 Overcast Deep</Name>
+        <Blackness>-0,01</Blackness>
+        <Contrast>0,04</Contrast>
+        <Exposure>0,18</Exposure>
+        <Highlight>-0,78</Highlight>
+        <Saturation>0,20</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,54</FillLight>
+        <ColorAdjustR>0,96</ColorAdjustR>
+        <ColorAdjustG>1,02</ColorAdjustG>
+        <ColorAdjustB>0,92</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+      <Setting>
+        <Name>[SOTA][SD15] Vivid50 Sun Pop</Name>
+        <Blackness>0,08</Blackness>
+        <Contrast>0,18</Contrast>
+        <Exposure>0,04</Exposure>
+        <Highlight>-0,58</Highlight>
+        <Saturation>0,26</Saturation>
+        <Sharpness>0,03</Sharpness>
+        <FillLight>0,22</FillLight>
+        <ColorAdjustR>0,96</ColorAdjustR>
+        <ColorAdjustG>1,01</ColorAdjustG>
+        <ColorAdjustB>0,89</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>4</ColorMode>
+      </Setting>
+
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

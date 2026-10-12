@@ -1,0 +1,104 @@
+<?xml version="1.0"?>
+<Custom>
+  <Adj>
+    <Color>
+      <Setting>
+        <Name>[PORTRAIT][SD1] Pastel160 Day</Name>
+        <Blackness>0,00</Blackness>
+        <Contrast>-0,06</Contrast>
+        <Exposure>0,18</Exposure>
+        <Highlight>-0,76</Highlight>
+        <Saturation>0,12</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,46</FillLight>
+        <ColorAdjustR>0,99</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,90</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[PORTRAIT][SD1] Pastel400 Overcast SoftSkin</Name>
+        <Blackness>-0,06</Blackness>
+        <Contrast>-0,12</Contrast>
+        <Exposure>0,26</Exposure>
+        <Highlight>-0,86</Highlight>
+        <Saturation>0,10</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,68</FillLight>
+        <ColorAdjustR>1,00</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,90</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[PORTRAIT][SD1] Pastel400 Shade Volume</Name>
+        <Blackness>-0,02</Blackness>
+        <Contrast>-0,06</Contrast>
+        <Exposure>0,20</Exposure>
+        <Highlight>-0,82</Highlight>
+        <Saturation>0,12</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,60</FillLight>
+        <ColorAdjustR>1,00</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,91</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[PORTRAIT][SD1] PastelWarm Golden</Name>
+        <Blackness>-0,02</Blackness>
+        <Contrast>-0,04</Contrast>
+        <Exposure>0,18</Exposure>
+        <Highlight>-0,80</Highlight>
+        <Saturation>0,14</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,56</FillLight>
+        <ColorAdjustR>1,03</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,87</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[PORTRAIT][SD1] Studio Clean</Name>
+        <Blackness>0,00</Blackness>
+        <Contrast>-0,02</Contrast>
+        <Exposure>0,16</Exposure>
+        <Highlight>-0,72</Highlight>
+        <Saturation>0,10</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,42</FillLight>
+        <ColorAdjustR>0,98</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,92</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+      <Setting>
+        <Name>[PORTRAIT][SD1] Outdoor Skin Pop</Name>
+        <Blackness>0,00</Blackness>
+        <Contrast>0,04</Contrast>
+        <Exposure>0,10</Exposure>
+        <Highlight>-0,66</Highlight>
+        <Saturation>0,16</Saturation>
+        <Sharpness>0</Sharpness>
+        <FillLight>0,34</FillLight>
+        <ColorAdjustR>1,01</ColorAdjustR>
+        <ColorAdjustG>1,00</ColorAdjustG>
+        <ColorAdjustB>0,88</ColorAdjustB>
+        <WhiteBalance>1</WhiteBalance>
+        <ColorTemp>0</ColorTemp>
+        <ColorMode>6</ColorMode>
+      </Setting>
+    </Color>
+    <BW />
+  </Adj>
+</Custom>

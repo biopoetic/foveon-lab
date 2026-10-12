@@ -291,11 +291,21 @@ type server struct {
 }
 
 func (s *server) loadPresets() {
-	var ps []preset.Preset
-	var errs []error
+	// Your own folder first, then the bundled pack, then the presets saved
+	// in SPP itself; a preset already loaded (same values) isn't repeated.
+	var srcs []preset.Source
 	if s.presetsDir != "" {
-		ps, errs = preset.LoadDir(s.presetsDir)
+		srcs = append(srcs, preset.Source{FS: os.DirFS(s.presetsDir)})
 	}
+	srcs = append(srcs, preset.Source{Label: "Built-in", FS: preset.Builtin()})
+	if f := spp.SettingsFile(); f != "" {
+		srcs = append(srcs, preset.Source{
+			Label: "SPP", FS: os.DirFS(filepath.Dir(f)),
+			Match: func(p string) bool { return p == filepath.Base(f) },
+			Skip:  func(name string) bool { return strings.HasPrefix(name, spp.PresetPrefix) },
+		})
+	}
+	ps, errs := preset.Load(srcs...)
 	m := map[string]preset.Preset{}
 	for _, p := range ps {
 		m[p.ID] = p
@@ -307,7 +317,7 @@ func (s *server) loadPresets() {
 	s.pmu.Lock()
 	s.presets, s.pByID, s.pErrs = ps, m, es
 	s.pmu.Unlock()
-	log.Printf("loaded %d presets from %s (%d errors)", len(ps), s.presetsDir, len(errs))
+	log.Printf("loaded %d presets (folder %q + built-in + SPP) with %d errors", len(ps), s.presetsDir, len(errs))
 }
 
 func decodePreview(ph *Photo) (image.Image, error) {
