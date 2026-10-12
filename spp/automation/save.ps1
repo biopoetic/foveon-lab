@@ -31,18 +31,26 @@ Start-Sleep -Milliseconds 300
 $ok = $all | ? { $_.Current.Name -eq 'OK' } | Select -First 1
 $r = $ok.Current.BoundingRectangle
 $hwnd = [IntPtr]$dlg.Current.NativeWindowHandle
-# The first click can just activate the dialog: click until it closes.
+function DialogOpen { [bool]($A::RootElement.FindAll($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($A::NameProperty, 'Save Images As'))) | Select -First 1) }
+# OK only works once SPP has finished applying the setting: wait until it
+# has been enabled for a moment.
+$stable = 0
+for ($i = 0; $i -lt 100 -and $stable -lt 3; $i++) {
+  if ($ok.Current.IsEnabled) { $stable++ } else { $stable = 0 }
+  Start-Sleep -Milliseconds 300
+}
 for ($try = 1; $try -le 3; $try++) {
   [W3]::SetForegroundWindow($hwnd) | Out-Null
-  Start-Sleep -Milliseconds 250
+  Start-Sleep -Milliseconds 300
   [W3]::SetCursorPos([int]($r.X + $r.Width/2), [int]($r.Y + $r.Height/2)) | Out-Null
   Start-Sleep -Milliseconds 120
   [W3]::mouse_event(2,0,0,0,[IntPtr]::Zero); Start-Sleep -Milliseconds 60; [W3]::mouse_event(4,0,0,0,[IntPtr]::Zero)
-  $open = $true
-  for ($i = 0; $i -lt 15 -and $open; $i++) {
-    Start-Sleep -Milliseconds 200
-    $open = [bool]($A::RootElement.FindAll($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($A::NameProperty, 'Save Images As'))) | Select -First 1)
+  # Saving disables OK; then just wait (up to 2 min) instead of clicking again.
+  for ($i = 0; $i -lt 400; $i++) {
+    Start-Sleep -Milliseconds 300
+    if (-not (DialogOpen)) { "OK clicked: $dir\$file"; exit 0 }
+    $busy = -not $ok.Current.IsEnabled
+    if (-not $busy -and $i -gt 6) { break } # still enabled: the click was lost
   }
-  if (-not $open) { "OK clicked: $dir\$file"; exit 0 }
 }
 "ERROR the Save dialog did not close"; exit 1

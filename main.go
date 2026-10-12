@@ -426,10 +426,13 @@ func (s *server) baseAs(ph *Photo, w int, mode string) (*render.Base, error) {
 
 func (s *server) compensation(ph *Photo, on bool) render.Compensation {
 	// A raw decode carries no in-camera styling, so there is nothing to undo.
+	fam := x3f.PresetFamily(ph.Camera)
 	if !on || ph.props == nil || (ph.RawDecoded && !ph.rawFailed.Load()) || s.useRaw(ph) || ph.jpegBroken.Load() {
-		return render.Compensation{SatFactor: 1}
+		return render.Compensation{SatFactor: 1, Family: fam}
 	}
-	return render.CompensationFor(ph.props)
+	c := render.CompensationFor(ph.props)
+	c.Family = fam
+	return c
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -949,6 +952,10 @@ func openBrowser(url string) {
 // calibCommand handles "calibrate" (write the SPP calibration pack) and
 // "analyze" (measure the exports). It reports whether it handled argv.
 func calibCommand(desk string) bool {
+	if len(os.Args) >= 2 && os.Args[1] == "merge-models" {
+		mergeModelsCommand()
+		return true
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "fit-raw" {
 		rawTool = findRawTool("")
 		fitRawCommand(desk)

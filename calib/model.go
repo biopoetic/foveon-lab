@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/biopoetic/foveon-lab/render"
 )
@@ -159,4 +160,99 @@ func fillTable(t, base [8][8]float64) [8][8]float64 {
 		}
 	}
 	return filled
+}
+
+// MergeModels averages models measured on different photos, so the
+// emulation describes the camera rather than one scene: tone and Fill Light
+// steps with the same setting are averaged point by point; white-balance and
+// colour-mode mappings are taken from the first model that has them.
+func MergeModels(ms []*render.Model) *render.Model {
+	out := &render.Model{Tone: map[string][]render.ToneStep{}}
+	type acc struct {
+		st render.ToneStep
+		n  float64
+	}
+	tone := map[string]map[float64]*acc{}
+	fills := map[float64]*struct {
+		fs render.FillStep
+		n  float64
+	}{}
+	var srcs []string
+	for _, m := range ms {
+		srcs = append(srcs, m.Source)
+		for k, steps := range m.Tone {
+			if tone[k] == nil {
+				tone[k] = map[float64]*acc{}
+			}
+			for _, s := range steps {
+				a := tone[k][s.Value]
+				if a == nil {
+					a = &acc{st: render.ToneStep{Value: s.Value}}
+					tone[k][s.Value] = a
+				}
+				for i := range s.Delta {
+					a.st.Delta[i] += s.Delta[i]
+					a.st.Chroma[i] += s.Chroma[i]
+				}
+				a.n++
+			}
+		}
+		for _, f := range m.Fill {
+			a := fills[f.Value]
+			if a == nil {
+				a = &struct {
+					fs render.FillStep
+					n  float64
+				}{fs: render.FillStep{Value: f.Value}}
+				fills[f.Value] = a
+			}
+			for i := range f.Chroma {
+				a.fs.Chroma[i] += f.Chroma[i]
+			}
+			for s := range f.Local {
+				for p := range f.Local[s] {
+					a.fs.Local[s][p] += f.Local[s][p]
+				}
+			}
+			a.n++
+		}
+		for k, v := range m.WB {
+			if out.WB == nil {
+				out.WB = map[string]*render.RawCorrection{}
+			}
+			if out.WB[k] == nil {
+				out.WB[k] = v
+			}
+		}
+		for k, v := range m.Mode {
+			if out.Mode == nil {
+				out.Mode = map[string]*render.RawCorrection{}
+			}
+			if out.Mode[k] == nil {
+				out.Mode[k] = v
+			}
+		}
+	}
+	for k, byV := range tone {
+		for _, a := range byV {
+			for i := range a.st.Delta {
+				a.st.Delta[i] /= a.n
+				a.st.Chroma[i] /= a.n
+			}
+			out.Tone[k] = append(out.Tone[k], a.st)
+		}
+	}
+	for _, a := range fills {
+		for i := range a.fs.Chroma {
+			a.fs.Chroma[i] /= a.n
+		}
+		for s := range a.fs.Local {
+			for p := range a.fs.Local[s] {
+				a.fs.Local[s][p] /= a.n
+			}
+		}
+		out.Fill = append(out.Fill, a.fs)
+	}
+	out.Source = strings.Join(srcs, "+")
+	return out
 }

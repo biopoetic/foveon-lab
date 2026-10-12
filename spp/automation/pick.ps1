@@ -24,6 +24,15 @@ $save = $all | ? { $_.Current.Name -eq 'Save Settings' } | Select -First 1
 $sr = $save.Current.BoundingRectangle
 # The settings combo sits right above "Save Settings".
 $combo = $all | ? { $r = $_.Current.BoundingRectangle; [math]::Abs($r.X - $sr.X) -lt 8 -and $r.Height -gt 15 -and $r.Height -lt 26 -and ($sr.Y - ($r.Y + $r.Height)) -ge 0 -and ($sr.Y - ($r.Y + $r.Height)) -lt 12 -and $_.Current.Name -ne '' } | Select -First 1
+if (-not $combo) {
+  # Some layouts don't expose the side panel: use the toolbar's copy of the
+  # settings list, i.e. any control whose text is one of SPP's setting names.
+  $known = @{}
+  foreach ($line in (Get-Content "$env:LOCALAPPDATA\SIGMA\SIGMA_PhotoPro6\X3F_Setting.xml" -Encoding UTF8)) {
+    if ($line -match '<Name>([^<]*)</Name>') { $known[$Matches[1]] = $true }
+  }
+  $combo = $all | ? { $r = $_.Current.BoundingRectangle; $r.Height -ge 12 -and $r.Height -lt 30 -and $r.Width -gt 80 -and $known.ContainsKey($_.Current.Name) } | Select -First 1
+}
 if (-not $combo) { "ERROR combo not found"; exit 1 }
 if ($combo.Current.Name -eq $name) { "already $name"; exit 0 }
 $cr = $combo.Current.BoundingRectangle

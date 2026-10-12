@@ -21,11 +21,14 @@ itself (~40 s per export, unattended), so every step below that "needs exports" 
 
 ## Steps, by expected gain
 
-### 1. SD15: its own slider calibration (gain: large, for every SD15 user)
-The slider model was measured on one SD1 file only. SD15 may process differently.
-- Export A00–A22 for one SD15 photo (as done for SDIM0260), `analyze`, compare the SD1 model's
-  error on it; if worse, ship a per-family model (`render/model.json` per family).
-- Effort: 23 exports. Code: small (model keyed by family).
+### 1. ~~SD15: its own slider calibration~~ — done (October 2026)
+Measured A00–A22 on a second SD1 photo (SDIM0046) and an SD15 photo (SDIM1151), all exported by
+`calibrate -auto`. The SD1 model predicts the unseen SD1 photo almost as well as its own (sliders
+0.3–2.3/255), but on SD15 it is off by up to 8: the difference is the camera, not the scene. The
+renderer now has a model per family (`render/model.json` = SD1, averaged over both SD1 photos;
+`render/model_SD15.json`). Still open: a second SD15 photo to confirm, and SD15 white balance /
+colour modes (SD1's are used meanwhile). Note: pick calibration photos without colours at the
+sRGB edge — a saturated red flower (75 % clipped channels) measured gamut clipping, not sliders.
 
 ### 2. SD15: a better starting image (gain: ~17 → maybe ~8)
 Neither raw data (22.7) nor a camera-JPEG mapping (21.5) beat the compensated JPEG (17) on SD15;

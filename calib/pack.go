@@ -43,7 +43,7 @@ func Suggest(paths []string) []Candidate {
 		l := render.FromImage(img, 0, 0)
 		n := l.W * l.H
 		vs := make([]float64, n)
-		var dark, bright, clip, chroma float64
+		var dark, bright, clip, chroma, edge float64
 		for i := 0; i < n; i++ {
 			j := i * 3
 			y := luma(l.Pix, j)
@@ -62,19 +62,28 @@ func Suggest(paths []string) []Candidate {
 				}
 			}
 			var c2 float64
+			lo, hi := 1.0, 0.0
 			for c := 0; c < 3; c++ {
-				c2 += math.Pow(float64(render.ToSRGB(l.Pix[j+c]))-v, 2)
+				e := float64(render.ToSRGB(l.Pix[j+c]))
+				c2 += math.Pow(e-v, 2)
+				lo, hi = math.Min(lo, e), math.Max(hi, e)
+			}
+			// At the edge of sRGB: one channel near 0 while another is lit.
+			// SPP works on wider data there, so sliders measured on such
+			// pixels describe the gamut clipping, not the slider.
+			if lo < 0.005 && hi > 0.5 {
+				edge++
 			}
 			chroma += math.Sqrt(c2)
 		}
 		sort.Float64s(vs)
 		spread := vs[n*98/100] - vs[n*2/100]
-		fd, fb, fc := dark/float64(n), bright/float64(n), clip/float64(n)
+		fd, fb, fc, fe := dark/float64(n), bright/float64(n), clip/float64(n), edge/float64(n)
 		mc := chroma / float64(n)
-		score := spread + math.Min(fd, 0.15) + math.Min(fb, 0.15) + 2*mc - 3*fc
+		score := spread + math.Min(fd, 0.15) + math.Min(fb, 0.15) + 2*math.Min(mc, 0.3) - 3*fc - 4*fe
 		out = append(out, Candidate{
 			Path: p, Camera: f.Camera(), Score: score,
-			Why: fmt.Sprintf("range %.0f%%, shadows %.0f%%, highlights %.0f%%, colour %.2f, clipped %.1f%%", spread*100, fd*100, fb*100, mc, fc*100),
+			Why: fmt.Sprintf("range %.0f%%, shadows %.0f%%, highlights %.0f%%, colour %.2f, clipped %.1f%%, at gamut edge %.0f%%", spread*100, fd*100, fb*100, mc, fc*100, fe*100),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Score > out[j].Score })

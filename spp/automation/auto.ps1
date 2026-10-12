@@ -17,7 +17,7 @@ foreach ($code in $codes.Split(',')) {
   & "$d\front.ps1" | Out-Null; Start-Sleep -Milliseconds 300
   $r = & "$d\pick.ps1" -name $name
   if ($LASTEXITCODE -ne 0 -and $r -notmatch 'picked|already') { "FAIL $code pick: $r"; break }
-  Start-Sleep -Milliseconds 800
+  Start-Sleep -Milliseconds 2500 # let SPP apply the setting
   & "$d\front.ps1" | Out-Null; Start-Sleep -Milliseconds 300
   [System.Windows.Forms.SendKeys]::SendWait('^s')
   $s = & "$d\save.ps1" -dir $outDir -file "${photo}_$code.tif"

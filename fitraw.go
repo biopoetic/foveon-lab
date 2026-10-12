@@ -49,6 +49,33 @@ func rgbaToLinear(img *image.RGBA) *render.Linear {
 	return l
 }
 
+// mergeModelsCommand: foveon-lab merge-models -o out.json a.json b.json …
+func mergeModelsCommand() {
+	fsFlags := flag.NewFlagSet("merge-models", flag.ExitOnError)
+	out := fsFlags.String("o", "", "output model file")
+	fsFlags.Parse(os.Args[2:])
+	var ms []*render.Model
+	for _, p := range fsFlags.Args() {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			log.Fatal(err)
+		}
+		var m render.Model
+		if err := json.Unmarshal(b, &m); err != nil {
+			log.Fatalf("%s: %v", p, err)
+		}
+		ms = append(ms, &m)
+	}
+	if *out == "" || len(ms) == 0 {
+		log.Fatal("usage: foveon-lab merge-models -o out.json model_a.json model_b.json …")
+	}
+	js, _ := json.MarshalIndent(calib.MergeModels(ms), "", " ")
+	if err := os.WriteFile(*out, js, 0o644); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("merged %d models into %s\n", len(ms), *out)
+}
+
 func fitRawCommand(desk string) {
 	fsFlags := flag.NewFlagSet("fit-raw", flag.ExitOnError)
 	dir := fsFlags.String("dir", filepath.Join(desk, "foveon-calibration"), "calibration folder")

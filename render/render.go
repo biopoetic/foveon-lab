@@ -342,6 +342,9 @@ type Compensation struct {
 	Contrast   float64 // added to the preset's contrast
 	Saturation float64 // added to the preset's saturation
 	SatFactor  float64 // extra chroma multiplier (e.g. to cancel Vivid); 0 = 1
+	// Family picks the measured model for this camera ("SD1", "SD15"; ""
+	// = the default one).
+	Family string
 }
 
 // CompensationFor derives the compensation from X3F PROP metadata:
@@ -481,23 +484,23 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	if c.SatFactor > 0 {
 		op.satF *= c.SatFactor
 	}
-	if model != nil {
+	if md := modelFor(c.Family); md != nil {
 		op.measured = true
-		op.wb = wbFor(p.WhiteBalance)
+		op.wb = md.wbFor(p.WhiteBalance)
 		op.tint = [3]float32{float32(p.R * k), float32(p.G * k), float32(p.B * k)}
-		op.pre = newToneOp("Exposure", p.Exposure)
-		op.fillM = newFillOp(p.FillLight)
+		op.pre = md.newToneOp("Exposure", p.Exposure)
+		op.fillM = md.newFillOp(p.FillLight)
 		for _, t := range []struct {
 			param string
 			v     float64
 		}{{"Highlight", p.Highlight}, {"Blackness", p.Blackness}, {"Contrast", p.Contrast + c.Contrast}} {
-			op.post = append(op.post, newToneOp(t.param, t.v)...)
+			op.post = append(op.post, md.newToneOp(t.param, t.v)...)
 		}
 		if p.ColorMode != preset.ModeStandard {
-			if m := modeFor(p.ColorMode); m != nil {
+			if m := md.modeFor(p.ColorMode); m != nil {
 				op.modeMap = m
 			} else {
-				op.post = append(op.post, newToneOp(fmt.Sprintf("ColorMode%d", p.ColorMode), 1)...)
+				op.post = append(op.post, md.newToneOp(fmt.Sprintf("ColorMode%d", p.ColorMode), 1)...)
 			}
 		}
 		// Measured: Saturation ±0.5 → ×1.25 / ×0.75, ±1 → ×1.5 / ×0.5.

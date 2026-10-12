@@ -8,11 +8,12 @@ package render
 // settings are interpolated; beyond them the measured step is repeated.
 
 import (
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 )
 
 // Knots is the number of points a measured curve is sampled at (x = i/32,
@@ -55,36 +56,56 @@ type Model struct {
 // (6.0 -> 8.9). Modes 0-3 and 9-12 all render like one default mode.
 var UseModeMapping = map[int]bool{0: true, 1: true, 2: true, 3: true, 5: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true}
 
-func modeFor(mode int) *RawCorrection {
-	if model == nil || !UseModeMapping[mode] {
+func (md *Model) modeFor(mode int) *RawCorrection {
+	if md == nil || !UseModeMapping[mode] {
 		return nil
 	}
-	return model.Mode[fmt.Sprint(mode)]
+	return md.Mode[fmt.Sprint(mode)]
 }
 
 // wbFor is the measured mapping for WhiteBalance code wb, or nil.
-func wbFor(wb int) *RawCorrection {
-	if model == nil {
+func (md *Model) wbFor(wb int) *RawCorrection {
+	if md == nil {
 		return nil
 	}
-	return model.WB[fmt.Sprint(wb)]
+	return md.WB[fmt.Sprint(wb)]
 }
 
-//go:embed model.json
-var modelJSON []byte
+//go:embed model*.json
+var modelFiles embed.FS
 
-// model is nil when no measurement is embedded (then the old formulas run).
+// models are the measured emulations by camera family ("" = the default,
+// model.json; model_SD15.json etc. override it for that family).
+var models = map[string]*Model{}
+
+// model is the default one, nil when none is embedded (then the old
+// formulas run).
 var model *Model
 
 func init() {
-	var m Model
-	if len(modelJSON) > 0 && json.Unmarshal(modelJSON, &m) == nil && len(m.Tone) > 0 {
+	ents, _ := modelFiles.ReadDir(".")
+	for _, e := range ents {
+		b, _ := modelFiles.ReadFile(e.Name())
+		var m Model
+		if json.Unmarshal(b, &m) != nil || len(m.Tone) == 0 {
+			continue
+		}
 		for k := range m.Tone {
 			sort.Slice(m.Tone[k], func(a, b int) bool { return m.Tone[k][a].Value < m.Tone[k][b].Value })
 		}
 		sort.Slice(m.Fill, func(a, b int) bool { return m.Fill[a].Value < m.Fill[b].Value })
-		model = &m
+		fam := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(e.Name(), "model"), "_"), ".json")
+		models[fam] = &m
 	}
+	model = models[""]
+}
+
+// modelFor is the measured model for a camera family.
+func modelFor(family string) *Model {
+	if m := models[family]; m != nil {
+		return m
+	}
+	return model
 }
 
 // MeasuredSource says what the emulation was measured on ("" = formulas).
@@ -109,11 +130,11 @@ type toneOp struct {
 }
 
 // newToneOp prepares slider param at value v (0 = no-op).
-func newToneOp(param string, v float64) []toneOp {
-	if model == nil || v == 0 {
+func (md *Model) newToneOp(param string, v float64) []toneOp {
+	if md == nil || v == 0 {
 		return nil
 	}
-	steps := model.Tone[param]
+	steps := md.Tone[param]
 	var side []*ToneStep // measured steps on v's side, nearest first
 	for i := range steps {
 		if s := &steps[i]; s.Value != 0 && (s.Value > 0) == (v > 0) {
@@ -169,21 +190,21 @@ type fillOp struct {
 	weights []float64
 }
 
-func newFillOp(v float64) *fillOp {
-	if model == nil || v == 0 || len(model.Fill) == 0 {
+func (md *Model) newFillOp(v float64) *fillOp {
+	if md == nil || v == 0 || len(md.Fill) == 0 {
 		return nil
 	}
 	var side []*FillStep // measured settings with v's sign, by size
-	for i := range model.Fill {
-		if s := &model.Fill[i]; s.Value != 0 && (s.Value > 0) == (v > 0) {
+	for i := range md.Fill {
+		if s := &md.Fill[i]; s.Value != 0 && (s.Value > 0) == (v > 0) {
 			side = append(side, s)
 		}
 	}
 	if len(side) == 0 { // nothing measured on this side: mirror the smallest
-		s := &model.Fill[0]
-		for i := range model.Fill {
-			if math.Abs(model.Fill[i].Value) < math.Abs(s.Value) {
-				s = &model.Fill[i]
+		s := &md.Fill[0]
+		for i := range md.Fill {
+			if math.Abs(md.Fill[i].Value) < math.Abs(s.Value) {
+				s = &md.Fill[i]
 			}
 		}
 		return &fillOp{steps: []*FillStep{s}, weights: []float64{v / s.Value}}
