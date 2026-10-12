@@ -801,7 +801,8 @@ func (s *server) handleAgent(w http.ResponseWriter, r *http.Request) {
 		fl.Flush()
 		mu.Unlock()
 	}
-	comp := s.compensation(ph, r.URL.Query().Get("comp") == "1")
+	compOn := r.URL.Query().Get("comp") == "1"
+	comp := s.compensation(ph, compOn)
 	renderFn := func(p preset.Params, width int) (*image.RGBA, error) {
 		s.sem <- struct{}{}
 		defer func() { <-s.sem }()
@@ -811,6 +812,15 @@ func (s *server) handleAgent(w http.ResponseWriter, r *http.Request) {
 		}
 		return render.Render(b, p, comp), nil
 	}
+	series := 0
+	if r.URL.Query().Get("series") == "1" {
+		if phs := s.seriesPhotos(ph); len(phs) > 1 {
+			series = len(phs)
+			renderFn = func(p preset.Params, width int) (*image.RGBA, error) {
+				return s.renderSheet(phs, p, compOn, width)
+			}
+		}
+	}
 	info := map[string]string{}
 	for k, v := range ph.Info {
 		if k != "TIME" {
@@ -818,7 +828,7 @@ func (s *server) handleAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	log.Printf("AI agent: %s (%s, %s)", ph.Name, ai.Model, ai.BaseURL)
-	_, err = agent.Run(r.Context(), ai, agent.Photo{Name: ph.Name, Camera: ph.Camera, Info: info},
+	_, err = agent.Run(r.Context(), ai, agent.Photo{Name: ph.Name, Camera: ph.Camera, Info: info, Series: series},
 		r.URL.Query().Get("dir"), s.agentCandidates(ph), renderFn, send)
 	if err != nil {
 		if r.Context().Err() == nil {

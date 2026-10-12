@@ -21,6 +21,9 @@ type Photo struct {
 	Name   string
 	Camera string
 	Info   map[string]string // X3F PROP subset: ISO, SH_DESC, CM_DESC, WB_DESC…
+	// Series > 1: the renders are a contact sheet of that many photos, and
+	// the agent must find one look for all of them.
+	Series int
 }
 
 // RenderFunc renders the photo with p at (at most) width w.
@@ -302,6 +305,12 @@ func Run(ctx context.Context, cfg Config, photo Photo, direction string, candida
 	}
 	intro := fmt.Sprintf("Photo: %s, camera %s. Metadata: %s\nPhotographer's direction: %s\n\nNeutral render stats: %s\n\nAvailable presets (id | name | params):\n%s",
 		photo.Name, photo.Camera, strings.Join(info, ", "), dir, origStats, list.String())
+
+	if photo.Series > 1 {
+		intro = fmt.Sprintf("SERIES MODE: every render you get is a CONTACT SHEET of %d different photos from one shoot (each tile is a separate photo; the metadata below is from the first). "+
+			"Choose ONE preset and ONE set of tuned values that work for ALL of them together: consistency across the set matters more than perfecting any single tile, "+
+			"and no tile may end up badly clipped or crushed. Mention in your final answer any tile the look suits less well.\n\n", photo.Series) + intro
+	}
 
 	msgs := []Message{
 		{Role: "system", Content: systemPrompt},

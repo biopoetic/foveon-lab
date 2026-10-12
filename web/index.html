@@ -211,6 +211,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
   <div class="ctl">
     <div id="aiConf"></div>
     <textarea id="aiDir" placeholder="Direction (optional): e.g. warm film look, moody, natural skin, punchy landscape…"></textarea>
+    <label class="chk" title="The AI judges a contact sheet of up to 6 photos from this folder and picks one look that suits them all — for a consistent set"><input type="checkbox" id="aiSeries"> Whole folder — one look for the series</label>
     <div class="priv" id="aiPriv"></div>
     <button class="primary" id="aiStart">Pick &amp; tune for this photo</button>
     <button id="aiStop" style="display:none">Stop</button>
@@ -897,6 +898,10 @@ function startAgent(){
   const photo = S.photo;
   aiLog(`Working on <b>${esc(photo.name)}</b>…`, "status");
   const u = new URLSearchParams({id: photo.id, comp: comp(), dir: $("#aiDir").value});
+  if ($("#aiSeries").checked){
+    u.set("series", "1");
+    aiLog(`Series mode: one look for this photo and up to ${5} others from “${esc(photo.folder)}”, judged on a contact sheet. Afterwards use <b>Batch export…</b> in the editor to apply it to the whole folder.`, "status");
+  }
   const es = AI.es = new EventSource("/api/agent?" + u);
   let statusEl = null;
   es.onmessage = m => {
