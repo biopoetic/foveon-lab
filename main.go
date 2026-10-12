@@ -48,11 +48,11 @@ var webFS embed.FS
 
 // Photo is one shot in the catalogue.
 type Photo struct {
-	ID     string            `json:"id"`
-	Name   string            `json:"name"`
-	Folder string            `json:"folder"`
-	Camera string            `json:"camera"`
-	Kind   string            `json:"kind"` // "x3f", "jpg" (Sigma camera JPEG) or "image" (any other picture)
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Folder string `json:"folder"`
+	Camera string `json:"camera"`
+	Kind   string `json:"kind"` // "x3f", "jpg" (Sigma camera JPEG) or "image" (any other picture)
 	// Unsupported explains why the photo can't be previewed; empty when it can.
 	Unsupported string `json:"unsupported,omitempty"`
 	// LowRes: only a small preview exists (SD9/SD10 carry a 567 px one and
@@ -305,6 +305,8 @@ type server struct {
 	rawMu    sync.Mutex
 	rawState map[string]string
 	rawQueue chan *Photo
+	// rawQueueLow: prefetches of the neighbours, decoded when nothing is urgent.
+	rawQueueLow chan *Photo
 }
 
 func (s *server) loadPresets() {
@@ -1154,7 +1156,7 @@ func main() {
 		sem:        make(chan struct{}, max(2, runtime.NumCPU()/2)),
 	}
 	// AI agent: what was set in the app wins over the environment variable.
-	s.rawState, s.rawQueue = map[string]string{}, make(chan *Photo, 256)
+	s.rawState, s.rawQueue, s.rawQueueLow = map[string]string{}, make(chan *Photo, 256), make(chan *Photo, 256)
 	s.accurate.Store(cfg.Accurate == nil || *cfg.Accurate)
 	go s.rawWorker()
 	s.ai.cfg = agent.Config{BaseURL: *aiBase, Model: *aiModel, APIKey: os.Getenv(*aiKeyEnv), MaxSteps: 12}
@@ -1168,7 +1170,7 @@ func main() {
 	if cfg.AI != nil && cfg.AI.Key != "" {
 		s.ai.apply(*cfg.AI)
 	}
-		s.setPhotos(photoRoots, cfg.AllImages)
+	s.setPhotos(photoRoots, cfg.AllImages)
 	s.loadPresets()
 
 	mux := http.NewServeMux()
@@ -1181,6 +1183,7 @@ func main() {
 	mux.HandleFunc("/api/export/batch", s.handleExportBatch)
 	mux.HandleFunc("/api/lut", s.handleLUT)
 	mux.HandleFunc("/api/rawstate", s.handleRawState)
+	mux.HandleFunc("/api/rawprefetch", s.handleRawPrefetch)
 	mux.HandleFunc("/api/accurate", s.handleAccurate)
 	mux.HandleFunc("/api/quit", handleQuit)
 	mux.HandleFunc("/api/presets", s.handlePresets)

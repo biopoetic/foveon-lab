@@ -176,7 +176,7 @@ func fitRawCommand(desk string) {
 		if b.Use {
 			verdict = "ON"
 		}
-		fmt.Printf("%s camera-JPEG balance: %d photos, held-out %.1f vs %.1f without -> %s\n", f, b.Photos, b.HeldOut, b.Without, verdict)
+		fmt.Printf("%s camera-JPEG balance: %d photos, held-out %.1f vs %.1f without -> %s; + tone curve %.1f (on: %v)\n", f, b.Photos, b.HeldOut, b.Without, verdict, b.HeldOutTone, b.ToneUse)
 	}
 	jb, _ := json.MarshalIndent(bal, "", " ")
 	pj := filepath.Join(*dir, "jpegwb.json")

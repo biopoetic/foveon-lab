@@ -323,6 +323,10 @@ function accWatch(){
   clearTimeout(ACC.timer);
   const p = S.photo;
   if (!p || !ACC.on || !p.accurate) return;
+  // Decode the neighbours too, so stepping with the arrow keys is instant.
+  const i = S.photos.indexOf(p);
+  const near = [i + 1, i - 1, i + 2, i - 2].map(k => S.photos[k]).filter(x => x && x.accurate).map(x => x.id);
+  if (near.length) fetch("/api/rawprefetch?ids=" + near.join(",")).catch(() => {});
   const id = p.id;
   ACC.timer = setTimeout(async () => {
     let r; try { r = await (await fetch("/api/rawstate?id=" + id)).json(); } catch { return; }

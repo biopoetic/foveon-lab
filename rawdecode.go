@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"time"
 
 	"golang.org/x/image/tiff"
@@ -94,6 +95,7 @@ func decodeRaw(ph *Photo) (image.Image, error) {
 		if err := os.Rename(produced, cached); err != nil {
 			return nil, err
 		}
+		trimRawCache(filepath.Dir(cached), 40)
 		log.Printf("raw-decoded %s in %v", ph.Name, time.Since(start).Round(100*time.Millisecond))
 	}
 	f, err := os.Open(cached)
@@ -102,6 +104,34 @@ func decodeRaw(ph *Photo) (image.Image, error) {
 	}
 	defer f.Close()
 	return tiff.Decode(f)
+}
+
+// trimRawCache keeps the newest keep decodes (each SD1 decode is ~90 MB).
+func trimRawCache(dir string, keep int) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	type f struct {
+		p string
+		t time.Time
+	}
+	var fs []f
+	for _, e := range ents {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".tif" {
+			continue
+		}
+		if info, err := e.Info(); err == nil {
+			fs = append(fs, f{filepath.Join(dir, e.Name()), info.ModTime()})
+		}
+	}
+	if len(fs) <= keep {
+		return
+	}
+	sort.Slice(fs, func(a, b int) bool { return fs[a].t.After(fs[b].t) })
+	for _, x := range fs[keep:] {
+		os.Remove(x.p)
+	}
 }
 
 func trimOutput(b []byte) string {

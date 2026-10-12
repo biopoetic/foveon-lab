@@ -199,7 +199,8 @@ func FitJPEGBalance(family string, ps []JPEGPair) render.JPEGBalance {
 	if len(ps) < 6 {
 		return out
 	}
-	var with, without float64
+	out.Tone = fitTone(ps, out.Coef)
+	var with, without, tone float64
 	for h := range ps {
 		var train []JPEGPair
 		for i := range ps {
@@ -208,22 +209,76 @@ func FitJPEGBalance(family string, ps []JPEGPair) render.JPEGBalance {
 			}
 		}
 		c := fitJPEGCoef(train, ridge)
-		src := &render.Linear{W: ps[h].JPEG.W, H: ps[h].JPEG.H, Pix: append([]float32(nil), ps[h].JPEG.Pix...)}
-		f := render.JPEGBalanceFeatures(src, ps[h].AutoWB)
-		for k := 0; k < 3; k++ {
-			var v float64
-			for i := range f {
-				v += c[k][i] * f[i]
-			}
-			g := float32(math.Exp(math.Max(-1.5, math.Min(1.5, v))))
-			for i := k; i < len(src.Pix); i += 3 {
-				src.Pix[i] *= g
-			}
-		}
+		src := balanced(ps[h], c)
 		with += MeanError(ps[h].Neutral(src), ps[h].SPP)
 		without += MeanError(ps[h].Neutral(ps[h].JPEG), ps[h].SPP)
+		tc := fitTone(train, c)
+		render.ApplyTone(src, render.PredictTone(&tc, render.ToneFeatures(src, ps[h].AutoWB)))
+		tone += MeanError(ps[h].Neutral(src), ps[h].SPP)
 	}
-	out.HeldOut, out.Without = with/float64(len(ps)), without/float64(len(ps))
+	n := float64(len(ps))
+	out.HeldOut, out.Without, out.HeldOutTone = with/n, without/n, tone/n
 	out.Use = out.HeldOut < 0.95*out.Without
+	out.ToneUse = out.Use && out.HeldOutTone < 0.97*out.HeldOut
 	return out
 }
+
+func balanced(p JPEGPair, c [3][6]float64) *render.Linear {
+	src := &render.Linear{W: p.JPEG.W, H: p.JPEG.H, Pix: append([]float32(nil), p.JPEG.Pix...)}
+	f := render.JPEGBalanceFeatures(src, p.AutoWB)
+	for k := 0; k < 3; k++ {
+		var v float64
+		for i := range f {
+			v += c[k][i] * f[i]
+		}
+		g := float32(math.Exp(math.Max(-1.5, math.Min(1.5, v))))
+		for i := k; i < len(src.Pix); i += 3 {
+			src.Pix[i] *= g
+		}
+	}
+	return src
+}
+
+// fitTone regresses, per brightness bin, the brightness gap between the
+// app's neutral preview (after the balance) and SPP on ToneFeatures.
+func fitTone(ps []JPEGPair, c [3][6]float64) [render.ToneBins][6]float64 {
+	var out [render.ToneBins][6]float64
+	var a [render.ToneBins][6][6]float64
+	var b [render.ToneBins][6]float64
+	for _, p := range ps {
+		src := balanced(p, c)
+		f := render.ToneFeatures(src, p.AutoWB)
+		neu := p.Neutral(src)
+		var s, n [render.ToneBins]float64
+		for i := 0; i < neu.W*neu.H; i++ {
+			x := float64(render.ToSRGB(luma(neu.Pix, i*3)))
+			bin := min(render.ToneBins-1, int(x*render.ToneBins))
+			s[bin] += float64(render.ToSRGB(luma(p.SPP.Pix, i*3))) - x
+			n[bin]++
+		}
+		for bin := 0; bin < render.ToneBins; bin++ {
+			if n[bin] < 30 {
+				continue
+			}
+			d := s[bin] / n[bin]
+			for i := 0; i < 6; i++ {
+				b[bin][i] += f[i] * d
+				for j := 0; j < 6; j++ {
+					a[bin][i][j] += f[i] * f[j]
+				}
+			}
+		}
+	}
+	for bin := range out {
+		for i := 1; i < 6; i++ {
+			a[bin][i][i] += 0.05
+		}
+		if a[bin][0][0] > 0 {
+			out[bin] = solve6(a[bin], b[bin])
+		}
+	}
+	return out
+}
+
+// FitJPEGCoefs fits the balance predictor on ps without judging it.
+func FitJPEGCoefs(ps []JPEGPair) [3][6]float64 { return fitJPEGCoef(ps, 0.01) }

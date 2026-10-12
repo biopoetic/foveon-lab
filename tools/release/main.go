@@ -277,7 +277,14 @@ func main() {
 	skipDMG := flag.Bool("skip-dmg", false, "do not build the macOS .app/.dmg")
 	genKey := flag.Bool("gen-update-key", false, "create the self-update signing key (once) and print its public key")
 	icoOut := flag.String("write-ico", "", "only write the Windows icon (.ico) to this path")
+	sysoOut := flag.String("write-syso", "", "only write the Windows icon resource (.syso) to this path")
 	flag.Parse()
+	if *sysoOut != "" {
+		if err := writeSyso(*sysoOut); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if *icoOut != "" {
 		if err := writeICO(*icoOut); err != nil {
 			log.Fatal(err)

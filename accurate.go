@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/biopoetic/foveon-lab/render"
 	"github.com/biopoetic/foveon-lab/x3f"
@@ -57,20 +58,36 @@ func (s *server) useRaw(ph *Photo) bool {
 	return s.wantRaw(ph) && s.rawStateOf(ph) == rawReady
 }
 
-// requestRaw queues ph's raw decode if accurate mode wants it.
-func (s *server) requestRaw(ph *Photo) {
+// requestRaw queues ph's raw decode if accurate mode wants it; the photo
+// on screen goes before prefetched neighbours.
+func (s *server) requestRaw(ph *Photo) { s.queueRaw(ph, true) }
+
+func (s *server) queueRaw(ph *Photo, urgent bool) {
 	if !s.wantRaw(ph) || s.rawStateOf(ph) != rawNone {
 		return
 	}
 	s.rawMu.Lock()
 	s.rawState[ph.ID] = rawDecoding
 	s.rawMu.Unlock()
-	go func() { s.rawQueue <- ph }()
+	if urgent {
+		go func() { s.rawQueue <- ph }()
+	} else {
+		go func() { s.rawQueueLow <- ph }()
+	}
 }
 
 // rawWorker decodes queued photos one at a time (x3f_extract is heavy).
 func (s *server) rawWorker() {
-	for ph := range s.rawQueue {
+	for {
+		var ph *Photo
+		select {
+		case ph = <-s.rawQueue:
+		default:
+			select {
+			case ph = <-s.rawQueue:
+			case ph = <-s.rawQueueLow:
+			}
+		}
 		_, err := decodeRaw(ph)
 		s.rawMu.Lock()
 		if err != nil {
@@ -105,6 +122,17 @@ func rawLinear(ph *Photo, maxW int) (*render.Linear, error) {
 		c.Apply(l)
 	}
 	return l, nil
+}
+
+// handleRawPrefetch queues the raw decode of the given photos (the ones
+// next to the selected one), so stepping to them is instant.
+func (s *server) handleRawPrefetch(w http.ResponseWriter, r *http.Request) {
+	for _, id := range strings.Split(r.URL.Query().Get("ids"), ",") {
+		if ph := s.lookup(id); ph != nil {
+			s.queueRaw(ph, false)
+		}
+	}
+	writeJSON(w, map[string]bool{"ok": true})
 }
 
 // handleRawState: GET ?id= → {"state": "", "decoding", "ready" or "failed",
