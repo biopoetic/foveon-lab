@@ -551,39 +551,53 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, err)
 		return
 	}
+	path, err := s.exportImage(ph, p, label, req.Comp, req.Format)
+	if err != nil {
+		httpErr(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]string{"path": path})
+}
+
+// exportImage renders ph at full resolution with p and saves it as JPEG or
+// 16-bit TIFF in a "foveon-lab" folder next to the photo.
+func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool, format string) (string, error) {
+	dir := filepath.Join(filepath.Dir(ph.path), "foveon-lab")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
 	img, err := decodePreview(ph)
 	if err != nil {
-		httpErr(w, 500, err)
-		return
+		return "", err
 	}
 	base := render.NewBase(render.FromImage(img, 0, ph.rotation))
-	comp := s.compensation(ph, req.Comp)
+	c := s.compensation(ph, comp)
 	ext := ".jpg"
-	if req.Format == "tiff" {
+	if format == "tiff" {
 		ext = ".tif"
 	}
+	stem := strings.TrimSuffix(ph.Name, filepath.Ext(ph.Name))
 	path := filepath.Join(dir, stem+"_"+safeName(label)+ext)
 	f, err := os.Create(path)
 	if err != nil {
-		httpErr(w, 500, err)
-		return
+		return "", err
 	}
-	if req.Format == "tiff" {
-		err = render.WriteTIFF16(f, render.Render16(base, p, comp))
+	if format == "tiff" {
+		err = render.WriteTIFF16(f, render.Render16(base, p, c))
 	} else {
-		err = jpeg.Encode(f, render.Render(base, p, comp), &jpeg.Options{Quality: 95})
+		err = jpeg.Encode(f, render.Render(base, p, c), &jpeg.Options{Quality: 95})
 	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
 	if err != nil {
-		httpErr(w, 500, err)
-		return
+		os.Remove(path)
+		return "", err
 	}
 	log.Printf("exported %s", path)
-	writeJSON(w, map[string]string{"path": path})
+	return path, nil
 }
 
 // exportDNG converts the X3F's raw data to a DNG with x3f_extract, for
@@ -980,6 +994,7 @@ func main() {
 	mux.HandleFunc("/api/folders", s.handleFolders)
 	mux.HandleFunc("/api/allimages", s.handleAllImages)
 	mux.HandleFunc("/api/looks", s.handleLooks)
+	mux.HandleFunc("/api/export/batch", s.handleExportBatch)
 	mux.HandleFunc("/api/quit", handleQuit)
 	mux.HandleFunc("/api/presets", s.handlePresets)
 	mux.HandleFunc("/api/thumb", s.handleThumb)

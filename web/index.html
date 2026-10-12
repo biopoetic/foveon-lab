@@ -83,6 +83,11 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 #aiPanel .hd{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
 #aiPanel .hd b{flex:1}
 #aiPanel .ctl{padding:10px 12px;border-bottom:1px solid var(--line)}
+.modal{position:fixed;inset:0;background:#0009;z-index:20;display:none;align-items:center;justify-content:center}
+.modal.on{display:flex}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;width:min(440px,92vw);display:flex;flex-direction:column;gap:9px}
+#bProg{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+#bProg div{height:100%;width:0;background:var(--accent);transition:width .2s}
 .lookbar{grid-column:1/-1;color:var(--dim);padding:2px 2px 6px}
 .lookbar a,.cap a.more{color:var(--accent2);cursor:pointer}
 #aiSetup{display:none;flex-direction:column;gap:7px;padding:10px 12px;border-bottom:1px solid var(--line)}
@@ -175,6 +180,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="save" class="primary">Save as preset</button>
           <button id="export" title="Full-resolution JPEG with the preset applied">Export JPEG</button>
           <button id="exportTiff" title="Full-resolution 16-bit TIFF with the preset applied — no 8-bit rounding, for further editing">Export TIFF 16-bit</button>
+          <button id="batchBtn" title="Apply this preset to many photos and export them all">Batch export…</button>
           <button id="exportDng" title="The raw data as DNG for Lightroom / Capture One / darktable (presets are not applied — it's raw)" style="display:none">Export DNG (raw)</button>
           <button id="sppOpen" title="Put this preset into Sigma Photo Pro's list as its current setting, then open the photo in SPP (SPP must be closed)" style="display:none">Open in SPP ↗</button>
         </div>
@@ -211,6 +217,19 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <span id="aiUsage" style="color:var(--dim);font-size:11px;margin-left:6px"></span>
   </div>
   <div id="aiLog"></div>
+</div>
+<div id="batch" class="modal">
+  <div class="box">
+    <b>Batch export</b>
+    <div class="src" id="bPreset"></div>
+    <label class="chk"><input type="radio" name="bScope" value="folder" checked> <span id="bFolderLab">This folder</span></label>
+    <label class="chk"><input type="radio" name="bScope" value="all"> <span id="bAllLab">All listed photos</span></label>
+    <label class="chk">Format <select id="bFormat"><option value="jpeg">JPEG (full resolution)</option><option value="tiff">TIFF 16-bit</option></select></label>
+    <div class="src">Saved next to each photo in a <code>foveon-lab</code> folder. Your originals are not touched.</div>
+    <div id="bProg"><div></div></div>
+    <div class="src" id="bMsg"></div>
+    <div class="btns"><button class="primary" id="bStart">Export</button> <button id="bClose">Close</button></div>
+  </div>
 </div>
 <div id="toast"></div>
 <script>
@@ -490,6 +509,63 @@ function renderBig(showOrig){
   if (!showOrig) $("#bigOrig").src = renderURL({w: bigW(), comp: "0"});
   img.onerror = () => { clearTimeout(busy); $("#busy").style.display = "none"; toast("Render failed."); };
   img.src = url;
+}
+
+// ---------- batch export ----------
+const BATCH = {ctl: null};
+function batchOpen(){
+  const p = current();
+  const folder = S.photos.filter(x => x.folder === S.photo.folder && !x.unsupported);
+  $("#bPreset").textContent = "Preset: " + (dirty() ? (p ? p.name + " (tuned)" : "tuned settings") : (p ? p.name : "Neutral"));
+  $("#bFolderLab").textContent = `This folder — ${S.photo.folder} (${folder.length} photos)`;
+  $("#bAllLab").textContent = `All listed photos (${S.photos.filter(x => !x.unsupported).length})`;
+  $("#bProg div").style.width = "0"; $("#bMsg").textContent = "";
+  $("#bStart").disabled = false;
+  $("#batch").classList.add("on");
+}
+
+async function batchStart(){
+  const p = current();
+  const scope = document.querySelector('input[name=bScope]:checked').value;
+  const ids = S.photos.filter(x => !x.unsupported && (scope === "all" || x.folder === S.photo.folder)).map(x => x.id);
+  const body = {ids, format: $("#bFormat").value, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2};
+  $("#bStart").disabled = true;
+  BATCH.ctl = new AbortController();
+  let res;
+  try {
+    res = await fetch("/api/export/batch", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body), signal: BATCH.ctl.signal});
+  } catch { return; }
+  if (!res.ok){ $("#bMsg").textContent = await res.text(); $("#bStart").disabled = false; return; }
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = "", errors = [], last = "";
+  try {
+    for (;;){
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      let nl;
+      while ((nl = buf.indexOf(String.fromCharCode(10))) >= 0){
+        const line = JSON.parse(buf.slice(0, nl)); buf = buf.slice(nl + 1);
+        if (line.done){
+          $("#bMsg").innerHTML = `Done: ${line.ok} exported${line.failed ? `, ${line.failed} failed` : ""}.` +
+            (last ? ` <a id="bReveal">Show in folder</a>` : "") +
+            (errors.length ? `<br>${errors.slice(0, 3).map(esc).join("<br>")}` : "");
+          if ($("#bReveal")) $("#bReveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(last));
+        } else {
+          $("#bProg div").style.width = (100 * line.i / line.n) + "%";
+          $("#bMsg").textContent = `${line.i}/${line.n} ${line.name || ""}`;
+          if (line.error) errors.push(`${line.name || "?"}: ${line.error}`);
+          if (line.path) last = line.path;
+        }
+      }
+    }
+  } catch {}
+  BATCH.ctl = null;
+}
+
+function batchClose(){
+  if (BATCH.ctl){ BATCH.ctl.abort(); BATCH.ctl = null; toast("Batch export stopped."); }
+  $("#batch").classList.remove("on");
 }
 
 // ---------- before/after, histogram, clipping ----------
@@ -892,6 +968,9 @@ function bind(){
   $("#aiCancel").onclick = () => aiSetup(false);
   $("#aiKey").onkeydown = e => { if (e.key === "Enter") aiSave(); };
   $("#aiStop").onclick = () => { stopAgent(); aiLog("Stopped.", "status"); };
+  $("#batchBtn").onclick = batchOpen;
+  $("#bStart").onclick = batchStart;
+  $("#bClose").onclick = batchClose;
   $("#splitBtn").onclick = () => { VIEW.split = !VIEW.split; setView(); $("#splitBtn").blur(); };
   $("#clipBtn").onclick = () => { VIEW.clip = !VIEW.clip; setView(); $("#clipBtn").blur(); };
   $("#stage").addEventListener("mousemove", e => {
