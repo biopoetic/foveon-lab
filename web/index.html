@@ -77,6 +77,8 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 #aiPanel .hd{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
 #aiPanel .hd b{flex:1}
 #aiPanel .ctl{padding:10px 12px;border-bottom:1px solid var(--line)}
+.lookbar{grid-column:1/-1;color:var(--dim);padding:2px 2px 6px}
+.lookbar a,.cap a.more{color:var(--accent2);cursor:pointer}
 #aiSetup{display:none;flex-direction:column;gap:7px;padding:10px 12px;border-bottom:1px solid var(--line)}
 #aiSetup.on{display:flex}
 #aiSetup label{display:flex;flex-direction:column;gap:3px;color:var(--dim);font-size:12px}
@@ -126,6 +128,9 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <select id="srcSel"><option value="">All files</option></select>
         <input type="search" id="q" placeholder="Search presets… (a|b = either)" size="18">
         <div class="chips" id="chips"></div>
+        <select id="looksSel" title="Group presets that look (nearly) the same on THIS photo and show one tile per look">
+          <option value="">Every preset</option><option value="fine">Distinct looks: fine</option><option value="normal">Distinct looks</option><option value="coarse">Distinct looks: broad</option>
+        </select>
         <span id="count" style="color:var(--dim)"></span>
         <button class="ai" id="aiOpen" title="Let an AI agent pick and tune the best preset for this photo">✦ AI pick</button>
       </div>
@@ -224,6 +229,7 @@ const S = {
   groups: new Set(store.get("groups", [])),
   cam: store.get("cam","auto"), src: store.get("src",""), q: "",
   list: [], idx: -1, params: null, base: null,
+  looks: store.get("looks", ""), lookKey: "", lookGroups: null, lookOpen: null,
 };
 
 function toast(html, ms=4000){
@@ -330,8 +336,44 @@ function drawChips(){
 }
 
 function refreshList(){
-  S.list = baseFiltered().filter(p => !S.groups.size || S.groups.has(p.group));
-  $("#count").textContent = `${S.list.length} presets`;
+  const all = baseFiltered().filter(p => !S.groups.size || S.groups.has(p.group));
+  S.list = all;
+  S.lookMore = {};
+  if (S.looks && S.lookGroups && S.lookKey === lookKey(all)){
+    const byId = new Map(all.map(p => [p.id, p]));
+    const open = S.lookOpen && S.lookGroups.find(g => g[0] === S.lookOpen);
+    if (open) S.list = open.map(id => byId.get(id)).filter(Boolean);
+    else {
+      S.list = S.lookGroups.map(g => byId.get(g[0])).filter(Boolean);
+      for (const g of S.lookGroups) S.lookMore[g[0]] = g.length - 1;
+    }
+    $("#count").textContent = open ? `${S.list.length} similar presets` : `${S.list.length} looks from ${all.length} presets`;
+  } else $("#count").textContent = `${all.length} presets`;
+}
+
+// ---------- distinct looks ----------
+function lookKey(list){
+  return [S.photo?.id, comp(), S.looks, list.map(p => p.id).join(",")].join("|");
+}
+
+async function ensureLooks(){
+  if (!S.looks || !S.photo || S.photo.unsupported) return;
+  const all = baseFiltered().filter(p => !S.groups.size || S.groups.has(p.group));
+  const key = lookKey(all);
+  if (key === S.lookKey || key === S.lookPending) return;
+  S.lookPending = key;
+  $("#count").textContent = "grouping looks…";
+  try {
+    const res = await fetch("/api/looks", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({id: S.photo.id, comp: comp() === "1", presets: all.map(p => p.id), detail: S.looks})});
+    if (!res.ok) throw new Error(await res.text());
+    const {groups} = await res.json();
+    if (S.lookPending !== key) return; // superseded
+    S.lookGroups = groups; S.lookKey = key;
+    if (S.lookOpen && !groups.some(g => g[0] === S.lookOpen)) S.lookOpen = null;
+    refreshList(); drawGrid();
+  } catch (e) { toast("Could not group looks: " + esc(e.message)); }
+  finally { if (S.lookPending === key) S.lookPending = ""; }
 }
 
 // ---------- grid ----------
@@ -345,10 +387,16 @@ function drawGrid(){
     `<div class="tile ref" data-i="-2"><div class="img"><img src="${renderURL({w, comp:"0"})}"></div><div class="cap">Original${S.photo.kind === "image" ? "" : " (camera JPEG)"}<small>no processing at all</small></div></div>`,
     `<div class="tile ref" data-i="-1"><div class="img"><img src="${renderURL({w})}"></div><div class="cap">Neutral${comp()==="1"?" (compensated)":""}<small>starting point for presets</small></div></div>`,
   ];
-  S.list.forEach((p, i) => tiles.push(
-    `<div class="tile" data-i="${i}"><div class="img"><img loading="lazy" src="${renderURL({w, preset:p.id})}"></div><div class="cap">${esc(p.name)}<small>${esc(p.source)}${p.dupes?` · +${p.dupes} copies`:""}</small></div></div>`));
+  if (S.looks && S.lookOpen && S.lookKey) tiles.unshift(`<div class="lookbar">Presets that look like <b>${esc(S.list[0]?.name || "")}</b> on this photo · <a id="lookBack">← all looks</a></div>`);
+  S.list.forEach((p, i) => {
+    const more = S.lookMore?.[p.id];
+    tiles.push(`<div class="tile" data-i="${i}"><div class="img"><img loading="lazy" src="${renderURL({w, preset:p.id})}"></div><div class="cap">${esc(p.name)}<small>${esc(p.source)}${p.dupes?` · +${p.dupes} copies`:""}${more ? ` · <a class="more" data-id="${esc(p.id)}">+${more} similar</a>` : ""}</small></div></div>`);
+  });
   g.innerHTML = tiles.join("");
   g.querySelectorAll(".tile").forEach(t => t.onclick = () => openDetail(+t.dataset.i));
+  g.querySelectorAll("a.more").forEach(a => a.onclick = e => { e.stopPropagation(); S.lookOpen = a.dataset.id; refreshList(); drawGrid(); g.scrollTop = 0; });
+  if ($("#lookBack")) $("#lookBack").onclick = () => { S.lookOpen = null; refreshList(); drawGrid(); };
+  ensureLooks();
 }
 
 // ---------- detail ----------
@@ -728,6 +776,8 @@ function bind(){
   let qt; $("#q").oninput = e => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value; refreshList(); drawChips(); drawGrid(); }, 200); };
   $("#tileSize").value = store.get("tile", 340);
   $("#tileSize").onchange = e => { store.set("tile", +e.target.value); drawGrid(); };
+  $("#looksSel").value = S.looks;
+  $("#looksSel").onchange = e => { S.looks = e.target.value; store.set("looks", S.looks); S.lookOpen = null; S.lookKey = ""; e.target.blur(); refreshList(); drawGrid(); };
   $("#comp").checked = store.get("comp", true);
   $("#comp").onchange = e => { store.set("comp", e.target.checked); $("#detail").classList.contains("on") ? renderBig() : drawGrid(); };
   $("#back").onclick = closeDetail;

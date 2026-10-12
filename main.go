@@ -979,6 +979,7 @@ func main() {
 	mux.HandleFunc("/api/photos", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.photoList()) })
 	mux.HandleFunc("/api/folders", s.handleFolders)
 	mux.HandleFunc("/api/allimages", s.handleAllImages)
+	mux.HandleFunc("/api/looks", s.handleLooks)
 	mux.HandleFunc("/api/quit", handleQuit)
 	mux.HandleFunc("/api/presets", s.handlePresets)
 	mux.HandleFunc("/api/thumb", s.handleThumb)
