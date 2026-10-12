@@ -317,6 +317,20 @@ func Analyze(dir string, progress io.Writer) (*Result, error) {
 			continue
 		}
 		refLocal := localMean(ref)
+		// Without the A22 re-export, A00 against itself is the baseline the
+		// model builder needs (an exact identity instead of a measured one).
+		hasCheck := false
+		for _, e := range exps {
+			if e.code == "A22" {
+				hasCheck = true
+			}
+		}
+		if !hasCheck && len(exps) > 1 {
+			if m, err := measure(ref, ref, refLocal); err == nil {
+				m.Code, m.Label, m.Image = Reference, "Neutral (A00 as its own baseline)", name
+				res.Measurements = append(res.Measurements, m)
+			}
+		}
 		for _, e := range exps {
 			if e.code == Reference {
 				continue

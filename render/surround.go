@@ -62,3 +62,6 @@ func fillCoef(c *[FillBins][3]float64, x, da, db float64) float64 {
 	at := func(b int) float64 { return c[b][0] + c[b][1]*da + c[b][2]*db }
 	return at(b0)*(1-t) + at(b0+1)*t
 }
+
+// FillShift evaluates a two-scale Fill Light step (for calibration tools).
+func FillShift(c *[FillBins][3]float64, x, da, db float64) float64 { return fillCoef(c, x, da, db) }

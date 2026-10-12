@@ -4,17 +4,19 @@ Where Foveon Lab's preview stands against Sigma Photo Pro 6.9, and what each fur
 take. All numbers are mean absolute difference per pixel and channel, 0–255, measured on photos the
 fitted part did **not** see (held out). SPP itself repeats to within 0.5.
 
-## Where we are (October 2026, v0.3.3)
+## Where we are (October 2026, after the second calibration round)
+
+All numbers held out (the photo was not used to fit what is tested on it).
 
 | | SD1 Merrill (Accurate mode) | SD15 |
 |---|---|---|
-| Neutral starting image vs SPP | **~7** (raw data → SPP mapping) | ~17 (camera JPEG) |
-| Whole real presets, end to end | **3.6–11.4, mean ~8** | not measured (est. ~20) |
-| Single sliders, from SPP's neutral | 0.4–2 (Fill Light 4–7) | not measured |
-| White balance codes 2 / 6 | 2.8 / 1.9 | not measured |
+| Neutral starting image vs SPP | **7.2** (raw → SPP mapping, 16 photos) | **9.9** (camera JPEG + per-photo balance and tone curve, 22 photos) |
+| Fill Light +0.5 / +1 | 5.2 / 9.8 (12 photos) | 5.5 / 10.3 (12 photos) |
+| Other sliders, white balance, colour modes | ~0.3–3 | ~0.6–3.5 |
+| Real presets from SPP's neutral (6 presets) | 2.1–6.2 | 4.4–8.4 |
 
 Visibility: under ~3 is invisible, 5–10 shows only side by side, 25+ is obvious. Before the
-calibration work the end-to-end error was ~28.
+calibration work the end-to-end error was ~28–40.
 
 **Exports are automatic now:** `foveon-lab calibrate -auto -photo <name> -steps A,B,C,V,W` drives SPP
 itself (~40 s per export, unattended), so every step below that "needs exports" costs only time.
