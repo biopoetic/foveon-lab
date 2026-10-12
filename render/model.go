@@ -146,27 +146,49 @@ func (op *toneOp) apply(x float64) (float64, float64) {
 	return math.Max(0, math.Min(1, x+d)), math.Max(0, c)
 }
 
-// fillOp is Fill Light at a value (measured at a few positive settings).
+// fillOp is Fill Light at a value: a weighted blend of measured settings.
 type fillOp struct {
-	step  *FillStep
-	scale float64
+	steps   []*FillStep
+	weights []float64
 }
 
 func newFillOp(v float64) *fillOp {
 	if model == nil || v == 0 || len(model.Fill) == 0 {
 		return nil
 	}
-	// The nearest measured setting at or above |v|, scaled down linearly;
-	// negative values mirror the smallest step.
-	a := math.Abs(v)
-	best := &model.Fill[len(model.Fill)-1]
+	var side []*FillStep // measured settings with v's sign, by size
 	for i := range model.Fill {
-		if model.Fill[i].Value >= a {
-			best = &model.Fill[i]
-			break
+		if s := &model.Fill[i]; s.Value != 0 && (s.Value > 0) == (v > 0) {
+			side = append(side, s)
 		}
 	}
-	return &fillOp{step: best, scale: v / best.Value}
+	if len(side) == 0 { // nothing measured on this side: mirror the smallest
+		s := &model.Fill[0]
+		for i := range model.Fill {
+			if math.Abs(model.Fill[i].Value) < math.Abs(s.Value) {
+				s = &model.Fill[i]
+			}
+		}
+		return &fillOp{steps: []*FillStep{s}, weights: []float64{v / s.Value}}
+	}
+	sort.Slice(side, func(a, b int) bool { return math.Abs(side[a].Value) < math.Abs(side[b].Value) })
+	a := math.Abs(v)
+	if a <= math.Abs(side[0].Value) || len(side) == 1 {
+		s := side[0]
+		if a > math.Abs(s.Value) {
+			s = side[len(side)-1]
+		}
+		return &fillOp{steps: []*FillStep{s}, weights: []float64{v / s.Value}}
+	}
+	for k := 1; k < len(side); k++ {
+		lo, hi := side[k-1], side[k]
+		if a <= math.Abs(hi.Value) {
+			t := (a - math.Abs(lo.Value)) / (math.Abs(hi.Value) - math.Abs(lo.Value))
+			return &fillOp{steps: []*FillStep{lo, hi}, weights: []float64{1 - t, t}}
+		}
+	}
+	far := side[len(side)-1] // beyond the largest: scale it
+	return &fillOp{steps: []*FillStep{far}, weights: []float64{v / far.Value}}
 }
 
 func bilerp8(t *[8][8]float64, s, p float64) float64 {
@@ -181,7 +203,12 @@ func bilerp8(t *[8][8]float64, s, p float64) float64 {
 
 // apply lifts brightness x of a pixel whose surroundings have brightness m.
 func (f *fillOp) apply(x, m float64) (float64, float64) {
-	d := bilerp8(&f.step.Local, m, x) * f.scale
-	c := 1 + (knot(&f.step.Chroma, x)-1)*math.Abs(f.scale)
+	var d float64
+	c := 1.0
+	for i, s := range f.steps {
+		w := f.weights[i]
+		d += bilerp8(&s.Local, m, x) * w
+		c += (knot(&s.Chroma, x) - 1) * math.Abs(w)
+	}
 	return math.Max(0, math.Min(1, x+d)), math.Max(0, c)
 }

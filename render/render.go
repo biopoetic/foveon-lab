@@ -23,6 +23,17 @@ import (
 type Linear struct {
 	W, H int
 	Pix  []float32
+	// Scale is this image's size relative to the original photo (0 = 1):
+	// SPP sharpens the full-size image, so on a reduced view the effect is
+	// proportionally smaller.
+	Scale float64
+}
+
+func (l *Linear) scale() float64 {
+	if l.Scale <= 0 {
+		return 1
+	}
+	return l.Scale
 }
 
 const lutN = 4096
@@ -120,7 +131,7 @@ func FromImage(img image.Image, maxW, rot int) *Linear {
 		colMap[x] = x * dw / sw
 	}
 	get := pixelGetter(img)
-	l := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3)}
+	l := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: float64(dw) / float64(sw)}
 	parallelRows(dh, func(y0, y1 int) {
 		sum := make([]float32, dw*3)
 		cnt := make([]float32, dw)
@@ -193,7 +204,7 @@ func (l *Linear) Rotate(deg int) *Linear {
 		return l
 	}
 	w, h := l.W, l.H
-	o := &Linear{W: w, H: h, Pix: make([]float32, len(l.Pix))}
+	o := &Linear{W: w, H: h, Pix: make([]float32, len(l.Pix)), Scale: l.Scale}
 	if deg != 180 {
 		o.W, o.H = h, w
 	}
@@ -221,7 +232,7 @@ func (l *Linear) Downscale(maxW int) *Linear {
 	}
 	dw := maxW
 	dh := max(1, int(math.Round(float64(l.H)*float64(dw)/float64(l.W))))
-	o := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3)}
+	o := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: l.scale() * float64(dw) / float64(l.W)}
 	parallelRows(dh, func(y0, y1 int) {
 		for dy := y0; dy < y1; dy++ {
 			sy0, sy1 := dy*l.H/dh, (dy+1)*l.H/dh
@@ -377,7 +388,7 @@ func Render(b *Base, p preset.Params, c Compensation) *image.RGBA {
 		o[3] = 255
 	})
 	if p.Sharpness != 0 {
-		sharpen(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5))))
+		sharpen(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale()))))
 	}
 	return out
 }
@@ -395,7 +406,7 @@ func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 		o[6], o[7] = 0xff, 0xff
 	})
 	if p.Sharpness != 0 {
-		sharpen16(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5))))
+		sharpen16(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale()))))
 	}
 	return out
 }
