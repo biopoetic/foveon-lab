@@ -135,9 +135,15 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
   the earlier hand-written formulas). Held-out settings, predicted by interpolation, land within the
   same range. Measured on one SD1 photo so far; SD15 files may differ slightly. Develop final images
   in SPP.
-- **The source is the camera's own JPEG**, which already has the in-camera colour mode applied (often
-  *Vivid*). "Compensate camera JPEG" undoes that approximately, from the X3F metadata
-  (`CM_DESC`, `SATU_DESC`, `CONT_DESC`), so presets start from a more neutral base.
+- **Where the preview starts.** The camera's own JPEG already has the in-camera colour mode applied
+  (Vivid, FC Blue…), so even before any preset it differs from SPP's neutral rendering — measured on
+  13 photos: about 17–21/255 on average, up to 40 for FC Blue shots. "Compensate camera JPEG" undoes
+  part of that from the X3F metadata. **Accurate** (on by default) does better for **SD1 Merrill**
+  files: it starts from the raw data (decoded by the bundled `x3f_extract`) mapped onto SPP's neutral
+  look — **7.4/255 on photos the mapping was not fitted on**, vs 20.8 for the camera JPEG. The first
+  view of a photo shows the JPEG at once and swaps in the accurate preview when the raw decode is
+  done (~10–25 s, cached). For SD15 the same approach measured *worse* than the camera JPEG
+  (22.7 vs 17.0), so SD15 stays on the JPEG. A damaged embedded JPEG falls back to the raw data.
 - **ColorMode codes**: 4 = Standard, 6 = Portrait, 7 = Landscape (6 and 7 measured); other codes are
   unknown (the calibration pack's C steps probe them).
 - **White Balance / ColorTemp** are kept and written back but not emulated.
@@ -156,6 +162,7 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
 ```
 foveon-lab calibrate -spp   # creates Desktop/foveon-calibration and adds the [CAL] presets to SPP
 foveon-lab analyze          # measures the exports → report.txt, calibration.json, model_<photo>.json
+foveon-lab fit-raw          # from <photo>_A00.tif exports: fits + tests the raw base per camera → rawbase.json
 ```
 
 `model_<photo>.json` is the measured emulation; copy it to `render/model.json` and rebuild to use it

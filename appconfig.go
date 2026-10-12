@@ -21,6 +21,8 @@ type appConfig struct {
 	AllImages bool `json:"allImages,omitempty"`
 	// AI is the agent's provider, model and API key as set in the app.
 	AI *aiSettings `json:"ai,omitempty"`
+	// Accurate: raw-based previews where measured to help (nil = on).
+	Accurate *bool `json:"accurate,omitempty"`
 }
 
 func configPath() string {

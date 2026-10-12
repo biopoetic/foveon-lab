@@ -62,11 +62,17 @@ type Photo struct {
 	// no in-camera styling) because the file has no full-size preview.
 	RawDecoded bool              `json:"rawDecoded,omitempty"`
 	Info       map[string]string `json:"info"`
+	// Accurate: an accurate (raw-based) preview exists for this camera.
+	Accurate bool `json:"accurate,omitempty"`
 
 	path      string
 	rotation  int
 	props     map[string]string
 	rawFailed atomic.Bool // raw decode failed once; stay on the preview
+	// Size of the embedded full preview (for the raw decode's aspect).
+	previewW, previewH int
+	// jpegBroken: the embedded JPEG is damaged; shown from the raw data.
+	jpegBroken atomic.Bool
 }
 
 // infoKeys are the PROP fields shown in the UI.
@@ -178,6 +184,11 @@ func loadMeta(ph *Photo) bool {
 			return false
 		}
 		ph.props, ph.Camera, ph.rotation = f.Props, f.Camera(), f.Rotation
+		for _, im := range f.Images {
+			if im.ImgType == 2 && im.Format == 18 && int(im.Width) > ph.previewW {
+				ph.previewW, ph.previewH = int(im.Width), int(im.Height)
+			}
+		}
 		switch {
 		case !f.HasPreview():
 			ph.Unsupported = "This X3F has no preview Foveon Lab can decode yet."
@@ -212,6 +223,7 @@ func loadMeta(ph *Photo) bool {
 	if ph.Camera == "" {
 		ph.Camera = x3f.ShortModel(ph.Folder)
 	}
+	ph.Accurate = rawCorrectionFor(ph) != nil
 	return true
 }
 
@@ -287,6 +299,12 @@ type server struct {
 	sem     chan struct{}
 
 	ai aiState
+
+	// Accurate (raw-based) previews, see accurate.go.
+	accurate atomic.Bool
+	rawMu    sync.Mutex
+	rawState map[string]string
+	rawQueue chan *Photo
 }
 
 func (s *server) loadPresets() {
@@ -349,10 +367,35 @@ func decodePreview(ph *Photo) (image.Image, error) {
 	return jpeg.Decode(bytes.NewReader(data))
 }
 
+// sourceMode names which source a photo renders from right now: "raw" (the
+// accurate, raw-based one), else "jpg" (its preview).
+func (s *server) sourceMode(ph *Photo) string {
+	if s.useRaw(ph) || ph.jpegBroken.Load() {
+		return "raw"
+	}
+	s.requestRaw(ph)
+	return "jpg"
+}
+
 func (s *server) source(ph *Photo) (*render.Linear, error) {
-	v, err := s.sources.get(ph.ID, func() (any, error) {
+	return s.sourceAs(ph, s.sourceMode(ph))
+}
+
+func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
+	v, err := s.sources.get(ph.ID+"|"+mode, func() (any, error) {
+		if mode == "raw" {
+			return rawLinear(ph, sourceW)
+		}
 		img, err := decodePreview(ph)
 		if err != nil {
+			// A damaged embedded JPEG: fall back to the raw data.
+			if ph.Kind == "x3f" && rawTool != "" {
+				if l, rerr := rawLinear(ph, sourceW); rerr == nil {
+					log.Printf("%s: embedded preview unreadable (%v), showing its raw data", ph.Name, err)
+					ph.jpegBroken.Store(true)
+					return l, nil
+				}
+			}
 			return nil, err
 		}
 		return render.FromImage(img, sourceW, ph.rotation), nil
@@ -364,8 +407,12 @@ func (s *server) source(ph *Photo) (*render.Linear, error) {
 }
 
 func (s *server) base(ph *Photo, w int) (*render.Base, error) {
-	v, err := s.bases.get(ph.ID+"|"+strconv.Itoa(w), func() (any, error) {
-		src, err := s.source(ph)
+	return s.baseAs(ph, w, s.sourceMode(ph))
+}
+
+func (s *server) baseAs(ph *Photo, w int, mode string) (*render.Base, error) {
+	v, err := s.bases.get(ph.ID+"|"+mode+"|"+strconv.Itoa(w), func() (any, error) {
+		src, err := s.sourceAs(ph, mode)
 		if err != nil {
 			return nil, err
 		}
@@ -379,7 +426,7 @@ func (s *server) base(ph *Photo, w int) (*render.Base, error) {
 
 func (s *server) compensation(ph *Photo, on bool) render.Compensation {
 	// A raw decode carries no in-camera styling, so there is nothing to undo.
-	if !on || ph.props == nil || (ph.RawDecoded && !ph.rawFailed.Load()) {
+	if !on || ph.props == nil || (ph.RawDecoded && !ph.rawFailed.Load()) || s.useRaw(ph) || ph.jpegBroken.Load() {
 		return render.Compensation{SatFactor: 1}
 	}
 	return render.CompensationFor(ph.props)
@@ -447,9 +494,15 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, err)
 		return
 	}
+	// src=camera: the camera's own JPEG (the "Original" tile), even when
+	// the accurate raw-based preview is in use.
+	mode := s.sourceMode(ph)
+	if q.Get("src") == "camera" && !ph.jpegBroken.Load() {
+		mode = "jpg"
+	}
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
-	b, err := s.base(ph, width)
+	b, err := s.baseAs(ph, width, mode)
 	if err != nil {
 		httpErr(w, 500, err)
 		return
@@ -568,11 +621,26 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	}
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
-	img, err := decodePreview(ph)
-	if err != nil {
-		return "", err
+	var src *render.Linear
+	if s.wantRaw(ph) || ph.jpegBroken.Load() {
+		// Accurate mode: export from the raw data even if the preview
+		// hasn't switched yet (this waits for the decode).
+		l, err := rawLinear(ph, 0)
+		if err != nil {
+			return "", err
+		}
+		s.rawMu.Lock()
+		s.rawState[ph.ID] = rawReady
+		s.rawMu.Unlock()
+		src = l
+	} else {
+		img, err := decodePreview(ph)
+		if err != nil {
+			return "", err
+		}
+		src = render.FromImage(img, 0, ph.rotation)
 	}
-	base := render.NewBase(render.FromImage(img, 0, ph.rotation))
+	base := render.NewBase(src)
 	c := s.compensation(ph, comp)
 	ext := ".jpg"
 	if format == "tiff" {
@@ -881,6 +949,11 @@ func openBrowser(url string) {
 // calibCommand handles "calibrate" (write the SPP calibration pack) and
 // "analyze" (measure the exports). It reports whether it handled argv.
 func calibCommand(desk string) bool {
+	if len(os.Args) >= 2 && os.Args[1] == "fit-raw" {
+		rawTool = findRawTool("")
+		fitRawCommand(desk)
+		return true
+	}
 	if len(os.Args) < 2 || (os.Args[1] != "calibrate" && os.Args[1] != "analyze") {
 		return false
 	}
@@ -1034,6 +1107,9 @@ func main() {
 		sem:        make(chan struct{}, max(2, runtime.NumCPU()/2)),
 	}
 	// AI agent: what was set in the app wins over the environment variable.
+	s.rawState, s.rawQueue = map[string]string{}, make(chan *Photo, 256)
+	s.accurate.Store(cfg.Accurate == nil || *cfg.Accurate)
+	go s.rawWorker()
 	s.ai.cfg = agent.Config{BaseURL: *aiBase, Model: *aiModel, APIKey: os.Getenv(*aiKeyEnv), MaxSteps: 12}
 	s.ai.keyEnv = *aiKeyEnv
 	if s.ai.cfg.APIKey != "" {
@@ -1057,6 +1133,8 @@ func main() {
 	mux.HandleFunc("/api/looks", s.handleLooks)
 	mux.HandleFunc("/api/export/batch", s.handleExportBatch)
 	mux.HandleFunc("/api/lut", s.handleLUT)
+	mux.HandleFunc("/api/rawstate", s.handleRawState)
+	mux.HandleFunc("/api/accurate", s.handleAccurate)
 	mux.HandleFunc("/api/quit", handleQuit)
 	mux.HandleFunc("/api/presets", s.handlePresets)
 	mux.HandleFunc("/api/thumb", s.handleThumb)
