@@ -92,6 +92,7 @@ func fitRawCommand(desk string) {
 		}
 	}
 	groups := map[string][]calib.RawPair{}
+	jgroups := map[string][]calib.JPEGPair{}
 	for _, e := range exports {
 		name := strings.TrimSuffix(filepath.Base(e), "_A00.tif")
 		ph := byName[strings.ToUpper(name)]
@@ -108,6 +109,20 @@ func fitRawCommand(desk string) {
 		if err != nil {
 			log.Fatal(err)
 		}
+		// Skip scenes at the edge of sRGB (e.g. a saturated red flower): SPP
+		// works on wider data there, so they teach clipping, not colour.
+		var edge int
+		for i := 0; i < len(spp.Pix); i += 3 {
+			lo := min(spp.Pix[i], spp.Pix[i+1], spp.Pix[i+2])
+			hi := max(spp.Pix[i], spp.Pix[i+1], spp.Pix[i+2])
+			if lo < 0.0005 && hi > 0.2 || hi > 0.99 {
+				edge++
+			}
+		}
+		if frac := float64(edge) / float64(len(spp.Pix)/3); frac > 0.3 {
+			fmt.Printf("  %s: %.0f%% of it at the sRGB edge or clipped, skipped\n", name, frac*100)
+			continue
+		}
 		fmt.Printf("  %s (%s): decoding raw…\n", name, ph.Camera)
 		rimg, err := decodeRaw(ph)
 		if err != nil {
@@ -119,8 +134,12 @@ func fitRawCommand(desk string) {
 		if f, err := x3f.Open(ph.path); err == nil {
 			if img, _, err := f.Preview(); err == nil {
 				cam := stretchTo(render.FromImage(img, calib.AnalysisW, 0), spp.W, spp.H)
-				em := render.Render(render.NewBase(cam), preset.Neutral(), render.CompensationFor(f.Props))
-				jpegErr = calib.MeanError(rgbaToLinear(em), spp)
+				props := f.Props
+				neutral := func(l *render.Linear) *render.Linear {
+					return rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), render.CompensationFor(props)))
+				}
+				jpegErr = calib.MeanError(neutral(cam), spp)
+				jgroups[family] = append(jgroups[family], calib.JPEGPair{Name: name, JPEG: cam, SPP: spp, AutoWB: props["WB_DESC"] == "Auto", Neutral: neutral})
 			}
 		}
 		if jpegErr < 0 {
@@ -149,5 +168,20 @@ func fitRawCommand(desk string) {
 	if err := os.WriteFile(p, js, 0o644); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Saved %s — copy it to render/rawbase.json and rebuild to use it.\n", p)
+	var bal []render.JPEGBalance
+	for _, f := range fams {
+		b := calib.FitJPEGBalance(f, jgroups[f])
+		bal = append(bal, b)
+		verdict := "off (not clearly better)"
+		if b.Use {
+			verdict = "ON"
+		}
+		fmt.Printf("%s camera-JPEG balance: %d photos, held-out %.1f vs %.1f without -> %s\n", f, b.Photos, b.HeldOut, b.Without, verdict)
+	}
+	jb, _ := json.MarshalIndent(bal, "", " ")
+	pj := filepath.Join(*dir, "jpegwb.json")
+	if err := os.WriteFile(pj, jb, 0o644); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Saved %s and %s: copy them to render/ and rebuild to use them.\n", p, pj)
 }

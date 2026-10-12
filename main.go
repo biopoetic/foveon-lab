@@ -367,6 +367,15 @@ func decodePreview(ph *Photo) (image.Image, error) {
 	return jpeg.Decode(bytes.NewReader(data))
 }
 
+// balanceJPEG applies the measured per-photo colour balance that brings a
+// camera-JPEG preview closer to SPP's neutral rendering (render.BalanceJPEG).
+func balanceJPEG(ph *Photo, l *render.Linear) *render.Linear {
+	if ph.Kind == "x3f" && !ph.RawDecoded && ph.props != nil {
+		render.BalanceJPEG(x3f.PresetFamily(ph.Camera), l, ph.props["WB_DESC"] == "Auto")
+	}
+	return l
+}
+
 // sourceMode names which source a photo renders from right now: "raw" (the
 // accurate, raw-based one), else "jpg" (its preview).
 func (s *server) sourceMode(ph *Photo) string {
@@ -398,7 +407,7 @@ func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
 			}
 			return nil, err
 		}
-		return render.FromImage(img, sourceW, ph.rotation), nil
+		return balanceJPEG(ph, render.FromImage(img, sourceW, ph.rotation)), nil
 	})
 	if err != nil {
 		return nil, err
@@ -641,7 +650,7 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 		if err != nil {
 			return "", err
 		}
-		src = render.FromImage(img, 0, ph.rotation)
+		src = balanceJPEG(ph, render.FromImage(img, 0, ph.rotation))
 	}
 	base := render.NewBase(src)
 	c := s.compensation(ph, comp)

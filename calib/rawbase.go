@@ -114,3 +114,116 @@ func FitRawBase(family string, pairs []RawPair) render.RawCorrection {
 
 // LoadLinear reads an export (TIFF/JPEG) at the analysis size.
 func LoadLinear(path string) (*render.Linear, error) { return load(path) }
+
+// JPEGPair is a camera-JPEG decode and its SPP neutral export, with the
+// photo's in-camera white balance mode.
+type JPEGPair struct {
+	Name    string
+	JPEG    *render.Linear
+	SPP     *render.Linear
+	AutoWB  bool
+	Neutral func(l *render.Linear) *render.Linear // renders l as the app's neutral preview
+}
+
+func fitJPEGCoef(ps []JPEGPair, ridge float64) [3][6]float64 {
+	var coef [3][6]float64
+	for k := 0; k < 3; k++ {
+		var a [6][6]float64
+		var b [6]float64
+		for _, p := range ps {
+			f := render.JPEGBalanceFeatures(p.JPEG, p.AutoWB)
+			n := p.Neutral(p.JPEG)
+			var sn, ss float64
+			for i := k; i < len(n.Pix); i += 3 {
+				sn += float64(n.Pix[i])
+				ss += float64(p.SPP.Pix[i])
+			}
+			y := math.Log(ss / sn)
+			for i := 0; i < 6; i++ {
+				b[i] += f[i] * y
+				for j := 0; j < 6; j++ {
+					a[i][j] += f[i] * f[j]
+				}
+			}
+		}
+		for i := 1; i < 6; i++ {
+			a[i][i] += ridge
+		}
+		coef[k] = solve6(a, b)
+	}
+	return coef
+}
+
+func solve6(a [6][6]float64, b [6]float64) [6]float64 {
+	n := 6
+	for c := 0; c < n; c++ {
+		p := c
+		for r := c + 1; r < n; r++ {
+			if math.Abs(a[r][c]) > math.Abs(a[p][c]) {
+				p = r
+			}
+		}
+		a[c], a[p] = a[p], a[c]
+		b[c], b[p] = b[p], b[c]
+		if a[c][c] == 0 {
+			continue
+		}
+		for r := c + 1; r < n; r++ {
+			f := a[r][c] / a[c][c]
+			for k := c; k < n; k++ {
+				a[r][k] -= f * a[c][k]
+			}
+			b[r] -= f * b[c]
+		}
+	}
+	var x [6]float64
+	for r := n - 1; r >= 0; r-- {
+		if a[r][r] == 0 {
+			continue
+		}
+		s := b[r]
+		for k := r + 1; k < n; k++ {
+			s -= a[r][k] * x[k]
+		}
+		x[r] = s / a[r][r]
+	}
+	return x
+}
+
+// FitJPEGBalance fits the per-photo JPEG balance for a family and judges it
+// leave-one-out through the app's real path (gains on the source, then the
+// neutral render); it is switched on only when that clearly helps.
+func FitJPEGBalance(family string, ps []JPEGPair) render.JPEGBalance {
+	const ridge = 0.01
+	out := render.JPEGBalance{Family: family, Photos: len(ps), Coef: fitJPEGCoef(ps, ridge)}
+	if len(ps) < 6 {
+		return out
+	}
+	var with, without float64
+	for h := range ps {
+		var train []JPEGPair
+		for i := range ps {
+			if i != h {
+				train = append(train, ps[i])
+			}
+		}
+		c := fitJPEGCoef(train, ridge)
+		src := &render.Linear{W: ps[h].JPEG.W, H: ps[h].JPEG.H, Pix: append([]float32(nil), ps[h].JPEG.Pix...)}
+		f := render.JPEGBalanceFeatures(src, ps[h].AutoWB)
+		for k := 0; k < 3; k++ {
+			var v float64
+			for i := range f {
+				v += c[k][i] * f[i]
+			}
+			g := float32(math.Exp(math.Max(-1.5, math.Min(1.5, v))))
+			for i := k; i < len(src.Pix); i += 3 {
+				src.Pix[i] *= g
+			}
+		}
+		with += MeanError(ps[h].Neutral(src), ps[h].SPP)
+		without += MeanError(ps[h].Neutral(ps[h].JPEG), ps[h].SPP)
+	}
+	out.HeldOut, out.Without = with/float64(len(ps)), without/float64(len(ps))
+	out.Use = out.HeldOut < 0.95*out.Without
+	return out
+}
