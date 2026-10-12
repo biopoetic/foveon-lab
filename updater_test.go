@@ -109,3 +109,32 @@ func TestExtractAndReplace(t *testing.T) {
 		t.Fatalf("leftovers: %v", ents)
 	}
 }
+
+func TestLensDesc(t *testing.T) {
+	cases := map[[2]string]string{
+		{"18 to 35", "1.8 to 16"}:  "18–35mm f/1.8–16",
+		{"16.6", "4.0"}:            "16.6mm f/4",
+		{"50 to 150", "22 to 2.8"}: "50–150mm f/2.8–22",
+		{"", ""}:                   "",
+	}
+	for in, want := range cases {
+		if got := lensDesc(map[string]string{"LENSFRANGE": in[0], "LENSARANGE": in[1]}); got != want {
+			t.Errorf("lensDesc(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestRotationFromJPEG(t *testing.T) {
+	// SOI, APP1 "Exif" with a little-endian TIFF holding Orientation=6.
+	tiff := []byte{'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0}
+	seg := append([]byte("Exif\x00\x00"), tiff...)
+	b := []byte{0xFF, 0xD8, 0xFF, 0xE1, byte((len(seg) + 2) >> 8), byte(len(seg) + 2)}
+	b = append(b, seg...)
+	b = append(b, 0xFF, 0xDA, 0, 2)
+	if r := rotationFromJPEG(b); r != 90 {
+		t.Fatalf("rotation = %d, want 90", r)
+	}
+	if r := rotationFromJPEG([]byte{0xFF, 0xD8, 0xFF, 0xDA, 0, 2}); r != 0 {
+		t.Fatalf("no EXIF: rotation = %d", r)
+	}
+}

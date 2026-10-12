@@ -17,6 +17,8 @@ import (
 type appConfig struct {
 	Photos  []string `json:"photos"`
 	Presets string   `json:"presets"`
+	// AllImages also lists ordinary JPEG/TIFF/PNG files (look preview only).
+	AllImages bool `json:"allImages,omitempty"`
 }
 
 func configPath() string {
@@ -57,9 +59,9 @@ func defaultPhotoRoots(desk string) []string {
 }
 
 // setPhotos rescans the photo folders and swaps the catalogue in.
-func (s *server) setPhotos(roots []string) {
+func (s *server) setPhotos(roots []string, all bool) {
 	start := time.Now()
-	ps := scanPhotos(roots)
+	ps := scanPhotos(roots, all)
 	if ps == nil {
 		ps = []*Photo{} // JSON [] rather than null
 	}
@@ -68,7 +70,7 @@ func (s *server) setPhotos(roots []string) {
 		m[p.ID] = p
 	}
 	s.photoMu.Lock()
-	s.photos, s.byID, s.photoRoots = ps, m, roots
+	s.photos, s.byID, s.photoRoots, s.allImages = ps, m, roots, all
 	s.photoMu.Unlock()
 	log.Printf("found %d photos in %v (%s)", len(ps), time.Since(start).Round(time.Millisecond), strings.Join(roots, "; "))
 }
@@ -117,11 +119,14 @@ func (s *server) handleFolders(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if err := saveConfig(appConfig{Photos: roots, Presets: presets}); err != nil {
+		s.photoMu.RLock()
+		all := s.allImages
+		s.photoMu.RUnlock()
+		if err := saveConfig(appConfig{Photos: roots, Presets: presets, AllImages: all}); err != nil {
 			httpErr(w, 500, err)
 			return
 		}
-		s.setPhotos(roots)
+		s.setPhotos(roots, all)
 		s.pmu.Lock()
 		s.presetsDir = presets
 		s.pmu.Unlock()
@@ -130,11 +135,48 @@ func (s *server) handleFolders(w http.ResponseWriter, r *http.Request) {
 	s.photoMu.RLock()
 	roots := s.photoRoots
 	n := len(s.photos)
+	all := s.allImages
 	s.photoMu.RUnlock()
 	s.pmu.RLock()
 	presets, np := s.presetsDir, len(s.presets)
 	s.pmu.RUnlock()
-	writeJSON(w, map[string]any{"photos": roots, "presets": presets, "photoCount": n, "presetCount": np})
+	writeJSON(w, map[string]any{"photos": roots, "presets": presets, "photoCount": n, "presetCount": np, "allImages": all})
+}
+
+// handleAllImages switches ordinary JPEG/TIFF/PNG files on or off (POST
+// {"on": true}) and rescans; the choice is remembered.
+func (s *server) handleAllImages(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(405)
+		return
+	}
+	var req struct {
+		On bool `json:"on"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpErr(w, 400, err)
+		return
+	}
+	s.photoMu.RLock()
+	roots := s.photoRoots
+	s.photoMu.RUnlock()
+	s.pmu.RLock()
+	presets := s.presetsDir
+	s.pmu.RUnlock()
+	cfg, _ := loadConfig()
+	cfg.AllImages = req.On
+	if len(cfg.Photos) == 0 {
+		cfg.Photos, cfg.Presets = roots, presets
+	}
+	if err := saveConfig(cfg); err != nil {
+		httpErr(w, 500, err)
+		return
+	}
+	s.setPhotos(roots, req.On)
+	s.photoMu.RLock()
+	n := len(s.photos)
+	s.photoMu.RUnlock()
+	writeJSON(w, map[string]any{"allImages": req.On, "photoCount": n})
 }
 
 // handleQuit stops the app (it may have no window to close, e.g. as a .app).

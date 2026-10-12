@@ -53,7 +53,7 @@ type Photo struct {
 	Name   string            `json:"name"`
 	Folder string            `json:"folder"`
 	Camera string            `json:"camera"`
-	Kind   string            `json:"kind"` // "x3f" or "jpg"
+	Kind   string            `json:"kind"` // "x3f", "jpg" (Sigma camera JPEG) or "image" (any other picture)
 	// Unsupported explains why the photo can't be previewed; empty when it can.
 	Unsupported string `json:"unsupported,omitempty"`
 	// LowRes: only a small preview exists (SD9/SD10 carry a 567 px one and
@@ -90,8 +90,9 @@ func idOf(s string) string {
 
 var reSDIM = regexp.MustCompile(`(?i)^SDIM\d+\.jpe?g$`)
 
-// scanPhotos finds X3F files (and SDIM*.JPG camera JPEGs) under the roots.
-func scanPhotos(roots []string) []*Photo {
+// scanPhotos finds X3F files (and SDIM*.JPG camera JPEGs) under the roots;
+// with all it also takes any JPEG/TIFF/PNG.
+func scanPhotos(roots []string, all bool) []*Photo {
 	var out []*Photo
 	seen := map[string]bool{}
 	for _, root := range roots {
@@ -113,7 +114,8 @@ func scanPhotos(roots []string) []*Photo {
 				return nil
 			}
 			ext := strings.ToLower(filepath.Ext(p))
-			if ext != ".x3f" && !reSDIM.MatchString(d.Name()) {
+			sigma := ext == ".x3f" || reSDIM.MatchString(d.Name())
+			if !sigma && !(all && otherImageExt[ext]) {
 				return nil
 			}
 			id := idOf(p)
@@ -122,8 +124,11 @@ func scanPhotos(roots []string) []*Photo {
 			}
 			seen[id] = true
 			ph := &Photo{ID: id, Name: d.Name(), Folder: filepath.Base(filepath.Dir(p)), path: p, Info: map[string]string{}, Kind: "jpg"}
-			if ext == ".x3f" {
+			switch {
+			case ext == ".x3f":
 				ph.Kind = "x3f"
+			case !sigma:
+				ph.Kind = "image"
 			}
 			out = append(out, ph)
 			return nil
@@ -194,9 +199,16 @@ func loadMeta(ph *Photo) bool {
 				ph.Info[k] = v
 			}
 		}
+		if l := lensDesc(f.Props); l != "" {
+			ph.Info["LENS"] = l
+		}
 		if t, err := strconv.ParseInt(ph.Info["TIME"], 10, 64); err == nil {
 			ph.Info["TIME"] = time.Unix(t, 0).UTC().Format("2006-01-02 15:04")
 		}
+	}
+	if ph.Kind == "image" {
+		ph.rotation = exifRotation(ph.path)
+		return true // not a Sigma file: no camera, so every preset is offered
 	}
 	if ph.Camera == "" {
 		ph.Camera = x3f.ShortModel(ph.Folder)
@@ -262,6 +274,7 @@ type server struct {
 	photos     []*Photo
 	byID       map[string]*Photo
 	photoRoots []string
+	allImages  bool
 	presetsDir string
 
 	pmu     sync.RWMutex
@@ -316,6 +329,9 @@ func decodePreview(ph *Photo) (image.Image, error) {
 		}
 		img, _, err := f.Preview()
 		return img, err
+	}
+	if ph.Kind == "image" {
+		return decodeImageFile(ph.path)
 	}
 	data, err := os.ReadFile(ph.path)
 	if err != nil {
@@ -827,7 +843,7 @@ func calibCommand(desk string) bool {
 
 	if os.Args[1] == "calibrate" {
 		var paths []string
-		for _, p := range scanPhotos(strings.Split(*photos, ";")) {
+		for _, p := range scanPhotos(strings.Split(*photos, ";"), false) {
 			if p.Kind == "x3f" {
 				paths = append(paths, p.path)
 			}
@@ -933,7 +949,7 @@ func main() {
 		sem:        make(chan struct{}, max(2, runtime.NumCPU()/2)),
 		ai:         agent.Config{BaseURL: *aiBase, Model: *aiModel, APIKey: os.Getenv(*aiKeyEnv), MaxSteps: 12},
 	}
-	s.setPhotos(photoRoots)
+	s.setPhotos(photoRoots, cfg.AllImages)
 	s.loadPresets()
 
 	mux := http.NewServeMux()
@@ -941,6 +957,7 @@ func main() {
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/api/photos", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.photoList()) })
 	mux.HandleFunc("/api/folders", s.handleFolders)
+	mux.HandleFunc("/api/allimages", s.handleAllImages)
 	mux.HandleFunc("/api/quit", handleQuit)
 	mux.HandleFunc("/api/presets", s.handlePresets)
 	mux.HandleFunc("/api/thumb", s.handleThumb)
