@@ -1,0 +1,62 @@
+name: mac-update-test
+
+# End-to-end test of the macOS self-update on a real Mac: install an older
+# release's Foveon Lab.app, let it find the latest release, update itself
+# (whole-bundle swap) and relaunch, then check the new bundle is the latest
+# version and still passes Apple's signature and Gatekeeper checks.
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: Version to start from (must have a -macos-app.zip asset), e.g. v0.3.6
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: macos-latest
+    steps:
+      - name: Install the old app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$HOME/Applications" dl
+          gh release download "${{ inputs.from }}" -R "$GITHUB_REPOSITORY" -p "*-macos-app.zip" -D dl
+          ditto -x -k dl/*-macos-app.zip "$HOME/Applications"
+          APP="$HOME/Applications/Foveon Lab.app"
+          defaults read "$APP/Contents/Info" CFBundleShortVersionString
+          spctl --assess --type execute --verbose=2 "$APP"
+
+      - name: Run it and update it
+        run: |
+          APP="$HOME/Applications/Foveon Lab.app"
+          mkdir -p "$RUNNER_TEMP/photos"
+          "$APP/Contents/MacOS/foveon-lab" -no-open -port 8795 -photos "$RUNNER_TEMP/photos" > app.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8795/api/caps && break; sleep 1; done; echo
+          curl -sf "http://127.0.0.1:8795/api/update?check=1" | tee update.json; echo
+          grep -q '"canInstall":true' update.json || { echo "no installable update offered"; cat app.log; exit 1; }
+          curl -sf -X POST http://127.0.0.1:8795/api/update; echo
+          LATEST=$(sed -E 's/.*"latest":"([^"]+)".*/\1/' update.json)
+          echo "waiting for $LATEST to come back on the same port"
+          for i in $(seq 1 90); do
+            v=$(curl -sf http://127.0.0.1:8795/api/caps | sed -E 's/.*"version":"([^"]+)".*/\1/' || true)
+            [ "$v" = "$LATEST" ] && break
+            sleep 1
+          done
+          echo "running: $v"
+          [ "$v" = "$LATEST" ] || { echo "the updated app did not come back"; cat app.log; exit 1; }
+          echo "LATEST=$LATEST" >> "$GITHUB_ENV"
+          curl -sf -X POST http://127.0.0.1:8795/api/quit || true
+
+      - name: Check the swapped bundle
+        run: |
+          APP="$HOME/Applications/Foveon Lab.app"
+          V=$(defaults read "$APP/Contents/Info" CFBundleShortVersionString)
+          echo "bundle version: $V"
+          [ "v$V" = "$LATEST" ]
+          ls -la "$HOME/Applications"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=2 "$APP"
