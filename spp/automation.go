@@ -23,7 +23,9 @@ var automation embed.FS
 // "SDIM0260") once per calibration code into outDir as <photo>_<code>.tif.
 // The [CAL] presets must already be in SPP's list, SPP must be open on that
 // photo, and nobody may touch mouse or keyboard while it runs.
-func AutoExport(photo string, codes []string, outDir string, log io.Writer) error {
+//
+// openPath, when set, is the X3F to (re)open in SPP first.
+func AutoExport(photo, openPath string, codes []string, outDir string, log io.Writer) error {
 	if runtime.GOOS != "windows" {
 		return errors.New("automatic export drives Sigma Photo Pro, which is Windows-only here")
 	}
@@ -38,6 +40,13 @@ func AutoExport(photo string, codes []string, outDir string, log io.Writer) erro
 		// PowerShell 5 reads BOM-less scripts as ANSI; the scripts are ASCII
 		// except for the "…" in a menu name, so give them a UTF-8 BOM.
 		if err := os.WriteFile(filepath.Join(dir, e.Name()), append([]byte{0xEF, 0xBB, 0xBF}, b...), 0o644); err != nil {
+			return err
+		}
+	}
+	if openPath != "" {
+		op := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(dir, "open.ps1"), "-path", openPath)
+		op.Stdout, op.Stderr = log, log
+		if err := op.Run(); err != nil {
 			return err
 		}
 	}

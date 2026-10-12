@@ -26,8 +26,10 @@ Measured A00–A22 on a second SD1 photo (SDIM0046) and an SD15 photo (SDIM1151)
 `calibrate -auto`. The SD1 model predicts the unseen SD1 photo almost as well as its own (sliders
 0.3–2.3/255), but on SD15 it is off by up to 8: the difference is the camera, not the scene. The
 renderer now has a model per family (`render/model.json` = SD1, averaged over both SD1 photos;
-`render/model_SD15.json`). Still open: a second SD15 photo to confirm, and SD15 white balance /
-colour modes (SD1's are used meanwhile). Note: pick calibration photos without colours at the
+`render/model_SD15.json`). Confirmed on a second, unseen SD15 photo (SDIM1021): the SD15 model
+gets the tone sliders within 0.6–3.5 vs 2.5–7 for the SD1 model; the SD15 model now averages both
+SD15 photos. SD15 white balance and colour modes were measured too and differ completely from
+SD1 (WB 6: 26 → 2.3 once measured, mode 5: 21.7 → 0.9). Note: pick calibration photos without colours at the
 sRGB edge — a saturated red flower (75 % clipped channels) measured gamut clipping, not sliders.
 
 ### 2. SD15: a better starting image (gain: ~17 → maybe ~8)

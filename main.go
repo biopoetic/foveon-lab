@@ -969,7 +969,7 @@ func calibCommand(desk string) bool {
 	photos := fsFlags.String("photos", desk, "folders with X3F photos (for suggesting source images)")
 	intoSPP := fsFlags.Bool("spp", false, "also add the [CAL] presets straight into Sigma Photo Pro's preset list (SPP must be closed; its settings are backed up first)")
 	auto := fsFlags.Bool("auto", false, "export the steps from SPP automatically: open -photo in SPP first, then don't touch mouse or keyboard")
-	autoPhoto := fsFlags.String("photo", "", "with -auto: the photo open in SPP, e.g. SDIM0260")
+	autoPhoto := fsFlags.String("photo", "", "with -auto: the photo open in SPP, e.g. SDIM0260, or the path of an X3F to open in SPP first")
 	autoSteps := fsFlags.String("steps", "A", "with -auto: step groups (A, B, C, V, W) and/or codes, comma-separated, e.g. A or A,W or A00,A16")
 	fsFlags.Parse(os.Args[2:])
 
@@ -989,9 +989,14 @@ func calibCommand(desk string) bool {
 		if len(codes) == 0 {
 			log.Fatalf("no calibration steps match %q", *autoSteps)
 		}
+		openPath := ""
+		if strings.ContainsAny(*autoPhoto, `\/`) || strings.HasSuffix(strings.ToUpper(*autoPhoto), ".X3F") {
+			openPath = *autoPhoto
+			*autoPhoto = strings.TrimSuffix(filepath.Base(*autoPhoto), filepath.Ext(*autoPhoto))
+		}
 		out := filepath.Join(*dir, calib.ExportsDir)
 		fmt.Printf("Exporting %d steps of %s from SPP into %s (existing files are skipped). Don't touch mouse or keyboard.\n", len(codes), *autoPhoto, out)
-		if err := spp.AutoExport(*autoPhoto, codes, out, os.Stdout); err != nil {
+		if err := spp.AutoExport(*autoPhoto, openPath, codes, out, os.Stdout); err != nil {
 			log.Fatal(err)
 		}
 		return true

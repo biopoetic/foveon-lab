@@ -16,7 +16,13 @@ foreach ($code in $codes.Split(',')) {
   $t0 = Get-Date
   & "$d\front.ps1" | Out-Null; Start-Sleep -Milliseconds 300
   $r = & "$d\pick.ps1" -name $name
-  if ($LASTEXITCODE -ne 0 -and $r -notmatch 'picked|already') { "FAIL $code pick: $r"; break }
+  if ($r -notmatch 'picked|already') {
+    # The list can lose its scroll position or close: Esc, then try again.
+    [System.Windows.Forms.SendKeys]::SendWait('{ESC}'); Start-Sleep 1
+    & "$dront.ps1" | Out-Null; Start-Sleep -Milliseconds 500
+    $r = & "$d\pick.ps1" -name $name
+  }
+  if ($r -notmatch 'picked|already') { "FAIL $code pick: $r"; break }
   Start-Sleep -Milliseconds 2500 # let SPP apply the setting
   & "$d\front.ps1" | Out-Null; Start-Sleep -Milliseconds 300
   [System.Windows.Forms.SendKeys]::SendWait('^s')
