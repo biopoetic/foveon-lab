@@ -10,6 +10,7 @@ package render
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"math"
 	"sort"
 )
@@ -39,6 +40,17 @@ type Model struct {
 	Source string                `json:"source"` // which photo/camera it was measured on
 	Tone   map[string][]ToneStep `json:"tone"`   // "Exposure", "Contrast", "Highlight", "Blackness", "ColorMode6", …
 	Fill   []FillStep            `json:"fill"`
+	// WB: SPP's WhiteBalance codes that change the image (the neutral 1 and
+	// 0 don't; ColorTemp has no effect at all), as a colour mapping.
+	WB map[string]*RawCorrection `json:"wb,omitempty"`
+}
+
+// wbFor is the measured mapping for WhiteBalance code wb, or nil.
+func wbFor(wb int) *RawCorrection {
+	if model == nil {
+		return nil
+	}
+	return model.WB[fmt.Sprint(wb)]
 }
 
 //go:embed model.json

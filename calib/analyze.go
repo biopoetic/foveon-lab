@@ -49,6 +49,9 @@ type Measurement struct {
 	// brightness bin b (8 bins) inside regions of local-mean bin l (8 bins).
 	Local [8][8]float64 `json:"local"`
 
+	// WBFit: for white-balance steps, the colour mapping ref → out.
+	WBFit *render.RawCorrection `json:"wbFit,omitempty"`
+
 	Change   float64 `json:"change"`   // mean |SPP out − SPP ref|, 8-bit
 	EmuError float64 `json:"emuError"` // mean |our emulation − SPP out|, 8-bit
 }
@@ -333,6 +336,10 @@ func Analyze(dir string, progress io.Writer) (*Result, error) {
 				continue
 			}
 			m.Code, m.Label, m.Param, m.Value, m.Image = s.Code, s.Label, s.Param, s.Value, name
+			if s.Param == "WhiteBalance" && m.Change > 1 {
+				fit := fitRaw([]RawPair{{Raw: ref, SPP: out}})
+				m.WBFit = &fit
+			}
 			m.EmuError = emuError(ref, out, s)
 			res.Measurements = append(res.Measurements, m)
 		}

@@ -430,8 +430,9 @@ type pixOp struct {
 
 	// Measured emulation (model.go), when a model is embedded.
 	measured   bool
-	tint       [3]float32 // colour adjust, brightness-neutral
-	pre, post  []toneOp   // tone steps before / after Fill Light
+	wb         *RawCorrection // measured WhiteBalance code mapping
+	tint       [3]float32     // colour adjust, brightness-neutral
+	pre, post  []toneOp       // tone steps before / after Fill Light
 	fillM      *fillOp
 	satMeasure float64
 }
@@ -470,6 +471,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	}
 	if model != nil {
 		op.measured = true
+		op.wb = wbFor(p.WhiteBalance)
 		op.tint = [3]float32{float32(p.R * k), float32(p.G * k), float32(p.B * k)}
 		op.pre = newToneOp("Exposure", p.Exposure)
 		op.fillM = newFillOp(p.FillLight)
@@ -494,6 +496,9 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 // applyMeasured is apply for the measured model: tone steps work on
 // perceptual brightness and scale colourfulness by their measured ratio.
 func (op *pixOp) applyMeasured(r, g, bl, m float32) (float32, float32, float32) {
+	if op.wb != nil {
+		r, g, bl = op.wb.Pixel(r, g, bl)
+	}
 	r, g, bl = r*op.tint[0], g*op.tint[1], bl*op.tint[2]
 	Y := 0.2126*r + 0.7152*g + 0.0722*bl
 	cr, cg, cb := r-Y, g-Y, bl-Y

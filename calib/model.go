@@ -46,6 +46,14 @@ func BuildModel(res *Result, image string) (*render.Model, error) {
 			}
 			st.Delta, st.Chroma = knots(m, base)
 			mod.Tone[key] = append(mod.Tone[key], st)
+		case m.Param == "WhiteBalance" && m.WBFit != nil:
+			if mod.WB == nil {
+				mod.WB = map[string]*render.RawCorrection{}
+			}
+			key := fmt.Sprint(int(m.Value))
+			if _, dup := mod.WB[key]; !dup { // ColorTemp variants are identical
+				mod.WB[key] = m.WBFit
+			}
 		case m.Param == "FillLight":
 			fs := render.FillStep{Value: m.Value}
 			_, fs.Chroma = knots(m, base)

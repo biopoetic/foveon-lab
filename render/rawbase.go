@@ -73,17 +73,24 @@ func (c *RawCorrection) curve(k int, e float64) float64 {
 	return at(b)*(1-t) + at(b+1)*t
 }
 
+// Pixel maps one linear pixel.
+func (c *RawCorrection) Pixel(r, g, b float32) (float32, float32, float32) {
+	m := c.Matrix
+	fr, fg, fb := float64(r), float64(g), float64(b)
+	v := [3]float64{m[0]*fr + m[1]*fg + m[2]*fb, m[3]*fr + m[4]*fg + m[5]*fb, m[6]*fr + m[7]*fg + m[8]*fb}
+	var o [3]float32
+	for k := 0; k < 3; k++ {
+		o[k] = dec(float32(c.curve(k, float64(enc(float32(max(0, min(1, v[k]))))))))
+	}
+	return o[0], o[1], o[2]
+}
+
 // Apply maps l (an x3f_extract decode, linear) in place.
 func (c *RawCorrection) Apply(l *Linear) {
-	m := c.Matrix
 	parallelRows(l.H, func(y0, y1 int) {
 		for i := y0 * l.W; i < y1*l.W; i++ {
 			j := i * 3
-			r, g, b := float64(l.Pix[j]), float64(l.Pix[j+1]), float64(l.Pix[j+2])
-			v := [3]float64{m[0]*r + m[1]*g + m[2]*b, m[3]*r + m[4]*g + m[5]*b, m[6]*r + m[7]*g + m[8]*b}
-			for k := 0; k < 3; k++ {
-				l.Pix[j+k] = dec(float32(c.curve(k, float64(enc(float32(max(0, min(1, v[k]))))))))
-			}
+			l.Pix[j], l.Pix[j+1], l.Pix[j+2] = c.Pixel(l.Pix[j], l.Pix[j+1], l.Pix[j+2])
 		}
 	})
 }

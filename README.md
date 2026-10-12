@@ -146,7 +146,13 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
   (22.7 vs 17.0), so SD15 stays on the JPEG. A damaged embedded JPEG falls back to the raw data.
 - **ColorMode codes**: 4 = Standard, 6 = Portrait, 7 = Landscape (6 and 7 measured); other codes are
   unknown (the calibration pack's C steps probe them).
-- **White Balance / ColorTemp** are kept and written back but not emulated.
+- **White Balance** is emulated as measured in SPP: in presets, WhiteBalance 0 and 1 look the same,
+  2 and 6 shift colour strongly (both measured, now within ~2–3/255). **ColorTemp** stored in a
+  preset has no visible effect in SPP at all (3000/5000/7000 K exported identically), so it is
+  only kept and written back.
+- **Whole presets** (six real ones from the pack, many sliders at once) land within **2.7–6.5/255**
+  of SPP when starting from SPP's own neutral rendering; the largest share is X3F Fill Light, whose
+  local behaviour is modelled only approximately.
 - **Cameras:** tested on files from the SD9, SD10, SD14, SD15, SD1 Merrill, DP1, DP1 Merrill,
   dp2 Quattro, DP0 Quattro, sd Quattro and sd Quattro H. Merrill bodies get the SD1 presets,
   SD14/DP1/DP2 the SD15 presets (same sensor generations).
