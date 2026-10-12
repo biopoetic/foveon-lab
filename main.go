@@ -103,7 +103,10 @@ func scanPhotos(roots []string) []*Photo {
 			}
 			if d.IsDir() {
 				name := strings.ToLower(d.Name())
+				// Skip app/library bundles (macOS Photos/Lightroom libraries
+				// under Pictures hold huge trees that are never X3F sources).
 				if p != root && (strings.HasPrefix(name, ".") || name == "foveon-lab" || name == "node_modules" ||
+					strings.HasSuffix(name, ".photoslibrary") || strings.HasSuffix(name, ".lrdata") || strings.HasSuffix(name, ".app") ||
 					strings.Count(p, string(filepath.Separator))-base > 3) {
 					return filepath.SkipDir
 				}
@@ -255,8 +258,10 @@ func (c *lru) get(key string, load func() (any, error)) (any, error) {
 const sourceW = 1600 // working resolution for grid + detail views
 
 type server struct {
+	photoMu    sync.RWMutex // guards photos, byID, photoRoots (rescans)
 	photos     []*Photo
 	byID       map[string]*Photo
+	photoRoots []string
 	presetsDir string
 
 	pmu     sync.RWMutex
@@ -365,7 +370,7 @@ func httpErr(w http.ResponseWriter, code int, err error) {
 }
 
 func (s *server) photo(r *http.Request) (*Photo, error) {
-	ph := s.byID[r.URL.Query().Get("id")]
+	ph := s.lookup(r.URL.Query().Get("id"))
 	if ph == nil {
 		return nil, errors.New("unknown photo")
 	}
@@ -497,7 +502,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, err)
 		return
 	}
-	ph := s.byID[req.ID]
+	ph := s.lookup(req.ID)
 	if ph == nil {
 		httpErr(w, 404, errors.New("unknown photo"))
 		return
@@ -677,7 +682,7 @@ func (s *server) handleSPPOpen(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, err)
 		return
 	}
-	ph := s.byID[req.ID]
+	ph := s.lookup(req.ID)
 	if ph == nil || ph.Kind != "x3f" {
 		httpErr(w, 400, errors.New("only X3F photos can be opened in SPP"))
 		return
@@ -869,8 +874,8 @@ func main() {
 	if _, err := os.Stat(defPresets); err != nil {
 		defPresets = ""
 	}
-	photos := flag.String("photos", desk, "folders with X3F photos (separated by ;)")
-	presetsDir := flag.String("presets", defPresets, "folder with SPP preset XML files")
+	photos := flag.String("photos", "", "folders with X3F photos (separated by ;); default: as set in the app, else Desktop + Pictures")
+	presetsDir := flag.String("presets", "", "folder with SPP preset XML files; default: as set in the app, else Desktop/foveon pack")
 	port := flag.Int("port", 8777, "first port to try")
 	noOpen := flag.Bool("no-open", false, "do not open the browser")
 	aiBase := flag.String("ai-base", "https://api.deepseek.com", "OpenAI-compatible API base URL for the AI agent")
@@ -884,9 +889,35 @@ func main() {
 	}
 
 	log.SetFlags(log.Ltime)
-	start := time.Now()
+
+	// A second launch (double-click, Dock) just reopens the browser.
+	if addr := alreadyRunning(*port); addr != "" {
+		fmt.Printf("Foveon Lab is already running at %s\n", addr)
+		if !*noOpen {
+			openBrowser(addr)
+		}
+		return
+	}
+
+	// Folders: command line > what was set in the app > defaults.
+	cfg, _ := loadConfig()
+	photoRoots := defaultPhotoRoots(desk)
+	if len(cfg.Photos) > 0 {
+		photoRoots = cfg.Photos
+	}
+	if *photos != "" {
+		photoRoots = strings.Split(*photos, ";")
+	}
+	presetRoot := defPresets
+	if cfg.Presets != "" {
+		presetRoot = cfg.Presets
+	}
+	if *presetsDir != "" {
+		presetRoot = *presetsDir
+	}
+
 	s := &server{
-		presetsDir: *presetsDir,
+		presetsDir: presetRoot,
 		byID:       map[string]*Photo{},
 		sources:    newLRU(6),
 		bases:      newLRU(40),
@@ -894,17 +925,15 @@ func main() {
 		sem:        make(chan struct{}, max(2, runtime.NumCPU()/2)),
 		ai:         agent.Config{BaseURL: *aiBase, Model: *aiModel, APIKey: os.Getenv(*aiKeyEnv), MaxSteps: 12},
 	}
-	s.photos = scanPhotos(strings.Split(*photos, ";"))
-	for _, p := range s.photos {
-		s.byID[p.ID] = p
-	}
-	log.Printf("found %d photos in %v", len(s.photos), time.Since(start).Round(time.Millisecond))
+	s.setPhotos(photoRoots)
 	s.loadPresets()
 
 	mux := http.NewServeMux()
 	sub, _ := fs.Sub(webFS, "web")
 	mux.Handle("/", http.FileServer(http.FS(sub)))
-	mux.HandleFunc("/api/photos", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.photos) })
+	mux.HandleFunc("/api/photos", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.photoList()) })
+	mux.HandleFunc("/api/folders", s.handleFolders)
+	mux.HandleFunc("/api/quit", handleQuit)
 	mux.HandleFunc("/api/presets", s.handlePresets)
 	mux.HandleFunc("/api/thumb", s.handleThumb)
 	mux.HandleFunc("/api/render", s.handleRender)
@@ -921,6 +950,7 @@ func main() {
 	mux.HandleFunc("/api/spp/status", s.handleSPPStatus)
 	mux.HandleFunc("/api/spp/open", s.handleSPPOpen)
 	mux.HandleFunc("/api/caps", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-App", "foveon-lab") // lets a second launch find this one
 		writeJSON(w, map[string]bool{"rawTool": rawTool != ""})
 	})
 

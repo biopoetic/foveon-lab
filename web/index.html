@@ -102,6 +102,8 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <div class="spacer"></div>
     <label class="chk" title="Undo the Vivid mode / contrast / saturation the camera baked into its JPEG preview, so presets start from a more neutral base (closer to SPP)"><input type="checkbox" id="comp" checked> Compensate camera JPEG</label>
     <label class="chk">Size <input type="range" id="tileSize" min="220" max="560" step="20" value="340"></label>
+    <button id="folders" title="Choose where your X3F photos and SPP preset files are">Folders…</button>
+    <button id="quit" title="Stop Foveon Lab">Quit</button>
   </header>
   <aside id="photos"></aside>
   <main id="main">
@@ -443,6 +445,30 @@ async function exportImage(format){
   $("#reveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(path));
 }
 
+// ---------- folders & quit ----------
+async function editFolders(){
+  const cur = await (await fetch("/api/folders")).json();
+  const photos = prompt("Photo folders (X3F files are found up to 4 levels deep). Separate several with ;\n\nCurrent: " + cur.photoCount + " photos", (cur.photos || []).join("; "));
+  if (photos === null) return;
+  const presets = prompt("Folder with your SPP preset XML files (empty = none):", cur.presets || "");
+  if (presets === null) return;
+  toast("Scanning…", 30000);
+  const res = await fetch("/api/folders", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({photos: photos.split(";").map(s => s.trim()).filter(Boolean), presets: presets.trim()})});
+  if (!res.ok){ toast("Could not use those folders: " + esc(await res.text()), 8000); return; }
+  const r = await res.json();
+  await Promise.all([loadPhotos(), loadPresets(false)]);
+  refreshList();
+  selectPhoto(S.photos[0]?.id);
+  toast(`Found ${r.photoCount} photos and ${r.presetCount} presets. Saved for next time.`, 6000);
+}
+
+async function quitApp(){
+  if (!confirm("Stop Foveon Lab?")) return;
+  try { await fetch("/api/quit", {method:"POST"}); } catch {}
+  document.body.innerHTML = '<div class="empty" style="padding-top:20vh">Foveon Lab has stopped. You can close this tab.</div>';
+}
+
 // ---------- Sigma Photo Pro hand-off ----------
 let SPP = {available: false};
 async function sppInit(){
@@ -587,6 +613,8 @@ function bind(){
   $("#exportTiff").onclick = () => exportImage("tiff");
   $("#exportDng").onclick = () => exportImage("dng");
   $("#sppOpen").onclick = () => openInSPP(false);
+  $("#folders").onclick = editFolders;
+  $("#quit").onclick = quitApp;
   $("#aiOpen").onclick = $("#aiOpen2").onclick = aiOpen;
   $("#aiClose").onclick = () => $("#aiPanel").classList.remove("on");
   $("#aiStart").onclick = startAgent;
