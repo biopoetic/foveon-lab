@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: Draft release holding Foveon-Lab.app.zip
+        description: Draft release holding the zipped Foveon Lab.app
         required: true
       version:
         description: Version, e.g. v0.3.0
@@ -24,12 +24,12 @@ jobs:
       - name: Fetch the app
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download "${{ inputs.release }}" -R "$GITHUB_REPOSITORY" -p "Foveon-Lab.app.zip" -D in
+        run: gh release download "${{ inputs.release }}" -R "$GITHUB_REPOSITORY" -p "*.zip" -D in
 
       - name: Unpack and verify with Apple's tools
         run: |
           mkdir stage
-          ditto -x -k in/Foveon-Lab.app.zip stage
+          ditto -x -k in/*.zip stage
           APP="stage/Foveon Lab.app"
           ls -la "$APP/Contents/MacOS"
           lipo -archs "$APP/Contents/MacOS/foveon-lab"

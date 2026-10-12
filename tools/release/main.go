@@ -275,7 +275,14 @@ func main() {
 	allowUnsigned := flag.Bool("allow-unsigned", false, "continue (and allow publishing) if signing is not possible")
 	skipX3F := flag.Bool("skip-x3f-extract", false, "ship without the bundled x3f_extract (SD9/SD10 then stay low-res)")
 	skipDMG := flag.Bool("skip-dmg", false, "do not build the macOS .app/.dmg")
+	genKey := flag.Bool("gen-update-key", false, "create the self-update signing key (once) and print its public key")
 	flag.Parse()
+	if *genKey {
+		if err := genUpdateKey(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	var x3fRun string
 	log.SetFlags(log.Ltime)
 	if !regexp.MustCompile(`^v\d+\.\d+\.\d+$`).MatchString(*version) {
@@ -283,6 +290,10 @@ func main() {
 	}
 	if *publish {
 		if err := checkPublishable(*version); err != nil {
+			log.Fatal(err)
+		}
+		// Fail now, not after half an hour of signing.
+		if _, err := loadUpdateKey(); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -293,6 +304,7 @@ func main() {
 		log.Fatal(err)
 	}
 	var assets, unsigned []string
+	updates := map[string]string{} // self-update platform key → asset
 	for _, t := range targets {
 		exe := "foveon-lab"
 		if t.goos == "windows" {
@@ -372,6 +384,7 @@ func main() {
 			log.Fatalf("package %s: %v", t.label, err)
 		}
 		assets = append(assets, archive)
+		updates[t.goos+"-"+t.goarch] = archive
 	}
 
 	// The Mac download people should use: a universal, stapled app in a DMG.
@@ -388,11 +401,31 @@ func main() {
 		if err != nil {
 			log.Fatalf("macOS app: %v", err)
 		}
-		dmg, err := buildDMG(dist, *version, app)
+		appZip := filepath.Join(dist, fmt.Sprintf("Foveon-Lab-%s-macos-app.zip", *version))
+		if err := zipApp(app, appZip); err != nil {
+			log.Fatal(err)
+		}
+		dmg, err := buildDMG(*version, dist, appZip)
 		if err != nil {
 			log.Fatalf("macOS DMG: %v", err)
 		}
 		assets = append([]string{dmg}, assets...)
+		assets = append(assets, appZip) // what the installed app updates itself from
+		updates["darwin-app"] = appZip
+	}
+
+	if len(unsigned) == 0 {
+		mf := filepath.Join(dist, "update-manifest.json")
+		if err := writeManifest(mf, *version, "", updates); err != nil {
+			if *publish {
+				log.Fatalf("update manifest: %v", err)
+			}
+			log.Printf("no update manifest: %v", err)
+		} else {
+			assets = append(assets, mf)
+		}
+	} else {
+		log.Printf("no update manifest: unsigned builds are never offered as updates")
 	}
 
 	var sums strings.Builder

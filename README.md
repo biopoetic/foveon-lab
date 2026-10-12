@@ -39,6 +39,12 @@ Starting it again while it runs just reopens the browser tab. The Windows build 
 Authenticode-signed; the Mac app is signed with a Developer ID, notarized and stapled by Apple.
 The `macos-*.tar.gz` archives hold the plain command-line binaries.
 
+**Updates:** from v0.3.0 on, Foveon Lab checks GitHub for a newer release (twice a day) and shows
+**Update & restart** in the top bar. It downloads only files listed in a manifest signed with the
+project's Ed25519 key, checks their SHA-256, swaps them in place and restarts on the same address.
+Nothing is installed without your click; set `FOVEON_NO_UPDATE=1` to turn the check off. On macOS
+the app has to be in Applications (not run from the disk image) to update itself.
+
 Releases are cut locally with `go run ./tools/release -version vX.Y.Z -publish` (signing keys never
 leave the maintainer's machine; it refuses to publish unsigned binaries).
 

@@ -959,8 +959,11 @@ func main() {
 	mux.HandleFunc("/api/spp/open", s.handleSPPOpen)
 	mux.HandleFunc("/api/caps", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-App", "foveon-lab") // lets a second launch find this one
-		writeJSON(w, map[string]bool{"rawTool": rawTool != ""})
+		writeJSON(w, map[string]any{"rawTool": rawTool != "", "version": version})
 	})
+	upd := newUpdater()
+	cleanupOldUpdate(upd.inst)
+	mux.HandleFunc("/api/update", upd.handleUpdate)
 
 	ln, err := listen(*port)
 	if err != nil {
@@ -971,5 +974,11 @@ func main() {
 	if !*noOpen {
 		openBrowser(addr)
 	}
-	log.Fatal(http.Serve(ln, mux))
+	upd.restart = func() { relaunch(ln, upd.inst) }
+	go upd.loop()
+	err = http.Serve(ln, mux)
+	if restarting.Load() {
+		select {} // relaunch closed the listener and exits the process
+	}
+	log.Fatal(err)
 }

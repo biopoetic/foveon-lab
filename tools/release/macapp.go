@@ -206,14 +206,10 @@ func zipApp(app, dst string) error {
 	return zipFiles(dst, "", files)
 }
 
-// buildDMG has the mac-dmg workflow wrap the stapled app in a DMG (and check
+// buildDMG has the mac-dmg workflow wrap the stapled, zipped app in a DMG (and check
 // it with Apple's own codesign/stapler/spctl), then signs, notarizes and
 // staples the DMG here.
-func buildDMG(dist, version, app string) (string, error) {
-	zipPath := filepath.Join(dist, "Foveon-Lab.app.zip")
-	if err := zipApp(app, zipPath); err != nil {
-		return "", err
-	}
+func buildDMG(version, dist, zipPath string) (string, error) {
 	tag := fmt.Sprintf("macapp-%s-%d", version, time.Now().Unix())
 	if err := run("gh", "release", "create", tag, zipPath, "--draft", "--title", "temp: "+tag, "--notes", "Temporary: input for the mac-dmg workflow. Deleted automatically."); err != nil {
 		return "", fmt.Errorf("upload app for DMG build: %w", err)

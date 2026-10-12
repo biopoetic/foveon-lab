@@ -60,6 +60,9 @@ func defaultPhotoRoots(desk string) []string {
 func (s *server) setPhotos(roots []string) {
 	start := time.Now()
 	ps := scanPhotos(roots)
+	if ps == nil {
+		ps = []*Photo{} // JSON [] rather than null
+	}
 	m := make(map[string]*Photo, len(ps))
 	for _, p := range ps {
 		m[p.ID] = p
