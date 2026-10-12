@@ -274,6 +274,7 @@ func main() {
 	publish := flag.Bool("publish", false, "create the GitHub release")
 	allowUnsigned := flag.Bool("allow-unsigned", false, "continue (and allow publishing) if signing is not possible")
 	skipX3F := flag.Bool("skip-x3f-extract", false, "ship without the bundled x3f_extract (SD9/SD10 then stay low-res)")
+	skipDMG := flag.Bool("skip-dmg", false, "do not build the macOS .app/.dmg")
 	flag.Parse()
 	var x3fRun string
 	log.SetFlags(log.Ltime)
@@ -373,6 +374,27 @@ func main() {
 		assets = append(assets, archive)
 	}
 
+	// The Mac download people should use: a universal, stapled app in a DMG.
+	// A bare CLI binary is refused by Gatekeeper when started from Finder.
+	if *skipDMG {
+		log.Printf("skipping the macOS DMG (-skip-dmg)")
+	} else if *skipX3F || len(unsigned) > 0 {
+		log.Printf("skipping the macOS DMG: it needs signed binaries and x3f_extract")
+	} else {
+		mac := func(label, f string) string { return filepath.Join(dist, label, f) }
+		app, err := buildMacApp(dist, *version,
+			mac("macos-apple-silicon", "foveon-lab"), mac("macos-intel", "foveon-lab"),
+			mac("macos-apple-silicon", "x3f_extract"), mac("macos-intel", "x3f_extract"))
+		if err != nil {
+			log.Fatalf("macOS app: %v", err)
+		}
+		dmg, err := buildDMG(dist, *version, app)
+		if err != nil {
+			log.Fatalf("macOS DMG: %v", err)
+		}
+		assets = append([]string{dmg}, assets...)
+	}
+
 	var sums strings.Builder
 	for _, a := range assets {
 		s, err := sha256File(a)
@@ -394,7 +416,9 @@ func main() {
 		return
 	}
 
-	notes := "Download the file for your system, unpack it and run `foveon-lab` (Windows: double-click `foveon-lab.exe`). It opens in your browser — see the README.\n\n" +
+	notes := "**macOS:** download the `.dmg`, open it and drag Foveon Lab to Applications (one app for Apple Silicon and Intel).\n" +
+		"**Windows:** unpack the zip and double-click `foveon-lab.exe`. **Linux:** unpack and run `./foveon-lab`.\n" +
+		"It opens in your browser — see the README. The `.tar.gz` macOS archives are for command-line use.\n\n" +
 		"The Windows build is Authenticode-signed and the macOS builds are signed with a Developer ID and notarized by Apple."
 	if len(unsigned) > 0 {
 		notes += fmt.Sprintf("\n\nNote: %s build(s) in this release are NOT signed.", strings.Join(unsigned, ", "))

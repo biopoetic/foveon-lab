@@ -26,17 +26,18 @@ Single Go binary, no runtime dependencies, runs locally on `127.0.0.1` only.
 ## Download
 
 Grab the file for your system from the **[latest release](https://github.com/biopoetic/foveon-lab/releases/latest)**,
-unpack it and run it — no installation, nothing else needed:
+nothing else needed:
 
 | System | File |
 |---|---|
-| Windows | `foveon-lab-…-windows-x64.zip` → double-click `foveon-lab.exe` |
-| macOS (M1/M2/M3…) | `foveon-lab-…-macos-apple-silicon.tar.gz` |
-| macOS (Intel) | `foveon-lab-…-macos-intel.tar.gz` |
-| Linux | `foveon-lab-…-linux-x64.tar.gz` |
+| macOS (Apple Silicon and Intel) | `Foveon-Lab-….dmg` → open it, drag **Foveon Lab** to Applications |
+| Windows | `foveon-lab-…-windows-x64.zip` → unpack, double-click `foveon-lab.exe` |
+| Linux | `foveon-lab-…-linux-x64.tar.gz` → unpack, run `./foveon-lab` |
 
-It opens in your browser. The Windows build is Authenticode-signed and the macOS builds are signed
-with a Developer ID and notarized by Apple.
+It opens in your browser; **Folders…** picks where your photos and presets are, **Quit** stops it.
+Starting it again while it runs just reopens the browser tab. The Windows build is
+Authenticode-signed; the Mac app is signed with a Developer ID, notarized and stapled by Apple.
+The `macos-*.tar.gz` archives hold the plain command-line binaries.
 
 Releases are cut locally with `go run ./tools/release -version vX.Y.Z -publish` (signing keys never
 leave the maintainer's machine; it refuses to publish unsigned binaries).

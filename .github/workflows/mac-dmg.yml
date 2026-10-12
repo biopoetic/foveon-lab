@@ -1,0 +1,57 @@
+name: mac-dmg
+
+# Wraps the signed, notarized and stapled "Foveon Lab.app" (uploaded by
+# tools/release to a temporary draft release) in a DMG — hdiutil only exists
+# on macOS. Before that it checks the app with Apple's own tools. The DMG goes
+# back to tools/release, which signs, notarizes and staples it locally.
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Draft release holding Foveon-Lab.app.zip
+        required: true
+      version:
+        description: Version, e.g. v0.3.0
+        required: true
+
+permissions:
+  contents: write # read draft releases
+
+jobs:
+  dmg:
+    runs-on: macos-latest
+    steps:
+      - name: Fetch the app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${{ inputs.release }}" -R "$GITHUB_REPOSITORY" -p "Foveon-Lab.app.zip" -D in
+
+      - name: Unpack and verify with Apple's tools
+        run: |
+          mkdir stage
+          ditto -x -k in/Foveon-Lab.app.zip stage
+          APP="stage/Foveon Lab.app"
+          ls -la "$APP/Contents/MacOS"
+          lipo -archs "$APP/Contents/MacOS/foveon-lab"
+          lipo -archs "$APP/Contents/MacOS/x3f_extract"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
+
+      - name: Smoke test (starts, serves, quits)
+        run: |
+          "stage/Foveon Lab.app/Contents/MacOS/foveon-lab" -no-open -port 8790 -photos "$RUNNER_TEMP" &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8790/api/caps && break; sleep 1; done
+          curl -sf -X POST http://127.0.0.1:8790/api/quit
+
+      - name: Build the DMG
+        run: |
+          ln -s /Applications stage/Applications
+          hdiutil create -volname "Foveon Lab" -srcfolder stage -ov -format UDZO "Foveon-Lab-${{ inputs.version }}.dmg"
+          hdiutil verify "Foveon-Lab-${{ inputs.version }}.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: foveon-lab-dmg
+          path: Foveon-Lab-*.dmg
+          if-no-files-found: error

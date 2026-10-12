@@ -882,6 +882,14 @@ func main() {
 	aiModel := flag.String("ai-model", "deepseek-flash", "vision model for the AI agent")
 	aiKeyEnv := flag.String("ai-key-env", "DEEPSEEK_API_KEY", "environment variable holding the AI API key")
 	rawToolPath := flag.String("x3f-extract", "", "path to x3f_extract (x3fuse-core) for SD9/SD10 raw decoding; default: next to this program or on PATH")
+	// Older macOS hands a Finder-launched .app a -psn_… argument.
+	args := os.Args[:1]
+	for _, a := range os.Args[1:] {
+		if !strings.HasPrefix(a, "-psn_") {
+			args = append(args, a)
+		}
+	}
+	os.Args = args
 	flag.Parse()
 	rawTool = findRawTool(*rawToolPath)
 	if rawTool != "" {
