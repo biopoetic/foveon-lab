@@ -34,6 +34,10 @@ type FillStep struct {
 	// region of brightness bin s (8×8 bins over 0..1).
 	Local  [8][8]float64  `json:"local"`
 	Chroma [Knots]float64 `json:"chroma"`
+	// Coef (when Multi): per brightness bin, shift = c0 + c1·(surround at
+	// SurroundFracs[0] − pixel) + c2·(surround at [1] − pixel). Replaces Local.
+	Multi bool                 `json:"multi,omitempty"`
+	Coef  [FillBins][3]float64 `json:"coef,omitempty"`
 }
 
 // Model is a full measured emulation.
@@ -240,12 +244,19 @@ func bilerp8(t *[8][8]float64, s, p float64) float64 {
 }
 
 // apply lifts brightness x of a pixel whose surroundings have brightness m.
-func (f *fillOp) apply(x, m float64) (float64, float64) {
+// multi reports whether the steps use the two-scale model.
+func (f *fillOp) multi() bool { return len(f.steps) > 0 && f.steps[0].Multi }
+
+func (f *fillOp) apply(x, m, da, db float64) (float64, float64) {
 	var d float64
 	c := 1.0
 	for i, s := range f.steps {
 		w := f.weights[i]
-		d += bilerp8(&s.Local, m, x) * w
+		if s.Multi {
+			d += fillCoef(&s.Coef, x, da, db) * w
+		} else {
+			d += bilerp8(&s.Local, m, x) * w
+		}
 		c += (knot(&s.Chroma, x) - 1) * math.Abs(w)
 	}
 	return math.Max(0, math.Min(1, x+d)), math.Max(0, c)

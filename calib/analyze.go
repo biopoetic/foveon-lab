@@ -51,6 +51,8 @@ type Measurement struct {
 
 	// WBFit: for white-balance steps, the colour mapping ref → out.
 	WBFit *render.RawCorrection `json:"wbFit,omitempty"`
+	// FillCoef: for Fill Light steps, the two-scale model (see render.FillStep).
+	FillCoef *[render.FillBins][3]float64 `json:"fillCoef,omitempty"`
 
 	Change   float64 `json:"change"`   // mean |SPP out − SPP ref|, 8-bit
 	EmuError float64 `json:"emuError"` // mean |our emulation − SPP out|, 8-bit
@@ -336,6 +338,10 @@ func Analyze(dir string, progress io.Writer) (*Result, error) {
 				continue
 			}
 			m.Code, m.Label, m.Param, m.Value, m.Image = s.Code, s.Label, s.Param, s.Value, name
+			if s.Param == "FillLight" {
+				fc := fitFillCoef(ref, out)
+				m.FillCoef = &fc
+			}
 			if (s.Param == "WhiteBalance" || s.Param == "ColorMode") && m.Change > 1 {
 				fit := fitRaw([]RawPair{{Raw: ref, SPP: out}})
 				m.WBFit = &fit

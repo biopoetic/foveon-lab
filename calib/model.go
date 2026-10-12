@@ -67,6 +67,9 @@ func BuildModel(res *Result, image string) (*render.Model, error) {
 			fs := render.FillStep{Value: m.Value}
 			_, fs.Chroma = knots(m, base)
 			fs.Local = fillTable(m.Local, base.Local)
+			if m.FillCoef != nil {
+				fs.Multi, fs.Coef = true, *m.FillCoef
+			}
 			mod.Fill = append(mod.Fill, fs)
 		}
 	}
@@ -214,6 +217,12 @@ func MergeModels(ms []*render.Model) *render.Model {
 					a.fs.Local[s][p] += f.Local[s][p]
 				}
 			}
+			for b := range f.Coef {
+				for k := range f.Coef[b] {
+					a.fs.Coef[b][k] += f.Coef[b][k]
+				}
+			}
+			a.fs.Multi = f.Multi && (a.n == 0 || a.fs.Multi)
 			a.n++
 		}
 		for k, v := range m.WB {
@@ -249,6 +258,11 @@ func MergeModels(ms []*render.Model) *render.Model {
 		for s := range a.fs.Local {
 			for p := range a.fs.Local[s] {
 				a.fs.Local[s][p] /= a.n
+			}
+		}
+		for b := range a.fs.Coef {
+			for k := range a.fs.Coef[b] {
+				a.fs.Coef[b][k] /= a.n
 			}
 		}
 		out.Fill = append(out.Fill, a.fs)

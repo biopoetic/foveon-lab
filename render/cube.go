@@ -30,7 +30,7 @@ func WriteCube(w io.Writer, title string, p preset.Params, n int) error {
 			for ri := 0; ri < n; ri++ {
 				r, g, b := dec(float32(ri)*step), dec(float32(gi)*step), dec(float32(bi)*step)
 				Y := 0.2126*r + 0.7152*g + 0.0722*b
-				ro, gO, bo := op.apply(r, g, b, enc(Y))
+				ro, gO, bo := op.apply(r, g, b, enc(Y), 0, 0) // a LUT has no surroundings
 				fmt.Fprintf(bw, "%.6f %.6f %.6f\n", clamp01(enc(ro)), clamp01(enc(gO)), clamp01(enc(bo)))
 			}
 		}

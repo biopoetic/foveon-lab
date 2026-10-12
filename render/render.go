@@ -330,11 +330,14 @@ func (m *mask) at(x, y int) float32 {
 // Base is a prepared source image: linear pixels plus its Fill Light mask.
 type Base struct {
 	*Linear
-	m *mask
+	m      *mask
+	sa, sb *Surround // Fill Light surroundings (SurroundFracs)
 }
 
 // NewBase prepares a linear image for repeated rendering.
-func NewBase(l *Linear) *Base { return &Base{Linear: l, m: newMask(l)} }
+func NewBase(l *Linear) *Base {
+	return &Base{Linear: l, m: newMask(l), sa: NewSurround(l, SurroundFracs[0]), sb: NewSurround(l, SurroundFracs[1])}
+}
 
 // Compensation undoes the camera's own JPEG styling before a preset is
 // applied, so presets start from something closer to SPP's neutral render.
@@ -423,11 +426,15 @@ func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, 
 		for y := y0; y < y1; y++ {
 			for x := 0; x < w; x++ {
 				i := (y*w + x) * 3
-				var m float32
+				var m, da, db float32
 				if op.fill != 0 || op.fillM != nil {
 					m = b.m.at(x, y)
+					if op.fillM != nil && op.fillM.multi() {
+						v := enc(0.2126*b.Pix[i] + 0.7152*b.Pix[i+1] + 0.0722*b.Pix[i+2])
+						da, db = b.sa.At(x, y)-v, b.sb.At(x, y)-v
+					}
 				}
-				r, g, bl := op.apply(b.Pix[i], b.Pix[i+1], b.Pix[i+2], m)
+				r, g, bl := op.apply(b.Pix[i], b.Pix[i+1], b.Pix[i+2], m, da, db)
 				put(y*w+x, r, g, bl)
 			}
 		}
@@ -514,7 +521,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 
 // applyMeasured is apply for the measured model: tone steps work on
 // perceptual brightness and scale colourfulness by their measured ratio.
-func (op *pixOp) applyMeasured(r, g, bl, m float32) (float32, float32, float32) {
+func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, float32) {
 	if op.wb != nil {
 		r, g, bl = op.wb.Pixel(r, g, bl)
 	}
@@ -532,7 +539,7 @@ func (op *pixOp) applyMeasured(r, g, bl, m float32) (float32, float32, float32) 
 		chroma *= k
 	}
 	if op.fillM != nil {
-		x, k = op.fillM.apply(x, float64(m))
+		x, k = op.fillM.apply(x, float64(m), float64(da), float64(db))
 		chroma *= k
 	}
 	for i := range op.post {
@@ -549,9 +556,9 @@ func (op *pixOp) applyMeasured(r, g, bl, m float32) (float32, float32, float32) 
 
 // apply maps one linear pixel; m is the blurred perceptual luminance around
 // it (Fill Light's mask).
-func (op *pixOp) apply(r, g, bl, m float32) (float32, float32, float32) {
+func (op *pixOp) apply(r, g, bl, m, da, db float32) (float32, float32, float32) {
 	if op.measured {
-		return op.applyMeasured(r, g, bl, m)
+		return op.applyMeasured(r, g, bl, m, da, db)
 	}
 	r, g, bl = r*op.cr, g*op.cg, bl*op.cb
 
