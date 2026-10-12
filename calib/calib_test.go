@@ -28,7 +28,11 @@ func TestStepsAreSingleChange(t *testing.T) {
 		if !reCode.MatchString("SDIM0031_" + s.Code) {
 			t.Errorf("code %s not matched by file-name pattern", s.Code)
 		}
-		// Exactly one field may differ from the neutral base.
+		// A/B/C steps: exactly one field may differ from the neutral base
+		// (V steps are whole presets, W steps set WB mode + temperature).
+		if s.Code[0] == 'V' || s.Code[0] == 'W' {
+			continue
+		}
 		diff := 0
 		a, b := s.Params, ref
 		for _, d := range []bool{a.Exposure != b.Exposure, a.Contrast != b.Contrast, a.Blackness != b.Blackness,
@@ -53,9 +57,13 @@ func TestStepsAreSingleChange(t *testing.T) {
 	for i := range ps {
 		// Saturation <= -1 reads back as a Mono preset (pack convention);
 		// calibration steps deliberately measure SPP's colour-mode slider.
-		ps[i].Params.Mono = false
-		if ps[i].Params != steps[i].Params {
-			t.Errorf("%s round-trips as %+v, want %+v", steps[i].Code, ps[i].Params, steps[i].Params)
+		want := steps[i].Params
+		if want.Mono { // B&W presets go to SPP as Saturation -2 (see preset.XMLSaturation)
+			want.Saturation = preset.XMLSaturation(want)
+		}
+		ps[i].Params.Mono, want.Mono = false, false
+		if ps[i].Params != want {
+			t.Errorf("%s round-trips as %+v, want %+v", steps[i].Code, ps[i].Params, want)
 		}
 	}
 }

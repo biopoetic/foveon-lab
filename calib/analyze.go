@@ -53,7 +53,7 @@ type Measurement struct {
 	EmuError float64 `json:"emuError"` // mean |our emulation − SPP out|, 8-bit
 }
 
-var reCode = regexp.MustCompile(`(?i)(^|[^A-Za-z0-9])([ABC]\d{2})($|[^0-9])`)
+var reCode = regexp.MustCompile(`(?i)(^|[^A-Za-z0-9])([ABCVW]\d{2})($|[^0-9])`)
 
 type export struct {
 	path, image, code string

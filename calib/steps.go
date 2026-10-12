@@ -124,7 +124,54 @@ func Steps() []Step {
 		}
 		add(fmt.Sprintf("C%02d", m), sv{"ColorMode", float64(m)})
 	}
+	// V: real presets from the built-in pack (their white balance is the
+	// neutral one), to measure how close the whole emulation gets when
+	// many sliders move at once.
+	pack, _ := preset.Load(preset.Source{FS: preset.Builtin()})
+	byName := map[string]preset.Params{}
+	for _, p := range pack {
+		byName[p.Name] = p.Params
+	}
+	for i, name := range validationPresets {
+		p, ok := byName[name]
+		if !ok {
+			continue
+		}
+		out = append(out, Step{Code: fmt.Sprintf("V%02d", i+1), Param: "Preset", Label: name, Params: p})
+	}
+	// W: SPP's white balance settings, which the emulation ignores so far.
+	for _, w := range whiteBalanceSteps {
+		p := neutral()
+		p.WhiteBalance, p.ColorTemp = w.wb, w.temp
+		label := fmt.Sprintf("WhiteBalance %d", w.wb)
+		if w.temp != 0 {
+			label += fmt.Sprintf(" ColorTemp %d", w.temp)
+		}
+		out = append(out, Step{Code: w.code, Param: "WhiteBalance", Value: float64(w.wb), Label: label, Params: p})
+	}
 	return out
+}
+
+// validationPresets span the pack: Fill Light, a landscape slide with strong
+// contrast, a portrait, B&W, a cine fade and a warm look.
+var validationPresets = []string{
+	"[FOVEON] SD1 3D Pop",
+	"[SLIDE] Vivid 50 V4",
+	"[PORTRAIT] Soft Skin V4",
+	"[BW][SD1] Mono Depth",
+	"[CINE][SD1] Cool Fade",
+	"[FOVEON][SD1] Golden Depth",
+}
+
+// whiteBalanceSteps cover the codes the user's packs use (1 is the neutral,
+// 6 and 2 also occur, ColorTemp 0 or 5000) plus 0 and a temperature sweep.
+var whiteBalanceSteps = []struct {
+	code     string
+	wb, temp int
+}{
+	{"W00", 0, 0}, {"W02", 2, 0}, {"W06", 6, 0},
+	{"W07", 6, 5000}, {"W08", 6, 3000}, {"W09", 6, 7000},
+	{"W10", 1, 5000},
 }
 
 // PresetName is how a step appears in SPP's preset list.
