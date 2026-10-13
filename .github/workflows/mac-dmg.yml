@@ -33,7 +33,7 @@ jobs:
           APP="stage/Foveon Lab.app"
           ls -la "$APP/Contents/MacOS"
           lipo -archs "$APP/Contents/MacOS/foveon-lab"
-          lipo -archs "$APP/Contents/MacOS/x3f_extract"
+          if [ -e "$APP/Contents/MacOS/x3f_extract" ]; then lipo -archs "$APP/Contents/MacOS/x3f_extract"; fi
           codesign --verify --deep --strict --verbose=2 "$APP"
           xcrun stapler validate "$APP"
           spctl --assess --type execute --verbose=4 "$APP"
