@@ -13,6 +13,8 @@ foreach ($code in $codes.Split(',')) {
   if (-not $name) { "SKIP ${code}: no [CAL] preset"; continue }
   $out = Join-Path $outDir "${photo}_$code.tif"
   if (Test-Path $out) { "SKIP ${code}: $out exists"; continue }
+  $png = [IO.Path]::ChangeExtension($out, '.png')
+  if (Test-Path $png) { "SKIP ${code}: $png exists"; continue }
   $t0 = Get-Date
   & "$d\front.ps1" | Out-Null; Start-Sleep -Milliseconds 300
   $r = & "$d\pick.ps1" -name $name

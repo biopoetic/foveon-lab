@@ -16,7 +16,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -47,17 +46,16 @@ func FillResearch(dir string, family func(name string) string, cands []FillCandi
 			codes[s.Code] = s.Value
 		}
 	}
-	refs, _ := filepath.Glob(filepath.Join(dir, ExportsDir, "*_"+Reference+".tif"))
+	refPaths, refs := ExportsFor(dir, Reference)
 	var photos []*fillPhoto
-	for _, r := range refs {
-		name := strings.TrimSuffix(filepath.Base(r), "_"+Reference+".tif")
+	for ri, name := range refs {
 		fam := family(name)
 		if fam == "" {
 			continue
 		}
 		p := &fillPhoto{name: name, family: fam, outs: map[float64]*render.Linear{}}
 		for code, v := range codes {
-			path := filepath.Join(dir, ExportsDir, name+"_"+code+".tif")
+			path := ExportFile(dir, name, code)
 			out, err := load(path)
 			if err != nil {
 				continue
@@ -67,7 +65,7 @@ func FillResearch(dir string, family func(name string) string, cands []FillCandi
 		if len(p.outs) == 0 {
 			continue
 		}
-		if p.ref, _ = load(r); p.ref == nil {
+		if p.ref, _ = load(refPaths[ri]); p.ref == nil {
 			continue
 		}
 		photos = append(photos, p)
@@ -422,23 +420,22 @@ func FillGainStats(dir string, family func(string) string, c FillCandidate, val 
 			codes[s.Code] = s.Value
 		}
 	}
-	refs, _ := filepath.Glob(filepath.Join(dir, ExportsDir, "*_"+Reference+".tif"))
+	refPaths, refs := ExportsFor(dir, Reference)
 	var ps []*fillPhoto
-	for _, r := range refs {
-		name := strings.TrimSuffix(filepath.Base(r), "_"+Reference+".tif")
+	for ri, name := range refs {
 		p := &fillPhoto{name: name, family: family(name), outs: map[float64]*render.Linear{}}
 		for code, v := range codes {
 			if v != val {
 				continue
 			}
-			if out, err := load(filepath.Join(dir, ExportsDir, name+"_"+code+".tif")); err == nil {
+			if out, err := load(ExportFile(dir, name, code)); err == nil {
 				p.outs[v] = out
 			}
 		}
 		if len(p.outs) == 0 || p.family == "" {
 			continue
 		}
-		p.ref, _ = load(r)
+		p.ref, _ = load(refPaths[ri])
 		ps = append(ps, p)
 	}
 	for _, fam := range []string{"SD1", "SD15"} {

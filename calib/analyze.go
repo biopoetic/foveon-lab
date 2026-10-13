@@ -74,7 +74,7 @@ func findExports(dir string) (map[string][]export, error) {
 	groups := map[string][]export{}
 	for _, e := range ents {
 		ext := strings.ToLower(filepath.Ext(e.Name()))
-		if e.IsDir() || (ext != ".tif" && ext != ".tiff" && ext != ".jpg" && ext != ".jpeg") {
+		if e.IsDir() || (ext != ".tif" && ext != ".tiff" && ext != ".png" && ext != ".jpg" && ext != ".jpeg") {
 			continue
 		}
 		stem := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
