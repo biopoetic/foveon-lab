@@ -18,6 +18,7 @@ package x3f
 
 import (
 	"math"
+	"os"
 	"runtime"
 	"sort"
 	"sync"
@@ -33,6 +34,10 @@ type DenoiseOptions struct {
 	// same scene features at every size.
 	Scale float64
 }
+
+// additive forces the purely additive luminance recombination (research
+// switch: FOVEON_DN_ADD=1).
+var additive = os.Getenv("FOVEON_DN_ADD") != ""
 
 // Denoise reduces img's noise in place.
 func Denoise(img *CamImage, o DenoiseOptions) {
@@ -65,7 +70,9 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	for i := range Y {
 		Y[i] = wf[0]*img.Pix[i*3] + wf[1]*img.Pix[i*3+1] + wf[2]*img.Pix[i*3+2]
 	}
-	Yd := atrous(Y, w, h, noiseSigma(Y, w, h), 2*o.Strength, 5)
+	sigY32 := noiseSigma(Y, w, h)
+	Yd := atrous(Y, w, h, sigY32, 2*o.Strength, 5)
+	sigY := float32(max(sigY32, 1e-6))
 	var mean float64
 	for _, v := range Yd {
 		mean += float64(v)
@@ -101,10 +108,20 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	for i := 0; i < n; i++ {
 		a, b, c := out[0][i]*m, out[1][i]*m, out[2][i]*m
 		y := wf[0]*a + wf[1]*b + wf[2]*c
-		if y > 1e-9 {
+		// Put the denoised luminance back: scaling the layers keeps colour
+		// best where the signal is clear of the noise; near black the scale
+		// factor is noise itself (dark dots, colour halos), so there the
+		// luminance difference is added instead, blending over 2-6 sigma.
+		d := Yd[i] - y
+		ma, mb, mc := a+d, b+d, c+d
+		if t := (y - 2*sigY) / (4 * sigY); y > 1e-9 && t > 0 && !additive {
 			s := Yd[i] / y
-			a, b, c = a*s, b*s, c*s
+			t = min(t, 1)
+			ma = (1-t)*ma + t*a*s
+			mb = (1-t)*mb + t*b*s
+			mc = (1-t)*mc + t*c*s
 		}
+		a, b, c = ma, mb, mc
 		img.Pix[i*3], img.Pix[i*3+1], img.Pix[i*3+2] = a, b, c
 	}
 }

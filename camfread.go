@@ -85,6 +85,7 @@ func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
 	if err != nil {
 		return nil, t, err
 	}
+	x3f.FixBadPixels(raw, c)
 	wb := camfWBName[strings.TrimSpace(ph.props["WB_DESC"])]
 	img, err := x3f.CameraLinear(raw, c, x3f.NewSpatialGain(c, f.Props, wb), wb)
 	if err != nil {
