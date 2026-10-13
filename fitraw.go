@@ -81,6 +81,7 @@ func fitRawCommand(desk string) {
 	dir := fsFlags.String("dir", filepath.Join(desk, "foveon-calibration"), "calibration folder")
 	photos := fsFlags.String("photos", desk, "folders with the X3F files (separated by ;)")
 	diagnose := fsFlags.Bool("diagnose", false, "only print each photo's raw-base error breakdown (nothing is saved)")
+	local := fsFlags.Bool("local", false, "research: held-out highlight desaturation and high-pass local contrast on top of the raw base")
 	noSgain := fsFlags.Bool("nosgain", false, "research: decode without x3f_extract's spatial gain (colour shading)")
 	camfRaw := fsFlags.Bool("camf", false, "decode raw as camera RGB and apply each photo's CAMF white balance + colour matrix (as SPP does) instead of x3f_extract's sRGB")
 	fsFlags.Parse(os.Args[2:])
@@ -179,6 +180,12 @@ func fitRawCommand(desk string) {
 		pr := ph.props
 		info := fmt.Sprintf("expnet %s expcomp %s iso %s f/%s %ss", pr["EXPNET"], pr["EXPCOMP"], pr["ISO"], pr["AP_DESC"], pr["SH_DESC"])
 		groups[family] = append(groups[family], calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info, JPEG: jpegNeutral})
+	}
+	if *local {
+		for _, f := range []string{"SD1", "SD15"} {
+			calib.RawLocalResearch(f, groups[f], os.Stdout)
+		}
+		return
 	}
 	if *diagnose {
 		for _, f := range []string{"SD1", "SD15"} {

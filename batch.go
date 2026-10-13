@@ -30,14 +30,14 @@ func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 		Preset string          `json:"preset"`
 		Params json.RawMessage `json:"params"`
 		Comp   bool            `json:"comp"`
-		Format string          `json:"format"` // "jpeg" or "tiff"
+		Format string          `json:"format"` // "jpeg", "tiff" or "dng" (rendered)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpErr(w, 400, err)
 		return
 	}
-	if req.Format != "jpeg" && req.Format != "tiff" {
-		httpErr(w, 400, errors.New("batch export makes JPEG or TIFF"))
+	if req.Format != "jpeg" && req.Format != "tiff" && req.Format != "dng" {
+		httpErr(w, 400, errors.New("batch export makes JPEG, TIFF or DNG"))
 		return
 	}
 	pj := ""

@@ -183,7 +183,8 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="exportTiff" title="Full-resolution 16-bit TIFF with the preset applied — no 8-bit rounding, for further editing">Export TIFF 16-bit</button>
           <button id="lutBtn" title="Download this look as a 3D LUT (.cube) for darktable, Photoshop, Camera Raw / Lightroom profiles, DaVinci Resolve, Affinity…">Export LUT (.cube)</button>
           <button id="batchBtn" title="Apply this preset to many photos and export them all">Batch export…</button>
-          <button id="exportDng" title="The raw data as DNG for Lightroom / Capture One / darktable (presets are not applied — it's raw)" style="display:none">Export DNG (raw)</button>
+          <button id="exportDngR" title="Full-resolution 16-bit linear DNG of this render: opens in Lightroom / Capture One / darktable / Apple Photos looking like the preview, with white balance and exposure still editable">Export DNG</button>
+          <button id="exportDng" title="The raw sensor data as DNG for Lightroom / Capture One / darktable (presets are not applied — it's raw)" style="display:none">Export raw DNG</button>
           <button id="sppOpen" title="Put this preset into Sigma Photo Pro's list as its current setting, then open the photo in SPP (SPP must be closed)" style="display:none">Open in SPP ↗</button>
         </div>
         <div class="kbd">
@@ -227,7 +228,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <div class="src" id="bPreset"></div>
     <label class="chk"><input type="radio" name="bScope" value="folder" checked> <span id="bFolderLab">This folder</span></label>
     <label class="chk"><input type="radio" name="bScope" value="all"> <span id="bAllLab">All listed photos</span></label>
-    <label class="chk">Format <select id="bFormat"><option value="jpeg">JPEG (full resolution)</option><option value="tiff">TIFF 16-bit</option></select></label>
+    <label class="chk">Format <select id="bFormat"><option value="jpeg">JPEG (full resolution)</option><option value="tiff">TIFF 16-bit</option><option value="dng">DNG 16-bit (as rendered)</option></select></label>
     <div class="src">Saved next to each photo in a <code>foveon-lab</code> folder. Your originals are not touched.</div>
     <div id="bProg"><div></div></div>
     <div class="src" id="bMsg"></div>
@@ -727,8 +728,8 @@ function exportButtons(){ $("#exportDng").style.display = CAPS.rawTool && S.phot
 
 async function exportImage(format){
   const p = current();
-  toast(format === "dng" ? "Converting the raw data to DNG (can take up to ~30 s on Merrill/Quattro files)…"
-                         : `Exporting full-resolution ${format === "tiff" ? "16-bit TIFF" : "JPEG"}…`, 60000);
+  toast(format === "rawdng" ? "Converting the raw data to DNG (can take up to ~30 s on Merrill/Quattro files)…"
+                         : `Exporting full-resolution ${format === "tiff" ? "16-bit TIFF" : format === "dng" ? "16-bit DNG" : "JPEG"}…`, 60000);
   const body = {format, id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2};
   const res = await fetch("/api/export", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
   if (!res.ok){ toast("Export failed: " + esc(await res.text())); return; }
@@ -1016,7 +1017,8 @@ function bind(){
   $("#save").onclick = savePreset;
   $("#export").onclick = () => exportImage("jpeg");
   $("#exportTiff").onclick = () => exportImage("tiff");
-  $("#exportDng").onclick = () => exportImage("dng");
+  $("#exportDng").onclick = () => exportImage("rawdng");
+  $("#exportDngR").onclick = () => exportImage("dng");
   $("#sppOpen").onclick = () => openInSPP(false);
   $("#folders").onclick = editFolders;
   $("#quit").onclick = quitApp;

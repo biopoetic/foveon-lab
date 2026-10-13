@@ -588,7 +588,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		Preset string          `json:"preset"`
 		Params json.RawMessage `json:"params"`
 		Comp   bool            `json:"comp"`
-		Format string          `json:"format"` // "jpeg" (default), "tiff", "dng"
+		Format string          `json:"format"` // "jpeg" (default), "tiff", "dng" (rendered), "rawdng"
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpErr(w, 400, err)
@@ -614,7 +614,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, err)
 		return
 	}
-	if req.Format == "dng" {
+	if req.Format == "rawdng" {
 		s.exportDNG(w, ph, dir, stem, p, label)
 		return
 	}
@@ -657,8 +657,11 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	base := render.NewBase(src)
 	c := s.compensation(ph, comp)
 	ext := ".jpg"
-	if format == "tiff" {
+	switch format {
+	case "tiff":
 		ext = ".tif"
+	case "dng":
+		ext = ".dng"
 	}
 	stem := strings.TrimSuffix(ph.Name, filepath.Ext(ph.Name))
 	path := filepath.Join(dir, stem+"_"+safeName(label)+ext)
@@ -666,9 +669,16 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	if err != nil {
 		return "", err
 	}
-	if format == "tiff" {
+	switch format {
+	case "tiff":
 		err = render.WriteTIFF16(f, render.Render16(base, p, c))
-	} else {
+	case "dng":
+		make_, model := "SIGMA", ph.Camera
+		if ph.props != nil {
+			make_, model = ph.props["CAMMANUF"], ph.props["CAMMODEL"]
+		}
+		err = render.WriteRenderedDNG(f, render.Render16(base, p, c), make_, model, "Foveon Lab "+version)
+	default:
 		err = jpeg.Encode(f, render.Render(base, p, c), &jpeg.Options{Quality: 95})
 	}
 	if cerr := f.Close(); err == nil {
