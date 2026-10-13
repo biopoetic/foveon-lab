@@ -42,7 +42,23 @@ func rawCorrectionFor(ph *Photo) *render.RawCorrection {
 	if ph.Kind != "x3f" || ph.RawDecoded || ph.Unsupported != "" || !rawDecodable(ph.props) {
 		return nil
 	}
-	return render.RawBaseFor(calibGroup(ph))
+	if c := render.RawBaseFor(calibGroup(ph)); c != nil {
+		return c
+	}
+	// At high ISO the camera JPEG is noisy and colour-shifted (Merrill high
+	// ISO is pushed in processing), while the raw path is denoised by the
+	// x3f package: use the raw path with the family's fitted correction even
+	// where it did not beat the JPEG at base ISO.
+	if goRaw && highISO(ph) {
+		return render.RawBaseFitted(calibGroup(ph))
+	}
+	return nil
+}
+
+// highISO: ISO 800 and above.
+func highISO(ph *Photo) bool {
+	iso, err := strconv.Atoi(strings.TrimSpace(ph.props["ISO"]))
+	return err == nil && iso >= 800
 }
 
 // rawDecodable reports whether the raw base handles the file's size mode.

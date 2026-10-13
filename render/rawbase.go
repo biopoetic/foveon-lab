@@ -52,6 +52,16 @@ func RawBaseFor(family string) *RawCorrection {
 	return c
 }
 
+// RawBaseFitted is the family's fitted correction even where it did not
+// beat the camera JPEG at base ISO (nil if none was fitted).
+func RawBaseFitted(family string) *RawCorrection {
+	c := rawBases[family]
+	if c == nil || c.Photos < 3 {
+		return nil
+	}
+	return c
+}
+
 // curve maps brightness e (sRGB 0..1) through channel k's measured curve,
 // interpolating between bin centres (bins without data are identity).
 func (c *RawCorrection) curve(k int, e float64) float64 {
