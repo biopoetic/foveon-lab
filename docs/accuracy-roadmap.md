@@ -54,6 +54,12 @@ SPP's Fill Light is local and edge-preserving; ours lifts by a blurred surround 
 Seven A00 pairs today. 15–20 photos (varied light, WB, ISO, medium-res files) would steady the
 3×3 matrix + curves; a small 3D LUT could then replace the per-channel curves.
 - Effort: ~10 A00 exports.
+- **Tried and rejected (2026-10-13): synthetic charts as extra training pairs.** Two SD1 charts
+  drawn inside the gamut (`tools/synth -gamut`, 166/192 clean patches in SPP's export) made the
+  held-out SD1 starting image worse, 6.87 → 7.58 dE: SPP's response on flat patches is strongly
+  non-linear in the shadows (pure-matrix residual 50–140% in the darkest bins), which does not
+  carry over to real scenes. Charts stay a black-box measuring tool (`tools/chartread`), not
+  training data; `fit-raw -charts` keeps the option for research.
 
 ### 5. Slider interactions (gain: ~1–2)
 Sliders were measured one at a time and chained. Measure a few pairs (Exposure+Contrast,

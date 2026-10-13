@@ -87,6 +87,7 @@ func fitRawCommand(desk string) {
 	noSgain := fsFlags.Bool("nosgain", false, "research: decode without x3f_extract's spatial gain (colour shading)")
 	goRaw := fsFlags.Bool("go", false, "decode and develop raw natively (x3f package) instead of with x3f_extract: camera RGB through each photo's CAMF white balance + colour matrix")
 	camfRaw := fsFlags.Bool("camf", false, "decode raw as camera RGB and apply each photo's CAMF white balance + colour matrix (as SPP does) instead of x3f_extract's sRGB")
+	charts := fsFlags.Bool("charts", false, "research: also train on synthetic charts (…/charts/*.X3F). Off by default: on 2026-10-13 two in-gamut SD1 charts (166/192 clean patches) made the held-out SD1 starting image worse, 6.87 -> 7.58 dE (SPP's response on them is strongly non-linear in the shadows)")
 	fsFlags.Parse(os.Args[2:])
 	if rawTool == "" && !*goRaw {
 		log.Fatal("fit-raw needs x3f_extract (or -go)")
@@ -112,6 +113,11 @@ func fitRawCommand(desk string) {
 			fmt.Printf("  %s: %s has no family, skipped\n", name, ph.Camera)
 			continue
 		}
+		// Charts (tools/synth -gamut) are drawn inside the gamut on purpose.
+		isChart := strings.Contains(strings.ToLower(filepath.ToSlash(ph.path)), "/charts/")
+		if isChart && !*charts {
+			continue
+		}
 		spp, err := calib.LoadLinear(e)
 		if err != nil {
 			log.Fatal(err)
@@ -126,8 +132,6 @@ func fitRawCommand(desk string) {
 				edge++
 			}
 		}
-		// Charts (tools/synth -gamut) are drawn inside the gamut on purpose.
-		isChart := strings.Contains(strings.ToLower(filepath.ToSlash(ph.path)), "/charts/")
 		if frac := float64(edge) / float64(len(spp.Pix)/3); frac > 0.3 && !isChart {
 			fmt.Printf("  %s: %.0f%% of it at the sRGB edge or clipped, skipped\n", name, frac*100)
 			continue
