@@ -31,6 +31,7 @@ func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 		Params json.RawMessage `json:"params"`
 		Comp   bool            `json:"comp"`
 		Format string          `json:"format"` // "jpeg", "tiff" or "dng" (rendered)
+		Denoise *int           `json:"denoise"` // raw-based exports: 0-10, nil = 10
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpErr(w, 400, err)
@@ -73,7 +74,7 @@ func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 			line["name"], line["error"] = ph.Name, ph.Unsupported
 		default:
 			line["name"] = ph.Name
-			if path, err := s.exportImage(ph, p, label, req.Comp, req.Format); err != nil {
+			if path, err := s.exportImage(ph, p, label, req.Comp, req.Format, req.Denoise); err != nil {
 				line["error"] = err.Error()
 			} else {
 				line["path"] = path

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -101,11 +102,17 @@ func decodeRawAs(ph *Photo, color string) (image.Image, error) {
 		defer cancel()
 		// color is the x3f_extract colour mode plus options:
 		// "-nodenoise" (previews: 7× faster, the noise averages out when
-		// downscaled) and "-nosgain" (research: no colour shading).
+		// downscaled), "-dnN" (denoise strength N of 0-10; 10 is
+		// x3f_extract's default) and "-nosgain" (research: no colour shading).
 		mode, opts, _ := strings.Cut(color, "-")
 		args := []string{"-q", "-tiff", "-color", mode}
 		if strings.Contains(opts, "nodenoise") {
 			args = append(args, "-no-denoise")
+		}
+		for _, o := range strings.Split(opts, "-") {
+			if n, err := strconv.Atoi(strings.TrimPrefix(o, "dn")); err == nil && strings.HasPrefix(o, "dn") && n >= 0 && n <= 10 {
+				args = append(args, "-denoise", strconv.Itoa(n))
+			}
 		}
 		if strings.Contains(opts, "nosgain") {
 			args = append(args, "-no-sgain")

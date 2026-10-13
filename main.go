@@ -599,6 +599,9 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		Params json.RawMessage `json:"params"`
 		Comp   bool            `json:"comp"`
 		Format string          `json:"format"` // "jpeg" (default), "tiff", "dng" (rendered), "rawdng"
+		// Denoise: x3f_extract's noise reduction for raw-based exports, 0-10
+		// (nil = 10, its default and what the SPP calibration used).
+		Denoise *int `json:"denoise"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpErr(w, 400, err)
@@ -628,7 +631,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		s.exportDNG(w, ph, dir, stem, p, label)
 		return
 	}
-	path, err := s.exportImage(ph, p, label, req.Comp, req.Format)
+	path, err := s.exportImage(ph, p, label, req.Comp, req.Format, req.Denoise)
 	if err != nil {
 		httpErr(w, 500, err)
 		return
@@ -638,7 +641,18 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 
 // exportImage renders ph at full resolution with p and saves it as JPEG or
 // 16-bit TIFF in a "foveon-lab" folder next to the photo.
-func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool, format string) (string, error) {
+// rawExportColor is the raw decode for an export at denoise strength dn.
+func rawExportColor(dn *int) string {
+	switch {
+	case dn == nil || *dn >= 10:
+		return "sRGB"
+	case *dn <= 0:
+		return "sRGB-nodenoise"
+	}
+	return "sRGB-dn" + strconv.Itoa(*dn)
+}
+
+func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool, format string, denoise *int) (string, error) {
 	dir := filepath.Join(filepath.Dir(ph.path), "foveon-lab")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
@@ -649,13 +663,18 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	if s.wantRaw(ph) || ph.jpegBroken.Load() {
 		// Accurate mode: export from the raw data even if the preview
 		// hasn't switched yet (this waits for the decode).
-		l, err := rawLinear(ph, 0, "sRGB")
+		color := rawExportColor(denoise)
+		l, err := rawLinear(ph, 0, color)
 		if err != nil {
 			return "", err
 		}
-		s.rawMu.Lock()
-		s.rawState[ph.ID] = rawReady
-		s.rawMu.Unlock()
+		if color == "sRGB" { // the preview's full decode is ready now too
+			s.rawMu.Lock()
+			s.rawState[ph.ID] = rawReady
+			s.rawMu.Unlock()
+		} else {
+			label += "_nr" + strconv.Itoa(max(0, *denoise)) // e.g. _nr0, _nr5
+		}
 		src = l
 	} else {
 		img, err := decodePreview(ph)

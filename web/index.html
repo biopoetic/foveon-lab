@@ -179,6 +179,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div class="btns">
           <button id="reset">Reset to preset</button>
           <button id="save" class="primary">Save as preset</button>
+          <label class="chk" id="nrLab" title="Noise reduction for exports made from the raw data (Accurate mode): x3f_extract's denoise. Full is what the SPP calibration used; lower keeps more fine detail and grain. Previews are not affected.">NR <select id="nr"><option value="10">Full</option><option value="6">Medium</option><option value="3">Low</option><option value="0">Off</option></select></label>
           <button id="export" title="Full-resolution JPEG with the preset applied">Export JPEG</button>
           <button id="exportTiff" title="Full-resolution 16-bit TIFF with the preset applied — no 8-bit rounding, for further editing">Export TIFF 16-bit</button>
           <button id="lutBtn" title="Download this look as a 3D LUT (.cube) for darktable, Photoshop, Camera Raw / Lightroom profiles, DaVinci Resolve, Affinity…">Export LUT (.cube)</button>
@@ -586,7 +587,7 @@ async function batchStart(){
   const p = current();
   const scope = document.querySelector('input[name=bScope]:checked').value;
   const ids = S.photos.filter(x => !x.unsupported && (scope === "all" || x.folder === S.photo.folder)).map(x => x.id);
-  const body = {ids, format: $("#bFormat").value, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2};
+  const body = {ids, format: $("#bFormat").value, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2, denoise: +$("#nr").value};
   $("#bStart").disabled = true;
   BATCH.ctl = new AbortController();
   let res;
@@ -726,13 +727,17 @@ async function capsInit(){
   try { CAPS = await (await fetch("/api/caps")).json(); } catch {}
   exportButtons();
 }
-function exportButtons(){ $("#exportDng").style.display = CAPS.rawTool && S.photo?.kind === "x3f" ? "" : "none"; }
+function exportButtons(){
+  $("#exportDng").style.display = CAPS.rawTool && S.photo?.kind === "x3f" ? "" : "none";
+  // NR only matters when the export comes from the raw data.
+  $("#nrLab").style.display = CAPS.rawTool && ACC.on && S.photo?.accurate ? "" : "none";
+}
 
 async function exportImage(format){
   const p = current();
   toast(format === "rawdng" ? "Converting the raw data to DNG (can take up to ~30 s on Merrill/Quattro files)…"
                          : `Exporting full-resolution ${format === "tiff" ? "16-bit TIFF" : format === "dng" ? "16-bit DNG" : "JPEG"}…`, 60000);
-  const body = {format, id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2};
+  const body = {format, id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2, denoise: +$("#nr").value};
   const res = await fetch("/api/export", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
   if (!res.ok){ toast("Export failed: " + esc(await res.text())); return; }
   const {path, lut} = await res.json();
@@ -1021,6 +1026,8 @@ function bind(){
   $("#exportTiff").onclick = () => exportImage("tiff");
   $("#exportDng").onclick = () => exportImage("rawdng");
   $("#exportDngR").onclick = () => exportImage("dng");
+  try { const v = localStorage.getItem("fl.nr"); if (v !== null) $("#nr").value = v; } catch {}
+  $("#nr").onchange = e => { try { localStorage.setItem("fl.nr", e.target.value); } catch {} };
   $("#sppOpen").onclick = () => openInSPP(false);
   $("#folders").onclick = editFolders;
   $("#quit").onclick = quitApp;
