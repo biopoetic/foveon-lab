@@ -208,6 +208,12 @@ func fillResearchCommand(desk string) {
 		{Name: "FIR: gauss .0019 + .019", Fracs: []float64{0.0019, 0.019}, Blur: "gauss"},
 		{Name: "guided .08 1/80 + 1/20", Fracs: render.SurroundFracs[:], Blur: "guided0.08"},
 	}
+	if os.Getenv("FILL_GAINS") != "" {
+		for _, v := range []float64{0.5, 1} {
+			calib.FillGainStats(*dir, func(n string) string { return fam[strings.ToUpper(n)] }, cands[len(cands)-1], v, os.Stdout)
+		}
+		return
+	}
 	if err := calib.FillResearch(*dir, func(n string) string { return fam[strings.ToUpper(n)] }, cands, os.Stdout); err != nil {
 		log.Fatal(err)
 	}

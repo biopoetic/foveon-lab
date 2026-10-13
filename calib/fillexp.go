@@ -411,3 +411,97 @@ func parallelEach(n int, f func(i int)) {
 		<-done
 	}
 }
+
+// FillGainStats prints, per photo, the gain that best scales the others'
+// average Fill Light shift to this photo's (1 = typical), next to simple
+// image statistics, to see whether SPP's per-photo strength is predictable.
+func FillGainStats(dir string, family func(string) string, c FillCandidate, val float64, w io.Writer) {
+	codes := map[string]float64{}
+	for _, s := range Steps() {
+		if s.Param == "FillLight" {
+			codes[s.Code] = s.Value
+		}
+	}
+	refs, _ := filepath.Glob(filepath.Join(dir, ExportsDir, "*_"+Reference+".tif"))
+	var ps []*fillPhoto
+	for _, r := range refs {
+		name := strings.TrimSuffix(filepath.Base(r), "_"+Reference+".tif")
+		p := &fillPhoto{name: name, family: family(name), outs: map[float64]*render.Linear{}}
+		for code, v := range codes {
+			if v != val {
+				continue
+			}
+			if out, err := load(filepath.Join(dir, ExportsDir, name+"_"+code+".tif")); err == nil {
+				p.outs[v] = out
+			}
+		}
+		if len(p.outs) == 0 || p.family == "" {
+			continue
+		}
+		p.ref, _ = load(r)
+		ps = append(ps, p)
+	}
+	for _, fam := range []string{"SD1", "SD15"} {
+		var fp []*fillPhoto
+		for _, p := range ps {
+			if p.family == fam {
+				fp = append(fp, p)
+			}
+		}
+		n := len(fp)
+		if n < 3 {
+			continue
+		}
+		vs := make([][]float32, n)
+		ds := make([][][]float32, n)
+		os_ := make([][]float32, n)
+		cf := make([][][]float64, n)
+		parallelEach(n, func(i int) {
+			vs[i], ds[i] = fillFeatures(fp[i].ref, c)
+			out := fp[i].outs[val]
+			o := make([]float32, len(vs[i]))
+			for j := range o {
+				o[j] = render.ToSRGB(luma(out.Pix, j*3))
+			}
+			os_[i] = o
+			cf[i] = fillFit(vs[i], o, ds[i])
+		})
+		fmt.Fprintf(w, "\n%s Fill %+.2g: gain = best scale of the others' shift; stats of the neutral image (0-1 brightness)\n", fam, val)
+		fmt.Fprintf(w, "%-10s %6s %6s %6s %6s %6s %6s\n", "photo", "gain", "mean", "median", "p10", "p90", "dark<.2")
+		for i := 0; i < n; i++ {
+			k := len(ds[i]) + 1
+			var num, den float64
+			for p := range vs[i] {
+				b := min(render.FillBins-1, int(vs[i][p]*render.FillBins))
+				var s float64
+				m := 0
+				for j := 0; j < n; j++ {
+					if j == i {
+						continue
+					}
+					c := cf[j][b]
+					s += c[0]
+					for r := 1; r < k; r++ {
+						s += c[r] * float64(ds[i][r-1][p])
+					}
+					m++
+				}
+				s /= float64(m)
+				num += s * float64(os_[i][p]-vs[i][p])
+				den += s * s
+			}
+			sorted := append([]float32(nil), vs[i]...)
+			sort.Slice(sorted, func(a, b int) bool { return sorted[a] < sorted[b] })
+			var mean float64
+			dark := 0
+			for _, x := range vs[i] {
+				mean += float64(x)
+				if x < 0.2 {
+					dark++
+				}
+			}
+			L := len(sorted)
+			fmt.Fprintf(w, "%-10s %6.2f %6.3f %6.3f %6.3f %6.3f %6.3f\n", fp[i].name, num/den, mean/float64(L), sorted[L/2], sorted[L/10], sorted[L*9/10], float64(dark)/float64(L))
+		}
+	}
+}
