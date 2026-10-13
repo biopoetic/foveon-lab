@@ -212,14 +212,24 @@ Tests that use real X3F files or preset folders skip themselves when those are n
 Issues and pull requests are welcome — especially calibration results (`report.txt`) from SPP, and
 X3F samples from other Foveon cameras.
 
-## Third-party software
+## Third-party software, and what is ours
 
-The `x3f` package's raw decoder and encoder (`raw.go`, `encode.go`), CAMF reader (`camf.go`),
-spatial gain (`sgain.go`), bad pixel repair (`badpix.go`) and Quattro development (`quattro.go`)
-are Go ports of the same x3fuse-core code (© 2026 Sang Lee, Apache
+**Ported.** X3F is an undocumented format; what is known about it comes from the people who
+reverse-engineered it. Reading it is therefore a port: the `x3f` package's raw decoder
+(`raw.go`), CAMF reader (`camf.go`), spatial gain (`sgain.go`), bad pixel lists (`badpix.go`) and
+Quattro layer expansion (`quattro.go`) are Go ports of **x3fuse-core** (© 2026 Sang Lee, Apache
 License 2.0), which in turn comes from the Kalpanika x3f tools (© 2015 Roland Karlsson, Erik
 Karlsson, Mark Roden; BSD-style). The knowledge of the X3F format is theirs. Their licenses and
-notices in `third_party/x3fuse-core/` apply to these files too.
+notices in `third_party/x3fuse-core/` apply to these files and ship with every release.
+
+**Foveon Lab's own work** — everything done with the image once it is read:
+- the Foveon noise reduction (`denoise.go`), built on the three layers' different noise; on
+  Photography Blog's DP2 Merrill ISO series it beats SPP's own (ISO 6400: dE 6.6 vs 18.1);
+- the X3F encoder (`encode.go`), which writes files back byte-identically, and the recovery of
+  damaged files;
+- a floating-point pipeline that keeps the noise below black, and neutral clipped highlights;
+- the Sigma Photo Pro emulation: presets, colour modes, the raw-to-SPP calibration measured
+  against SPP exports and synthetic test charts, and the raw DNG export with the camera's colours.
 
 ## Legal
 
