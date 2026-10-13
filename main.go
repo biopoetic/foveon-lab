@@ -967,6 +967,10 @@ func calibCommand(desk string) bool {
 		mergeModelsCommand()
 		return true
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "fill-research" {
+		fillResearchCommand(desk)
+		return true
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "fit-raw" {
 		rawTool = findRawTool("")
 		fitRawCommand(desk)
@@ -1046,6 +1050,13 @@ func calibCommand(desk string) bool {
 
 	exportDir := filepath.Join(*dir, calib.ExportsDir)
 	fmt.Printf("Analyzing %s …\n", exportDir)
+	fams := map[string]string{}
+	for _, p := range scanPhotos(strings.Split(*photos, ";"), false) {
+		if p.Kind == "x3f" {
+			fams[strings.ToUpper(strings.TrimSuffix(p.Name, filepath.Ext(p.Name)))] = x3f.PresetFamily(p.Camera)
+		}
+	}
+	calib.FamilyOf = func(n string) string { return fams[strings.ToUpper(n)] }
 	res, err := calib.Analyze(exportDir, os.Stdout)
 	if err != nil {
 		log.Fatal(err)

@@ -262,8 +262,13 @@ func inverse3(a [3][3]float64) ([3][3]float64, bool) {
 
 // emuError renders our emulation of step s on SPP's neutral export and
 // returns its mean abs difference (8-bit) from SPP's actual export.
-func emuError(ref, out *render.Linear, s Step) float64 {
-	em := render.Render(render.NewBase(ref), s.Params, render.Compensation{SatFactor: 1})
+// FamilyOf maps a photo name to its camera family ("SD1", "SD15"), so the
+// emulation error is measured with that camera's model; nil or "" = the
+// default model.
+var FamilyOf func(name string) string
+
+func emuError(ref, out *render.Linear, s Step, family string) float64 {
+	em := render.Render(render.NewBase(ref), s.Params, render.Compensation{SatFactor: 1, Family: family})
 	var e float64
 	for i := 0; i < ref.W*ref.H; i++ {
 		for c := 0; c < 3; c++ {
@@ -360,7 +365,11 @@ func Analyze(dir string, progress io.Writer) (*Result, error) {
 				fit := fitRaw([]RawPair{{Raw: ref, SPP: out}})
 				m.WBFit = &fit
 			}
-			m.EmuError = emuError(ref, out, s)
+			var fam string
+			if FamilyOf != nil {
+				fam = FamilyOf(name)
+			}
+			m.EmuError = emuError(ref, out, s, fam)
 			res.Measurements = append(res.Measurements, m)
 		}
 	}

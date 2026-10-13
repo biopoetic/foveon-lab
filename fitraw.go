@@ -185,3 +185,30 @@ func fitRawCommand(desk string) {
 	}
 	fmt.Printf("Saved %s and %s: copy them to render/ and rebuild to use them.\n", p, pj)
 }
+
+// fillResearchCommand compares Fill Light surround scales held out
+// (calib.FillResearch), including the FIR_* proportions from CAMF.
+func fillResearchCommand(desk string) {
+	fsFlags := flag.NewFlagSet("fill-research", flag.ExitOnError)
+	dir := fsFlags.String("dir", filepath.Join(desk, "foveon-calibration"), "calibration folder")
+	photos := fsFlags.String("photos", desk, "folders with the X3F files (separated by ;)")
+	fsFlags.Parse(os.Args[2:])
+	fam := map[string]string{}
+	for _, p := range scanPhotos(strings.Split(*photos, ";"), false) {
+		if p.Kind == "x3f" {
+			fam[strings.ToUpper(strings.TrimSuffix(p.Name, filepath.Ext(p.Name)))] = x3f.PresetFamily(p.Camera)
+		}
+	}
+	// "box" is the app's render.NewSurround (a guided filter since Oct 2026;
+	// the block average it replaced scored SD1 7.80 / SD15 8.34).
+	cands := []calib.FillCandidate{
+		{Name: "global curve only (no surround)", Blur: "box"},
+		{Name: "app: render.NewSurround", Fracs: render.SurroundFracs[:], Blur: "box"},
+		{Name: "gauss 1/80 + 1/20", Fracs: render.SurroundFracs[:], Blur: "gauss"},
+		{Name: "FIR: gauss .0019 + .019", Fracs: []float64{0.0019, 0.019}, Blur: "gauss"},
+		{Name: "guided .08 1/80 + 1/20", Fracs: render.SurroundFracs[:], Blur: "guided0.08"},
+	}
+	if err := calib.FillResearch(*dir, func(n string) string { return fam[strings.ToUpper(n)] }, cands, os.Stdout); err != nil {
+		log.Fatal(err)
+	}
+}
