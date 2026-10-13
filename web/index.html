@@ -60,6 +60,17 @@ main{overflow:auto;position:relative}
 #histo{width:100%;height:72px;background:#111;border:1px solid var(--line);border-radius:4px;display:block;margin:4px 0 2px}
 button.on{border-color:var(--accent);color:var(--accent)}
 #stageTag{position:absolute;top:8px;left:8px;background:#000a;padding:3px 8px;border-radius:4px;font-size:12px}
+#cropBox{position:absolute;display:none;box-shadow:0 0 0 9999px #000a;outline:1px solid #fffd;cursor:move;z-index:3;
+  background-image:linear-gradient(#fff4,#fff4),linear-gradient(#fff4,#fff4),linear-gradient(90deg,#fff4,#fff4),linear-gradient(90deg,#fff4,#fff4);
+  background-size:100% 1px,100% 1px,1px 100%,1px 100%;background-position:0 33.33%,0 66.67%,33.33% 0,66.67% 0;background-repeat:no-repeat}
+#cropBox i{position:absolute;width:14px;height:14px;border:2px solid #fff;background:#0006}
+#cropBox i.nw{left:-8px;top:-8px;cursor:nwse-resize} #cropBox i.ne{right:-8px;top:-8px;cursor:nesw-resize}
+#cropBox i.sw{left:-8px;bottom:-8px;cursor:nesw-resize} #cropBox i.se{right:-8px;bottom:-8px;cursor:nwse-resize}
+#stage{overflow:hidden}
+#stage.crop #cropBox,#stage.crop #cropBar{display:flex}
+#cropBar{position:absolute;display:none;top:8px;left:50%;transform:translateX(-50%);z-index:4;gap:8px;align-items:center;background:#000c;padding:6px 10px;border-radius:6px;font-size:12px;white-space:nowrap}
+#cropBar input[type=range]{width:200px}
+#cropBar input[type=number]{width:62px}
 #busy{position:absolute;top:8px;right:8px;color:var(--dim);font-size:12px;display:none}
 #nav{display:flex;gap:8px;align-items:center;padding:8px 10px;border-top:1px solid var(--line)}
 #nav .name{flex:1;text-align:center;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -151,7 +162,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     </section>
     <section id="detail">
       <div id="view">
-        <div id="stage"><img id="big" alt=""><img id="bigOrig" alt=""><canvas id="clipCv"></canvas><div id="splitLine"></div><div id="stageTag"></div><div id="busy">rendering…</div></div>
+        <div id="stage"><img id="big" alt=""><img id="bigOrig" alt=""><canvas id="clipCv"></canvas><div id="splitLine"></div><div id="stageTag"></div><div id="busy">rendering…</div><div id="cropBox"><i class="nw"></i><i class="ne"></i><i class="sw"></i><i class="se"></i></div><div id="cropBar">Straighten <input type="range" id="cropAng" min="-45" max="45" step="0.1" value="0"><input type="number" id="cropAngN" min="-45" max="45" step="0.1" value="0">° Aspect <select id="cropAsp"><option value="0">Free</option><option value="orig">Original</option><option value="1.5">3:2</option><option value="1.3333">4:3</option><option value="1">1:1</option><option value="1.7778">16:9</option><option value="0.8">4:5</option><option value="0.6667">2:3</option></select><button id="cropReset">Reset</button><button id="cropCancel">Cancel</button><button id="cropDone" class="primary">Done</button></div></div>
         <div id="nav">
           <button id="back" title="Esc">← Grid</button>
           <button id="prev" title="←">‹</button>
@@ -160,6 +171,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="orig" title="Hold O">Original</button>
           <button id="splitBtn" title="Before / after: move the mouse over the photo (S)">Split</button>
           <button id="clipBtn" title="Mark clipped highlights (red) and crushed shadows (blue) (C)">Clipping</button>
+          <button id="cropBtn" title="Straighten and crop this photo (R) — applies to the preview and every export">Crop</button>
           <button class="ai" id="aiOpen2" title="Let an AI agent pick and tune the best preset">✦ AI</button>
         </div>
       </div>
@@ -276,6 +288,8 @@ const comp = () => $("#comp").checked ? "1" : "0";
 const tileW = () => Math.min(1600, Math.round(+$("#tileSize").value * (window.devicePixelRatio||1) / 40) * 40);
 function renderURL(opts){
   const u = new URLSearchParams({id: S.photo.id, w: opts.w, comp: opts.comp ?? comp(), m: ACC.mode[S.photo.id] || "jpg"});
+  if (opts.nogeo) u.set("nogeo", "1");
+  else if (geoKey(S.photo.id)) u.set("g", geoKey(S.photo.id)); // new URL when the crop changes
   if (opts.preset) u.set("preset", opts.preset);
   if (opts.params) u.set("p", JSON.stringify(opts.params));
   if (opts.camera) u.set("src", "camera");
@@ -363,6 +377,7 @@ function selectPhoto(id){
   const i = p.info;
   $("#photoInfo").textContent = photoInfoText(p);
   accWatch();
+  loadGeo(p.id);
   // In the editor keep the SAME preset (by id, not list position — the list
   // can change with the camera) and any slider tweaks.
   const keep = current()?.id;
@@ -568,6 +583,152 @@ function renderBig(showOrig){
   if (!showOrig) $("#bigOrig").src = renderURL({w: bigW(), comp: "0", camera: true});
   img.onerror = () => { clearTimeout(busy); $("#busy").style.display = "none"; toast("Render failed."); };
   img.src = url;
+}
+
+// ---------- straighten + crop ----------
+// GEO[id]: the photo's saved geometry {angle, x, y, w, h} (crop in [0,1] of
+// the rotated frame). The server applies it to every render and export.
+const GEO = {};
+function geoKey(id){
+  const g = GEO[id];
+  if (!g || (Math.abs(g.angle) < 1e-6 && (!g.w || (g.x === 0 && g.y === 0 && g.w === 1 && g.h === 1)))) return "";
+  return [g.angle, g.x, g.y, g.w, g.h].map(v => (+v).toFixed(4)).join(",");
+}
+async function loadGeo(id){
+  try {
+    const g = await (await fetch("/api/geometry?id=" + id)).json();
+    const before = geoKey(id);
+    GEO[id] = g;
+    if (geoKey(id) !== before && S.photo?.id === id){ $("#detail").classList.contains("on") ? renderBig() : drawGrid(); }
+  } catch {}
+  $("#cropBtn")?.classList.toggle("on", !!geoKey(id));
+}
+
+const CROP = {on: false, g: null, aspect: 0, drag: null};
+// Largest centred rectangle (fraction s of the frame) with no empty corners
+// after rotating a W×H image by a degrees — same formula as the server.
+function inscribed(a, W, H){
+  const t = Math.abs(a) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+  return Math.min(W / (W * c + H * s), H / (W * s + H * c));
+}
+function cropBounds(){
+  const b = $("#big"), s = inscribed(CROP.g.angle, b.naturalWidth || 3, b.naturalHeight || 2);
+  return {lo: (1 - s) / 2, hi: (1 + s) / 2, s};
+}
+// k converts a pixel aspect (w/h) into the normalised one.
+function normAspect(r){ const b = $("#big"); return r * (b.naturalHeight || 2) / (b.naturalWidth || 3); }
+function cropAspect(){
+  const v = $("#cropAsp").value;
+  if (v === "0") return 0;
+  if (v === "orig") return 1; // normalised 1 = the frame's own aspect
+  return normAspect(+v);
+}
+// The largest crop of the chosen aspect, centred in the valid area.
+function cropFull(){
+  const {lo, s} = cropBounds(), k = cropAspect();
+  let w = s, h = s;
+  if (k){ if (k >= 1) h = s / k; else w = s * k; }
+  CROP.g.x = 0.5 - w / 2; CROP.g.y = 0.5 - h / 2; CROP.g.w = w; CROP.g.h = h;
+}
+function cropClamp(){
+  const {lo, hi} = cropBounds(), g = CROP.g, k = cropAspect();
+  g.w = Math.min(g.w, hi - lo); g.h = Math.min(g.h, hi - lo);
+  if (k){ if (g.w / g.h > k) g.w = g.h * k; else g.h = g.w / k; }
+  g.x = Math.max(lo, Math.min(g.x, hi - g.w)); g.y = Math.max(lo, Math.min(g.y, hi - g.h));
+}
+function cropLayout(){
+  const b = $("#big"), box = $("#cropBox"), g = CROP.g;
+  b.style.transform = `rotate(${-g.angle}deg)`;
+  box.style.left = (b.offsetLeft + g.x * b.clientWidth) + "px";
+  box.style.top = (b.offsetTop + g.y * b.clientHeight) + "px";
+  box.style.width = (g.w * b.clientWidth) + "px";
+  box.style.height = (g.h * b.clientHeight) + "px";
+  $("#cropAng").value = g.angle; $("#cropAngN").value = (+g.angle).toFixed(1);
+}
+function cropOpen(){
+  if (!S.photo || CROP.on) return;
+  const g0 = GEO[S.photo.id] || {};
+  CROP.on = true;
+  CROP.g = {angle: g0.angle || 0, x: g0.x || 0, y: g0.y || 0, w: g0.w || 0, h: g0.h || 0};
+  $("#cropAsp").value = "0";
+  $("#stage").classList.add("crop");
+  // Show the whole frame (no crop) with the current look, then lay out.
+  const p = current();
+  const opts = {w: bigW(), nogeo: true};
+  if (p && !dirty()) opts.preset = p.id; else opts.params = S.params;
+  const img = new Image();
+  img.onload = () => {
+    $("#big").onload = () => { if (!CROP.g.w) cropFull(); cropClamp(); cropLayout(); };
+    $("#big").src = img.src;
+  };
+  img.src = renderURL(opts);
+}
+function cropClose(){
+  CROP.on = false;
+  $("#stage").classList.remove("crop");
+  $("#big").style.transform = "";
+  renderBig();
+}
+async function cropSave(){
+  const g = CROP.g, {lo, s} = cropBounds();
+  const full = Math.abs(g.angle) < 0.05 && g.w >= 0.999 && g.h >= 0.999;
+  const body = full ? {id: S.photo.id, angle: 0, x: 0, y: 0, w: 0, h: 0}
+                    : {id: S.photo.id, angle: +(+g.angle).toFixed(2), x: g.x, y: g.y, w: g.w, h: g.h};
+  const res = await fetch("/api/geometry", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (!res.ok){ toast("Saving the crop failed: " + esc(await res.text())); return; }
+  GEO[S.photo.id] = await res.json();
+  $("#cropBtn").classList.toggle("on", !!geoKey(S.photo.id));
+  cropClose();
+}
+function cropInit(){
+  $("#cropBtn").onclick = () => CROP.on ? cropClose() : cropOpen();
+  $("#cropCancel").onclick = cropClose;
+  $("#cropDone").onclick = cropSave;
+  $("#cropReset").onclick = () => { CROP.g.angle = 0; $("#cropAsp").value = "0"; cropFull(); cropLayout(); };
+  const setAng = v => {
+    CROP.g.angle = Math.max(-45, Math.min(45, +v || 0));
+    // Keep the crop inside the new valid area (shrinks around its centre).
+    const cx = CROP.g.x + CROP.g.w / 2, cy = CROP.g.y + CROP.g.h / 2;
+    cropClamp();
+    CROP.g.x = Math.max(cropBounds().lo, Math.min(cx - CROP.g.w / 2, cropBounds().hi - CROP.g.w));
+    CROP.g.y = Math.max(cropBounds().lo, Math.min(cy - CROP.g.h / 2, cropBounds().hi - CROP.g.h));
+    cropLayout();
+  };
+  $("#cropAng").oninput = e => setAng(e.target.value);
+  $("#cropAngN").onchange = e => setAng(e.target.value);
+  $("#cropAsp").onchange = () => { cropFull(); cropLayout(); };
+  $("#cropBox").addEventListener("mousedown", e => {
+    e.preventDefault();
+    const corner = e.target.tagName === "I" ? e.target.className : "";
+    CROP.drag = {corner, mx: e.clientX, my: e.clientY, g: {...CROP.g}};
+  });
+  window.addEventListener("mousemove", e => {
+    const d = CROP.drag;
+    if (!d) return;
+    const b = $("#big"), dx = (e.clientX - d.mx) / b.clientWidth, dy = (e.clientY - d.my) / b.clientHeight;
+    const {lo, hi} = cropBounds(), g = CROP.g, o = d.g, k = cropAspect();
+    if (!d.corner){
+      g.x = Math.max(lo, Math.min(o.x + dx, hi - o.w));
+      g.y = Math.max(lo, Math.min(o.y + dy, hi - o.h));
+    } else {
+      // The opposite corner stays put; the dragged one follows the mouse.
+      const right = d.corner.includes("e"), bottom = d.corner.includes("s");
+      const ax = right ? o.x : o.x + o.w, ay = bottom ? o.y : o.y + o.h;
+      let mx = (right ? o.x + o.w : o.x) + dx, my = (bottom ? o.y + o.h : o.y) + dy;
+      mx = Math.max(lo, Math.min(hi, mx)); my = Math.max(lo, Math.min(hi, my));
+      let w = Math.max(0.03, Math.abs(mx - ax)), h = Math.max(0.03, Math.abs(my - ay));
+      if (k){ if (w / h > k) w = h * k; else h = w / k; }
+      const maxW = right ? hi - ax : ax - lo, maxH = bottom ? hi - ay : ay - lo;
+      const f = Math.min(1, maxW / w, maxH / h);
+      w *= f; h *= f;
+      g.w = w; g.h = h;
+      g.x = right ? ax : ax - w;
+      g.y = bottom ? ay : ay - h;
+    }
+    cropLayout();
+  });
+  window.addEventListener("mouseup", () => { CROP.drag = null; });
+  window.addEventListener("resize", () => { if (CROP.on) cropLayout(); });
 }
 
 // ---------- batch export ----------
@@ -1026,6 +1187,7 @@ function bind(){
   $("#exportTiff").onclick = () => exportImage("tiff");
   $("#exportDng").onclick = () => exportImage("rawdng");
   $("#exportDngR").onclick = () => exportImage("dng");
+  cropInit();
   try { const v = localStorage.getItem("fl.nr"); if (v !== null) $("#nr").value = v; } catch {}
   $("#nr").onchange = e => { try { localStorage.setItem("fl.nr", e.target.value); } catch {} };
   $("#sppOpen").onclick = () => openInSPP(false);
@@ -1059,6 +1221,12 @@ function bind(){
   document.addEventListener("keydown", e => {
     if (e.target.matches("input[type=text],input[type=password],input[type=search],select,textarea,input[type=range]")) return;
     const inDetail = $("#detail").classList.contains("on");
+    // In the crop editor: Enter saves, Esc cancels, arrows do nothing else.
+    if (CROP.on){
+      if (e.key === "Escape"){ e.preventDefault(); cropClose(); }
+      else if (e.key === "Enter"){ e.preventDefault(); cropSave(); }
+      return;
+    }
     // ↑/↓ = previous/next photo, ←/→ = previous/next preset (in the grid
     // ←/→ opens the editor on the first/last preset).
     if (e.key === "ArrowDown" || e.key === "PageDown"){ e.preventDefault(); stepPhoto(1); }
@@ -1070,6 +1238,7 @@ function bind(){
     else if ((e.key === "o" || e.key === "O") && !origDown){ origDown = true; renderBig(true); }
     else if ((e.key === "s" || e.key === "S") && inDetail && !e.ctrlKey && !e.metaKey){ VIEW.split = !VIEW.split; setView(); }
     else if ((e.key === "c" || e.key === "C") && inDetail && !e.ctrlKey && !e.metaKey){ VIEW.clip = !VIEW.clip; setView(); }
+    else if ((e.key === "r" || e.key === "R") && inDetail && !e.ctrlKey && !e.metaKey){ e.preventDefault(); cropOpen(); }
   });
   document.addEventListener("keyup", e => { if ((e.key === "o" || e.key === "O") && origDown){ origDown = false; renderBig(); } });
   let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if ($("#detail").classList.contains("on")) renderBig(); }, 300); });

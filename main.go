@@ -428,16 +428,17 @@ func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
 }
 
 func (s *server) base(ph *Photo, w int) (*render.Base, error) {
-	return s.baseAs(ph, w, s.sourceMode(ph))
+	return s.baseAs(ph, w, s.sourceMode(ph), geometryOf(ph))
 }
 
-func (s *server) baseAs(ph *Photo, w int, mode string) (*render.Base, error) {
-	v, err := s.bases.get(ph.ID+"|"+mode+"|"+strconv.Itoa(w), func() (any, error) {
+func (s *server) baseAs(ph *Photo, w int, mode string, g render.Geometry) (*render.Base, error) {
+	v, err := s.bases.get(ph.ID+"|"+mode+"|"+strconv.Itoa(w)+geoKey(g), func() (any, error) {
 		src, err := s.sourceAs(ph, mode)
 		if err != nil {
 			return nil, err
 		}
-		return render.NewBase(src.Downscale(w)), nil
+		// Straighten + crop at source resolution, then size for the view.
+		return render.NewBase(render.ApplyGeometry(src, g).Downscale(w)), nil
 	})
 	if err != nil {
 		return nil, err
@@ -526,7 +527,12 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
-	b, err := s.baseAs(ph, width, mode)
+	// nogeo=1: the whole frame (for the crop editor).
+	g := geometryOf(ph)
+	if q.Get("nogeo") == "1" {
+		g = render.Geometry{}
+	}
+	b, err := s.baseAs(ph, width, mode, g)
 	if err != nil {
 		httpErr(w, 500, err)
 		return
@@ -683,7 +689,7 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 		}
 		src = balanceJPEG(ph, render.FromImage(img, 0, ph.rotation))
 	}
-	base := render.NewBase(src)
+	base := render.NewBase(render.ApplyGeometry(src, geometryOf(ph)))
 	c := s.compensation(ph, comp)
 	ext := ".jpg"
 	switch format {
@@ -1182,6 +1188,7 @@ func main() {
 
 	// Folders: command line > what was set in the app > defaults.
 	cfg, _ := loadConfig()
+	loadGeometry()
 	photoRoots := defaultPhotoRoots(desk)
 	if len(cfg.Photos) > 0 {
 		photoRoots = cfg.Photos
@@ -1235,6 +1242,7 @@ func main() {
 	mux.HandleFunc("/api/rawstate", s.handleRawState)
 	mux.HandleFunc("/api/rawprefetch", s.handleRawPrefetch)
 	mux.HandleFunc("/api/accurate", s.handleAccurate)
+	mux.HandleFunc("/api/geometry", s.handleGeometry)
 	mux.HandleFunc("/api/quit", handleQuit)
 	mux.HandleFunc("/api/presets", s.handlePresets)
 	mux.HandleFunc("/api/thumb", s.handleThumb)
