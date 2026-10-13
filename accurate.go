@@ -41,16 +41,17 @@ func rawCorrectionFor(ph *Photo) *render.RawCorrection {
 	if ph.Kind != "x3f" || ph.RawDecoded || ph.Unsupported != "" || !rawDecodable(ph.props) {
 		return nil
 	}
-	return render.RawBaseFor(x3f.PresetFamily(ph.Camera))
+	return render.RawBaseFor(calibGroup(ph))
 }
 
-// rawDecodable reports whether x3f_extract decodes the file correctly.
-// It does not for the SD1's reduced-size modes (RESOLUTION "MED"/"LOW"):
-// the frame comes out cropped, stretched and green (checked on SDIM0067
-// against SPP, Oct 2026), so those photos keep the camera-JPEG base.
+// rawDecodable reports whether the raw base handles the file's size mode.
+// An SD1 MED file is read out with rows binned in pairs (raw 4704×1568 for
+// a 3264×2176 frame); rawLinear stretches it back. Measured against SPP
+// (tools/rescmp, Oct 2026): same framing, no crop, and its colour offset
+// from SPP lies in the HI photos' range. LOW has no sample yet.
 func rawDecodable(props map[string]string) bool {
 	r := props["RESOLUTION"]
-	return r == "" || r == "HI"
+	return r == "" || r == "HI" || r == "MED"
 }
 
 func (s *server) wantRaw(ph *Photo) bool {
@@ -247,4 +248,17 @@ func (s *server) handleAccurate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, map[string]any{"on": s.accurate.Load(), "available": rawTool != ""})
+}
+
+// calibGroup is the group ph's learned raw base and JPEG balance belong to
+// (x3f.CalibGroup of the camera model; ph.Camera already holds the family).
+func calibGroup(ph *Photo) string {
+	m := ph.props["CAMMODEL"]
+	if m == "" {
+		m = ph.props["CAMNAME"]
+	}
+	if m == "" {
+		return ph.Camera
+	}
+	return x3f.CalibGroup(m)
 }

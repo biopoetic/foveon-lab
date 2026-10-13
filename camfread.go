@@ -1,18 +1,12 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"context"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
+	"image"
 	"strings"
-	"time"
 
 	"github.com/biopoetic/foveon-lab/render"
+	"github.com/biopoetic/foveon-lab/x3f"
 )
 
 // camfWBName maps the X3F's WB_DESC to the illuminant name CAMF uses.
@@ -23,7 +17,7 @@ var camfWBName = map[string]string{
 }
 
 // camfTransform reads the photo's white-balance gains and colour matrix
-// from its CAMF block (via x3f_extract -meta), for its in-camera white
+// from its CAMF block, for its in-camera white
 // balance — what Sigma Photo Pro applies to the raw data.
 func camfTransform(ph *Photo) (render.CamTransform, error) {
 	var t render.CamTransform
@@ -46,55 +40,70 @@ func camfTransform(ph *Photo) (render.CamTransform, error) {
 
 // camfMatrices returns every numeric CAMF matrix of an X3F by name.
 func camfMatrices(path string) (map[string][]float64, error) {
-	if rawTool == "" {
-		return nil, fmt.Errorf("no x3f_extract")
-	}
-	tmp, err := os.MkdirTemp("", "foveon-meta-")
+	f, err := x3f.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(tmp)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if out, err := exec.CommandContext(ctx, rawTool, "-q", "-meta", "-o", tmp, path).CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("x3f_extract -meta: %v %s", err, trimOutput(out))
-	}
-	data, err := os.ReadFile(filepath.Join(tmp, filepath.Base(path)+".meta"))
+	c, err := f.CAMF()
 	if err != nil {
 		return nil, err
 	}
-	return parseCamfMeta(data), nil
+	return c.Matrices, nil
 }
 
-// parseCamfMeta reads the "BEGIN: CAMF matrix meta data (Name)" blocks of
-// an x3f_extract -meta dump.
-func parseCamfMeta(data []byte) map[string][]float64 {
-	out := map[string][]float64{}
-	sc := bufio.NewScanner(bytes.NewReader(data))
-	sc.Buffer(make([]byte, 1<<20), 1<<24)
-	name := ""
-	var vals []float64
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		switch {
-		case strings.HasPrefix(line, "BEGIN: CAMF matrix meta data ("):
-			name = strings.TrimSuffix(strings.TrimPrefix(line, "BEGIN: CAMF matrix meta data ("), ")")
-			vals = nil
-		case strings.HasPrefix(line, "END: CAMF matrix"):
-			if name != "" {
-				out[name] = vals
-			}
-			name = ""
-		case name != "":
-			if strings.HasPrefix(line, "x:") || strings.HasPrefix(line, "y:") || strings.HasPrefix(line, "z:") || strings.Contains(line, "[") {
-				continue
-			}
-			for _, f := range strings.Fields(line) {
-				if v, err := strconv.ParseFloat(f, 64); err == nil {
-					vals = append(vals, v)
-				}
+// photoCC is ph's own as-shot white-balance colour matrix from its CAMF
+// (nil if it can't be read): the colour-mode undo needs the camera body's
+// matrix, which differs from body to body.
+func photoCC(ph *Photo) *[9]float64 {
+	ph.camfOnce.Do(func() {
+		if ph.Kind != "x3f" || rawTool == "" {
+			return
+		}
+		if t, err := camfTransform(ph); err == nil {
+			cc := t.CC
+			ph.camfCC = &cc
+		}
+	})
+	return ph.camfCC
+}
+
+// goCameraRGB decodes and develops ph's raw data natively (no x3f_extract)
+// to linear camera RGB, with its CAMF white balance + colour matrix.
+func goCameraRGB(ph *Photo) (image.Image, render.CamTransform, error) {
+	var t render.CamTransform
+	f, err := x3f.Open(ph.path)
+	if err != nil {
+		return nil, t, err
+	}
+	c, err := f.CAMF()
+	if err != nil {
+		return nil, t, err
+	}
+	raw, err := f.DecodeRaw()
+	if err != nil {
+		return nil, t, err
+	}
+	wb := camfWBName[strings.TrimSpace(ph.props["WB_DESC"])]
+	img, err := x3f.CameraRGB(raw, c, x3f.NewSpatialGain(c, f.Props, wb), wb)
+	if err != nil {
+		return nil, t, err
+	}
+	if t, err = camfTransform(ph); err != nil {
+		return nil, t, err
+	}
+	// As x3fuse-core's x3f_get_gain / get_conv: the WB gains times the
+	// sensor, temperature and aperture factors, and CaptureISO/SensorISO.
+	for _, k := range []string{"SensorAdjustmentGainFact", "TempGainFact", "FNumberGainFact"} {
+		if v := c.Matrices[k]; len(v) == 3 {
+			for i := range t.Gain {
+				t.Gain[i] *= v[i]
 			}
 		}
 	}
-	return out
+	if s, cap := c.Matrices["SensorISO"], c.Matrices["CaptureISO"]; len(s) == 1 && len(cap) == 1 && s[0] > 0 {
+		for i := range t.Gain {
+			t.Gain[i] *= cap[0] / s[0]
+		}
+	}
+	return img, t, nil
 }

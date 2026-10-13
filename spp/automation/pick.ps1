@@ -46,10 +46,13 @@ $VP = [System.Windows.Automation.ValuePattern]::Pattern
 [W2]::SetCursorPos([int]($pr.X + 100), [int]($pr.Y + $pr.Height/2)) | Out-Null
 for ($i = 0; $i -lt 60; $i++) { [W2]::mouse_event(0x0800, 0, 0, 120, [IntPtr]::Zero) }
 Start-Sleep -Milliseconds 300
+$seen = New-Object System.Collections.Generic.List[string]
 for ($step = 0; $step -lt 200; $step++) {
   $cells = $pop.FindAll($TS::Descendants, $editCond)
   foreach ($c in $cells) {
-    if ($c.GetCurrentPattern($VP).Current.Value -eq $name) {
+    $v = $c.GetCurrentPattern($VP).Current.Value
+    if (-not $seen.Contains($v)) { $seen.Add($v) }
+    if ($v -eq $name) {
       $r = $c.Current.BoundingRectangle
       if ($r.Y -ge $pr.Y - 1 -and ($r.Y + $r.Height) -le ($pr.Y + $pr.Height + 1)) {
         Click ($r.X + 60) ($r.Y + $r.Height/2)
@@ -64,4 +67,6 @@ for ($step = 0; $step -lt 200; $step++) {
   [W2]::mouse_event(0x0800, 0, 0, -120, [IntPtr]::Zero)
   Start-Sleep -Milliseconds 120
 }
-"ERROR '$name' not reached"; exit 1
+# Say what the list held, so a photo SPP shows other settings for can be told apart.
+$cal = @($seen | ? { $_ -like '`[CAL`]*' }).Count
+"ERROR '$name' not reached ($($seen.Count) settings seen, $cal [CAL]; first: $(($seen | Select -First 6) -join ' | '))"; exit 1

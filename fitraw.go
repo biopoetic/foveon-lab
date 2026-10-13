@@ -85,12 +85,13 @@ func fitRawCommand(desk string) {
 	local := fsFlags.Bool("local", false, "research: held-out highlight desaturation and high-pass local contrast on top of the raw base")
 	noDenoise := fsFlags.Bool("nodenoise", false, "decode without x3f_extract's denoise (the fast preview decode)")
 	noSgain := fsFlags.Bool("nosgain", false, "research: decode without x3f_extract's spatial gain (colour shading)")
+	goRaw := fsFlags.Bool("go", false, "decode and develop raw natively (x3f package) instead of with x3f_extract: camera RGB through each photo's CAMF white balance + colour matrix")
 	camfRaw := fsFlags.Bool("camf", false, "decode raw as camera RGB and apply each photo's CAMF white balance + colour matrix (as SPP does) instead of x3f_extract's sRGB")
 	fsFlags.Parse(os.Args[2:])
-	if rawTool == "" {
-		log.Fatal("fit-raw needs x3f_extract")
+	if rawTool == "" && !*goRaw {
+		log.Fatal("fit-raw needs x3f_extract (or -go)")
 	}
-	exports, _ := filepath.Glob(filepath.Join(*dir, calib.ExportsDir, "*_A00.tif"))
+	exports, names := calib.ExportsFor(*dir, "A00")
 	byName := map[string]*Photo{}
 	for _, p := range scanPhotos(strings.Split(*photos, ";"), false) {
 		if p.Kind == "x3f" {
@@ -99,14 +100,14 @@ func fitRawCommand(desk string) {
 	}
 	groups := map[string][]calib.RawPair{}
 	jgroups := map[string][]calib.JPEGPair{}
-	for _, e := range exports {
-		name := strings.TrimSuffix(filepath.Base(e), "_A00.tif")
+	for i, e := range exports {
+		name := names[i]
 		ph := byName[strings.ToUpper(name)]
 		if ph == nil {
 			fmt.Printf("  %s: X3F not found under -photos, skipped\n", name)
 			continue
 		}
-		family := x3f.PresetFamily(ph.Camera)
+		family, group := x3f.PresetFamily(ph.Camera), calibGroup(ph)
 		if family == "" {
 			fmt.Printf("  %s: %s has no family, skipped\n", name, ph.Camera)
 			continue
@@ -136,11 +137,11 @@ func fitRawCommand(desk string) {
 				cam := stretchTo(render.FromImage(img, calib.AnalysisW, 0), spp.W, spp.H)
 				props := f.Props
 				neutral := func(l *render.Linear) *render.Linear {
-					return rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), render.CompensationFor(props, family)))
+					return rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), render.CompensationWith(props, family, photoCC(ph))))
 				}
 				jpegNeutral = neutral(cam)
 				jpegErr = calib.MeanError(jpegNeutral, spp)
-				jgroups[family] = append(jgroups[family], calib.JPEGPair{Name: name, JPEG: cam, SPP: spp, AutoWB: props["WB_DESC"] == "Auto", Neutral: neutral})
+				jgroups[group] = append(jgroups[group], calib.JPEGPair{Name: name, JPEG: cam, SPP: spp, AutoWB: props["WB_DESC"] == "Auto", Neutral: neutral})
 			}
 		}
 		// The raw base only: these photos' camera JPEG still trains the
@@ -151,7 +152,14 @@ func fitRawCommand(desk string) {
 		}
 		fmt.Printf("  %s (%s): decoding raw…\n", name, ph.Camera)
 		var raw *render.Linear
-		if *camfRaw {
+		if *goRaw {
+			cam, t, err := goCameraRGB(ph)
+			if err != nil {
+				fmt.Printf("    go raw: %v\n", err)
+				continue
+			}
+			raw = stretchTo(render.FromCameraRaw(cam, calib.AnalysisW, 0, t), spp.W, spp.H)
+		} else if *camfRaw {
 			rimg, err := decodeRawAs(ph, "none")
 			if err != nil {
 				fmt.Printf("    raw decode failed: %v\n", err)
@@ -184,31 +192,36 @@ func fitRawCommand(desk string) {
 		}
 		pr := ph.props
 		info := fmt.Sprintf("expnet %s expcomp %s iso %s f/%s %ss", pr["EXPNET"], pr["EXPCOMP"], pr["ISO"], pr["AP_DESC"], pr["SH_DESC"])
-		groups[family] = append(groups[family], calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info, JPEG: jpegNeutral})
+		groups[group] = append(groups[group], calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info, JPEG: jpegNeutral})
 	}
+	var fams []string
+	for f := range jgroups {
+		fams = append(fams, f)
+	}
+	for f := range groups {
+		if jgroups[f] == nil {
+			fams = append(fams, f)
+		}
+	}
+	sort.Strings(fams)
 	if *deltaE {
-		for _, f := range []string{"SD1", "SD15"} {
+		for _, f := range fams {
 			calib.DeltaEReport(f, groups[f], jgroups[f], os.Stdout)
 		}
 		return
 	}
 	if *local {
-		for _, f := range []string{"SD1", "SD15"} {
+		for _, f := range fams {
 			calib.RawLocalResearch(f, groups[f], os.Stdout)
 		}
 		return
 	}
 	if *diagnose {
-		for _, f := range []string{"SD1", "SD15"} {
+		for _, f := range fams {
 			calib.DiagnoseRaw(f, groups[f], os.Stdout)
 		}
 		return
 	}
-	var fams []string
-	for f := range groups {
-		fams = append(fams, f)
-	}
-	sort.Strings(fams)
 	var out []render.RawCorrection
 	for _, f := range fams {
 		c := calib.FitRawBase(f, groups[f])

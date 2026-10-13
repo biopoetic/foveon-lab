@@ -69,6 +69,8 @@ type Photo struct {
 	rotation  int
 	props     map[string]string
 	rawFailed atomic.Bool // raw decode failed once; stay on the preview
+	camfOnce  sync.Once   // photoCC: the as-shot WB colour matrix, read once
+	camfCC    *[9]float64
 	// Size of the embedded full preview (for the raw decode's aspect).
 	previewW, previewH int
 	// jpegBroken: the embedded JPEG is damaged; shown from the raw data.
@@ -373,7 +375,7 @@ func decodePreview(ph *Photo) (image.Image, error) {
 // camera-JPEG preview closer to SPP's neutral rendering (render.BalanceJPEG).
 func balanceJPEG(ph *Photo, l *render.Linear) *render.Linear {
 	if ph.Kind == "x3f" && !ph.RawDecoded && ph.props != nil {
-		render.BalanceJPEG(x3f.PresetFamily(ph.Camera), l, ph.props["WB_DESC"] == "Auto")
+		render.BalanceJPEG(calibGroup(ph), l, ph.props["WB_DESC"] == "Auto")
 	}
 	return l
 }
@@ -452,7 +454,7 @@ func (s *server) compensation(ph *Photo, on bool) render.Compensation {
 	if !on || ph.props == nil || (ph.RawDecoded && !ph.rawFailed.Load()) || s.useRaw(ph) || ph.jpegBroken.Load() {
 		return render.Compensation{SatFactor: 1, Family: fam}
 	}
-	c := render.CompensationFor(ph.props, fam)
+	c := render.CompensationWith(ph.props, fam, photoCC(ph))
 	c.Family = fam
 	return c
 }

@@ -39,10 +39,12 @@ var camfModes = map[string]map[string]camfMode{
 
 var identity3 = [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
 
-// camfSunlight is each camera's SunlightCCMatrix (WB-gained camera RGB to
-// linear output RGB; rows sum to 1). SPP applies the mode matrix in camera
-// space (combined = WB matrix × mode matrix), so in output RGB a mode is
-// W·M·W⁻¹; Sunlight stands in for every white balance (they differ little).
+// camfSunlight is a SunlightCCMatrix (WB-gained camera RGB to linear output
+// RGB; rows sum to 1) of one SD1 and one SD15 body. SPP applies the mode
+// matrix in camera space (combined = WB matrix × mode matrix), so in output
+// RGB a mode is W·M·W⁻¹. W differs per camera body (each is calibrated at
+// the factory: another SD15 has 1.73 -0.91 0.17 …), so the app uses each
+// photo's own as-shot matrix (camfUndo's cc) and these only as a fallback.
 var camfSunlight = map[string][9]float64{
 	"SD1":  {3.13281, -3.54688, 1.41406, -1.70312, 3.86719, -1.16406, 1.10938, -4.85938, 4.75},
 	"SD15": {3.46875, -3.35938, 0.890625, -1.98438, 4.40625, -1.42188, 1.0625, -4, 3.9375},
@@ -60,7 +62,10 @@ func mul3(a, b [9]float64) [9]float64 {
 
 // camfUndo returns the inverse of the camera's matrix for a colour mode,
 // and its contrast offset; ok is false when the camera or mode is unknown.
-func camfUndo(family, mode, how string) (inv [9]float64, contrast float64, ok bool) {
+// cc, when given, is the photo's own as-shot white-balance colour matrix
+// read from its CAMF: it differs between camera bodies (each is calibrated
+// at the factory), so the table below is only a fallback.
+func camfUndo(family, mode, how string, cc *[9]float64) (inv [9]float64, contrast float64, ok bool) {
 	cm, found := camfModes[family][strings.TrimSpace(mode)]
 	if !found {
 		return inv, 0, false
@@ -68,6 +73,9 @@ func camfUndo(family, mode, how string) (inv [9]float64, contrast float64, ok bo
 	inv, ok = invert3(cm.M)
 	if ok && how == "camf-cam" {
 		w := camfSunlight[family]
+		if cc != nil {
+			w = *cc
+		}
 		wi, ok2 := invert3(w)
 		if !ok2 {
 			return inv, 0, false

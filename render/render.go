@@ -359,6 +359,12 @@ type Compensation struct {
 // the in-camera colour mode (CM_DESC) and contrast/saturation settings,
 // for a camera family ("SD1", "SD15").
 func CompensationFor(props map[string]string, family string) Compensation {
+	return CompensationWith(props, family, nil)
+}
+
+// CompensationWith is CompensationFor with the photo's own as-shot white
+// balance colour matrix (from its CAMF; nil = the per-camera fallback).
+func CompensationWith(props map[string]string, family string, cc *[9]float64) Compensation {
 	c := Compensation{SatFactor: 1, Family: family}
 	parse := func(k string) float64 {
 		v, err := strconv.ParseFloat(strings.TrimSpace(strings.ReplaceAll(props[k], ",", ".")), 64)
@@ -371,7 +377,7 @@ func CompensationFor(props map[string]string, family string) Compensation {
 	c.Saturation = -parse("SATU_DESC")
 	mode := strings.TrimSpace(props["CM_DESC"])
 	if how := compModeFor(family); how != "old" {
-		if inv, ct, ok := camfUndo(family, mode, how); ok {
+		if inv, ct, ok := camfUndo(family, mode, how, cc); ok {
 			var u [9]float32
 			for i, v := range inv {
 				u[i] = float32(v)

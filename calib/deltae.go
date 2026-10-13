@@ -122,6 +122,13 @@ func DeltaEReport(family string, raws []RawPair, jpegs []JPEGPair, w io.Writer) 
 		a.m, a.p, a.n = a.m+m, a.p+p, a.n+1
 	}
 	var raw, own, jpg, bal acc
+	per := map[string]*[2]float64{} // photo → raw, app-JPEG dE (-1 = none)
+	get := func(n string) *[2]float64 {
+		if per[n] == nil {
+			per[n] = &[2]float64{-1, -1}
+		}
+		return per[n]
+	}
 	for h := range raws {
 		var train []RawPair
 		for i := range raws {
@@ -130,7 +137,9 @@ func DeltaEReport(family string, raws []RawPair, jpegs []JPEGPair, w io.Writer) 
 			}
 		}
 		fc := fitRaw(train)
-		add(&raw, applied(&fc, raws[h].Raw), raws[h].SPP)
+		pr := applied(&fc, raws[h].Raw)
+		add(&raw, pr, raws[h].SPP)
+		get(raws[h].Name)[0], _ = DeltaEStats(pr, raws[h].SPP)
 		o := fitRaw(raws[h : h+1])
 		add(&own, applied(&o, raws[h].Raw), raws[h].SPP)
 	}
@@ -146,7 +155,9 @@ func DeltaEReport(family string, raws []RawPair, jpegs []JPEGPair, w io.Writer) 
 		src := balanced(jpegs[h], c)
 		tc := fitTone(train, c)
 		render.ApplyTone(src, render.PredictTone(&tc, render.ToneFeatures(src, jpegs[h].AutoWB)))
-		add(&bal, jpegs[h].Neutral(src), jpegs[h].SPP)
+		nb := jpegs[h].Neutral(src)
+		add(&bal, nb, jpegs[h].SPP)
+		get(jpegs[h].Name)[1], _ = DeltaEStats(nb, jpegs[h].SPP)
 	}
 	row := func(name string, a acc) {
 		if a.n > 0 {
@@ -158,4 +169,20 @@ func DeltaEReport(family string, raws []RawPair, jpegs []JPEGPair, w io.Writer) 
 	row("camera JPEG, compensated", jpg)
 	row("camera JPEG + balance + tone (app default)", bal)
 	row("floor: own global fit per photo (raw)", own)
+	var names []string
+	for n := range per {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	fmt.Fprintf(w, "  per photo (dE2000 mean; raw base / camera JPEG as the app shows it):\n")
+	for _, n := range names {
+		v := per[n]
+		f := func(x float64) string {
+			if x < 0 {
+				return "   -"
+			}
+			return fmt.Sprintf("%5.2f", x)
+		}
+		fmt.Fprintf(w, "    %-36s %s / %s\n", n, f(v[0]), f(v[1]))
+	}
 }
