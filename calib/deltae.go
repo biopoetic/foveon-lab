@@ -130,6 +130,9 @@ func DeltaEReport(family string, raws []RawPair, jpegs []JPEGPair, w io.Writer) 
 		return per[n]
 	}
 	for h := range raws {
+		if raws[h].TrainOnly {
+			continue
+		}
 		var train []RawPair
 		for i := range raws {
 			if i != h {

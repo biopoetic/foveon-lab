@@ -19,6 +19,10 @@ type RawPair struct {
 	WB      string         // in-camera white balance (X3F WB_DESC), for diagnostics
 	Info    string         // other capture settings, for diagnostics
 	JPEG    *render.Linear // the camera JPEG as the app's neutral shows it (nil if unreadable)
+	// TrainOnly: a synthetic chart (tools/synth) exported from SPP. It
+	// teaches the fit colours real photos rarely contain, but is never
+	// held out or counted in the scores, which stay about real photos.
+	TrainOnly bool
 }
 
 // MeanError is the mean abs difference (8-bit sRGB) between two images.
@@ -96,12 +100,21 @@ func applied(c *render.RawCorrection, l *render.Linear) *render.Linear {
 // error clearly beats the camera JPEG (and there are enough photos).
 func FitRawBase(family string, pairs []RawPair) render.RawCorrection {
 	c := fitRaw(pairs)
-	c.Family, c.Photos = family, len(pairs)
-	if len(pairs) < 3 {
+	real := 0
+	for _, p := range pairs {
+		if !p.TrainOnly {
+			real++
+		}
+	}
+	c.Family, c.Photos = family, real
+	if real < 3 {
 		return c
 	}
 	var raw, jpg float64
 	for h := range pairs {
+		if pairs[h].TrainOnly {
+			continue
+		}
 		var train []RawPair
 		for i := range pairs {
 			if i != h {
@@ -112,7 +125,7 @@ func FitRawBase(family string, pairs []RawPair) render.RawCorrection {
 		raw += MeanError(applied(&fc, pairs[h].Raw), pairs[h].SPP)
 		jpg += pairs[h].JPEGErr
 	}
-	c.HeldOutRaw, c.HeldOutJPEG = raw/float64(len(pairs)), jpg/float64(len(pairs))
+	c.HeldOutRaw, c.HeldOutJPEG = raw/float64(real), jpg/float64(real)
 	c.UseRaw = c.HeldOutRaw < 0.8*c.HeldOutJPEG
 	return c
 }

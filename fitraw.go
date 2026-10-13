@@ -141,7 +141,9 @@ func fitRawCommand(desk string) {
 				}
 				jpegNeutral = neutral(cam)
 				jpegErr = calib.MeanError(jpegNeutral, spp)
-				jgroups[group] = append(jgroups[group], calib.JPEGPair{Name: name, JPEG: cam, SPP: spp, AutoWB: props["WB_DESC"] == "Auto", Neutral: neutral})
+				if !strings.Contains(strings.ToLower(filepath.ToSlash(ph.path)), "/charts/") { // a chart's preview is its container photo's
+					jgroups[group] = append(jgroups[group], calib.JPEGPair{Name: name, JPEG: cam, SPP: spp, AutoWB: props["WB_DESC"] == "Auto", Neutral: neutral})
+				}
 			}
 		}
 		// The raw base only: these photos' camera JPEG still trains the
@@ -201,7 +203,8 @@ func fitRawCommand(desk string) {
 				}
 			}
 		}
-		groups[group] = append(groups[group], calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info, JPEG: jpegNeutral})
+		chart := strings.Contains(strings.ToLower(filepath.ToSlash(ph.path)), "/charts/")
+		groups[group] = append(groups[group], calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info, JPEG: jpegNeutral, TrainOnly: chart})
 	}
 	var fams []string
 	for f := range jgroups {
