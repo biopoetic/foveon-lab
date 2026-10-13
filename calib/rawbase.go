@@ -16,8 +16,8 @@ type RawPair struct {
 	// JPEGErr: how far the camera-JPEG preview is from SPP (8-bit), the
 	// baseline the raw base has to beat.
 	JPEGErr float64
-	WB      string // in-camera white balance (X3F WB_DESC), for diagnostics
-	Info    string // other capture settings, for diagnostics
+	WB      string         // in-camera white balance (X3F WB_DESC), for diagnostics
+	Info    string         // other capture settings, for diagnostics
 	JPEG    *render.Linear // the camera JPEG as the app's neutral shows it (nil if unreadable)
 }
 

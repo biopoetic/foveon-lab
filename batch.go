@@ -26,12 +26,12 @@ func (s *server) handleLUT(w http.ResponseWriter, r *http.Request) {
 // progress; closing the page stops it after the current photo.
 func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		IDs    []string        `json:"ids"`
-		Preset string          `json:"preset"`
-		Params json.RawMessage `json:"params"`
-		Comp   bool            `json:"comp"`
-		Format string          `json:"format"` // "jpeg", "tiff" or "dng" (rendered)
-		Denoise *int           `json:"denoise"` // raw-based exports: 0-10, nil = 10
+		IDs     []string        `json:"ids"`
+		Preset  string          `json:"preset"`
+		Params  json.RawMessage `json:"params"`
+		Comp    bool            `json:"comp"`
+		Format  string          `json:"format"`  // "jpeg", "tiff" or "dng" (rendered)
+		Denoise *int            `json:"denoise"` // raw-based exports: 0-10, nil = 10
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpErr(w, 400, err)
