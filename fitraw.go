@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,6 +22,31 @@ import (
 	"github.com/biopoetic/foveon-lab/render"
 	"github.com/biopoetic/foveon-lab/x3f"
 )
+
+// fitAspect brings a raw decode to w×h: a reduced-resolution readout (SD1
+// MED, rows binned in pairs: about twice the aspect) is stretched, while a
+// frame shot at another aspect (Quattro 16:9 from the 3:2 sensor; SPP and
+// the camera crop it centred, measured 2026-10-13) is centre-cropped first.
+func fitAspect(l *render.Linear, w, h int) *render.Linear {
+	r := float64(l.W) * float64(h) / (float64(l.H) * float64(w))
+	if r > 1.02 && r < 1.5 { // wider: crop the sides
+		cw := int(math.Round(float64(l.H) * float64(w) / float64(h)))
+		l = cropLinear(l, (l.W-cw)/2, 0, cw, l.H)
+	} else if r < 0.98 && r > 0.67 { // taller: crop top and bottom
+		ch := int(math.Round(float64(l.W) * float64(h) / float64(w)))
+		l = cropLinear(l, 0, (l.H-ch)/2, l.W, ch)
+	}
+	return stretchTo(l, w, h)
+}
+
+// cropLinear is the w×h region of l at (x0, y0).
+func cropLinear(l *render.Linear, x0, y0, w, h int) *render.Linear {
+	o := &render.Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: l.Scale}
+	for y := 0; y < h; y++ {
+		copy(o.Pix[y*w*3:(y+1)*w*3], l.Pix[((y+y0)*l.W+x0)*3:])
+	}
+	return o
+}
 
 // stretchTo resamples l to w×h (nearest neighbour): reduced-resolution raw
 // decodes come out at another aspect than the full-size render.
@@ -109,7 +135,7 @@ func fitRawCommand(desk string) {
 			continue
 		}
 		family, group := x3f.PresetFamily(ph.Camera), calibGroup(ph)
-		if family == "" {
+		if family == "" && group != "Quattro" { // Quattro: no presets, but its own raw base
 			fmt.Printf("  %s: %s has no family, skipped\n", name, ph.Camera)
 			continue
 		}
@@ -140,7 +166,7 @@ func fitRawCommand(desk string) {
 		var jpegNeutral *render.Linear
 		if f, err := x3f.Open(ph.path); err == nil {
 			if img, _, err := f.Preview(); err == nil {
-				cam := stretchTo(render.FromImage(img, calib.AnalysisW, 0), spp.W, spp.H)
+				cam := fitAspect(render.FromImage(img, calib.AnalysisW, 0), spp.W, spp.H)
 				props := f.Props
 				neutral := func(l *render.Linear) *render.Linear {
 					return rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), render.CompensationWith(props, family, photoCC(ph))))
@@ -166,7 +192,7 @@ func fitRawCommand(desk string) {
 				fmt.Printf("    go raw: %v\n", err)
 				continue
 			}
-			raw = stretchTo(l, spp.W, spp.H)
+			raw = fitAspect(l, spp.W, spp.H)
 		} else if *camfRaw {
 			rimg, err := decodeRawAs(ph, "none")
 			if err != nil {

@@ -260,10 +260,11 @@ func rawLinear(ph *Photo, maxW int, color string) (*render.Linear, error) {
 		l = render.FromImage(img, maxW, 0)
 	}
 	if ph.previewW > 0 && ph.previewH > 0 {
-		// e.g. an SD1 medium-size file decodes at 4704×1568 for a 3:2 frame.
+		// e.g. an SD1 medium-size file decodes at 4704×1568 for a 3:2 frame
+		// (stretched); a Quattro shot at 16:9 decodes 3:2 (cropped).
 		wantH := l.W * ph.previewH / ph.previewW
 		if d := wantH - l.H; d > l.H/30 || -d > l.H/30 {
-			l = stretchTo(l, l.W, wantH)
+			l = fitAspect(l, l.W, wantH)
 		}
 	}
 	if ph.rotation != 0 {

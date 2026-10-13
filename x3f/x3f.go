@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf16"
 )
@@ -128,7 +130,99 @@ func parse(r io.ReaderAt, size int64, path string) (*File, error) {
 			f.Props = parseProps(buf)
 		}
 	}
+	if f.Props["CAMMODEL"] == "" {
+		// Quattro files carry no property list: model, ISO, shutter and
+		// aperture come from the embedded JPEG's EXIF.
+		for k, v := range f.exifProps() {
+			f.Props[k] = v
+		}
+	}
 	return f, nil
+}
+
+// exifProps reads, from the largest embedded JPEG's EXIF (only the start of
+// the section), the Model, ISO, ExposureTime and FNumber as the X3F
+// property names CAMMODEL, ISO, SH_DESC and AP_DESC.
+func (f *File) exifProps() map[string]string {
+	out := map[string]string{}
+	js := f.jpegImages()
+	if len(js) == 0 {
+		return out
+	}
+	fh, err := os.Open(f.Path)
+	if err != nil {
+		return out
+	}
+	defer fh.Close()
+	b := make([]byte, min(int(js[0].Length), 64<<10))
+	n, _ := fh.ReadAt(b, int64(js[0].Offset))
+	b = b[:n]
+	i := bytes.Index(b, []byte("Exif\x00\x00"))
+	if i < 0 || i+14 > len(b) {
+		return out
+	}
+	t := b[i+6:]
+	var bo binary.ByteOrder = binary.LittleEndian
+	if string(t[:2]) == "MM" {
+		bo = binary.BigEndian
+	}
+	// entries calls fn(tag, type, count, value offset) for an IFD's entries.
+	entries := func(ifd int, fn func(tag, typ, cnt, off int)) {
+		if ifd <= 0 || ifd+2 > len(t) {
+			return
+		}
+		for k := 0; k < int(bo.Uint16(t[ifd:])); k++ {
+			e := ifd + 2 + 12*k
+			if e+12 > len(t) {
+				return
+			}
+			fn(int(bo.Uint16(t[e:])), int(bo.Uint16(t[e+2:])), int(bo.Uint32(t[e+4:])), e+8)
+		}
+	}
+	rational := func(at int) (float64, bool) {
+		o := int(bo.Uint32(t[at:]))
+		if o+8 > len(t) || bo.Uint32(t[o+4:]) == 0 {
+			return 0, false
+		}
+		return float64(bo.Uint32(t[o:])) / float64(bo.Uint32(t[o+4:])), true
+	}
+	exif := 0
+	entries(int(bo.Uint32(t[4:])), func(tag, typ, cnt, off int) {
+		switch tag {
+		case 0x0110: // Model
+			if cnt > 4 {
+				off = int(bo.Uint32(t[off:]))
+			}
+			if off+cnt <= len(t) {
+				out["CAMMODEL"] = strings.TrimSpace(strings.TrimRight(string(t[off:off+cnt]), "\x00"))
+			}
+		case 0x8769: // Exif IFD
+			exif = int(bo.Uint32(t[off:]))
+		}
+	})
+	entries(exif, func(tag, typ, cnt, off int) {
+		switch tag {
+		case 0x8827: // ISO
+			if typ == 3 {
+				out["ISO"] = strconv.Itoa(int(bo.Uint16(t[off:])))
+			} else if typ == 4 {
+				out["ISO"] = strconv.Itoa(int(bo.Uint32(t[off:])))
+			}
+		case 0x829A: // ExposureTime
+			if v, ok := rational(off); ok && v > 0 {
+				if v < 1 {
+					out["SH_DESC"] = "1/" + strconv.Itoa(int(math.Round(1/v)))
+				} else {
+					out["SH_DESC"] = strconv.FormatFloat(v, 'f', -1, 64)
+				}
+			}
+		case 0x829D: // FNumber
+			if v, ok := rational(off); ok && v > 0 {
+				out["AP_DESC"] = strconv.FormatFloat(v, 'f', 1, 64)
+			}
+		}
+	})
+	return out
 }
 
 // readDirectory reads the section directory (pointed to by the file's last
@@ -357,11 +451,16 @@ func PresetFamily(model string) string {
 // compacts get their own "DPM" group: they share SD1 presets and colour
 // modes, but their raw and JPEG differ from the SD1 Merrill's (measured
 // 2026-10-13: the SD1 raw base scores 7-11 dE on DP2 Merrill photos, their
-// compensated JPEG 3.5-5).
+// compensated JPEG 3.5-5). The Quattro bodies (sd Quattro, sd Quattro H,
+// dp0-dp3 Quattro: one sensor design) form "Quattro"; they have no preset
+// family.
 func CalibGroup(model string) string {
 	m := strings.ToUpper(model)
 	if strings.Contains(m, "MERRILL") && regexp.MustCompile(`\bDP[0-3]\b`).MatchString(m) {
 		return "DPM"
+	}
+	if strings.Contains(m, "QUATTRO") {
+		return "Quattro"
 	}
 	return PresetFamily(model)
 }
