@@ -355,7 +355,7 @@ func main() {
 		}
 		mean, p95 := calib.DeltaEStats(l, refL)
 		bm, _ := calib.DeltaEStats(blurLin(l, 6), blurLin(refL, 6))
-		fmt.Printf("%-16s dE2000 mean %5.2f p95 %5.2f | colour only (blurred) %5.2f   (%v)\n", m, mean, p95, bm, el.Round(time.Millisecond))
+		fmt.Printf("%-16s dE2000 mean %5.2f p95 %5.2f | colour only (blurred) %5.2f | detail kept %.2f   (%v)\n", m, mean, p95, bm, detailKept(l, refL), el.Round(time.Millisecond))
 		if *saveDir != "" {
 			save(l, filepath.Join(*saveDir, m+".jpg"))
 		}
@@ -564,4 +564,32 @@ func foveonDenoise(c cam, r int, eps float32, kl float64) cam {
 		}
 	}
 	return out
+}
+
+// detailKept is the slope of the test's fine luminance detail on the
+// reference's (high-pass: luminance minus its radius-2 box blur): noise is
+// uncorrelated with the reference and leaves the slope alone, smoothing
+// lowers it. 1 = all the detail kept.
+func detailKept(l, ref *render.Linear) float64 {
+	hp := func(x *render.Linear) []float32 {
+		y := make([]float32, x.W*x.H)
+		for i := range y {
+			y[i] = 0.2126*x.Pix[i*3] + 0.7152*x.Pix[i*3+1] + 0.0722*x.Pix[i*3+2]
+		}
+		b := boxBlur(y, x.W, x.H, 2)
+		for i := range y {
+			y[i] -= b[i]
+		}
+		return y
+	}
+	a, b := hp(l), hp(ref)
+	var sab, sbb float64
+	for i := range a {
+		sab += float64(a[i]) * float64(b[i])
+		sbb += float64(b[i]) * float64(b[i])
+	}
+	if sbb == 0 {
+		return 0
+	}
+	return sab / sbb
 }

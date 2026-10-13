@@ -1,4 +1,4 @@
-param([string]$name)
+﻿param([string]$name)
 # Picks preset $name in SPP's settings dropdown: opens it, scrolls the popup
 # grid with the mouse wheel until the row is visible, clicks it.
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
@@ -35,6 +35,21 @@ if (-not $combo) {
 }
 if (-not $combo) { "ERROR combo not found"; exit 1 }
 if ($combo.Current.Name -eq $name) { "already $name"; exit 0 }
+if (-not $combo.Current.IsEnabled) {
+  # Adjustment Mode "X3F" (the camera's own settings) locks the list:
+  # switch to "Custom" (the dot above its label, next to the combo).
+  $cr = $combo.Current.BoundingRectangle
+  # The mode dots (X3F, Auto, Custom) are small unnamed panes in a row
+  # above the combo; Custom is the rightmost.
+  $dot = $all | ? { $r = $_.Current.BoundingRectangle; $r.Width -ge 10 -and $r.Width -le 22 -and $r.Height -ge 10 -and $r.Height -le 22 -and $r.Y -lt $cr.Y -and $r.Y -gt $cr.Y - 80 -and $r.X -gt $cr.X + $cr.Width/2 } | Sort-Object { $_.Current.BoundingRectangle.X } | Select -Last 1
+  if (-not $dot) { "ERROR the settings list is locked and no Custom mode was found"; exit 1 }
+  $lr = $dot.Current.BoundingRectangle
+  Click ($lr.X + $lr.Width/2) ($lr.Y + $lr.Height/2)
+  Start-Sleep -Milliseconds 800
+  $all = $main.FindAll($TS::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+  $combo = $all | ? { $_.Current.NativeWindowHandle -eq $combo.Current.NativeWindowHandle } | Select -First 1
+  if (-not $combo.Current.IsEnabled) { "ERROR could not switch to Custom mode"; exit 1 }
+}
 $cr = $combo.Current.BoundingRectangle
 if (-not (Win 'CtmComboBoxList')) { Click ($cr.X + $cr.Width/2) ($cr.Y + $cr.Height/2); Start-Sleep -Milliseconds 600 }
 $pop = Win 'CtmComboBoxList'
