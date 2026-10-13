@@ -30,7 +30,7 @@ func TestDecodeTRUESynthetic(t *testing.T) {
 		data = append(data, plane...)
 		data = append(data, make([]byte, 16-len(plane))...)
 	}
-	raw, err := decodeTRUE(data, w, h)
+	raw, err := decodeTRUE(data, w, h, false)
 	if err != nil {
 		t.Fatal(err)
 	}

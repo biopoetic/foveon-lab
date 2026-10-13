@@ -38,25 +38,30 @@ const (
 type RawImage struct {
 	W, H int
 	Pix  []uint16 // len W*H*3
+	// Quattro (layout with a full-resolution top layer): the bottom and
+	// middle layers are Pix's channels 0 and 1 at W×H, and the top layer is
+	// Top at TopW×TopH (2× each way); Pix's channel 2 stays 0.
+	Top        []uint16
+	TopW, TopH int
 }
 
 // RawSection returns the image section holding the TRUE raw data, if any.
 func (f *File) RawSection() (Image, bool) {
 	for _, im := range f.Images {
 		if (im.ImgType == rawTypeMerrill || im.ImgType == rawTypeTRUE) && im.Format == FormatTRUE ||
-			im.ImgType == rawTypeTRUE && (im.Format == formatX530 || im.Format == format10bit) {
+			im.ImgType == rawTypeTRUE && (im.Format == formatX530 || im.Format == format10bit) ||
+			im.ImgType == rawTypeMerrill && isQuattro(im.Format) {
 			return im, true
 		}
 	}
 	return Image{}, false
 }
 
-// DecodeRaw decodes the file's raw data. Quattro (format 35+) is not
-// supported.
+// DecodeRaw decodes the file's raw data.
 func (f *File) DecodeRaw() (*RawImage, error) {
 	im, ok := f.RawSection()
 	if !ok {
-		return nil, errors.New("x3f: no supported raw data (Quattro files are not supported)")
+		return nil, errors.New("x3f: no supported raw data")
 	}
 	fh, err := os.Open(f.Path)
 	if err != nil {
@@ -67,11 +72,14 @@ func (f *File) DecodeRaw() (*RawImage, error) {
 	if _, err := fh.ReadAt(sec, int64(im.Offset)); err != nil {
 		return nil, err
 	}
-	if im.Format != FormatTRUE {
+	if im.Format == formatX530 || im.Format == format10bit {
 		return decodeHuffman10(sec[28:], int(im.Width), int(im.Height), int(im.RowStride))
 	}
-	return decodeTRUE(sec[28:], int(im.Width), int(im.Height))
+	return decodeTRUE(sec[28:], int(im.Width), int(im.Height), isQuattro(im.Format))
 }
+
+// Quattro formats: sd/dp Quattro (35), sd Quattro (37), sd Quattro H (39).
+func isQuattro(format uint32) bool { return format == 35 || format == 37 || format == 39 }
 
 // decodeHuffman10 decodes the 10-bit formats (x3fuse's load_huffman with
 // bits 10, mapped): 1024 uint16 deltas, then either a Huffman table (1024
@@ -169,9 +177,39 @@ func decodeHuffman10(b []byte, w, h, stride int) (*RawImage, error) {
 // and the difference bit length it stands for (all TRUE codes are <= 8 bits).
 type prefix [256]struct{ n, bits uint8 }
 
-func decodeTRUE(b []byte, w, h int) (*RawImage, error) {
+func decodeTRUE(b []byte, w, h int, quattro bool) (*RawImage, error) {
 	if w <= 0 || h <= 0 || w > 20000 || h > 20000 {
 		return nil, fmt.Errorf("x3f: bad raw size %dx%d", w, h)
+	}
+	// Quattro: each plane's own size first (columns, rows as uint16).
+	var pw, ph [3]int
+	for i := range pw {
+		pw[i], ph[i] = w, h
+	}
+	layout := false
+	if quattro {
+		if len(b) < 12 {
+			return nil, errors.New("x3f: truncated Quattro header")
+		}
+		for i := range pw {
+			pw[i], ph[i] = int(le.Uint16(b[4*i:])), int(le.Uint16(b[4*i+2:]))
+		}
+		b = b[12:]
+		switch {
+		case ph[0] == h/2:
+			layout = true // quarter-size bottom/middle, full-size top
+			if pw[0] != pw[1] || ph[0] != ph[1] || pw[2] < 2*pw[0] || ph[2] < 2*ph[0] {
+				return nil, errors.New("x3f: inconsistent Quattro planes")
+			}
+		case ph[0] == h:
+			for i := range pw {
+				if ph[i] != h || pw[i] < w {
+					return nil, errors.New("x3f: inconsistent binned Quattro planes")
+				}
+			}
+		default:
+			return nil, errors.New("x3f: unknown Quattro layer size")
+		}
 	}
 	if len(b) < 8 {
 		return nil, errors.New("x3f: truncated TRUE header")
@@ -203,6 +241,9 @@ func decodeTRUE(b []byte, w, h int) (*RawImage, error) {
 			pre[j].n, pre[j].bits = size, uint8(i)
 		}
 	}
+	if quattro {
+		p += 4 // an unknown uint32
+	}
 	if p+12 > len(b) {
 		return nil, errors.New("x3f: truncated TRUE plane sizes")
 	}
@@ -216,14 +257,26 @@ func decodeTRUE(b []byte, w, h int) (*RawImage, error) {
 		planes[i] = b[off : off+n]
 		off += (n + 15) &^ 15
 	}
-	out := &RawImage{W: w, H: h, Pix: make([]uint16, w*h*3)}
+	ow, oh := w, h
+	if layout {
+		ow, oh = pw[0], ph[0]
+	}
+	out := &RawImage{W: ow, H: oh, Pix: make([]uint16, ow*oh*3)}
+	if layout {
+		out.TopW, out.TopH = pw[2], ph[2]
+		out.Top = make([]uint16, pw[2]*ph[2])
+	}
 	var wg sync.WaitGroup
 	errs := make([]error, 3)
 	for c := range planes {
 		wg.Add(1)
 		go func(c int) {
 			defer wg.Done()
-			errs[c] = decodePlane(planes[c], &pre, seed[c], out, c)
+			if layout && c == 2 {
+				errs[c] = decodePlane(planes[c], &pre, seed[c], ph[c], pw[c], out.Top, out.TopW, 1, 0)
+			} else {
+				errs[c] = decodePlane(planes[c], &pre, seed[c], ph[c], pw[c], out.Pix, ow, 3, c)
+			}
 		}(c)
 	}
 	wg.Wait()
@@ -258,15 +311,16 @@ func (r *trueBits) fill() {
 // overrun reports reading past the end (missing bytes read as zeros).
 func (r *trueBits) overrun() bool { return r.pos-int(r.n/8) > len(r.b) }
 
-func decodePlane(data []byte, pre *prefix, seed int32, out *RawImage, c int) error {
+// decodePlane decodes one rows×cols plane into dst (outW columns kept,
+// nch channels per pixel, this plane in channel c).
+func decodePlane(data []byte, pre *prefix, seed int32, rows, cols int, dst []uint16, outW, nch, c int) error {
 	r := &trueBits{b: data}
 	starts := [2][2]int32{{seed, seed}, {seed, seed}}
-	pix := out.Pix
-	for row := 0; row < out.H; row++ {
+	for row := 0; row < rows; row++ {
 		par := row & 1
 		var acc [2]int32
-		base := row * out.W * 3
-		for col := 0; col < out.W; col++ {
+		base := row * outW * nch
+		for col := 0; col < cols; col++ {
 			if r.n < 40 {
 				r.fill()
 			}
@@ -299,7 +353,9 @@ func decodePlane(data []byte, pre *prefix, seed int32, out *RawImage, c int) err
 			if col < 2 {
 				starts[par][odd] = v
 			}
-			pix[base+col*3+c] = uint16(v)
+			if col < outW {
+				dst[base+col*nch+c] = uint16(v)
+			}
 		}
 		if r.overrun() {
 			return fmt.Errorf("x3f: truncated TRUE plane %d at row %d", c, row)

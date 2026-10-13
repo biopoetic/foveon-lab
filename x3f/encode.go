@@ -20,26 +20,39 @@ type trueCode struct{ size, code uint8 }
 // the 28-byte image header): the header of the original file (seeds, the
 // unknown field and its code table, reused so readers see the camera's own
 // table), plane sizes and the three planes, each padded to 16 bytes.
-func encodeTRUE(raw *RawImage, orig []byte) ([]byte, error) {
+func encodeTRUE(raw *RawImage, orig []byte, quattro bool) ([]byte, error) {
+	q := 0
+	if quattro {
+		q = 12 // the planes' sizes come first
+	}
 	var seed [3]uint16
 	for i := range seed {
-		seed[i] = le.Uint16(orig[2*i:])
+		seed[i] = le.Uint16(orig[q+2*i:])
 	}
-	p := 8
+	p := q + 8
 	var table []trueCode
 	for p+2 <= len(orig) && orig[p] != 0 {
 		table = append(table, trueCode{orig[p], orig[p+1]})
 		p += 2
 	}
 	p += 2 // terminator
+	if quattro {
+		p += 4 // an unknown uint32
+	}
 	hdr := bytes.NewBuffer(append([]byte{}, orig[:p]...))
 	var planes [3][]byte
 	for c := range planes {
-		p, err := encodePlane(raw, c, int32(seed[c]), table)
+		var pl []byte
+		var err error
+		if c == 2 && raw.Top != nil {
+			pl, err = encodePlane(raw.Top, raw.TopH, raw.TopW, 1, 0, int32(seed[c]), table)
+		} else {
+			pl, err = encodePlane(raw.Pix, raw.H, raw.W, 3, c, int32(seed[c]), table)
+		}
 		if err != nil {
 			return nil, err
 		}
-		planes[c] = p
+		planes[c] = pl
 	}
 	out := hdr.Bytes()
 	for _, p := range planes {
@@ -80,19 +93,21 @@ func (w *bitWriter) flush() []byte {
 	return w.b
 }
 
-func encodePlane(raw *RawImage, c int, seed int32, table []trueCode) ([]byte, error) {
-	w := &bitWriter{b: make([]byte, 0, raw.W*raw.H)}
+// encodePlane codes one rows×cols plane read from src (nch channels per
+// pixel, this plane in channel ch).
+func encodePlane(src []uint16, rows, cols, nch, ch int, seed int32, table []trueCode) ([]byte, error) {
+	w := &bitWriter{b: make([]byte, 0, rows*cols)}
 	starts := [2][2]int32{{seed, seed}, {seed, seed}}
-	for row := 0; row < raw.H; row++ {
+	for row := 0; row < rows; row++ {
 		par := row & 1
 		var acc [2]int32
-		for col := 0; col < raw.W; col++ {
+		for col := 0; col < cols; col++ {
 			odd := col & 1
 			prev := acc[odd]
 			if col < 2 {
 				prev = starts[par][odd]
 			}
-			v := int32(raw.Pix[(row*raw.W+col)*3+c])
+			v := int32(src[(row*cols+col)*nch+ch])
 			d := v - prev
 			n := 0
 			if d != 0 {
@@ -123,10 +138,11 @@ func encodePlane(raw *RawImage, c int, seed int32, table []trueCode) ([]byte, er
 // by raw (same size). Every other section is copied unchanged.
 func (f *File) WriteWithRaw(path string, raw *RawImage) error {
 	im, ok := f.RawSection()
-	if !ok || im.Format != FormatTRUE {
+	quattro := isQuattro(im.Format)
+	if !ok || im.Format != FormatTRUE && !quattro {
 		return errors.New("x3f: only TRUE-coded files can be rewritten")
 	}
-	if raw.W != int(im.Width) || raw.H != int(im.Height) {
+	if (raw.W != int(im.Width) || raw.H != int(im.Height)) && raw.Top == nil {
 		return fmt.Errorf("x3f: raw is %dx%d, the file's %dx%d", raw.W, raw.H, im.Width, im.Height)
 	}
 	src, err := os.ReadFile(f.Path)
@@ -134,7 +150,7 @@ func (f *File) WriteWithRaw(path string, raw *RawImage) error {
 		return err
 	}
 	old := src[im.Offset : im.Offset+im.Length]
-	payload, err := encodeTRUE(raw, old[28:])
+	payload, err := encodeTRUE(raw, old[28:], quattro)
 	if err != nil {
 		return err
 	}
@@ -160,7 +176,7 @@ func (f *File) WriteWithRaw(path string, raw *RawImage) error {
 		off, n uint32
 		typ    string
 	}
-	var dir []ent
+	moved := map[uint32]ent{} // old offset -> where the section went
 	for _, s := range secs {
 		for len(out)%4 != 0 {
 			out = append(out, 0)
@@ -169,7 +185,7 @@ func (f *File) WriteWithRaw(path string, raw *RawImage) error {
 		if s.Offset == im.Offset {
 			body = newSec
 		}
-		dir = append(dir, ent{uint32(len(out)), uint32(len(body)), s.Type})
+		moved[s.Offset] = ent{uint32(len(out)), uint32(len(body)), s.Type}
 		out = append(out, body...)
 	}
 	for len(out)%4 != 0 {
@@ -178,8 +194,11 @@ func (f *File) WriteWithRaw(path string, raw *RawImage) error {
 	dirOff := uint32(len(out))
 	oldDir := int(le.Uint32(src[len(src)-4:]))
 	out = append(out, src[oldDir:oldDir+8]...) // "SECd" + version
-	out = le.AppendUint32(out, uint32(len(dir)))
-	for _, e := range dir {
+	// The directory keeps the camera's own entry order (it can list a
+	// section that lies later in the file first).
+	out = le.AppendUint32(out, uint32(len(f.sections)))
+	for _, s := range f.sections {
+		e := moved[s.Offset]
 		out = le.AppendUint32(out, e.off)
 		out = le.AppendUint32(out, e.n)
 		out = append(out, e.typ...)
