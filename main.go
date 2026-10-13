@@ -214,6 +214,11 @@ func loadMeta(ph *Photo) bool {
 		if l := lensDesc(f.Props); l != "" {
 			ph.Info["LENS"] = l
 		}
+		if f.Recovered != "" {
+			// Cut short (e.g. a card pulled mid-write): read by scanning.
+			ph.Info["REPAIRED"] = "damaged file, read without its section directory"
+			log.Printf("%s: damaged file (%s), sections recovered by scanning", ph.Name, f.Recovered)
+		}
 		if t, err := strconv.ParseInt(ph.Info["TIME"], 10, 64); err == nil {
 			ph.Info["TIME"] = time.Unix(t, 0).UTC().Format("2006-01-02 15:04")
 		}

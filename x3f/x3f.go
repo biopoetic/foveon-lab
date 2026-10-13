@@ -46,6 +46,10 @@ type File struct {
 	Props    map[string]string
 
 	sections []Section // the whole directory
+
+	// Recovered is why the section directory was unusable when the
+	// sections had to be found by scanning the file ("" = intact file).
+	Recovered string
 }
 
 var le = binary.LittleEndian
@@ -88,35 +92,16 @@ func parse(r io.ReaderAt, size int64, path string) (*File, error) {
 		f.Rotation = rot
 	}
 
-	tail := make([]byte, 4)
-	if _, err := r.ReadAt(tail, size-4); err != nil {
-		return nil, err
-	}
-	dirOff := int64(le.Uint32(tail))
-	if dirOff <= 0 || dirOff+12 > size {
-		return nil, errors.New("x3f: bad directory offset")
-	}
-	dh := make([]byte, 12)
-	if _, err := r.ReadAt(dh, dirOff); err != nil {
-		return nil, err
-	}
-	if string(dh[0:4]) != "SECd" {
-		return nil, errors.New("x3f: bad directory magic")
-	}
-	n := int64(le.Uint32(dh[8:12]))
-	if n <= 0 || n > 256 || dirOff+12+n*12 > size {
-		return nil, errors.New("x3f: bad directory entry count")
-	}
-	ents := make([]byte, n*12)
-	if _, err := r.ReadAt(ents, dirOff+12); err != nil {
-		return nil, err
-	}
-	for i := int64(0); i < n; i++ {
-		e := ents[i*12:]
-		s := Section{Offset: le.Uint32(e[0:4]), Length: le.Uint32(e[4:8]), Type: string(e[8:12])}
-		if int64(s.Offset)+int64(s.Length) > size {
-			continue
+	secs, err := readDirectory(r, size)
+	if err != nil {
+		// A damaged file (typically cut short, losing the directory at its
+		// end): find the sections by their own headers instead.
+		if secs = scanSections(r, size); len(secs) == 0 {
+			return nil, err
 		}
+		f.Recovered = err.Error()
+	}
+	for _, s := range secs {
 		f.sections = append(f.sections, s)
 		switch s.Type {
 		case "IMA2", "IMAG":
@@ -144,6 +129,97 @@ func parse(r io.ReaderAt, size int64, path string) (*File, error) {
 		}
 	}
 	return f, nil
+}
+
+// readDirectory reads the section directory (pointed to by the file's last
+// four bytes).
+func readDirectory(r io.ReaderAt, size int64) ([]Section, error) {
+	tail := make([]byte, 4)
+	if _, err := r.ReadAt(tail, size-4); err != nil {
+		return nil, err
+	}
+	dirOff := int64(le.Uint32(tail))
+	if dirOff <= 0 || dirOff+12 > size {
+		return nil, errors.New("x3f: bad directory offset")
+	}
+	dh := make([]byte, 12)
+	if _, err := r.ReadAt(dh, dirOff); err != nil {
+		return nil, err
+	}
+	if string(dh[0:4]) != "SECd" {
+		return nil, errors.New("x3f: bad directory magic")
+	}
+	n := int64(le.Uint32(dh[8:12]))
+	if n <= 0 || n > 256 || dirOff+12+n*12 > size {
+		return nil, errors.New("x3f: bad directory entry count")
+	}
+	ents := make([]byte, n*12)
+	if _, err := r.ReadAt(ents, dirOff+12); err != nil {
+		return nil, err
+	}
+	var secs []Section
+	for i := int64(0); i < n; i++ {
+		e := ents[i*12:]
+		s := Section{Offset: le.Uint32(e[0:4]), Length: le.Uint32(e[4:8]), Type: string(e[8:12])}
+		if int64(s.Offset)+int64(s.Length) <= size {
+			secs = append(secs, s)
+		}
+	}
+	return secs, nil
+}
+
+// scanSections finds the sections of a file whose directory is lost: each
+// section starts with its own header ("SECi" image, "SECc" CAMF, "SECp"
+// properties). A candidate counts only if its header is plausible, since
+// the same four bytes also occur inside compressed data; a section runs to
+// the next one (the last to the end of what is left of the file).
+func scanSections(r io.ReaderAt, size int64) []Section {
+	const chunk = 1 << 20
+	var secs []Section
+	buf := make([]byte, chunk+64)
+	for off := int64(0); off < size; off += chunk {
+		n, _ := r.ReadAt(buf[:min(int64(len(buf)), size-off)], off)
+		for i := 0; i+28 <= n && i < chunk; i++ {
+			if buf[i] != 'S' || buf[i+1] != 'E' || buf[i+2] != 'C' {
+				continue
+			}
+			h := buf[i : i+28]
+			ver := le.Uint32(h[4:8])
+			if ver>>16 < 1 || ver>>16 > 4 {
+				continue
+			}
+			var typ string
+			switch h[3] {
+			case 'i':
+				it, fm, w, hh := le.Uint32(h[8:12]), le.Uint32(h[12:16]), le.Uint32(h[16:20]), le.Uint32(h[20:24])
+				if it < 1 || it > 3 || fm == 0 || fm > 64 || w == 0 || w > 20000 || hh == 0 || hh > 20000 {
+					continue
+				}
+				typ = "IMA2"
+			case 'c':
+				if t := le.Uint32(h[8:12]); t != 2 && t != 4 && t != 5 {
+					continue
+				}
+				typ = "CAMF"
+			case 'p':
+				if cnt := le.Uint32(h[8:12]); cnt == 0 || cnt > 4096 {
+					continue
+				}
+				typ = "PROP"
+			default:
+				continue
+			}
+			secs = append(secs, Section{Offset: uint32(off) + uint32(i), Type: typ})
+		}
+	}
+	for i := range secs {
+		end := size
+		if i+1 < len(secs) {
+			end = int64(secs[i+1].Offset)
+		}
+		secs[i].Length = uint32(end - int64(secs[i].Offset))
+	}
+	return secs
 }
 
 // parseProps decodes a SECp section: a list of (name, value) offsets into a
