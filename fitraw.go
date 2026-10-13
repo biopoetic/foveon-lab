@@ -136,7 +136,7 @@ func fitRawCommand(desk string) {
 				cam := stretchTo(render.FromImage(img, calib.AnalysisW, 0), spp.W, spp.H)
 				props := f.Props
 				neutral := func(l *render.Linear) *render.Linear {
-					return rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), render.CompensationFor(props)))
+					return rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), render.CompensationFor(props, family)))
 				}
 				jpegErr = calib.MeanError(neutral(cam), spp)
 				jgroups[family] = append(jgroups[family], calib.JPEGPair{Name: name, JPEG: cam, SPP: spp, AutoWB: props["WB_DESC"] == "Auto", Neutral: neutral})

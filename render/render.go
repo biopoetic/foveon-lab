@@ -348,12 +348,18 @@ type Compensation struct {
 	// Family picks the measured model for this camera ("SD1", "SD15"; ""
 	// = the default one).
 	Family string
+	// Undo is the inverse of the camera's colour-mode matrix (from its
+	// CAMF calibration), applied to each pixel first; nil = none.
+	// UndoGamma applies it to gamma-encoded values instead of linear.
+	Undo      *[9]float32
+	UndoGamma bool
 }
 
 // CompensationFor derives the compensation from X3F PROP metadata:
-// the in-camera colour mode (CM_DESC) and contrast/saturation settings.
-func CompensationFor(props map[string]string) Compensation {
-	c := Compensation{SatFactor: 1}
+// the in-camera colour mode (CM_DESC) and contrast/saturation settings,
+// for a camera family ("SD1", "SD15").
+func CompensationFor(props map[string]string, family string) Compensation {
+	c := Compensation{SatFactor: 1, Family: family}
 	parse := func(k string) float64 {
 		v, err := strconv.ParseFloat(strings.TrimSpace(strings.ReplaceAll(props[k], ",", ".")), 64)
 		if err != nil {
@@ -363,7 +369,20 @@ func CompensationFor(props map[string]string) Compensation {
 	}
 	c.Contrast = -parse("CONT_DESC")
 	c.Saturation = -parse("SATU_DESC")
-	switch props["CM_DESC"] {
+	mode := strings.TrimSpace(props["CM_DESC"])
+	if how := compModeFor(family); how != "old" {
+		if inv, ct, ok := camfUndo(family, mode, how); ok {
+			var u [9]float32
+			for i, v := range inv {
+				u[i] = float32(v)
+			}
+			c.Undo = &u
+			c.UndoGamma = how == "camf-gamma"
+			c.Contrast -= ct * compContrast
+			return c
+		}
+	}
+	switch mode {
 	case "Vivid":
 		c.SatFactor = 0.8
 		c.Contrast -= 0.12
@@ -448,6 +467,8 @@ type pixOp struct {
 	satF                                     float64
 	mono                                     bool
 	mode                                     int
+	undo                                     *[9]float32
+	undoGamma                                bool
 
 	// Measured emulation (model.go), when a model is embedded.
 	measured   bool
@@ -467,6 +488,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	}
 	expGain := math.Exp2(p.Exposure)
 	op := pixOp{
+		undo: c.Undo, undoGamma: c.UndoGamma,
 		cr: float32(p.R * k * expGain), cg: float32(p.G * k * expGain), cb: float32(p.B * k * expGain),
 		maskScale: float32(math.Exp2(p.Exposure / 2.2)),
 		fill:      float32(p.FillLight * 1.5),
@@ -519,6 +541,19 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	return op
 }
 
+// unstyle undoes the camera's colour-mode matrix.
+func (op *pixOp) unstyle(r, g, bl float32) (float32, float32, float32) {
+	u := op.undo
+	if op.undoGamma {
+		r, g, bl = enc(max(0, r)), enc(max(0, g)), enc(max(0, bl))
+	}
+	r, g, bl = u[0]*r+u[1]*g+u[2]*bl, u[3]*r+u[4]*g+u[5]*bl, u[6]*r+u[7]*g+u[8]*bl
+	if op.undoGamma {
+		r, g, bl = dec(max(0, r)), dec(max(0, g)), dec(max(0, bl))
+	}
+	return r, g, bl
+}
+
 // applyMeasured is apply for the measured model: tone steps work on
 // perceptual brightness and scale colourfulness by their measured ratio.
 func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, float32) {
@@ -557,6 +592,9 @@ func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, f
 // apply maps one linear pixel; m is the blurred perceptual luminance around
 // it (Fill Light's mask).
 func (op *pixOp) apply(r, g, bl, m, da, db float32) (float32, float32, float32) {
+	if op.undo != nil {
+		r, g, bl = op.unstyle(r, g, bl)
+	}
 	if op.measured {
 		return op.applyMeasured(r, g, bl, m, da, db)
 	}

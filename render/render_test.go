@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"image"
 	"image/color"
+	"math"
 	"testing"
 
 	"golang.org/x/image/tiff"
@@ -150,8 +151,25 @@ func TestRotateAndDownscale(t *testing.T) {
 }
 
 func TestCompensation(t *testing.T) {
-	c := CompensationFor(map[string]string{"CM_DESC": "Vivid", "SATU_DESC": "0.5", "CONT_DESC": "-0.3"})
-	if c.SatFactor >= 1 || c.Saturation != -0.5 || c.Contrast > 0.3-0.1 {
-		t.Errorf("compensation = %+v", c)
+	props := map[string]string{"CM_DESC": "Vivid", "SATU_DESC": "0.5", "CONT_DESC": "-0.3"}
+	// SD15: the hand-tuned chroma/contrast undo.
+	c := CompensationFor(props, "SD15")
+	if c.SatFactor >= 1 || c.Saturation != -0.5 || c.Contrast > 0.3-0.1 || c.Undo != nil {
+		t.Errorf("SD15 compensation = %+v", c)
+	}
+	// SD1: the CAMF Vivid matrix undone in camera space, minus CMCC 0.3.
+	c = CompensationFor(props, "SD1")
+	if c.Undo == nil || c.SatFactor != 1 || math.Abs(c.Contrast-0) > 1e-9 {
+		t.Fatalf("SD1 compensation = %+v", c)
+	}
+	// Undoing Vivid must take colour out but keep grey grey.
+	u := c.Undo
+	for r := 0; r < 3; r++ {
+		if s := u[r*3] + u[r*3+1] + u[r*3+2]; math.Abs(float64(s)-1) > 0.01 {
+			t.Errorf("row %d sums to %v, grey would shift", r, s)
+		}
+	}
+	if u[0] >= 1 || u[4] >= 1 || u[8] >= 1 {
+		t.Errorf("undo does not desaturate: %v", *u)
 	}
 }

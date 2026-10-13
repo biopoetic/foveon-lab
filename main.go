@@ -441,7 +441,7 @@ func (s *server) compensation(ph *Photo, on bool) render.Compensation {
 	if !on || ph.props == nil || (ph.RawDecoded && !ph.rawFailed.Load()) || s.useRaw(ph) || ph.jpegBroken.Load() {
 		return render.Compensation{SatFactor: 1, Family: fam}
 	}
-	c := render.CompensationFor(ph.props)
+	c := render.CompensationFor(ph.props, fam)
 	c.Family = fam
 	return c
 }
