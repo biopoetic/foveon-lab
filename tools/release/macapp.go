@@ -278,8 +278,26 @@ func buildDMG(version, dist, zipPath string) (string, error) {
 		return "", errors.New("mac-dmg workflow run did not appear")
 	}
 	log.Printf("waiting for mac-dmg run %s…", runID)
-	if err := run("gh", "run", "watch", runID, "--exit-status"); err != nil {
-		return "", fmt.Errorf("mac-dmg workflow failed (gh run view %s --log-failed): %w", runID, err)
+	// Poll instead of "gh run watch": one GitHub API hiccup (HTTP 502) made
+	// watch fail mid-run, and the deferred cleanup then deleted the run's
+	// input. Transient errors are retried; only the run's own result counts.
+	for fails := 0; ; {
+		out, err := output("gh", "run", "view", runID, "--json", "status,conclusion", "--jq", ".status + \" \" + .conclusion")
+		if err != nil {
+			if fails++; fails > 20 {
+				return "", fmt.Errorf("mac-dmg run %s: cannot read its status: %w", runID, err)
+			}
+			time.Sleep(15 * time.Second)
+			continue
+		}
+		fails = 0
+		if f := strings.Fields(out); len(f) > 0 && f[0] == "completed" {
+			if len(f) < 2 || f[1] != "success" {
+				return "", fmt.Errorf("mac-dmg workflow %s ended %q (gh run view %s --log-failed)", runID, out, runID)
+			}
+			break
+		}
+		time.Sleep(20 * time.Second)
 	}
 	dl := filepath.Join(dist, "dmg-download")
 	os.RemoveAll(dl)
