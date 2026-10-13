@@ -92,7 +92,7 @@ func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
 		return nil, t, err
 	}
 	x3f.FixBadPixels(raw, c)
-	wb := camfWBName[strings.TrimSpace(ph.props["WB_DESC"])]
+	wb := c.CameraWB(strings.TrimSpace(ph.props["WB_DESC"]))
 	img, err := x3f.CameraLinear(raw, c, x3f.NewSpatialGain(c, f.Props, wb), wb)
 	if err != nil {
 		return nil, t, err
@@ -125,6 +125,7 @@ func goLinear(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
 		}
 		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(b)})
 	}
+	x3f.ClipHighlights(img, t.Gain)
 	return render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t), nil
 }
 
@@ -192,7 +193,7 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 		httpErr(w, 500, err)
 		return
 	}
-	err = render.WriteCameraDNG(f, img.Pix, img.W, img.H, t.Gain, t.CC, "SIGMA", strings.TrimPrefix(strings.TrimSpace(ph.props["CAMMODEL"]), "SIGMA "), "Foveon Lab "+version)
+	err = render.WriteCameraDNG(f, img.Pix, img.W, img.H, t.Gain, t.CC, "SIGMA", dngModel(ph), "Foveon Lab "+version)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -215,4 +216,13 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 		cube = ""
 	}
 	writeJSON(w, map[string]string{"path": path, "lut": cube})
+}
+
+// dngModel is the camera model for a DNG: CAMMODEL without "SIGMA ", else
+// (Quattro files carry no property list) the folder's camera.
+func dngModel(ph *Photo) string {
+	if m := strings.TrimPrefix(strings.TrimSpace(ph.props["CAMMODEL"]), "SIGMA "); m != "" {
+		return m
+	}
+	return ph.Camera
 }

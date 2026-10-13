@@ -46,6 +46,9 @@ func CameraLinear(raw *RawImage, c *CAMF, sg *SpatialGain, wb string) (*CamImage
 	if raw == nil || c == nil {
 		return nil, errors.New("x3f: no raw data or CAMF")
 	}
+	if raw.Top != nil {
+		return cameraLinearQuattro(raw, c, wb, true)
+	}
 	// CAMF rectangles are inclusive (x0, y0, x1, y1) in KeepImageArea
 	// coordinates; a reduced-size readout scales them.
 	kx0, ky0, kw, kh := 0.0, 0.0, float64(raw.W), float64(raw.H)
@@ -154,4 +157,29 @@ func CameraLinear(raw *RawImage, c *CAMF, sg *SpatialGain, wb string) (*CamImage
 		}
 	}
 	return out, nil
+}
+
+// ClipHighlights makes clipped highlights neutral. Where a layer reaches
+// its white level the sensor stopped counting, so its ratio to the other
+// layers (the colour) is wrong; the top layer clips first and a white sky
+// or lamp comes out yellow-red (blue-green in black and white). Pixels
+// with a layer from 0.9 to 1 of white are blended towards a neutral at the
+// brightest white-balanced layer (Sigma Photo Pro renders them white).
+// gain is the white balance (WBTransform's).
+func ClipHighlights(img *CamImage, gain [3]float64) {
+	const lo, hi = 0.9, 1.0
+	g := [3]float32{float32(gain[0]), float32(gain[1]), float32(gain[2])}
+	for i := 0; i+2 < len(img.Pix); i += 3 {
+		p := img.Pix[i : i+3]
+		m := max(p[0], p[1], p[2])
+		if m <= lo {
+			continue
+		}
+		h := min(1, (m-lo)/(hi-lo))
+		h = h * h * (3 - 2*h)
+		l := max(p[0]*g[0], p[1]*g[1], p[2]*g[2])
+		for k := 0; k < 3; k++ {
+			p[k] += h * (l/g[k] - p[k])
+		}
+	}
 }
