@@ -139,7 +139,7 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
   (Vivid, FC Blue…), so even before any preset it differs from SPP's neutral rendering — measured on
   13 photos: about 17–21/255 on average, up to 40 for FC Blue shots. "Compensate camera JPEG" undoes
   part of that from the X3F metadata. **Accurate** (on by default) does better for **SD1 Merrill**
-  files: it starts from the raw data (decoded by the bundled `x3f_extract`) mapped onto SPP's neutral
+  files: it starts from the raw data (decoded natively, no external tools) mapped onto SPP's neutral
   look — **7.4/255 on photos the mapping was not fitted on**, vs 20.8 for the camera JPEG. The first
   view of a photo shows the JPEG at once and swaps in the accurate preview when the raw decode is
   done (~10–25 s, cached). For SD15 the same approach measured *worse* than the camera JPEG
@@ -158,11 +158,10 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
   dp2 Quattro, DP0 Quattro, sd Quattro and sd Quattro H. Merrill bodies get the SD1 presets,
   SD14/DP1/DP2 the SD15 presets (same sensor generations).
 - **SD9 / SD10** carry no full-size preview. Foveon Lab decodes their raw data at full resolution
-  with the bundled `x3f_extract` from [x3fuse-core](https://github.com/sagwaco/x3fuse-core)
-  (Apache-2.0, with a small fix for these older files — see `third_party/x3fuse-core`). The first
-  view of such a photo takes a few seconds, then it is cached. Without `x3f_extract` it falls back to
-  the camera's 567×378 preview. A raw decode has no in-camera look, so it starts more neutral than
-  the JPEG-based previews of the other bodies.
+  itself (a Go port of [x3fuse-core](https://github.com/sagwaco/x3fuse-core)'s decoder). A raw
+  decode has no in-camera look, so it starts more neutral than the JPEG-based previews of the
+  other bodies.
+- **Raw DNG** export works for every body, Quattro included, without external tools.
 
 ## Calibration: measuring SPP instead of guessing
 
@@ -215,12 +214,9 @@ X3F samples from other Foveon cameras.
 
 ## Third-party software
 
-Release archives include `x3f_extract` from **x3fuse-core** © 2026 Sang Lee, Apache License 2.0,
-itself derived from the Kalpanika x3f tools (BSD-style). Its license, notice and Foveon Lab's
-modification are in `third_party/x3fuse-core/`.
-
-The `x3f` package's raw decoder and encoder (`raw.go`, `encode.go`), CAMF reader (`camf.go`) and
-spatial gain (`sgain.go`) are Go ports of the same x3fuse-core code (© 2026 Sang Lee, Apache
+The `x3f` package's raw decoder and encoder (`raw.go`, `encode.go`), CAMF reader (`camf.go`),
+spatial gain (`sgain.go`), bad pixel repair (`badpix.go`) and Quattro development (`quattro.go`)
+are Go ports of the same x3fuse-core code (© 2026 Sang Lee, Apache
 License 2.0), which in turn comes from the Kalpanika x3f tools (© 2015 Roland Karlsson, Erik
 Karlsson, Mark Roden; BSD-style). The knowledge of the X3F format is theirs. Their licenses and
 notices in `third_party/x3fuse-core/` apply to these files too.

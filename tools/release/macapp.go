@@ -188,8 +188,10 @@ func buildMacApp(dist, version, fooArm, fooAmd, x3fArm, x3fAmd string) (string, 
 	if err := run(rc, "macho-universal-create", "--output", filepath.Join(macos, "foveon-lab"), fooArm, fooAmd); err != nil {
 		return "", fmt.Errorf("universal foveon-lab: %w", err)
 	}
-	if err := run(rc, "macho-universal-create", "--output", filepath.Join(macos, "x3f_extract"), x3fArm, x3fAmd); err != nil {
-		return "", fmt.Errorf("universal x3f_extract: %w", err)
+	if x3fArm != "" { // "" = no bundled x3f_extract
+		if err := run(rc, "macho-universal-create", "--output", filepath.Join(macos, "x3f_extract"), x3fArm, x3fAmd); err != nil {
+			return "", fmt.Errorf("universal x3f_extract: %w", err)
+		}
 	}
 	if err := os.WriteFile(filepath.Join(app, "Contents", "Info.plist"), []byte(infoPlist(version)), 0o644); err != nil {
 		return "", err
@@ -202,15 +204,20 @@ func buildMacApp(dist, version, fooArm, fooAmd, x3fArm, x3fAmd string) (string, 
 			return "", err
 		}
 	}
-	for _, f := range []string{"LICENSE", "NOTICE", "README.md", "fix-type2-camf-key.patch"} {
+	thirdParty := []string{"LICENSE", "NOTICE"}
+	if x3fArm != "" {
+		thirdParty = append(thirdParty, "README.md", "fix-type2-camf-key.patch")
+	}
+	for _, f := range thirdParty {
 		if err := copyTo(filepath.Join(thirdPartyDir, f), filepath.Join(res, "third_party", "x3fuse-core", f)); err != nil {
 			return "", err
 		}
 	}
 
-	args := []string{"sign", "--p12-file", p12,
-		"--code-signature-flags", "runtime",
-		"--code-signature-flags", "Contents/MacOS/x3f_extract:runtime"}
+	args := []string{"sign", "--p12-file", p12, "--code-signature-flags", "runtime"}
+	if x3fArm != "" {
+		args = append(args, "--code-signature-flags", "Contents/MacOS/x3f_extract:runtime")
+	}
 	if pw := os.Getenv("STOCKCHAT_MACOS_P12_PASSWORD"); pw != "" {
 		args = append(args, "--p12-password", pw)
 	}

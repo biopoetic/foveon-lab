@@ -115,6 +115,9 @@ func goLinear(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Before the denoiser: its chroma filter would spread the clipped
+	// highlights' false colour into their neighbours.
+	x3f.ClipHighlights(img, t.Gain)
 	if strength > 0 {
 		b := 1
 		if maxW > 0 {
@@ -125,7 +128,6 @@ func goLinear(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
 		}
 		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(b)})
 	}
-	x3f.ClipHighlights(img, t.Gain)
 	return render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t), nil
 }
 

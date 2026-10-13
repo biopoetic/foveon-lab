@@ -274,7 +274,7 @@ func main() {
 	publish := flag.Bool("publish", false, "create the GitHub release")
 	allowUnsigned := flag.Bool("allow-unsigned", false, "continue (and allow publishing) if signing is not possible")
 	notesFlag := flag.String("notes", "", "one-line summary shown in the app's update notice (manifest notes)")
-	skipX3F := flag.Bool("skip-x3f-extract", false, "ship without the bundled x3f_extract (SD9/SD10 then stay low-res)")
+	skipX3F := flag.Bool("skip-x3f-extract", false, "ship without x3f_extract (the app decodes every body natively since v0.4.2; x3f_extract is then only a test reference)")
 	skipDMG := flag.Bool("skip-dmg", false, "do not build the macOS .app/.dmg")
 	genKey := flag.Bool("gen-update-key", false, "create the self-update signing key (once) and print its public key")
 	icoOut := flag.String("write-ico", "", "only write the Windows icon (.ico) to this path")
@@ -365,6 +365,11 @@ func main() {
 		if t.goos == "windows" {
 			x3fName += ".exe"
 		}
+		// The raw decoder and pipeline are Go ports of x3fuse-core: its
+		// licence and notice ship either way.
+		for _, f := range []string{"LICENSE", "NOTICE"} {
+			files["third_party/x3fuse-core/"+f] = filepath.Join(thirdPartyDir, f)
+		}
 		if *skipX3F {
 			log.Printf("%s: shipping WITHOUT x3f_extract (-skip-x3f-extract)", t.label)
 		} else {
@@ -389,7 +394,7 @@ func main() {
 				unsigned = append(unsigned, t.label+" x3f_extract")
 			}
 			files[x3fName] = x3fBin
-			for _, f := range []string{"LICENSE", "NOTICE", "README.md", "fix-type2-camf-key.patch"} {
+			for _, f := range []string{"README.md", "fix-type2-camf-key.patch"} {
 				files["third_party/x3fuse-core/"+f] = filepath.Join(thirdPartyDir, f)
 			}
 		}
@@ -413,13 +418,16 @@ func main() {
 	// A bare CLI binary is refused by Gatekeeper when started from Finder.
 	if *skipDMG {
 		log.Printf("skipping the macOS DMG (-skip-dmg)")
-	} else if *skipX3F || len(unsigned) > 0 {
-		log.Printf("skipping the macOS DMG: it needs signed binaries and x3f_extract")
+	} else if len(unsigned) > 0 {
+		log.Printf("skipping the macOS DMG: it needs signed binaries")
 	} else {
 		mac := func(label, f string) string { return filepath.Join(dist, label, f) }
+		x3fArm, x3fAmd := mac("macos-apple-silicon", "x3f_extract"), mac("macos-intel", "x3f_extract")
+		if *skipX3F {
+			x3fArm, x3fAmd = "", ""
+		}
 		app, err := buildMacApp(dist, *version,
-			mac("macos-apple-silicon", "foveon-lab"), mac("macos-intel", "foveon-lab"),
-			mac("macos-apple-silicon", "x3f_extract"), mac("macos-intel", "x3f_extract"))
+			mac("macos-apple-silicon", "foveon-lab"), mac("macos-intel", "foveon-lab"), x3fArm, x3fAmd)
 		if err != nil {
 			log.Fatalf("macOS app: %v", err)
 		}
