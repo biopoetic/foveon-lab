@@ -273,6 +273,7 @@ func main() {
 	version := flag.String("version", "", "release version, e.g. v0.1.0")
 	publish := flag.Bool("publish", false, "create the GitHub release")
 	allowUnsigned := flag.Bool("allow-unsigned", false, "continue (and allow publishing) if signing is not possible")
+	notesFlag := flag.String("notes", "", "one-line summary shown in the app's update notice (manifest notes)")
 	skipX3F := flag.Bool("skip-x3f-extract", false, "ship without the bundled x3f_extract (SD9/SD10 then stay low-res)")
 	skipDMG := flag.Bool("skip-dmg", false, "do not build the macOS .app/.dmg")
 	genKey := flag.Bool("gen-update-key", false, "create the self-update signing key (once) and print its public key")
@@ -437,7 +438,7 @@ func main() {
 
 	if len(unsigned) == 0 {
 		mf := filepath.Join(dist, "update-manifest.json")
-		if err := writeManifest(mf, *version, "", updates); err != nil {
+		if err := writeManifest(mf, *version, *notesFlag, updates); err != nil {
 			if *publish {
 				log.Fatalf("update manifest: %v", err)
 			}
