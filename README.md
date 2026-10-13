@@ -219,6 +219,12 @@ Release archives include `x3f_extract` from **x3fuse-core** © 2026 Sang Lee, Ap
 itself derived from the Kalpanika x3f tools (BSD-style). Its license, notice and Foveon Lab's
 modification are in `third_party/x3fuse-core/`.
 
+The `x3f` package's raw decoder and encoder (`raw.go`, `encode.go`), CAMF reader (`camf.go`) and
+spatial gain (`sgain.go`) are Go ports of the same x3fuse-core code (© 2026 Sang Lee, Apache
+License 2.0), which in turn comes from the Kalpanika x3f tools (© 2015 Roland Karlsson, Erik
+Karlsson, Mark Roden; BSD-style). The knowledge of the X3F format is theirs. Their licenses and
+notices in `third_party/x3fuse-core/` apply to these files too.
+
 ## Legal
 
 MIT licensed — see [LICENSE](LICENSE).

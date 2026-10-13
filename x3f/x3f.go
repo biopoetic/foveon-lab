@@ -25,8 +25,8 @@ type Section struct {
 // Image describes an image section (raw data or an embedded preview).
 type Image struct {
 	Section
-	ImgType uint32 // 2 = processed preview, 1/3 = raw
-	Format  uint32 // 18 = JPEG, 30 = TRUE raw
+	ImgType   uint32 // 2 = processed preview, 1/3 = raw
+	Format    uint32 // 18 = JPEG, 30 = TRUE raw
 	Width     uint32
 	Height    uint32
 	RowStride uint32 // bytes per row for uncompressed data; 0 = compressed
@@ -44,6 +44,8 @@ type File struct {
 	Rotation int // degrees clockwise from the header (0/90/180/270)
 	Images   []Image
 	Props    map[string]string
+
+	sections []Section // the whole directory
 }
 
 var le = binary.LittleEndian
@@ -115,6 +117,7 @@ func parse(r io.ReaderAt, size int64, path string) (*File, error) {
 		if int64(s.Offset)+int64(s.Length) > size {
 			continue
 		}
+		f.sections = append(f.sections, s)
 		switch s.Type {
 		case "IMA2", "IMAG":
 			if s.Length < 28 {
@@ -125,9 +128,9 @@ func parse(r io.ReaderAt, size int64, path string) (*File, error) {
 				return nil, err
 			}
 			f.Images = append(f.Images, Image{
-				Section: s,
-				ImgType: le.Uint32(ih[8:12]),
-				Format:  le.Uint32(ih[12:16]),
+				Section:   s,
+				ImgType:   le.Uint32(ih[8:12]),
+				Format:    le.Uint32(ih[12:16]),
 				Width:     le.Uint32(ih[16:20]),
 				Height:    le.Uint32(ih[20:24]),
 				RowStride: le.Uint32(ih[24:28]),
@@ -271,6 +274,20 @@ func PresetFamily(model string) string {
 		return "SD15"
 	}
 	return ShortModel(model)
+}
+
+// CalibGroup is the group a camera's learned raw base and JPEG balance are
+// fitted and looked up under. It is PresetFamily, except that the DP Merrill
+// compacts get their own "DPM" group: they share SD1 presets and colour
+// modes, but their raw and JPEG differ from the SD1 Merrill's (measured
+// 2026-10-13: the SD1 raw base scores 7-11 dE on DP2 Merrill photos, their
+// compensated JPEG 3.5-5).
+func CalibGroup(model string) string {
+	m := strings.ToUpper(model)
+	if strings.Contains(m, "MERRILL") && regexp.MustCompile(`\bDP[0-3]\b`).MatchString(m) {
+		return "DPM"
+	}
+	return PresetFamily(model)
 }
 
 // ShortModel turns "SIGMA SD1 Merrill" / "SIGMA SD15" into "SD1" / "SD15".

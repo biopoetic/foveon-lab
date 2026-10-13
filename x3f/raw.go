@@ -1,0 +1,309 @@
+package x3f
+
+// Decoder for the raw data of the SD15/DP1/DP2 and the Merrill bodies (SD1,
+// DP1/2/3 Merrill), TRUE-compressed, and of the SD9/SD10/SD14 (10-bit
+// Huffman or packed, formats 5/6).
+//
+// This is a Go port of x3fuse-core's decoder (Copyright 2026 Sang Lee,
+// Apache-2.0: crates/x3f-sys/src/load.rs and entropy.rs), itself a port of
+// the Kalpanika x3f tools (Copyright 2015 Roland Karlsson, Erik Karlsson,
+// Mark Roden; BSD-style). The format knowledge is theirs; the licences and
+// notices are in third_party/x3fuse-core/ and must stay with this code.
+// It is verified value-for-value against x3fuse-core's x3f_extract
+// (tools/rawcheck). The TRUE bitstream: per colour plane, a
+// prefix code gives the bit length of a difference, the difference is added
+// to the previous sample of the same column parity, and each row's first two
+// samples continue from the first two of the row two above.
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"sync"
+)
+
+// Raw image types and formats of the data section (type<<16 | format in
+// x3fuse's naming).
+const (
+	rawTypeMerrill = 1  // SD1 / DP Merrill
+	rawTypeTRUE    = 3  // SD9 / SD10 / SD14 / SD15 / DP1 / DP2
+	FormatTRUE     = 30 // TRUE entropy-coded planes
+	formatX530     = 5  // 10-bit Huffman (x3fuse's HUFFMAN_X530)
+	format10bit    = 6  // 10-bit Huffman or packed (SD9, SD10, SD14)
+)
+
+// RawImage is the undecoded sensor data: three layers per pixel, interleaved
+// (bottom/middle/top, in the file's plane order), before any black level,
+// gain or colour processing.
+type RawImage struct {
+	W, H int
+	Pix  []uint16 // len W*H*3
+}
+
+// RawSection returns the image section holding the TRUE raw data, if any.
+func (f *File) RawSection() (Image, bool) {
+	for _, im := range f.Images {
+		if (im.ImgType == rawTypeMerrill || im.ImgType == rawTypeTRUE) && im.Format == FormatTRUE ||
+			im.ImgType == rawTypeTRUE && (im.Format == formatX530 || im.Format == format10bit) {
+			return im, true
+		}
+	}
+	return Image{}, false
+}
+
+// DecodeRaw decodes the file's raw data. Quattro (format 35+) is not
+// supported.
+func (f *File) DecodeRaw() (*RawImage, error) {
+	im, ok := f.RawSection()
+	if !ok {
+		return nil, errors.New("x3f: no supported raw data (Quattro files are not supported)")
+	}
+	fh, err := os.Open(f.Path)
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+	sec := make([]byte, im.Length)
+	if _, err := fh.ReadAt(sec, int64(im.Offset)); err != nil {
+		return nil, err
+	}
+	if im.Format != FormatTRUE {
+		return decodeHuffman10(sec[28:], int(im.Width), int(im.Height), int(im.RowStride))
+	}
+	return decodeTRUE(sec[28:], int(im.Width), int(im.Height))
+}
+
+// decodeHuffman10 decodes the 10-bit formats (x3fuse's load_huffman with
+// bits 10, mapped): 1024 uint16 deltas, then either a Huffman table (1024
+// uint32: length<<27 | code), the bit stream and one uint32 row offset per
+// row (row stride 0), or rows of packed uint32 pixels holding three 10-bit
+// delta indices. Each channel accumulates its deltas along the row as an
+// int16; negative values are stored as 0. A Huffman image whose minimum
+// goes negative is decoded again with that minimum as the row start.
+func decodeHuffman10(b []byte, w, h, stride int) (*RawImage, error) {
+	const n = 1 << 10
+	if w <= 0 || h <= 0 || w > 20000 || h > 20000 {
+		return nil, fmt.Errorf("x3f: bad raw size %dx%d", w, h)
+	}
+	if len(b) < n*2 {
+		return nil, errors.New("x3f: truncated Huffman mapping")
+	}
+	var mapping [n]uint16
+	for i := range mapping {
+		mapping[i] = le.Uint16(b[2*i:])
+	}
+	b = b[n*2:]
+	out := &RawImage{W: w, H: h, Pix: make([]uint16, w*h*3)}
+	if stride != 0 {
+		if w*4 > stride || stride*h > len(b) {
+			return nil, errors.New("x3f: packed raw exceeds its section")
+		}
+		for y := 0; y < h; y++ {
+			var acc [3]uint16
+			for x := 0; x < w; x++ {
+				packed := le.Uint32(b[y*stride+x*4:])
+				for c := 0; c < 3; c++ {
+					acc[c] += mapping[packed>>(10*c)&(n-1)]
+					v := acc[c]
+					if int16(v) <= 0 {
+						v = 0
+					}
+					out.Pix[(y*w+x)*3+c] = v
+				}
+			}
+		}
+		return out, nil
+	}
+	if len(b) < n*4+h*4 {
+		return nil, errors.New("x3f: truncated Huffman table")
+	}
+	tree := newHuffTree()
+	codes := 0
+	for i := 0; i < n; i++ {
+		e := le.Uint32(b[i*4:])
+		if length := int(e >> 27); length > 0 {
+			tree.add(e&0x07ffffff, length, int32(mapping[i]))
+			codes++
+		}
+	}
+	if codes == 0 {
+		return nil, errors.New("x3f: empty Huffman table")
+	}
+	stream := b[n*4 : len(b)-h*4]
+	offsets := b[len(b)-h*4:]
+	decode := func(start int16) (int, error) {
+		minimum := 0
+		for y := 0; y < h; y++ {
+			off := int(le.Uint32(offsets[y*4:]))
+			if off >= len(stream) {
+				return 0, fmt.Errorf("x3f: row %d offset beyond the data", y)
+			}
+			r := &bitReader{data: stream, pos: off * 8}
+			acc := [3]int16{start, start, start}
+			for x := 0; x < w; x++ {
+				for c := 0; c < 3; c++ {
+					d, err := tree.next(r)
+					if err != nil {
+						return 0, fmt.Errorf("x3f: raw row %d col %d: %w", y, x, err)
+					}
+					acc[c] += int16(uint16(d))
+					v := int(acc[c])
+					minimum = min(minimum, v)
+					out.Pix[(y*w+x)*3+c] = uint16(max(v, 0))
+				}
+			}
+		}
+		return minimum, nil
+	}
+	minimum, err := decode(0)
+	if err == nil && minimum < 0 {
+		_, err = decode(int16(-minimum))
+	}
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// prefix maps the next 8 bits of the stream to a code: its length in bits
+// and the difference bit length it stands for (all TRUE codes are <= 8 bits).
+type prefix [256]struct{ n, bits uint8 }
+
+func decodeTRUE(b []byte, w, h int) (*RawImage, error) {
+	if w <= 0 || h <= 0 || w > 20000 || h > 20000 {
+		return nil, fmt.Errorf("x3f: bad raw size %dx%d", w, h)
+	}
+	if len(b) < 8 {
+		return nil, errors.New("x3f: truncated TRUE header")
+	}
+	var seed [3]int32
+	for i := range seed {
+		seed[i] = int32(le.Uint16(b[2*i:]))
+	}
+	p := 8 // 3 seeds + one unknown u16
+	var pre prefix
+	for i := 0; ; i++ {
+		if p+2 > len(b) {
+			return nil, errors.New("x3f: truncated TRUE table")
+		}
+		size, code := b[p], b[p+1]
+		p += 2
+		if size == 0 {
+			break
+		}
+		if i >= 31 || size > 8 {
+			return nil, errors.New("x3f: bad TRUE table")
+		}
+		// Every 8-bit window starting with this code decodes to it.
+		lo := int(code) &^ (1<<(8-size) - 1)
+		for j := lo; j < lo+1<<(8-size); j++ {
+			if pre[j].n != 0 {
+				return nil, errors.New("x3f: overlapping TRUE codes")
+			}
+			pre[j].n, pre[j].bits = size, uint8(i)
+		}
+	}
+	if p+12 > len(b) {
+		return nil, errors.New("x3f: truncated TRUE plane sizes")
+	}
+	var planes [3][]byte
+	off := p + 12
+	for i := range planes {
+		n := int(le.Uint32(b[p+4*i:]))
+		if n <= 0 || off+n > len(b) {
+			return nil, errors.New("x3f: TRUE plane outside the image data")
+		}
+		planes[i] = b[off : off+n]
+		off += (n + 15) &^ 15
+	}
+	out := &RawImage{W: w, H: h, Pix: make([]uint16, w*h*3)}
+	var wg sync.WaitGroup
+	errs := make([]error, 3)
+	for c := range planes {
+		wg.Add(1)
+		go func(c int) {
+			defer wg.Done()
+			errs[c] = decodePlane(planes[c], &pre, seed[c], out, c)
+		}(c)
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// trueBits reads MSB-first bits through a 64-bit window.
+type trueBits struct {
+	b   []byte
+	pos int    // next byte to load
+	acc uint64 // valid bits are the top n
+	n   uint
+}
+
+func (r *trueBits) fill() {
+	for r.n <= 56 {
+		var v byte
+		if r.pos < len(r.b) {
+			v = r.b[r.pos]
+		}
+		r.pos++
+		r.acc |= uint64(v) << (56 - r.n)
+		r.n += 8
+	}
+}
+
+// overrun reports reading past the end (missing bytes read as zeros).
+func (r *trueBits) overrun() bool { return r.pos-int(r.n/8) > len(r.b) }
+
+func decodePlane(data []byte, pre *prefix, seed int32, out *RawImage, c int) error {
+	r := &trueBits{b: data}
+	starts := [2][2]int32{{seed, seed}, {seed, seed}}
+	pix := out.Pix
+	for row := 0; row < out.H; row++ {
+		par := row & 1
+		var acc [2]int32
+		base := row * out.W * 3
+		for col := 0; col < out.W; col++ {
+			if r.n < 40 {
+				r.fill()
+			}
+			e := pre[r.acc>>56]
+			if e.n == 0 {
+				return fmt.Errorf("x3f: invalid TRUE code (plane %d, row %d)", c, row)
+			}
+			r.acc <<= e.n
+			r.n -= uint(e.n)
+			var diff int32
+			if bits := uint(e.bits); bits > 0 {
+				if r.n < bits {
+					r.fill()
+				}
+				v := int32(r.acc >> (64 - bits))
+				r.acc <<= bits
+				r.n -= bits
+				if v>>(bits-1) == 0 { // leading 0: negative
+					v -= 1<<bits - 1
+				}
+				diff = v
+			}
+			odd := col & 1
+			prev := acc[odd]
+			if col < 2 {
+				prev = starts[par][odd]
+			}
+			v := prev + diff
+			acc[odd] = v
+			if col < 2 {
+				starts[par][odd] = v
+			}
+			pix[base+col*3+c] = uint16(v)
+		}
+		if r.overrun() {
+			return fmt.Errorf("x3f: truncated TRUE plane %d at row %d", c, row)
+		}
+	}
+	return nil
+}
