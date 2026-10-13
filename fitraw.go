@@ -83,6 +83,7 @@ func fitRawCommand(desk string) {
 	diagnose := fsFlags.Bool("diagnose", false, "only print each photo's raw-base error breakdown (nothing is saved)")
 	deltaE := fsFlags.Bool("deltae", false, "report held-out CIEDE2000 of the starting images vs SPP (comparable with other projects)")
 	local := fsFlags.Bool("local", false, "research: held-out highlight desaturation and high-pass local contrast on top of the raw base")
+	noDenoise := fsFlags.Bool("nodenoise", false, "decode without x3f_extract's denoise (the fast preview decode)")
 	noSgain := fsFlags.Bool("nosgain", false, "research: decode without x3f_extract's spatial gain (colour shading)")
 	camfRaw := fsFlags.Bool("camf", false, "decode raw as camera RGB and apply each photo's CAMF white balance + colour matrix (as SPP does) instead of x3f_extract's sRGB")
 	fsFlags.Parse(os.Args[2:])
@@ -165,7 +166,10 @@ func fitRawCommand(desk string) {
 		} else {
 			color := "sRGB"
 			if *noSgain {
-				color = "sRGB-nosgain"
+				color += "-nosgain"
+			}
+			if *noDenoise {
+				color += "-nodenoise"
 			}
 			rimg, err := decodeRawAs(ph, color)
 			if err != nil {

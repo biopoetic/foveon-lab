@@ -381,7 +381,14 @@ func balanceJPEG(ph *Photo, l *render.Linear) *render.Linear {
 // sourceMode names which source a photo renders from right now: "raw" (the
 // accurate, raw-based one), else "jpg" (its preview).
 func (s *server) sourceMode(ph *Photo) string {
-	if s.useRaw(ph) || ph.jpegBroken.Load() {
+	if ph.jpegBroken.Load() {
+		return "raw"
+	}
+	if s.useRaw(ph) {
+		if m := s.rawMode(ph); m == "rawfast" {
+			s.requestRaw(ph) // the full decode follows
+			return m
+		}
 		return "raw"
 	}
 	s.requestRaw(ph)
@@ -395,13 +402,16 @@ func (s *server) source(ph *Photo) (*render.Linear, error) {
 func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
 	v, err := s.sources.get(ph.ID+"|"+mode, func() (any, error) {
 		if mode == "raw" {
-			return rawLinear(ph, sourceW)
+			return rawLinear(ph, sourceW, "sRGB")
+		}
+		if mode == "rawfast" {
+			return rawLinear(ph, sourceW, rawFastColor)
 		}
 		img, err := decodePreview(ph)
 		if err != nil {
 			// A damaged embedded JPEG: fall back to the raw data.
 			if ph.Kind == "x3f" && rawTool != "" {
-				if l, rerr := rawLinear(ph, sourceW); rerr == nil {
+				if l, rerr := rawLinear(ph, sourceW, "sRGB"); rerr == nil {
 					log.Printf("%s: embedded preview unreadable (%v), showing its raw data", ph.Name, err)
 					ph.jpegBroken.Store(true)
 					return l, nil
@@ -639,7 +649,7 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	if s.wantRaw(ph) || ph.jpegBroken.Load() {
 		// Accurate mode: export from the raw data even if the preview
 		// hasn't switched yet (this waits for the decode).
-		l, err := rawLinear(ph, 0)
+		l, err := rawLinear(ph, 0, "sRGB")
 		if err != nil {
 			return "", err
 		}

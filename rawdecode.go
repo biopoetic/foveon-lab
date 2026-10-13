@@ -99,8 +99,15 @@ func decodeRawAs(ph *Photo, color string) (image.Image, error) {
 		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
-		args := []string{"-q", "-tiff", "-color", strings.TrimSuffix(color, "-nosgain")}
-		if strings.HasSuffix(color, "-nosgain") { // research: no spatial gain (colour shading)
+		// color is the x3f_extract colour mode plus options:
+		// "-nodenoise" (previews: 7× faster, the noise averages out when
+		// downscaled) and "-nosgain" (research: no colour shading).
+		mode, opts, _ := strings.Cut(color, "-")
+		args := []string{"-q", "-tiff", "-color", mode}
+		if strings.Contains(opts, "nodenoise") {
+			args = append(args, "-no-denoise")
+		}
+		if strings.Contains(opts, "nosgain") {
 			args = append(args, "-no-sgain")
 		}
 		out, err := exec.CommandContext(ctx, rawTool, append(args, "-o", tmp, ph.path)...).CombinedOutput()

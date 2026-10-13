@@ -21,10 +21,20 @@ import (
 
 const (
 	rawNone     = ""
-	rawDecoding = "decoding"
-	rawReady    = "ready"
+	rawDecoding = "decoding" // nothing usable yet
+	rawFast     = "fast"     // the quick decode is ready; the full one may follow
+	rawReady    = "ready"    // the full (denoised) decode is ready
 	rawFailed   = "failed"
 )
+
+// rawFastColor is the quick preview decode: x3f_extract without its denoise,
+// 7x faster (SD1 32 s -> 4.5 s). Held out vs SPP it scores dE2000 6.10
+// against 5.83 for the full decode (Oct 2026), so it is shown first and
+// replaced by the full decode; exports always use the full one.
+const rawFastColor = "sRGB-nodenoise"
+
+// rawFullQueued marks photos whose full decode is queued (guarded by rawMu).
+var rawFullQueued = map[string]bool{}
 
 // rawCorrectionFor is the raw→SPP mapping for ph, or nil.
 func rawCorrectionFor(ph *Photo) *render.RawCorrection {
@@ -47,61 +57,119 @@ func (s *server) wantRaw(ph *Photo) bool {
 	return s.accurate.Load() && ph.Accurate && rawTool != ""
 }
 
+func cachedAs(ph *Photo, color string) bool {
+	p, err := rawCachePathFor(ph, color)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(p)
+	return err == nil
+}
+
 func (s *server) rawStateOf(ph *Photo) string {
 	s.rawMu.Lock()
 	defer s.rawMu.Unlock()
 	st := s.rawState[ph.ID]
-	if st == rawNone {
-		if p, err := rawCachePath(ph); err == nil {
-			if _, err := os.Stat(p); err == nil {
-				st = rawReady
-				s.rawState[ph.ID] = st
-			}
+	if st == rawNone || st == rawFast {
+		switch {
+		case cachedAs(ph, "sRGB"):
+			st = rawReady
+		case cachedAs(ph, rawFastColor):
+			st = rawFast
 		}
+		s.rawState[ph.ID] = st
 	}
 	return st
 }
 
 // useRaw: render ph from its corrected raw decode right now.
 func (s *server) useRaw(ph *Photo) bool {
-	return s.wantRaw(ph) && s.rawStateOf(ph) == rawReady
+	if !s.wantRaw(ph) {
+		return false
+	}
+	st := s.rawStateOf(ph)
+	return st == rawReady || st == rawFast
 }
 
-// requestRaw queues ph's raw decode if accurate mode wants it; the photo
-// on screen goes before prefetched neighbours.
+// rawMode is the source mode of a photo shown from raw data: "raw" (full
+// decode) or "rawfast" (the quick one, until the full one is ready).
+func (s *server) rawMode(ph *Photo) string {
+	if s.rawStateOf(ph) == rawReady {
+		return "raw"
+	}
+	return "rawfast"
+}
+
+// requestRaw queues ph's raw decode (quick, then full) if accurate mode
+// wants it; the photo on screen goes before prefetched neighbours.
 func (s *server) requestRaw(ph *Photo) { s.queueRaw(ph, true) }
 
+// queueRaw: urgent = the photo on screen (quick then full decode);
+// otherwise a neighbour prefetch (quick decode only).
 func (s *server) queueRaw(ph *Photo, urgent bool) {
-	if !s.wantRaw(ph) || s.rawStateOf(ph) != rawNone {
+	if !s.wantRaw(ph) {
 		return
 	}
+	st := s.rawStateOf(ph)
 	s.rawMu.Lock()
-	s.rawState[ph.ID] = rawDecoding
-	s.rawMu.Unlock()
+	defer s.rawMu.Unlock()
+	switch {
+	case st == rawReady || st == rawFailed:
+		return
+	case st == rawFast && (!urgent || rawFullQueued[ph.ID]):
+		return
+	case st == rawDecoding && (!urgent || rawFullQueued[ph.ID]):
+		return
+	}
+	if st == rawNone {
+		s.rawState[ph.ID] = rawDecoding
+	}
 	if urgent {
+		rawFullQueued[ph.ID] = true
 		go func() { s.rawQueue <- ph }()
 	} else {
 		go func() { s.rawQueueLow <- ph }()
 	}
 }
 
-// rawWorker decodes queued photos one at a time (x3f_extract is heavy).
+// rawWorker decodes queued photos one at a time (x3f_extract is heavy):
+// the quick decode first, then, for the photo on screen, the full one.
 func (s *server) rawWorker() {
 	for {
 		var ph *Photo
+		urgent := true
 		select {
 		case ph = <-s.rawQueue:
 		default:
 			select {
 			case ph = <-s.rawQueue:
 			case ph = <-s.rawQueueLow:
+				urgent = false
 			}
+		}
+		if !cachedAs(ph, "sRGB") && !cachedAs(ph, rawFastColor) {
+			if _, err := decodeRawAs(ph, rawFastColor); err != nil {
+				log.Printf("accurate preview for %s: %v", ph.Name, err)
+				s.rawMu.Lock()
+				s.rawState[ph.ID] = rawFailed
+				s.rawMu.Unlock()
+				continue
+			}
+			s.rawMu.Lock()
+			s.rawState[ph.ID] = rawFast
+			s.rawMu.Unlock()
+		}
+		s.rawMu.Lock()
+		full := urgent || rawFullQueued[ph.ID]
+		s.rawMu.Unlock()
+		if !full {
+			continue
 		}
 		_, err := decodeRaw(ph)
 		s.rawMu.Lock()
+		delete(rawFullQueued, ph.ID)
 		if err != nil {
-			log.Printf("accurate preview for %s: %v", ph.Name, err)
-			s.rawState[ph.ID] = rawFailed
+			log.Printf("accurate preview (full) for %s: %v", ph.Name, err)
 		} else {
 			s.rawState[ph.ID] = rawReady
 		}
@@ -111,8 +179,8 @@ func (s *server) rawWorker() {
 
 // rawLinear decodes ph's raw data (blocking), fixes the aspect of
 // reduced-resolution files, rotates it and maps it onto SPP's neutral look.
-func rawLinear(ph *Photo, maxW int) (*render.Linear, error) {
-	img, err := decodeRaw(ph)
+func rawLinear(ph *Photo, maxW int, color string) (*render.Linear, error) {
+	img, err := decodeRawAs(ph, color)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +221,11 @@ func (s *server) handleRawState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st := s.rawStateOf(ph)
-	writeJSON(w, map[string]any{"state": st, "accurate": s.useRaw(ph), "wanted": s.wantRaw(ph)})
+	mode := "jpg"
+	if s.useRaw(ph) {
+		mode = s.rawMode(ph)
+	}
+	writeJSON(w, map[string]any{"state": st, "accurate": s.useRaw(ph), "mode": mode, "wanted": s.wantRaw(ph)})
 }
 
 // handleAccurate switches accurate mode (POST {"on": bool}); remembered.
