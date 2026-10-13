@@ -39,6 +39,7 @@ func main() {
 	stops := flag.Float64("stops", 6, "darkest patch, in stops below the peak (SPP renders the whole image black when large areas sit at the black level)")
 	peak := flag.Float64("peak", 1, "brightest patch as a fraction of the raw range")
 	frac := flag.Float64("frac", 1, "fraction of the active area (centred) the chart covers; the rest keeps the photo")
+	gamut := flag.String("gamut", "", "raw->output matrix m1..m9 (as tools/chartread prints it): draw the colour patches in OUTPUT space, inside 0.02-0.9 on every channel, so none clip or leave the gamut; -spread is then the per-channel spread of the output, in stops")
 	flag.Parse()
 	f, err := x3f.Open(*in)
 	if err != nil {
@@ -108,6 +109,14 @@ func main() {
 		ax0, ay0 = ax0+(aw-cw)/2, ay0+(ah-ch)/2
 		aw, ah = cw, ch
 	}
+	var inv []float64
+	if *gamut != "" {
+		var m [9]float64
+		if n, _ := fmt.Sscanf(*gamut, "%g,%g,%g,%g,%g,%g,%g,%g,%g", &m[0], &m[1], &m[2], &m[3], &m[4], &m[5], &m[6], &m[7], &m[8]); n != 9 {
+			log.Fatal("-gamut needs 9 numbers")
+		}
+		inv = invert3(m)
+	}
 	var ps []patch
 	for r := 0; r < *rows; r++ {
 		for col := 0; col < *cols; col++ {
@@ -116,6 +125,27 @@ func main() {
 				lv := span * math.Pow(2, -*stops+*stops*float64(col)/float64(*cols-1))
 				for k := range v {
 					v[k] = lv * neutral[k]
+				}
+			} else if inv != nil {
+				// An output colour inside the gamut, back through the
+				// inverse matrix to raw; redraw until it is reachable.
+				for {
+					lv := 0.9 * math.Pow(2, -*stops*rng.Float64())
+					var o [3]float64
+					for k := range o {
+						o[k] = lv * math.Pow(2, *spread*rng.NormFloat64())
+					}
+					if min(o[0], o[1], o[2]) < 0.02 || max(o[0], o[1], o[2]) > 0.9 {
+						continue
+					}
+					okRaw := true
+					for k := range v {
+						v[k] = inv[k*3]*o[0] + inv[k*3+1]*o[1] + inv[k*3+2]*o[2]
+						okRaw = okRaw && v[k] > 2 && v[k] < span
+					}
+					if okRaw {
+						break
+					}
 				}
 			} else {
 				// A level 0-8 stops down, each layer off neutral by a
@@ -159,4 +189,16 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("wrote %s: %d patches, black %.1f %.1f %.1f, white %.0f\n", *out, len(ps), black[0], black[1], black[2], white)
+}
+
+// invert3 inverts a row-major 3x3 matrix.
+func invert3(m [9]float64) []float64 {
+	a, b, c, d, e, f, g, h, i := m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8]
+	det := a*(e*i-f*h) - b*(d*i-f*g) + c*(d*h-e*g)
+	if det == 0 {
+		log.Fatal("-gamut matrix is singular")
+	}
+	return []float64{(e*i - f*h) / det, (c*h - b*i) / det, (b*f - c*e) / det,
+		(f*g - d*i) / det, (a*i - c*g) / det, (c*d - a*f) / det,
+		(d*h - e*g) / det, (b*g - a*h) / det, (a*e - b*d) / det}
 }

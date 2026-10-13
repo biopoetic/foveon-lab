@@ -126,7 +126,9 @@ func fitRawCommand(desk string) {
 				edge++
 			}
 		}
-		if frac := float64(edge) / float64(len(spp.Pix)/3); frac > 0.3 {
+		// Charts (tools/synth -gamut) are drawn inside the gamut on purpose.
+		isChart := strings.Contains(strings.ToLower(filepath.ToSlash(ph.path)), "/charts/")
+		if frac := float64(edge) / float64(len(spp.Pix)/3); frac > 0.3 && !isChart {
 			fmt.Printf("  %s: %.0f%% of it at the sRGB edge or clipped, skipped\n", name, frac*100)
 			continue
 		}
