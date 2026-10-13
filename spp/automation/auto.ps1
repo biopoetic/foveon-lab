@@ -19,7 +19,7 @@ foreach ($code in $codes.Split(',')) {
   if ($r -notmatch 'picked|already') {
     # The list can lose its scroll position or close: Esc, then try again.
     [System.Windows.Forms.SendKeys]::SendWait('{ESC}'); Start-Sleep 1
-    & "$dront.ps1" | Out-Null; Start-Sleep -Milliseconds 500
+    & "$d\front.ps1" | Out-Null; Start-Sleep -Milliseconds 500
     $r = & "$d\pick.ps1" -name $name
   }
   if ($r -notmatch 'picked|already') { "FAIL $code pick: $r"; break }
