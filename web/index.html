@@ -27,7 +27,10 @@ header h1 span{color:var(--accent)}
 .spacer{flex:1}
 label.chk{display:flex;gap:5px;align-items:center;color:var(--dim);cursor:pointer}
 aside{border-right:1px solid var(--line);overflow:auto;background:var(--panel)}
-.folder{position:sticky;top:0;background:var(--panel2);padding:5px 10px;font-weight:600;color:var(--accent);border-bottom:1px solid var(--line);z-index:1}
+.folder{position:sticky;top:0;background:var(--panel2);padding:5px 10px;font-weight:600;color:var(--accent);border-bottom:1px solid var(--line);z-index:1;cursor:pointer;user-select:none}
+.folder:hover{filter:brightness(1.15)}
+.folder .n{font-weight:400;opacity:.6;margin-left:4px}
+.fgroup.collapsed{display:none}
 .ph{display:flex;gap:8px;align-items:center;padding:5px 8px;cursor:pointer;border-bottom:1px solid #202020}
 .ph:hover{background:#242424}
 .ph.sel{background:#3a2f18}
@@ -301,17 +304,51 @@ async function loadPhotos(){
   S.photos = (await (await fetch("/api/photos")).json()) || [];
   const box = $("#photos"); box.innerHTML = "";
   if (!S.photos.length){ box.innerHTML = '<div class="empty">No X3F photos found. Use <b>Folders…</b> to choose where they are.</div>'; return; }
-  let folder = null;
+  // One collapsible group per folder; collapsed folders are remembered.
+  const collapsed = new Set(store.get("collapsedFolders", []));
+  const counts = {};
+  for (const p of S.photos) counts[p.folder] = (counts[p.folder] || 0) + 1;
+  let folder = null, group = null;
   for (const p of S.photos){
-    if (p.folder !== folder){ folder = p.folder; box.insertAdjacentHTML("beforeend", `<div class="folder">${esc(folder)}</div>`); }
+    if (p.folder !== folder){
+      folder = p.folder;
+      const head = document.createElement("div");
+      head.className = "folder";
+      group = document.createElement("div");
+      group.className = "fgroup" + (collapsed.has(folder) ? " collapsed" : "");
+      group.dataset.folder = folder;
+      const paint = () => { head.innerHTML = `${group.classList.contains("collapsed") ? "▸" : "▾"} ${esc(head.dataset.folder)}<span class="n">(${counts[head.dataset.folder]})</span>`; };
+      head.dataset.folder = folder;
+      head.title = "Click to collapse or expand this folder";
+      head.onclick = ((g, paint) => () => { g.classList.toggle("collapsed"); setFolderCollapsed(g.dataset.folder, g.classList.contains("collapsed")); paint(); })(group, paint);
+      paint();
+      box.appendChild(head);
+      box.appendChild(group);
+    }
     const el = document.createElement("div");
     el.className = "ph"; el.dataset.id = p.id;
     const sub = p.unsupported ? "not supported yet" : [p.lowRes && "low-res preview", p.rawDecoded && "raw-decoded", p.info.ISO && "ISO "+p.info.ISO, p.info.SH_DESC, p.info.AP_DESC && "f/"+p.info.AP_DESC].filter(Boolean).join(" · ");
     el.innerHTML = `<img loading="lazy" src="/api/thumb?id=${p.id}" onerror="this.style.visibility='hidden'"><div>${esc(p.name)}<small>${esc(sub)}</small></div>`;
     if (p.unsupported) el.style.opacity = .55;
     el.onclick = () => selectPhoto(p.id);
-    box.appendChild(el);
+    group.appendChild(el);
   }
+}
+
+function setFolderCollapsed(folder, on){
+  const s = new Set(store.get("collapsedFolders", []));
+  if (on) s.add(folder); else s.delete(folder);
+  store.set("collapsedFolders", [...s]);
+}
+
+// expandFolderOf opens the collapsed folder group holding a photo element.
+function expandFolderOf(el){
+  const g = el?.closest(".fgroup");
+  if (!g || !g.classList.contains("collapsed")) return;
+  g.classList.remove("collapsed");
+  setFolderCollapsed(g.dataset.folder, false);
+  const head = g.previousElementSibling;
+  if (head?.classList.contains("folder")) head.firstChild.textContent = "▾ " + head.dataset.folder;
 }
 
 // ---------- accurate (raw-based) previews ----------
@@ -369,10 +406,13 @@ function photoInfoText(p){
 function selectPhoto(id){
   const p = S.photos.find(x => x.id === id) || S.photos[0];
   if (!p) return;
+  const first = !S.photo; // the photo restored at start-up: keep folders as left
   S.photo = p; store.set("photo", p.id);
   sppButton(); exportButtons();
   document.querySelectorAll(".ph").forEach(e => e.classList.toggle("sel", e.dataset.id === p.id));
-  document.querySelector(`.ph[data-id="${p.id}"]`)?.scrollIntoView({block:"nearest"});
+  const phEl = document.querySelector(`.ph[data-id="${p.id}"]`);
+  if (!first) expandFolderOf(phEl);
+  phEl?.scrollIntoView({block:"nearest"});
   $("#photoTitle").textContent = `${p.folder} / ${p.name}`;
   const i = p.info;
   $("#photoInfo").textContent = photoInfoText(p);
