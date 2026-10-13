@@ -113,6 +113,7 @@ func fitRawCommand(desk string) {
 	noSgain := fsFlags.Bool("nosgain", false, "research: decode without x3f_extract's spatial gain (colour shading)")
 	goRaw := fsFlags.Bool("go", false, "decode and develop raw natively (x3f package) instead of with x3f_extract: camera RGB through each photo's CAMF white balance + colour matrix")
 	camfRaw := fsFlags.Bool("camf", false, "decode raw as camera RGB and apply each photo's CAMF white balance + colour matrix (as SPP does) instead of x3f_extract's sRGB")
+	dngProfile := fsFlags.Bool("dngprofile", false, "research: held-out dE of the raw base as a DNG camera profile (ForwardMatrix + one Adobe tone curve) vs the full per-channel raw base")
 	charts := fsFlags.Bool("charts", false, "research: also train on synthetic charts (…/charts/*.X3F). Off by default: on 2026-10-13 two in-gamut SD1 charts (166/192 clean patches) made the held-out SD1 starting image worse, 6.87 -> 7.58 dE (SPP's response on them is strongly non-linear in the shadows)")
 	fsFlags.Parse(os.Args[2:])
 	if rawTool == "" && !*goRaw {
@@ -251,6 +252,12 @@ func fitRawCommand(desk string) {
 	if *deltaE {
 		for _, f := range fams {
 			calib.DeltaEReport(f, groups[f], jgroups[f], os.Stdout)
+		}
+		return
+	}
+	if *dngProfile {
+		for _, f := range fams {
+			calib.DNGProfileReport(f, groups[f], os.Stdout)
 		}
 		return
 	}

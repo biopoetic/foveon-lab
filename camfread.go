@@ -172,7 +172,8 @@ func linearToSRGB16(l *render.Linear) *image.RGBA64 {
 // exportCameraDNG writes ph's raw data as a camera DNG natively: decoded,
 // bad pixels repaired, black level, white level and colour shading
 // applied, optionally denoised (NR as for raw-based exports), with the
-// file's own white balance + colour matrix as the DNG colour metadata.
+// file's own white balance + colour matrix as the DNG colour metadata and,
+// where a raw base exists, SPP's neutral look as its embedded profile.
 func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem string, p preset.Params, label string, denoise *int) {
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
@@ -195,7 +196,13 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 		httpErr(w, 500, err)
 		return
 	}
-	err = render.WriteCameraDNG(f, img.Pix, img.W, img.H, t.Gain, t.CC, "SIGMA", dngModel(ph), "Foveon Lab "+version)
+	// SPP's neutral colours as the DNG's own profile, where a raw base was
+	// fitted for this camera group; else the camera's matrix.
+	var prof *render.DNGProfile
+	if c := render.RawBaseFitted(calibGroup(ph)); c != nil {
+		prof = c.DNGProfile("Foveon Lab SPP Neutral (" + calibGroup(ph) + ")")
+	}
+	err = render.WriteCameraDNG(f, img.Pix, img.W, img.H, t.Gain, t.CC, prof, "SIGMA", dngModel(ph), "Foveon Lab "+version)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}

@@ -19,6 +19,12 @@ func readTag(t *testing.T, b []byte, tag uint16) []float64 {
 		typ, cnt := binary.LittleEndian.Uint16(e[2:]), int(binary.LittleEndian.Uint32(e[4:]))
 		off := binary.LittleEndian.Uint32(e[8:])
 		var out []float64
+		if typ == tFloat {
+			for k := 0; k < cnt; k++ {
+				out = append(out, float64(math.Float32frombits(binary.LittleEndian.Uint32(b[int(off)+4*k:]))))
+			}
+			return out
+		}
 		for k := 0; k < cnt; k++ {
 			p := b[int(off)+8*k:]
 			if typ == tSRational {
@@ -43,7 +49,7 @@ func TestCameraDNGColour(t *testing.T) {
 	}
 	cc := [9]float64{3.13, -3.55, 1.42, -1.70, 3.87, -1.17, 1.11, -4.86, 4.75}
 	var buf bytes.Buffer
-	if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6}, 2, 1, gain, cc, "SIGMA", "SD1 Merrill", "test"); err != nil {
+	if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6}, 2, 1, gain, cc, nil, "SIGMA", "SD1 Merrill", "test"); err != nil {
 		t.Fatal(err)
 	}
 	b := buf.Bytes()
@@ -75,4 +81,52 @@ func TestCameraDNGColour(t *testing.T) {
 		}
 	}
 	t.Logf("reader %.4f app %.4f; BaselineExposure %+.2f", srgb, want, be)
+}
+
+// TestCameraDNGProfile: with a profile whose matrix tints grey (as the
+// fitted raw bases do), ForwardMatrix1 still takes 1,1,1 to D50 white (a
+// reader would normalise it otherwise), the tint moves into AsShotNeutral,
+// and a reader's colour before the tone curve is matrix · cc · diag(gain) ·
+// camera. The tone curve goes in as ProfileToneCurve from (0,0) to (1,1).
+func TestCameraDNGProfile(t *testing.T) {
+	gain := [3]float64{2.1 * 4, 1.0 * 4, 0.64 * 4}
+	cc := [9]float64{3.13, -3.55, 1.42, -1.70, 3.87, -1.17, 1.11, -4.86, 4.75}
+	prof := &DNGProfile{Name: "test", Matrix: [9]float64{2.2, -0.3, 0.1, -0.2, 2.9, -0.1, 0.05, -0.4, 3.6},
+		Tone: []float64{0, 0, 0.25, 0.4, 1, 1}}
+	var buf bytes.Buffer
+	if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3}, 1, 1, gain, cc, prof, "SIGMA", "SD1 Merrill", "test"); err != nil {
+		t.Fatal(err)
+	}
+	b := buf.Bytes()
+	neutral, fm, be := readTag(t, b, 50728), readTag(t, b, 50964), readTag(t, b, 50730)[0]
+	if tone := readTag(t, b, 50940); len(tone) != 6 || tone[3] < 0.399 || tone[3] > 0.401 {
+		t.Errorf("ProfileToneCurve %v", tone)
+	}
+	white := [3]float64{0.9642, 1, 0.8249}
+	for i := 0; i < 3; i++ {
+		if s := fm[i*3] + fm[i*3+1] + fm[i*3+2]; math.Abs(s-white[i]) > 2e-3 {
+			t.Errorf("ForwardMatrix row %d sums to %.4f, want %.4f", i, s, white[i])
+		}
+	}
+	var f9 [9]float64
+	copy(f9[:], sRGBToXYZD50)
+	inv, _ := invert3x3(f9)
+	e := mul33(prof.Matrix, cc)
+	cam := [3]float64{0.012, 0.031, 0.047}
+	var xyz, srgb, want [3]float64
+	for i := 0; i < 3; i++ {
+		for k := 0; k < 3; k++ {
+			xyz[i] += fm[i*3+k] * cam[k] / neutral[k]
+			want[i] += e[i*3+k] * gain[k] * cam[k]
+		}
+	}
+	for i := 0; i < 3; i++ {
+		for k := 0; k < 3; k++ {
+			srgb[i] += inv[i*3+k] * xyz[k]
+		}
+		srgb[i] *= math.Exp2(be)
+		if math.Abs(srgb[i]-want[i]) > 2e-3*math.Max(1, math.Abs(want[i])) {
+			t.Errorf("channel %d: reader %g, app %g", i, srgb[i], want[i])
+		}
+	}
 }
