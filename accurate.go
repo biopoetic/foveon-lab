@@ -28,10 +28,19 @@ const (
 
 // rawCorrectionFor is the raw→SPP mapping for ph, or nil.
 func rawCorrectionFor(ph *Photo) *render.RawCorrection {
-	if ph.Kind != "x3f" || ph.RawDecoded || ph.Unsupported != "" {
+	if ph.Kind != "x3f" || ph.RawDecoded || ph.Unsupported != "" || !rawDecodable(ph.props) {
 		return nil
 	}
 	return render.RawBaseFor(x3f.PresetFamily(ph.Camera))
+}
+
+// rawDecodable reports whether x3f_extract decodes the file correctly.
+// It does not for the SD1's reduced-size modes (RESOLUTION "MED"/"LOW"):
+// the frame comes out cropped, stretched and green (checked on SDIM0067
+// against SPP, Oct 2026), so those photos keep the camera-JPEG base.
+func rawDecodable(props map[string]string) bool {
+	r := props["RESOLUTION"]
+	return r == "" || r == "HI"
 }
 
 func (s *server) wantRaw(ph *Photo) bool {

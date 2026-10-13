@@ -1,6 +1,8 @@
 package calib
 
 import (
+	"fmt"
+	"io"
 	"math"
 
 	"github.com/biopoetic/foveon-lab/render"
@@ -14,6 +16,8 @@ type RawPair struct {
 	// JPEGErr: how far the camera-JPEG preview is from SPP (8-bit), the
 	// baseline the raw base has to beat.
 	JPEGErr float64
+	WB      string // in-camera white balance (X3F WB_DESC), for diagnostics
+	Info    string // other capture settings, for diagnostics
 }
 
 // MeanError is the mean abs difference (8-bit sRGB) between two images.
@@ -282,3 +286,139 @@ func fitTone(ps []JPEGPair, c [3][6]float64) [render.ToneBins][6]float64 {
 
 // FitJPEGCoefs fits the balance predictor on ps without judging it.
 func FitJPEGCoefs(ps []JPEGPair) [3][6]float64 { return fitJPEGCoef(ps, 0.01) }
+
+// DiagnoseRaw splits each photo's held-out raw-base error into what a
+// per-photo correction could remove: "gains" = the held-out fit plus the
+// photo's own three channel gains (a perfect white balance), "own fit" =
+// a matrix and curves fitted on this photo alone (the best any global
+// colour/tone transform can do). What is left after "own fit" is local:
+// noise, sharpness, highlights, Fill-like operators.
+func DiagnoseRaw(family string, pairs []RawPair, w io.Writer) {
+	fmt.Fprintf(w, "\n%s raw base, per photo (8-bit mean error; ideal gains in stops: G, R-G, B-G):\n%-10s %-9s %7s %7s %7s %6s %6s %6s  %s\n", family, "photo", "WB", "heldout", "+gains", "ownfit", "G", "R-G", "B-G", "info")
+	var s0, s1, s2, sw, ss float64
+	for h := range pairs {
+		var train []RawPair
+		for i := range pairs {
+			if i != h {
+				train = append(train, pairs[i])
+			}
+		}
+		fc := fitRaw(train)
+		pred := applied(&fc, pairs[h].Raw)
+		e0 := MeanError(pred, pairs[h].SPP)
+		var a, b [3]float64
+		for i := 0; i < len(pred.Pix); i += 3 {
+			if max(pairs[h].SPP.Pix[i], pairs[h].SPP.Pix[i+1], pairs[h].SPP.Pix[i+2]) > 0.95 {
+				continue
+			}
+			for k := 0; k < 3; k++ {
+				a[k] += float64(pred.Pix[i+k])
+				b[k] += float64(pairs[h].SPP.Pix[i+k])
+			}
+		}
+		g := &render.Linear{W: pred.W, H: pred.H, Pix: append([]float32(nil), pred.Pix...)}
+		for i := range g.Pix {
+			g.Pix[i] = float32(math.Min(1, float64(g.Pix[i])*b[i%3]/a[i%3]))
+		}
+		e1 := MeanError(g, pairs[h].SPP)
+		own := fitRaw(pairs[h : h+1])
+		e2 := MeanError(applied(&own, pairs[h].Raw), pairs[h].SPP)
+		lg := func(k int) float64 { return math.Log2(b[k] / a[k]) }
+		// Per-WB-setting gains learned from the OTHER photos with the same
+		// in-camera white balance (relative to the same held-out fit).
+		var wsum [3]float64
+		var wn float64
+		for _, tp := range train {
+			if tp.WB != pairs[h].WB {
+				continue
+			}
+			gt := oracleGains(applied(&fc, tp.Raw), tp.SPP)
+			for k := 0; k < 3; k++ {
+				wsum[k] += math.Log(gt[k])
+			}
+			wn++
+		}
+		ew := e0
+		if wn > 0 {
+			wg := &render.Linear{W: pred.W, H: pred.H, Pix: append([]float32(nil), pred.Pix...)}
+			for i := range wg.Pix {
+				wg.Pix[i] = float32(math.Min(1, float64(wg.Pix[i])*math.Exp(wsum[i%3]/wn)))
+			}
+			ew = MeanError(wg, pairs[h].SPP)
+		}
+		sw += ew
+		// Scene-predicted gains (an auto white balance, as SPP's WB code 1
+		// may be): log gains regressed on the image's mean colour, learned
+		// on the other photos.
+		var ata [3][3]float64
+		var atb [3][3]float64
+		for _, tp := range train {
+			pt := applied(&fc, tp.Raw)
+			f := meanColourFeatures(pt)
+			gt := oracleGains(pt, tp.SPP)
+			for r := 0; r < 3; r++ {
+				for c := 0; c < 3; c++ {
+					ata[r][c] += f[r] * f[c]
+				}
+				for k := 0; k < 3; k++ {
+					atb[k][r] += f[r] * math.Log(gt[k])
+				}
+			}
+		}
+		for r := 0; r < 3; r++ {
+			ata[r][r] += 0.05 // ridge
+		}
+		es := e0
+		if inv, ok := inverse3(ata); ok {
+			f := meanColourFeatures(pred)
+			var lg3 [3]float64
+			for k := 0; k < 3; k++ {
+				for r := 0; r < 3; r++ {
+					var c float64
+					for q := 0; q < 3; q++ {
+						c += inv[r][q] * atb[k][q]
+					}
+					lg3[k] += c * f[r]
+				}
+			}
+			sg := &render.Linear{W: pred.W, H: pred.H, Pix: append([]float32(nil), pred.Pix...)}
+			for i := range sg.Pix {
+				sg.Pix[i] = float32(math.Min(1, float64(sg.Pix[i])*math.Exp(math.Max(-1.5, math.Min(1.5, lg3[i%3])))))
+			}
+			es = MeanError(sg, pairs[h].SPP)
+		}
+		ss += es
+		fmt.Fprintf(w, "%-10s %-9s %7.1f %7.1f %7.1f %+6.2f %+6.2f %+6.2f  %s\n", pairs[h].Name, pairs[h].WB, e0, e1, e2, lg(1), lg(0)-lg(1), lg(2)-lg(1), pairs[h].Info)
+		s0, s1, s2 = s0+e0, s1+e1, s2+e2
+	}
+	n := float64(len(pairs))
+	fmt.Fprintf(w, "held out with per-WB-setting gains: %.1f, with scene-predicted gains: %.1f\n", sw/n, ss/n)
+	fmt.Fprintf(w, "%-10s %-9s %7.1f %7.1f %7.1f\n", "MEAN", "", s0/n, s1/n, s2/n)
+}
+
+// oracleGains are the per-channel gains that best match pred's channel
+// means to spp's (unclipped pixels).
+func oracleGains(pred, spp *render.Linear) [3]float64 {
+	var a, b [3]float64
+	for i := 0; i < len(pred.Pix); i += 3 {
+		if max(spp.Pix[i], spp.Pix[i+1], spp.Pix[i+2]) > 0.95 {
+			continue
+		}
+		for k := 0; k < 3; k++ {
+			a[k] += float64(pred.Pix[i+k])
+			b[k] += float64(spp.Pix[i+k])
+		}
+	}
+	return [3]float64{b[0] / a[0], b[1] / a[1], b[2] / a[2]}
+}
+
+// meanColourFeatures is [1, ln(R/G), ln(B/G)] of an image's mean colour.
+func meanColourFeatures(l *render.Linear) [3]float64 {
+	var s [3]float64
+	for i := 0; i < len(l.Pix); i += 3 {
+		for k := 0; k < 3; k++ {
+			s[k] += float64(l.Pix[i+k])
+		}
+	}
+	return [3]float64{1, math.Log(s[0] / s[1]), math.Log(s[2] / s[1])}
+}

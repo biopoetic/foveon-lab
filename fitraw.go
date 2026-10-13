@@ -80,6 +80,8 @@ func fitRawCommand(desk string) {
 	fsFlags := flag.NewFlagSet("fit-raw", flag.ExitOnError)
 	dir := fsFlags.String("dir", filepath.Join(desk, "foveon-calibration"), "calibration folder")
 	photos := fsFlags.String("photos", desk, "folders with the X3F files (separated by ;)")
+	diagnose := fsFlags.Bool("diagnose", false, "only print each photo's raw-base error breakdown (nothing is saved)")
+	camfRaw := fsFlags.Bool("camf", false, "decode raw as camera RGB and apply each photo's CAMF white balance + colour matrix (as SPP does) instead of x3f_extract's sRGB")
 	fsFlags.Parse(os.Args[2:])
 	if rawTool == "" {
 		log.Fatal("fit-raw needs x3f_extract")
@@ -123,13 +125,6 @@ func fitRawCommand(desk string) {
 			fmt.Printf("  %s: %.0f%% of it at the sRGB edge or clipped, skipped\n", name, frac*100)
 			continue
 		}
-		fmt.Printf("  %s (%s): decoding raw…\n", name, ph.Camera)
-		rimg, err := decodeRaw(ph)
-		if err != nil {
-			fmt.Printf("    raw decode failed: %v\n", err)
-			continue
-		}
-		raw := stretchTo(render.FromImage(rimg, calib.AnalysisW, 0), spp.W, spp.H)
 		var jpegErr float64 = -1
 		if f, err := x3f.Open(ph.path); err == nil {
 			if img, _, err := f.Preview(); err == nil {
@@ -142,11 +137,47 @@ func fitRawCommand(desk string) {
 				jgroups[family] = append(jgroups[family], calib.JPEGPair{Name: name, JPEG: cam, SPP: spp, AutoWB: props["WB_DESC"] == "Auto", Neutral: neutral})
 			}
 		}
+		// The raw base only: these photos' camera JPEG still trains the
+		// JPEG balance above (the app shows them from it).
+		if !rawDecodable(ph.props) {
+			fmt.Printf("  %s: %s resolution, which x3f_extract decodes wrongly, raw skipped\n", name, ph.props["RESOLUTION"])
+			continue
+		}
+		fmt.Printf("  %s (%s): decoding raw…\n", name, ph.Camera)
+		var raw *render.Linear
+		if *camfRaw {
+			rimg, err := decodeRawAs(ph, "none")
+			if err != nil {
+				fmt.Printf("    raw decode failed: %v\n", err)
+				continue
+			}
+			t, err := camfTransform(ph)
+			if err != nil {
+				fmt.Printf("    %v\n", err)
+				continue
+			}
+			raw = stretchTo(render.FromCameraRaw(rimg, calib.AnalysisW, 0, t), spp.W, spp.H)
+		} else {
+			rimg, err := decodeRaw(ph)
+			if err != nil {
+				fmt.Printf("    raw decode failed: %v\n", err)
+				continue
+			}
+			raw = stretchTo(render.FromImage(rimg, calib.AnalysisW, 0), spp.W, spp.H)
+		}
 		if jpegErr < 0 {
 			fmt.Printf("    its camera JPEG can't be read; used for fitting only as raw\n")
 			jpegErr = calib.MeanError(raw, spp) // no better baseline exists
 		}
-		groups[family] = append(groups[family], calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr})
+		pr := ph.props
+		info := fmt.Sprintf("expnet %s expcomp %s iso %s f/%s %ss", pr["EXPNET"], pr["EXPCOMP"], pr["ISO"], pr["AP_DESC"], pr["SH_DESC"])
+		groups[family] = append(groups[family], calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info})
+	}
+	if *diagnose {
+		for _, f := range []string{"SD1", "SD15"} {
+			calib.DiagnoseRaw(f, groups[f], os.Stdout)
+		}
+		return
 	}
 	var fams []string
 	for f := range groups {

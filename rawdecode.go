@@ -55,7 +55,10 @@ func findRawTool(explicit string) string {
 
 // rawCachePath is where the decoded TIFF of a file is kept; it changes when
 // the X3F does, so edits or replacements never serve a stale decode.
-func rawCachePath(ph *Photo) (string, error) {
+func rawCachePath(ph *Photo) (string, error) { return rawCachePathFor(ph, "sRGB") }
+
+// rawCachePathFor is the cache file of a decode in colour mode color.
+func rawCachePathFor(ph *Photo, color string) (string, error) {
 	st, err := os.Stat(ph.path)
 	if err != nil {
 		return "", err
@@ -64,14 +67,22 @@ func rawCachePath(ph *Photo) (string, error) {
 	if err != nil {
 		dir = os.TempDir()
 	}
-	key := idOf(fmt.Sprintf("%s|%d|%d", ph.path, st.Size(), st.ModTime().UnixNano()))
+	k := fmt.Sprintf("%s|%d|%d", ph.path, st.Size(), st.ModTime().UnixNano())
+	if color != "sRGB" {
+		k += "|" + color
+	}
+	key := idOf(k)
 	return filepath.Join(dir, "foveon-lab", "raw", key+".tif"), nil
 }
 
 // decodeRaw converts the X3F's raw data to a full-resolution sRGB image via
 // x3f_extract, caching the TIFF on disk.
-func decodeRaw(ph *Photo) (image.Image, error) {
-	cached, err := rawCachePath(ph)
+func decodeRaw(ph *Photo) (image.Image, error) { return decodeRawAs(ph, "sRGB") }
+
+// decodeRawAs decodes in x3f_extract colour mode color ("sRGB", or "none"
+// for linear camera RGB).
+func decodeRawAs(ph *Photo, color string) (image.Image, error) {
+	cached, err := rawCachePathFor(ph, color)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +98,7 @@ func decodeRaw(ph *Photo) (image.Image, error) {
 		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
-		out, err := exec.CommandContext(ctx, rawTool, "-q", "-tiff", "-color", "sRGB", "-o", tmp, ph.path).CombinedOutput()
+		out, err := exec.CommandContext(ctx, rawTool, "-q", "-tiff", "-color", color, "-o", tmp, ph.path).CombinedOutput()
 		produced := filepath.Join(tmp, filepath.Base(ph.path)+".tif")
 		if _, statErr := os.Stat(produced); err != nil || statErr != nil {
 			return nil, fmt.Errorf("x3f_extract: %v %s", err, trimOutput(out))
