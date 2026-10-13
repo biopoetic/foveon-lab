@@ -10,6 +10,7 @@ package render
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"image"
 	"io"
 	"math"
@@ -118,6 +119,25 @@ func WriteRenderedDNG(w io.Writer, img *image.RGBA64, make_, model, software str
 		strips = append(strips, buf.Bytes())
 	}
 
+	return writeDNG(w, width, height, rowsPerStrip, strips, dngMeta{
+		make: make_, model: model, software: software, unique: "Foveon Lab render",
+		colorMatrix: xyzD65ToSRGB, forward: sRGBToXYZD50, neutral: [3]float64{1, 1, 1},
+		profile: "Foveon Lab (as rendered)", linearCurve: true,
+	})
+}
+
+// dngMeta is what differs between the DNGs Foveon Lab writes.
+type dngMeta struct {
+	make, model, software, unique string
+	colorMatrix, forward          []float64 // XYZ(D65) -> camera; camera -> XYZ(D50)
+	neutral                       [3]float64
+	baselineExposure              float64
+	profile                       string
+	linearCurve                   bool // ProfileToneCurve: linear (show the data as is)
+}
+
+// writeDNG writes a 3-channel 16-bit LinearRaw DNG from prepared strips.
+func writeDNG(w io.Writer, width, height, rowsPerStrip int, strips [][]byte, m dngMeta) error {
 	stripCounts := make([]uint32, len(strips))
 	for i, s := range strips {
 		stripCounts[i] = uint32(len(s))
@@ -129,28 +149,30 @@ func WriteRenderedDNG(w io.Writer, img *image.RGBA64, make_, model, software str
 		{258, tShort, 3, dngShorts(16, 16, 16)},                     // BitsPerSample
 		{259, tShort, 1, dngShorts(1)},                              // Compression: none
 		{262, tShort, 1, dngShorts(34892)},                          // PhotometricInterpretation: LinearRaw
-		{271, tASCII, 0, dngASCII(make_)},                           // Make
-		{272, tASCII, 0, dngASCII(model)},                           // Model
+		{271, tASCII, 0, dngASCII(m.make)},                          // Make
+		{272, tASCII, 0, dngASCII(m.model)},                         // Model
 		{273, tLong, uint32(len(strips)), nil},                      // StripOffsets (filled in below)
 		{274, tShort, 1, dngShorts(1)},                              // Orientation
 		{277, tShort, 1, dngShorts(3)},                              // SamplesPerPixel
-		{278, tLong, 1, dngLongs(rowsPerStrip)},                     // RowsPerStrip
+		{278, tLong, 1, dngLongs(uint32(rowsPerStrip))},             // RowsPerStrip
 		{279, tLong, uint32(len(strips)), dngLongs(stripCounts...)}, // StripByteCounts
 		{284, tShort, 1, dngShorts(1)},                              // PlanarConfiguration: chunky
-		{305, tASCII, 0, dngASCII(software)},                        // Software
+		{305, tASCII, 0, dngASCII(m.software)},                      // Software
 		{50706, tByte, 4, []byte{1, 4, 0, 0}},                       // DNGVersion
 		{50707, tByte, 4, []byte{1, 2, 0, 0}},                       // DNGBackwardVersion
-		{50708, tASCII, 0, dngASCII("Foveon Lab render")},           // UniqueCameraModel
+		{50708, tASCII, 0, dngASCII(m.unique)},                      // UniqueCameraModel
 		{50714, tLong, 3, dngLongs(0, 0, 0)},                        // BlackLevel
 		{50717, tLong, 3, dngLongs(65535, 65535, 65535)},            // WhiteLevel
-		{50721, tSRational, 9, dngSRationals(xyzD65ToSRGB...)},      // ColorMatrix1
-		{50728, tRational, 3, dngRationals(1, 1, 1)},                // AsShotNeutral
-		{50730, tSRational, 1, dngSRationals(0)},                    // BaselineExposure
+		{50721, tSRational, 9, dngSRationals(m.colorMatrix...)},     // ColorMatrix1
+		{50728, tRational, 3, dngRationals(m.neutral[:]...)},        // AsShotNeutral
+		{50730, tSRational, 1, dngSRationals(m.baselineExposure)},   // BaselineExposure
 		{50778, tShort, 1, dngShorts(21)},                           // CalibrationIlluminant1: D65
-		{50936, tASCII, 0, dngASCII("Foveon Lab (as rendered)")},    // ProfileName
-		{50940, tFloat, 4, dngFloats(0, 0, 1, 1)},                   // ProfileToneCurve: linear
+		{50936, tASCII, 0, dngASCII(m.profile)},                     // ProfileName
 		{50941, tLong, 1, dngLongs(3)},                              // ProfileEmbedPolicy: no restrictions
-		{50964, tSRational, 9, dngSRationals(sRGBToXYZD50...)},      // ForwardMatrix1
+		{50964, tSRational, 9, dngSRationals(m.forward...)},         // ForwardMatrix1
+	}
+	if m.linearCurve {
+		entries = append(entries, dngEntry{50940, tFloat, 4, dngFloats(0, 0, 1, 1)}) // ProfileToneCurve: linear
 	}
 	for i := range entries {
 		if entries[i].typ == tASCII {
@@ -228,4 +250,73 @@ func WriteRenderedDNG(w io.Writer, img *image.RGBA64, make_, model, software str
 		}
 	}
 	return nil
+}
+
+// WriteCameraDNG writes linear camera RGB (0 = black, 1 = white per layer;
+// w×h×3) as a raw-like LinearRaw DNG that raw editors develop themselves.
+// The colour metadata comes from the camera's own white balance and colour
+// matrix: linear sRGB = cc · diag(gain) · camera. Values above white clip.
+func WriteCameraDNG(out io.Writer, pix []float32, w, h int, gain [3]float64, cc [9]float64, make_, model, software string) error {
+	const rowsPerStrip = 32
+	var strips [][]byte
+	row := make([]byte, w*6)
+	for y0 := 0; y0 < h; y0 += rowsPerStrip {
+		var buf bytes.Buffer
+		for y := y0; y < min(h, y0+rowsPerStrip); y++ {
+			src := pix[y*w*3:]
+			for i := 0; i < w*3; i++ {
+				v := math.Max(0, math.Min(1, float64(src[i])))
+				binary.LittleEndian.PutUint16(row[i*2:], uint16(math.Round(v*65535)))
+			}
+			buf.Write(row)
+		}
+		strips = append(strips, buf.Bytes())
+	}
+	// camera -> XYZ(D65) = sRGB->XYZ(D65) · cc · diag(gain); ColorMatrix1 is
+	// its inverse. White-balanced camera (×gain) -> XYZ(D50) = the D50
+	// sRGB matrix · cc (ForwardMatrix1). The neutral is 1/gain; the part of
+	// the gains a reader won't apply (it normalises the neutral to a top of
+	// 1) goes into BaselineExposure (e.g. +6 stops for a Merrill ISO 6400).
+	srgbToXYZD65 := [9]float64{0.4124, 0.3576, 0.1805, 0.2126, 0.7152, 0.0722, 0.0193, 0.1192, 0.9505}
+	var camToXYZ, fwd [9]float64
+	for i := 0; i < 3; i++ {
+		for j := 0; j < 3; j++ {
+			for k := 0; k < 3; k++ {
+				camToXYZ[i*3+j] += srgbToXYZD65[i*3+k] * cc[k*3+j] * gain[j]
+				fwd[i*3+j] += sRGBToXYZD50[i*3+k] * cc[k*3+j]
+			}
+		}
+	}
+	cm, ok := invert3x3(camToXYZ)
+	if !ok {
+		return errors.New("dng: singular colour matrix")
+	}
+	gmin := math.Min(gain[0], math.Min(gain[1], gain[2]))
+	if gmin <= 0 {
+		return errors.New("dng: bad white balance gains")
+	}
+	var neutral [3]float64
+	for i := range neutral {
+		neutral[i] = gmin / gain[i]
+	}
+	return writeDNG(out, w, h, rowsPerStrip, strips, dngMeta{
+		make: make_, model: model, software: software, unique: make_ + " " + model,
+		colorMatrix: cm[:], forward: fwd[:], neutral: neutral,
+		baselineExposure: math.Log2(gmin), profile: "Foveon Lab camera matrix",
+	})
+}
+
+func invert3x3(m [9]float64) ([9]float64, bool) {
+	det := m[0]*(m[4]*m[8]-m[5]*m[7]) - m[1]*(m[3]*m[8]-m[5]*m[6]) + m[2]*(m[3]*m[7]-m[4]*m[6])
+	if det == 0 {
+		return m, false
+	}
+	var r [9]float64
+	for i := 0; i < 3; i++ {
+		for j := 0; j < 3; j++ {
+			i1, i2, j1, j2 := (j+1)%3, (j+2)%3, (i+1)%3, (i+2)%3
+			r[i*3+j] = (m[i1*3+j1]*m[i2*3+j2] - m[i1*3+j2]*m[i2*3+j1]) / det
+		}
+	}
+	return r, true
 }

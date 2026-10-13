@@ -3,8 +3,14 @@ package main
 import (
 	"fmt"
 	"image"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/biopoetic/foveon-lab/preset"
 	"github.com/biopoetic/foveon-lab/render"
 	"github.com/biopoetic/foveon-lab/x3f"
 )
@@ -158,4 +164,55 @@ func linearToSRGB16(l *render.Linear) *image.RGBA64 {
 		out.Pix[o+6], out.Pix[o+7] = 0xff, 0xff
 	}
 	return out
+}
+
+// exportCameraDNG writes ph's raw data as a camera DNG natively: decoded,
+// bad pixels repaired, black level, white level and colour shading
+// applied, optionally denoised (NR as for raw-based exports), with the
+// file's own white balance + colour matrix as the DNG colour metadata.
+func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem string, p preset.Params, label string, denoise *int) {
+	s.sem <- struct{}{}
+	defer func() { <-s.sem }()
+	start := time.Now()
+	img, t, err := goDevelop(ph)
+	if err != nil {
+		httpErr(w, 500, err)
+		return
+	}
+	nr := 1.0
+	if denoise != nil {
+		nr = float64(max(0, min(10, *denoise))) / 10
+	}
+	if nr > 0 {
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: nr, Scale: 1})
+	}
+	path := filepath.Join(dir, stem+".dng")
+	f, err := os.Create(path)
+	if err != nil {
+		httpErr(w, 500, err)
+		return
+	}
+	err = render.WriteCameraDNG(f, img.Pix, img.W, img.H, t.Gain, t.CC, "SIGMA", strings.TrimPrefix(strings.TrimSpace(ph.props["CAMMODEL"]), "SIGMA "), "Foveon Lab "+version)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		os.Remove(path)
+		httpErr(w, 500, err)
+		return
+	}
+	log.Printf("exported %s (camera DNG, NR %.1f, %v)", path, nr, time.Since(start).Round(100*time.Millisecond))
+	cube := filepath.Join(dir, stem+"_"+safeName(label)+".cube")
+	if cf, err := os.Create(cube); err == nil {
+		err = render.WriteCube(cf, label, p, 33)
+		if cerr := cf.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			cube = ""
+		}
+	} else {
+		cube = ""
+	}
+	writeJSON(w, map[string]string{"path": path, "lut": cube})
 }

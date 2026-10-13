@@ -651,7 +651,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Format == "rawdng" {
-		s.exportDNG(w, ph, dir, stem, p, label)
+		s.exportDNG(w, ph, dir, stem, p, label, req.Denoise)
 		return
 	}
 	path, err := s.exportImage(ph, p, label, req.Comp, req.Format, req.Denoise)
@@ -747,9 +747,13 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 // exportDNG converts the X3F's raw data to a DNG with x3f_extract, for
 // Lightroom / Capture One / darktable. It is raw, so the preset can't be
 // baked in; it goes alongside as a .cube LUT to apply in that program.
-func (s *server) exportDNG(w http.ResponseWriter, ph *Photo, dir, stem string, p preset.Params, label string) {
+func (s *server) exportDNG(w http.ResponseWriter, ph *Photo, dir, stem string, p preset.Params, label string, denoise *int) {
 	if ph.Kind != "x3f" {
 		httpErr(w, 400, errors.New("DNG export needs an X3F file"))
+		return
+	}
+	if goRaw && nativeRaw(ph) {
+		s.exportCameraDNG(w, ph, dir, stem, p, label, denoise)
 		return
 	}
 	if rawTool == "" {
@@ -1272,7 +1276,7 @@ func main() {
 	mux.HandleFunc("/api/spp/open", s.handleSPPOpen)
 	mux.HandleFunc("/api/caps", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-App", "foveon-lab") // lets a second launch find this one
-		writeJSON(w, map[string]any{"rawTool": rawTool != "", "version": version})
+		writeJSON(w, map[string]any{"rawTool": rawAvailable(), "version": version})
 	})
 	upd := newUpdater()
 	cleanupOldUpdate(upd.inst)
