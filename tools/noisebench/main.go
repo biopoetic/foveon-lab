@@ -334,6 +334,12 @@ func main() {
 			r, eps := 8, float32(0.01)
 			fmt.Sscanf(m, "chroma%d_%f", &r, &eps)
 			d = chroma(test, r, eps)
+		case strings.HasPrefix(m, "pkg"): // the x3f package's Denoise (what the app uses)
+			st := 1.0
+			fmt.Sscanf(m, "pkg%f", &st)
+			d = test
+			d.pix = append([]float32(nil), test.pix...)
+			x3f.Denoise(&x3f.CamImage{W: d.w, H: d.h, Pix: d.pix}, x3f.DenoiseOptions{Strength: st})
 		case strings.HasPrefix(m, "fov"):
 			r, eps, kl := 16, float32(0.01), 1.0
 			fmt.Sscanf(m, "fov%d_%f_%f", &r, &eps, &kl)

@@ -93,7 +93,7 @@ func CameraLinear(raw *RawImage, c *CAMF, sg *SpatialGain, wb string) (*CamImage
 	if d := c.Matrices["ImageDepth"]; len(d) == 1 && d[0] > 0 && d[0] <= 16 {
 		v := math.Exp2(d[0]) - 1
 		white = [3]float64{v, v, v}
-	} else if s := c.Matrices["RawSaturationLevel"]; len(s) == 3 {
+	} else if s := c.Matrices["RawSaturationLevel"]; len(s) == 3 && c.trueEngine() {
 		copy(white[:], s)
 	} else if s := c.Matrices["SaturationLevel"]; len(s) == 3 {
 		copy(white[:], s)

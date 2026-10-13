@@ -363,7 +363,7 @@ function accWatch(){
 
 function photoInfoText(p){
   const i = p.info;
-  return [accLabel(p), p.lowRes && "LOW-RES PREVIEW (567 px — no full-size preview in SD9/SD10 files)", p.rawDecoded && "RAW-DECODED (x3f_extract — no in-camera look)", p.kind === "image" && "NOT A FOVEON FILE — the presets only imitate the look; SPP can't open it", i.REPAIRED && "REPAIRED: " + i.REPAIRED, i.CAMMODEL, i.LENS && "lens " + i.LENS, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.TIME].filter(Boolean).join(" · ");
+  return [accLabel(p), p.lowRes && "LOW-RES PREVIEW (567 px — no full-size preview in SD9/SD10 files)", p.rawDecoded && "RAW-DECODED (from the raw data — no in-camera look)", p.kind === "image" && "NOT A FOVEON FILE — the presets only imitate the look; SPP can't open it", i.REPAIRED && "REPAIRED: " + i.REPAIRED, i.CAMMODEL, i.LENS && "lens " + i.LENS, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.TIME].filter(Boolean).join(" · ");
 }
 
 function selectPhoto(id){

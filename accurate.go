@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/biopoetic/foveon-lab/render"
@@ -55,7 +56,29 @@ func rawDecodable(props map[string]string) bool {
 }
 
 func (s *server) wantRaw(ph *Photo) bool {
-	return s.accurate.Load() && ph.Accurate && rawTool != ""
+	return s.accurate.Load() && ph.Accurate && rawAvailable()
+}
+
+// goRaw: decode and develop raw data with the x3f package (no x3f_extract);
+// FOVEON_RAW=x3f switches back to x3f_extract.
+var goRaw = os.Getenv("FOVEON_RAW") != "x3f"
+
+// rawAvailable reports whether raw-based rendering is possible at all.
+func rawAvailable() bool { return goRaw || rawTool != "" }
+
+// goStrength maps a decode name to the native denoiser's strength: the
+// full decode (and NR "Full") 1, "-nodenoise" 0, "-dnN" N/10.
+func goStrength(color string) float64 {
+	_, opts, _ := strings.Cut(color, "-")
+	switch {
+	case strings.Contains(opts, "nodenoise"):
+		return 0
+	case strings.HasPrefix(opts, "dn"):
+		if n, err := strconv.Atoi(strings.TrimPrefix(opts, "dn")); err == nil {
+			return float64(max(0, min(10, n))) / 10
+		}
+	}
+	return 1
 }
 
 func cachedAs(ph *Photo, color string) bool {
@@ -71,7 +94,7 @@ func (s *server) rawStateOf(ph *Photo) string {
 	s.rawMu.Lock()
 	defer s.rawMu.Unlock()
 	st := s.rawState[ph.ID]
-	if st == rawNone || st == rawFast {
+	if !goRaw && (st == rawNone || st == rawFast) {
 		switch {
 		case cachedAs(ph, "sRGB"):
 			st = rawReady
@@ -148,6 +171,21 @@ func (s *server) rawWorker() {
 				urgent = false
 			}
 		}
+		if goRaw {
+			// Native: one pass (seconds), straight into the source cache.
+			if _, err := s.sourceAs(ph, "raw"); err != nil {
+				log.Printf("accurate preview for %s: %v", ph.Name, err)
+				s.rawMu.Lock()
+				s.rawState[ph.ID] = rawFailed
+				s.rawMu.Unlock()
+				continue
+			}
+			s.rawMu.Lock()
+			s.rawState[ph.ID] = rawReady
+			delete(rawFullQueued, ph.ID)
+			s.rawMu.Unlock()
+			continue
+		}
 		if !cachedAs(ph, "sRGB") && !cachedAs(ph, rawFastColor) {
 			if _, err := decodeRawAs(ph, rawFastColor); err != nil {
 				log.Printf("accurate preview for %s: %v", ph.Name, err)
@@ -181,11 +219,19 @@ func (s *server) rawWorker() {
 // rawLinear decodes ph's raw data (blocking), fixes the aspect of
 // reduced-resolution files, rotates it and maps it onto SPP's neutral look.
 func rawLinear(ph *Photo, maxW int, color string) (*render.Linear, error) {
-	img, err := decodeRawAs(ph, color)
-	if err != nil {
-		return nil, err
+	var l *render.Linear
+	if goRaw {
+		var err error
+		if l, err = goLinear(ph, maxW, goStrength(color)); err != nil {
+			return nil, err
+		}
+	} else {
+		img, err := decodeRawAs(ph, color)
+		if err != nil {
+			return nil, err
+		}
+		l = render.FromImage(img, maxW, 0)
 	}
-	l := render.FromImage(img, maxW, 0)
 	if ph.previewW > 0 && ph.previewH > 0 {
 		// e.g. an SD1 medium-size file decodes at 4704×1568 for a 3:2 frame.
 		wantH := l.W * ph.previewH / ph.previewW
@@ -247,7 +293,7 @@ func (s *server) handleAccurate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, map[string]any{"on": s.accurate.Load(), "available": rawTool != ""})
+	writeJSON(w, map[string]any{"on": s.accurate.Load(), "available": rawAvailable()})
 }
 
 // calibGroup is the group ph's learned raw base and JPEG balance belong to

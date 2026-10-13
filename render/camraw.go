@@ -100,3 +100,58 @@ func pixelGetter16(img image.Image) func(x, y int) (float32, float32, float32) {
 		return float32(r), float32(g), float32(b)
 	}
 }
+
+// FromCamLinear turns linear camera RGB (0 = black, 1 = white per layer;
+// values below 0 kept) into linear output RGB through t, box-downscaled so
+// the result (after rotating by rot) is at most maxW wide (0 = full size).
+// Averaging before the matrix is exact (both are linear) and keeps the
+// noise below black, which clipping would turn into a bias.
+func FromCamLinear(pix []float32, sw, sh, maxW, rot int, t CamTransform) *Linear {
+	outW := sw
+	if rot == 90 || rot == 270 {
+		outW = sh
+	}
+	s := 1.0
+	if maxW > 0 && outW > maxW {
+		s = float64(maxW) / float64(outW)
+	}
+	dw, dh := max(1, int(math.Round(float64(sw)*s))), max(1, int(math.Round(float64(sh)*s)))
+	m := t.Matrix()
+	var mf [9]float32
+	for i, v := range m {
+		mf[i] = float32(v)
+	}
+	colMap := make([]int, sw)
+	for x := range colMap {
+		colMap[x] = x * dw / sw
+	}
+	l := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: float64(dw) / float64(sw)}
+	parallelRows(dh, func(y0, y1 int) {
+		sum := make([]float32, dw*3)
+		cnt := make([]float32, dw)
+		for dy := y0; dy < y1; dy++ {
+			clear(sum)
+			clear(cnt)
+			for sy := dy * sh / dh; sy < (dy+1)*sh/dh; sy++ {
+				row := pix[sy*sw*3:]
+				for sx := 0; sx < sw; sx++ {
+					d := colMap[sx]
+					sum[d*3] += row[sx*3]
+					sum[d*3+1] += row[sx*3+1]
+					sum[d*3+2] += row[sx*3+2]
+					cnt[d]++
+				}
+			}
+			out := l.Pix[dy*dw*3:]
+			for x := 0; x < dw; x++ {
+				if c := cnt[x]; c > 0 {
+					r, g, b := sum[x*3]/c, sum[x*3+1]/c, sum[x*3+2]/c
+					out[x*3] = mf[0]*r + mf[1]*g + mf[2]*b
+					out[x*3+1] = mf[3]*r + mf[4]*g + mf[5]*b
+					out[x*3+2] = mf[6]*r + mf[7]*g + mf[8]*b
+				}
+			}
+		}
+	})
+	return l.Rotate(rot)
+}

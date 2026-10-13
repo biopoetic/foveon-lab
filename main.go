@@ -58,8 +58,9 @@ type Photo struct {
 	// LowRes: only a small preview exists (SD9/SD10 carry a 567 px one and
 	// no full-size JPEG), so renders are low resolution.
 	LowRes bool `json:"lowRes,omitempty"`
-	// RawDecoded: shown from its raw data via x3f_extract (full resolution,
-	// no in-camera styling) because the file has no full-size preview.
+	// RawDecoded: shown from its raw data (natively, else via x3f_extract;
+	// full resolution, no in-camera styling) because the file has no
+	// full-size preview.
 	RawDecoded bool              `json:"rawDecoded,omitempty"`
 	Info       map[string]string `json:"info"`
 	// Accurate: an accurate (raw-based) preview exists for this camera.
@@ -196,8 +197,8 @@ func loadMeta(ph *Photo) bool {
 			ph.Unsupported = "This X3F has no preview Foveon Lab can decode yet."
 		case !f.HasFullPreview():
 			// SD9/SD10: only the camera's 567 px preview — decode the raw
-			// data instead when x3f_extract is available.
-			if rawTool != "" {
+			// data instead (natively, or with x3f_extract).
+			if rawAvailable() {
 				ph.RawDecoded = true
 			} else {
 				ph.LowRes = true
@@ -352,7 +353,16 @@ func decodePreview(ph *Photo) (image.Image, error) {
 	}
 	if ph.Kind == "x3f" {
 		if ph.RawDecoded && !ph.rawFailed.Load() {
-			img, err := decodeRaw(ph)
+			var img image.Image
+			var err error
+			if goRaw {
+				var l *render.Linear
+				if l, err = goLinear(ph, 0, 1); err == nil {
+					img = linearToSRGB16(l)
+				}
+			} else {
+				img, err = decodeRaw(ph)
+			}
 			if err == nil {
 				return img, nil
 			}
@@ -417,7 +427,7 @@ func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
 		img, err := decodePreview(ph)
 		if err != nil {
 			// A damaged embedded JPEG: fall back to the raw data.
-			if ph.Kind == "x3f" && rawTool != "" {
+			if ph.Kind == "x3f" && rawAvailable() {
 				if l, rerr := rawLinear(ph, sourceW, "sRGB"); rerr == nil {
 					log.Printf("%s: embedded preview unreadable (%v), showing its raw data", ph.Name, err)
 					ph.jpegBroken.Store(true)

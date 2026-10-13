@@ -153,12 +153,12 @@ func fitRawCommand(desk string) {
 		fmt.Printf("  %s (%s): decoding raw…\n", name, ph.Camera)
 		var raw *render.Linear
 		if *goRaw {
-			cam, t, err := goCameraRGB(ph)
+			l, err := goLinear(ph, calib.AnalysisW, 0)
 			if err != nil {
 				fmt.Printf("    go raw: %v\n", err)
 				continue
 			}
-			raw = stretchTo(render.FromCameraRaw(cam, calib.AnalysisW, 0, t), spp.W, spp.H)
+			raw = stretchTo(l, spp.W, spp.H)
 		} else if *camfRaw {
 			rimg, err := decodeRawAs(ph, "none")
 			if err != nil {
