@@ -18,6 +18,7 @@ type RawPair struct {
 	JPEGErr float64
 	WB      string // in-camera white balance (X3F WB_DESC), for diagnostics
 	Info    string // other capture settings, for diagnostics
+	JPEG    *render.Linear // the camera JPEG as the app's neutral shows it (nil if unreadable)
 }
 
 // MeanError is the mean abs difference (8-bit sRGB) between two images.
@@ -295,7 +296,7 @@ func FitJPEGCoefs(ps []JPEGPair) [3][6]float64 { return fitJPEGCoef(ps, 0.01) }
 // noise, sharpness, highlights, Fill-like operators.
 func DiagnoseRaw(family string, pairs []RawPair, w io.Writer) {
 	fmt.Fprintf(w, "\n%s raw base, per photo (8-bit mean error; ideal gains in stops: G, R-G, B-G):\n%-10s %-9s %7s %7s %7s %6s %6s %6s  %s\n", family, "photo", "WB", "heldout", "+gains", "ownfit", "G", "R-G", "B-G", "info")
-	var s0, s1, s2, sw, ss float64
+	var s0, s1, s2, sw, ss, sj float64
 	for h := range pairs {
 		var train []RawPair
 		for i := range pairs {
@@ -388,11 +389,59 @@ func DiagnoseRaw(family string, pairs []RawPair, w io.Writer) {
 			es = MeanError(sg, pairs[h].SPP)
 		}
 		ss += es
+		// JPEG-guided gains: the camera JPEG comes from Sigma's own colour
+		// engine; regress the raw's ideal log gains on the JPEG-vs-raw
+		// colour difference, learned on the other photos.
+		ej := e0
+		if pairs[h].JPEG != nil {
+			var A [3][3]float64
+			var B [3][3]float64
+			n := 0
+			for _, tp := range train {
+				if tp.JPEG == nil {
+					continue
+				}
+				pt := applied(&fc, tp.Raw)
+				f := jpegRawFeatures(tp.JPEG, pt)
+				gt := oracleGains(pt, tp.SPP)
+				for r := 0; r < 3; r++ {
+					for c := 0; c < 3; c++ {
+						A[r][c] += f[r] * f[c]
+					}
+					for k := 0; k < 3; k++ {
+						B[k][r] += f[r] * math.Log(gt[k])
+					}
+				}
+				n++
+			}
+			for r := 0; r < 3; r++ {
+				A[r][r] += 0.05
+			}
+			if inv, ok := inverse3(A); ok && n >= 3 {
+				f := jpegRawFeatures(pairs[h].JPEG, pred)
+				var lg3 [3]float64
+				for k := 0; k < 3; k++ {
+					for r := 0; r < 3; r++ {
+						var c float64
+						for q := 0; q < 3; q++ {
+							c += inv[r][q] * B[k][q]
+						}
+						lg3[k] += c * f[r]
+					}
+				}
+				jg := &render.Linear{W: pred.W, H: pred.H, Pix: append([]float32(nil), pred.Pix...)}
+				for i := range jg.Pix {
+					jg.Pix[i] = float32(math.Min(1, float64(jg.Pix[i])*math.Exp(math.Max(-1.5, math.Min(1.5, lg3[i%3])))))
+				}
+				ej = MeanError(jg, pairs[h].SPP)
+			}
+		}
+		sj += ej
 		fmt.Fprintf(w, "%-10s %-9s %7.1f %7.1f %7.1f %+6.2f %+6.2f %+6.2f  %s\n", pairs[h].Name, pairs[h].WB, e0, e1, e2, lg(1), lg(0)-lg(1), lg(2)-lg(1), pairs[h].Info)
 		s0, s1, s2 = s0+e0, s1+e1, s2+e2
 	}
 	n := float64(len(pairs))
-	fmt.Fprintf(w, "held out with per-WB-setting gains: %.1f, with scene-predicted gains: %.1f\n", sw/n, ss/n)
+	fmt.Fprintf(w, "held out with per-WB-setting gains: %.1f, with scene-predicted gains: %.1f, JPEG-guided gains: %.1f\n", sw/n, ss/n, sj/n)
 	fmt.Fprintf(w, "%-10s %-9s %7.1f %7.1f %7.1f\n", "MEAN", "", s0/n, s1/n, s2/n)
 }
 
@@ -421,4 +470,11 @@ func meanColourFeatures(l *render.Linear) [3]float64 {
 		}
 	}
 	return [3]float64{1, math.Log(s[0] / s[1]), math.Log(s[2] / s[1])}
+}
+
+// jpegRawFeatures is [1, d(R/G), d(B/G)]: how much redder / bluer the
+// camera JPEG is than the raw prediction (log ratios of mean colours).
+func jpegRawFeatures(jpeg, raw *render.Linear) [3]float64 {
+	a, b := meanColourFeatures(jpeg), meanColourFeatures(raw)
+	return [3]float64{1, a[1] - b[1], a[2] - b[2]}
 }

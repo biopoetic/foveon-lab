@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"time"
 
 	"golang.org/x/image/tiff"
@@ -98,7 +99,11 @@ func decodeRawAs(ph *Photo, color string) (image.Image, error) {
 		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
-		out, err := exec.CommandContext(ctx, rawTool, "-q", "-tiff", "-color", color, "-o", tmp, ph.path).CombinedOutput()
+		args := []string{"-q", "-tiff", "-color", strings.TrimSuffix(color, "-nosgain")}
+		if strings.HasSuffix(color, "-nosgain") { // research: no spatial gain (colour shading)
+			args = append(args, "-no-sgain")
+		}
+		out, err := exec.CommandContext(ctx, rawTool, append(args, "-o", tmp, ph.path)...).CombinedOutput()
 		produced := filepath.Join(tmp, filepath.Base(ph.path)+".tif")
 		if _, statErr := os.Stat(produced); err != nil || statErr != nil {
 			return nil, fmt.Errorf("x3f_extract: %v %s", err, trimOutput(out))

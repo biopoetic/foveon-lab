@@ -81,6 +81,7 @@ func fitRawCommand(desk string) {
 	dir := fsFlags.String("dir", filepath.Join(desk, "foveon-calibration"), "calibration folder")
 	photos := fsFlags.String("photos", desk, "folders with the X3F files (separated by ;)")
 	diagnose := fsFlags.Bool("diagnose", false, "only print each photo's raw-base error breakdown (nothing is saved)")
+	noSgain := fsFlags.Bool("nosgain", false, "research: decode without x3f_extract's spatial gain (colour shading)")
 	camfRaw := fsFlags.Bool("camf", false, "decode raw as camera RGB and apply each photo's CAMF white balance + colour matrix (as SPP does) instead of x3f_extract's sRGB")
 	fsFlags.Parse(os.Args[2:])
 	if rawTool == "" {
@@ -126,6 +127,7 @@ func fitRawCommand(desk string) {
 			continue
 		}
 		var jpegErr float64 = -1
+		var jpegNeutral *render.Linear
 		if f, err := x3f.Open(ph.path); err == nil {
 			if img, _, err := f.Preview(); err == nil {
 				cam := stretchTo(render.FromImage(img, calib.AnalysisW, 0), spp.W, spp.H)
@@ -133,7 +135,8 @@ func fitRawCommand(desk string) {
 				neutral := func(l *render.Linear) *render.Linear {
 					return rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), render.CompensationFor(props, family)))
 				}
-				jpegErr = calib.MeanError(neutral(cam), spp)
+				jpegNeutral = neutral(cam)
+				jpegErr = calib.MeanError(jpegNeutral, spp)
 				jgroups[family] = append(jgroups[family], calib.JPEGPair{Name: name, JPEG: cam, SPP: spp, AutoWB: props["WB_DESC"] == "Auto", Neutral: neutral})
 			}
 		}
@@ -158,7 +161,11 @@ func fitRawCommand(desk string) {
 			}
 			raw = stretchTo(render.FromCameraRaw(rimg, calib.AnalysisW, 0, t), spp.W, spp.H)
 		} else {
-			rimg, err := decodeRaw(ph)
+			color := "sRGB"
+			if *noSgain {
+				color = "sRGB-nosgain"
+			}
+			rimg, err := decodeRawAs(ph, color)
 			if err != nil {
 				fmt.Printf("    raw decode failed: %v\n", err)
 				continue
@@ -171,7 +178,7 @@ func fitRawCommand(desk string) {
 		}
 		pr := ph.props
 		info := fmt.Sprintf("expnet %s expcomp %s iso %s f/%s %ss", pr["EXPNET"], pr["EXPCOMP"], pr["ISO"], pr["AP_DESC"], pr["SH_DESC"])
-		groups[family] = append(groups[family], calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info})
+		groups[family] = append(groups[family], calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info, JPEG: jpegNeutral})
 	}
 	if *diagnose {
 		for _, f := range []string{"SD1", "SD15"} {
