@@ -192,6 +192,15 @@ func fitRawCommand(desk string) {
 		}
 		pr := ph.props
 		info := fmt.Sprintf("expnet %s expcomp %s iso %s f/%s %ss", pr["EXPNET"], pr["EXPCOMP"], pr["ISO"], pr["AP_DESC"], pr["SH_DESC"])
+		if xf, err := x3f.Open(ph.path); err == nil {
+			if c, err := xf.CAMF(); err == nil {
+				for _, k := range []string{"AutoAdjustEXPCOMP", "ExpEstimate", "ExpNet", "AutoAdjustHeadroom", "CaptureExpComp"} {
+					if v := c.Matrices[k]; len(v) > 0 && len(v) <= 4 {
+						info += fmt.Sprintf(" %s %.3g", k, v)
+					}
+				}
+			}
+		}
 		groups[group] = append(groups[group], calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info, JPEG: jpegNeutral})
 	}
 	var fams []string
