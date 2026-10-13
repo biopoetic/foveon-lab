@@ -82,8 +82,8 @@ var goRaw = os.Getenv("FOVEON_RAW") != "x3f"
 // rawAvailable reports whether raw-based rendering is possible at all.
 func rawAvailable() bool { return goRaw || rawTool != "" }
 
-// nativeRaw: the x3f package decodes this file's raw data (everything but
-// Quattro, which still needs x3f_extract).
+// nativeRaw: the x3f package decodes this file's raw data (every body,
+// Quattro included).
 func nativeRaw(ph *Photo) bool {
 	f, err := x3f.Open(ph.path)
 	if err != nil {

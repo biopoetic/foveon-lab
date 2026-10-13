@@ -28,6 +28,9 @@ type CAMF struct {
 	PropKeys map[string][]string
 	// Text are the text entries (CMbT).
 	Text map[string]string
+	// Model is the file's CAMMODEL property (set by File.CAMF), for the
+	// few per-model rules.
+	Model string
 }
 
 // CAMF reads and decodes the file's CAMF section.
@@ -62,7 +65,11 @@ func (f *File) CAMF() (*CAMF, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseCAMF(dec)
+	c, err := parseCAMF(dec)
+	if c != nil {
+		c.Model = f.Props["CAMMODEL"]
+	}
+	return c, err
 }
 
 func decodeCAMF(data []byte, typ uint32, val [4]uint32) ([]byte, error) {

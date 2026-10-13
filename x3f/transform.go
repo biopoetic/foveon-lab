@@ -8,6 +8,7 @@ package x3f
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 var (
@@ -67,8 +68,9 @@ func (c *CAMF) matrixForWB(list, wb string, n int) []float64 {
 // Shade, Overcast, Incandescent, Fluorescent, Flash, Custom), the per-layer
 // gains and the colour matrix from gained camera RGB to linear sRGB: linear
 // sRGB = CC · diag(Gain) · camera RGB (0 = black, 1 = white per layer). The
-// gains include the sensor, temperature and aperture factors and
-// CaptureISO/SensorISO.
+// gains include the sensor, temperature and aperture factors,
+// CaptureISO/SensorISO and the per-layer DigitalISOGain (Quattro: e.g.
+// 4,4,2 at ISO 1600; not on Merrill bodies, as x3fuse).
 func (c *CAMF) WBTransform(wb string) (gain [3]float64, cc [9]float64, err error) {
 	g := c.matrixForWB("WhiteBalanceGains", wb, 3)
 	if g == nil {
@@ -127,6 +129,11 @@ func (c *CAMF) WBTransform(wb string) (gain [3]float64, cc [9]float64, err error
 	if s, ci := c.Matrices["SensorISO"], c.Matrices["CaptureISO"]; len(s) == 1 && len(ci) == 1 && s[0] > 0 {
 		for i := range gain {
 			gain[i] *= ci[0] / s[0]
+		}
+	}
+	if d := c.Matrices["DigitalISOGain"]; len(d) == 3 && !strings.Contains(strings.ToUpper(c.Model), "MERRILL") {
+		for i := range gain {
+			gain[i] *= d[i]
 		}
 	}
 	return gain, cc, nil
