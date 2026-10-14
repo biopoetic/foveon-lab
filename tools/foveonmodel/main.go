@@ -617,6 +617,9 @@ func sppWB(c *x3f.CAMF, f *x3f.File, export string) {
 	gen := render.SensorGeneration(x3f.CalibGroup(f.Props["CAMMODEL"]))
 	m := loadModel(gen)
 	wb := c.CameraWB(strings.TrimSpace(f.Props["WB_DESC"]))
+	if u := os.Getenv("USEWB"); u != "" {
+		wb = u
+	}
 	T, tb, tt, ok := camTemp(m, c, wb)
 	if !ok {
 		fmt.Println("no WB gains")
@@ -663,6 +666,25 @@ func sppWB(c *x3f.CAMF, f *x3f.File, export string) {
 	sort.Float64s(rg)
 	sort.Float64s(bg)
 	robs, bobs := math.Exp(rg[len(rg)/2]), math.Exp(bg[len(bg)/2])
+	if box := os.Getenv("BOX"); box != "" {
+		var x, y, w, h float64
+		fmt.Sscanf(box, "%g,%g,%g,%g", &x, &y, &w, &h)
+		mean := func(l *render.Linear) [3]float64 {
+			var m [3]float64
+			n := 0.0
+			for yy := int(y * float64(l.H)); yy < int((y+h)*float64(l.H)); yy++ {
+				for xx := int(x * float64(l.W)); xx < int((x+w)*float64(l.W)); xx++ {
+					for k := 0; k < 3; k++ {
+						m[k] += float64(l.Pix[(yy*l.W+xx)*3+k])
+					}
+					n++
+				}
+			}
+			return [3]float64{m[0] / n, m[1] / n, m[2] / n}
+		}
+		a, b := mean(cam), mean(spp)
+		fmt.Printf("  white object: camera R/G %.3f B/G %.3f | SPP R/G %.3f B/G %.3f\n", a[0]/a[1], a[2]/a[1], b[0]/b[1], b[2]/b[1])
+	}
 	// Which white-balance temperature would SPP's balance correspond to?
 	// SPP's gains relative to the camera's are r(Tcam)/r(Teff) per layer;
 	// simulate that on scene colours lit at Tcam through the camera matrix.

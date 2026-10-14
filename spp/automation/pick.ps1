@@ -21,6 +21,17 @@ function Click($x, $y) { [W2]::SetCursorPos([int]$x, [int]$y) | Out-Null; Start-
 $main = Win '*.X3F'
 $all = $main.FindAll($TS::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
 $save = $all | ? { $_.Current.Name -eq 'Save Settings' } | Select -First 1
+if (-not $save -or $save.Current.BoundingRectangle.Height -lt 2) {
+  # The "Adjustment Mode" panel is collapsed (only its header shows): open it.
+  $hdr = $all | ? { $_.Current.Name -eq 'Adjustment Mode' } | Select -First 1
+  if ($hdr) {
+    $hr = $hdr.Current.BoundingRectangle
+    Click ($hr.X - 16) ($hr.Y + $hr.Height/2)
+    Start-Sleep -Milliseconds 800
+    $all = $main.FindAll($TS::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+    $save = $all | ? { $_.Current.Name -eq 'Save Settings' } | Select -First 1
+  }
+}
 $sr = $save.Current.BoundingRectangle
 # The settings combo sits right above "Save Settings".
 $combo = $all | ? { $r = $_.Current.BoundingRectangle; [math]::Abs($r.X - $sr.X) -lt 8 -and $r.Height -gt 15 -and $r.Height -lt 26 -and ($sr.Y - ($r.Y + $r.Height)) -ge 0 -and ($sr.Y - ($r.Y + $r.Height)) -lt 12 -and $_.Current.Name -ne '' } | Select -First 1
