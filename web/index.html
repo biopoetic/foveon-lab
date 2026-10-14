@@ -230,6 +230,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           </select>
         </div>
         <div class="row"><label class="chk" title="Black & white: rendered monochrome here and opened in SPP's Monochrome mode. Pack B&W presets (Saturation -1) have it on."><input type="checkbox" id="mono"> Monochrome (SPP B&amp;W mode)</label></div>
+          <div class="src" id="wbNote"></div>
           </div>
         </div>
         <div class="grp" data-g="detail"><div class="gh"><span class="chev">▾</span><span class="gt">Detail &amp; noise</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
@@ -254,6 +255,10 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         </div>
         <div class="grp" data-g="film"><div class="gh"><span class="chev">▾</span><span class="gt">Film</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
           <div class="gb" id="g-film">
+        <div class="row"><div class="lab">Film stock <span class="dim" title="Foveon Lab only. Each film's RMS granularity from its maker's technical data (the document is in the tooltip). Films whose makers publish no RMS are listed but can't be picked.">(grain from its data sheet)</span></div>
+          <select id="filmStock" style="width:100%"><option value="">None (set the grain by hand)</option></select>
+          <div class="src" id="filmSrc"></div>
+        </div>
         <div class="row"><div class="lab">Film format <span class="dim" title="Foveon Lab only. The film frame the grain and halation are sized on: a larger format shows the same film finer.">(grain, halation)</span></div>
           <select id="filmWidth" style="width:100%">
             <option value="0">35 mm (36 × 24)</option><option value="56">Medium format 6 × 6 / 6 × 4.5</option><option value="70">Medium format 6 × 7</option><option value="127">Large format 4 × 5 in</option>
@@ -270,12 +275,9 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         </div>
           </div>
         </div>
-        <div class="src" id="wbNote"></div>
         <div class="grp" data-g="export"><div class="gh"><span class="chev">▾</span><span class="gt">Export</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
           <div class="gb" id="g-export">
         <div class="btns">
-          <button id="reset">Reset to preset</button>
-          <button id="save" class="primary">Save as preset</button>
           <button id="export" title="Full-resolution JPEG with the preset applied">Export JPEG</button>
           <button id="exportTiff" title="Full-resolution 16-bit TIFF with the preset applied — no 8-bit rounding, for further editing">Export TIFF 16-bit</button>
           <button id="lutBtn" title="Download this look as a 3D LUT (.cube) for darktable, Photoshop, Camera Raw / Lightroom profiles, DaVinci Resolve, Affinity…">Export LUT (.cube)</button>
@@ -361,16 +363,16 @@ const SLIDERS = [
   ["layerBottom","Bottom layer (red)",-6,2,.05,"layer"],
   ["layerMiddle","Middle layer (green)",-6,2,.05,"layer"],
   ["layerTop","Top layer (blue)",-6,2,.05,"layer"],
-  ["grain","Film grain (RMS granularity)",0,25,.5,"film"],
+  ["grain","Film grain (RMS on the print)",0,60,.5,"film"],
   ["halation","Halation",0,1,.01,"film"],
 ];
 // Film grain is a film's published RMS granularity (sizes on the film, so
 // a crop or 100% view shows it larger, a reduced view finer).
-const GRAIN_TIPS = "Film grain from the film's published RMS granularity (Selwyn's law): about 8 for the finest colour negative and slow B&W films, 10-12 for ISO 400 colour negative, 16-18 for classic ISO 400 B&W. It is sized on the film, so it depends on the film format below.";
+const GRAIN_TIPS = "Film grain as the RMS granularity of the final image (Selwyn's law sizes it on the film, so it depends on the film format below). Pick a film above to set it from that film's published data: a slide's own RMS, a negative's x 2.3 (the print or scan raises the negative's low contrast).";
 const HALATION_TIP = "Light reflected back by the film base into its red-sensitive layer: a red-orange glow around bright lights. 0 = film with an anti-halation layer, 1 = none (the Cinestill look).";
 // Layer mix presets, in stops per sensor layer (bottom, middle, top).
 const LAYER_MIX = { top: [-6,-6,0] };
-const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false,layerBottom:0,layerMiddle:0,layerTop:0,filter:"",grain:0,halation:0,filmWidth:0};
+const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false,layerBottom:0,layerMiddle:0,layerTop:0,filter:"",grain:0,halation:0,filmWidth:0,film:""};
 
 const S = {
   photos: [], presets: [], photo: null,
@@ -679,7 +681,7 @@ const GROUPS = {
   colour: ["saturation","r","g","b","colorMode","mono"],
   detail: ["sharpness"],
   layer: ["layerBottom","layerMiddle","layerTop","filter"],
-  film: ["grain","halation","filmWidth"],
+  film: ["grain","halation","filmWidth","film"],
   geometry: [], export: [], keys: [],
 };
 const GROUPS_CLOSED = new Set(store.get("groupsClosed", ["keys"]));
@@ -717,6 +719,12 @@ function buildSliders(){
     inp.onchange = () => inp.blur();
     row.querySelector("b").ondblclick = () => { S.params[k] = S.base[k]; syncSliders(); scheduleRender(); };
   });
+  $("#filmStock").onchange = () => {
+    const f = FILMS[+$("#filmStock").value];
+    S.params.film = f ? f.maker + " " + f.name : "";
+    if (f) S.params.grain = Math.round(f.grain * 2) / 2;
+    $("#filmStock").blur(); syncSliders(); scheduleRender();
+  };
   $("#filmWidth").onchange = () => { S.params.filmWidth = +$("#filmWidth").value; $("#filmWidth").blur(); syncSliders(); scheduleRender(); };
   document.querySelector('#panel .row[data-k="grain"]').title = GRAIN_TIPS;
   document.querySelector('#panel .row[data-k="halation"]').title = HALATION_TIP;
@@ -735,6 +743,25 @@ function buildSliders(){
   };
 }
 
+// The film library (/api/films), grouped by maker in the Film stock menu.
+let FILMS = [];
+async function filmsInit(){
+  try { FILMS = await (await fetch("/api/films")).json(); } catch { return; }
+  const kinds = {slide: "slide", neg: "B&W negative", cn: "colour negative", chromo: "chromogenic B&W"};
+  const byMaker = {};
+  FILMS.forEach((f, i) => (byMaker[f.maker] ||= []).push([f, i]));
+  $("#filmStock").insertAdjacentHTML("beforeend", Object.keys(byMaker).sort().map(m =>
+    `<optgroup label="${esc(m)}">` + byMaker[m].map(([f, i]) =>
+      `<option value="${i}"${f.rms ? "" : " disabled"} title="${esc(f.src)}">${esc(f.name)}${f.iso ? " · ISO " + f.iso : ""} · ${kinds[f.kind] || f.kind}${f.rms ? " · RMS " + f.rms : " · no published RMS"}</option>`).join("") + "</optgroup>").join(""));
+  syncFilm();
+}
+function syncFilm(){
+  const i = FILMS.findIndex(f => f.maker + " " + f.name === S.params?.film);
+  $("#filmStock").value = i >= 0 ? String(i) : "";
+  const f = FILMS[i];
+  $("#filmSrc").innerHTML = f ? `RMS ${f.rms} (${esc(f.kind === "slide" ? "on the slide" : "on the negative, ×2.3 on the print")}) · <a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.src)}</a>` : "";
+}
+
 function syncSliders(){
   for (const row of document.querySelectorAll("#panel .row[data-k]")){
     const k = row.dataset.k, v = S.params[k] ?? NEUTRAL[k];
@@ -748,6 +775,7 @@ function syncSliders(){
   const mix = Object.keys(LAYER_MIX).find(k => LAYER_MIX[k].every((x, i) => Math.abs(x - lf[i]) < 1e-9));
   $("#layerPreset").value = S.params.filter && zero ? "lens:" + S.params.filter : !S.params.filter && zero ? "" : !S.params.filter && mix ? "mix:" + mix : "custom";
   $("#filmWidth").value = String(S.params.filmWidth || 0);
+  syncFilm();
   for (const [g, keys] of Object.entries(GROUPS)){
     const ch = keys.some(k => typeof NEUTRAL[k] === "string" || typeof NEUTRAL[k] === "boolean"
       ? (S.params[k] || "") !== (S.base[k] || "") : Math.abs((S.params[k] ?? NEUTRAL[k]) - (S.base[k] ?? NEUTRAL[k])) > 1e-9);
@@ -1679,6 +1707,7 @@ function bind(){
   $("#favOnly").onchange = e => { store.set("favOnly", e.target.checked); applyFavFilter(); };
   applyFavFilter();
   sidesInit();
+  filmsInit();
   updateInit();
   setInterval(updateInit, 6 * 3600 * 1000);
   // Deep link: ?photo=<id or file name>&groups=SLIDE,BW&q=velvia&tile=400

@@ -63,6 +63,8 @@ type Params struct {
 	Grain     float64 `json:"grain,omitempty"`
 	FilmWidth float64 `json:"filmWidth,omitempty"`
 	Halation  float64 `json:"halation,omitempty"`
+	// Film names the library film the grain was taken from (display only).
+	Film string `json:"film,omitempty"`
 }
 
 const (
