@@ -567,15 +567,19 @@ func (s *server) params(presetID, pJSON string) (preset.Params, string, error) {
 	return p, label, nil
 }
 
-func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
+// renderBase is the Base and settings a render request names (photo, size,
+// source, geometry, the 100% window), as /api/render and the GPU preview
+// use them. On failure it has written the error.
+func (s *server) renderBase(w http.ResponseWriter, r *http.Request) (*render.Base, preset.Params, render.Compensation, bool) {
+	var comp render.Compensation
 	ph, err := s.photo(r)
 	if err != nil {
 		httpErr(w, 404, err)
-		return
+		return nil, preset.Params{}, comp, false
 	}
 	if ph.Unsupported != "" {
 		httpErr(w, 422, errors.New(ph.Unsupported))
-		return
+		return nil, preset.Params{}, comp, false
 	}
 	q := r.URL.Query()
 	width, _ := strconv.Atoi(q.Get("w"))
@@ -583,7 +587,7 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	p, _, err := s.params(q.Get("preset"), q.Get("p"))
 	if err != nil {
 		httpErr(w, 400, err)
-		return
+		return nil, p, comp, false
 	}
 	// src=camera: the camera's own JPEG (the "Original" tile), even when
 	// the accurate raw-based preview is in use.
@@ -593,9 +597,6 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	} else if irLayers(ph, p) {
 		mode = "rawlayers:" + p.Filter
 	}
-	s.sem <- struct{}{}
-	defer func() { <-s.sem }()
-	t0 := time.Now()
 	// nogeo=1: the whole (turned) frame, for the crop editor.
 	g := geometryOf(ph)
 	if q.Get("nogeo") == "1" {
@@ -607,7 +608,7 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 		full, err := s.fullGeo(ph, mode, g)
 		if err != nil {
 			httpErr(w, 500, err)
-			return
+			return nil, p, comp, false
 		}
 		zx, _ := strconv.ParseFloat(q.Get("zx"), 64)
 		zy, _ := strconv.ParseFloat(q.Get("zy"), 64)
@@ -618,16 +619,50 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 		y0 := max(0, min(full.H-zh, int(math.Round(zy*float64(full.H)))-zh/2))
 		b = render.NewBase(full.Window(x0, y0, zw, zh))
 		w.Header().Set("X-Full", fmt.Sprintf("%d,%d,%d,%d", full.W, full.H, x0, y0))
-	} else {
-		var err error
-		if b, err = s.baseAs(ph, width, mode, g); err != nil {
-			httpErr(w, 500, err)
-			return
-		}
+	} else if b, err = s.baseAs(ph, width, mode, g); err != nil {
+		httpErr(w, 500, err)
+		return nil, p, comp, false
 	}
-	comp := s.compensation(ph, q.Get("comp") == "1")
+	comp = s.compensation(ph, q.Get("comp") == "1")
 	if strings.HasPrefix(mode, "rawlayers:") {
 		comp = layerCompensation(comp)
+	}
+	return b, p, comp, true
+}
+
+// handleGPUBase sends the Base of a render request for the GPU preview
+// (render.GPUBase: half floats).
+func (s *server) handleGPUBase(w http.ResponseWriter, r *http.Request) {
+	s.sem <- struct{}{}
+	defer func() { <-s.sem }()
+	b, _, _, ok := s.renderBase(w, r)
+	if !ok {
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(b.GPUBase())
+}
+
+// handleGPURecipe sends the settings of a render request for the GPU
+// preview (render.NewGPURecipe).
+func (s *server) handleGPURecipe(w http.ResponseWriter, r *http.Request) {
+	b, p, comp, ok := s.renderBase(w, r)
+	if !ok {
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, render.NewGPURecipe(b, p, comp))
+}
+
+func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	s.sem <- struct{}{}
+	defer func() { <-s.sem }()
+	t0 := time.Now()
+	b, p, comp, ok := s.renderBase(w, r)
+	if !ok {
+		return
 	}
 	t1 := time.Now()
 	out := render.RenderOpt(b, p, comp, q.Get("fast") != "1")
@@ -1403,6 +1438,8 @@ func main() {
 	mux.HandleFunc("/api/presets", s.handlePresets)
 	mux.HandleFunc("/api/thumb", s.handleThumb)
 	mux.HandleFunc("/api/render", s.handleRender)
+	mux.HandleFunc("/api/gpu/base", s.handleGPUBase)
+	mux.HandleFunc("/api/gpu/recipe", s.handleGPURecipe)
 	mux.HandleFunc("/api/export", s.handleExport)
 	mux.HandleFunc("/api/films", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, render.Films()) })
 	mux.HandleFunc("/api/reveal", s.handleReveal)

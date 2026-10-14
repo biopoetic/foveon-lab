@@ -68,6 +68,9 @@ body.full #app{grid-template-rows:1fr}
 #view{display:flex;flex-direction:column;min-width:0;min-height:0}
 #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#0b0b0b;position:relative}
 #stage img{max-width:100%;max-height:100%;object-fit:contain}
+#bigGL{max-width:100%;max-height:100%;display:none}
+#stage.gpu #big{display:none}
+#stage.gpu #bigGL{display:block}
 #stage.zoomed #big{max-width:none;max-height:none;cursor:grab}
 #stage.zoomed #big.drag{cursor:grabbing}
 #bigOrig,#clipCv{position:absolute;display:none;pointer-events:none}
@@ -197,7 +200,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     </section>
     <section id="detail">
       <div id="view">
-        <div id="stage"><img id="big" alt=""><img id="bigOrig" alt=""><canvas id="clipCv"></canvas><div id="splitLine"></div><div id="stageTag"></div><div id="busy">rendering…</div><div id="cropBox"><i class="nw"></i><i class="ne"></i><i class="sw"></i><i class="se"></i></div><div id="cropBar">Straighten <input type="range" id="cropAng" min="-45" max="45" step="0.1" value="0"><input type="number" id="cropAngN" min="-45" max="45" step="0.1" value="0">° Aspect <select id="cropAsp"><option value="0">Free</option><option value="orig">Original</option><option value="1.5">3:2</option><option value="1.3333">4:3</option><option value="1">1:1</option><option value="1.7778">16:9</option><option value="0.8">4:5</option><option value="0.6667">2:3</option></select><button id="cropReset">Reset</button><button id="cropCancel">Cancel</button><button id="cropDone" class="primary">Done</button></div></div>
+        <div id="stage"><img id="big" alt=""><canvas id="bigGL"></canvas><img id="bigOrig" alt=""><canvas id="clipCv"></canvas><div id="splitLine"></div><div id="stageTag"></div><div id="busy">rendering…</div><div id="cropBox"><i class="nw"></i><i class="ne"></i><i class="sw"></i><i class="se"></i></div><div id="cropBar">Straighten <input type="range" id="cropAng" min="-45" max="45" step="0.1" value="0"><input type="number" id="cropAngN" min="-45" max="45" step="0.1" value="0">° Aspect <select id="cropAsp"><option value="0">Free</option><option value="orig">Original</option><option value="1.5">3:2</option><option value="1.3333">4:3</option><option value="1">1:1</option><option value="1.7778">16:9</option><option value="0.8">4:5</option><option value="0.6667">2:3</option></select><button id="cropReset">Reset</button><button id="cropCancel">Cancel</button><button id="cropDone" class="primary">Done</button></div></div>
         <div id="nav">
           <button id="back" title="Esc">← Grid</button>
           <button id="prev" title="←">‹</button>
@@ -363,6 +366,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
   </div>
 </div>
 <div id="toast"></div>
+<script src="/gpu.js"></script>
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
@@ -1011,6 +1015,7 @@ let renderSeq = 0, renderTimer = 0;
 // 350 ms after the last change comes the full render.
 const DRAG = {last: 0, busy: false, pending: false, final: 0};
 function scheduleRender(){
+  if (gpuUsable()){ clearTimeout(renderTimer); renderTimer = setTimeout(gpuNow, 0); return; }
   const now = performance.now(), dragging = now - DRAG.last < 400 && !ZOOM.on && !$("#big").hidden;
   DRAG.last = now;
   clearTimeout(renderTimer); clearTimeout(DRAG.final);
@@ -1095,7 +1100,45 @@ function zoomInit(){
   });
 }
 
-function renderBig(showOrig){
+// ---------- GPU preview (gpu.js) ----------
+// In plain viewing the photo is drawn on the GPU from the Base and a recipe
+// of the settings; zoom, crop, the camera original and settings the recipe
+// sends back to the CPU (halation) use the server render.
+const GPUV = {ok: null, busy: false, pending: false};
+function gpuUsable(showOrig){
+  if (showOrig || ZOOM.on || CROP.on || store.get("gpu", true) === false) return false;
+  if (GPUV.ok === null){ try { GPUV.ok = GPU.init($("#bigGL")); } catch (e) { console.warn("GPU preview off:", e); GPUV.ok = false; } }
+  return GPUV.ok;
+}
+function gpuOff(){ $("#stage").classList.remove("gpu"); }
+// renderGPU draws the settings of render URL url; false: use the server.
+async function renderGPU(url, seq){
+  const query = url.split("?")[1];
+  // The Base depends on everything but the settings — except an IR look,
+  // which develops other layers.
+  const p = new URLSearchParams(query), f = JSON.parse(p.get("p") || "{}").filter || "";
+  const key = ["id", "w", "comp", "m", "g", "src"].map(k => k + "=" + (p.get(k) || "")).join("&") + (f.startsWith("ir-") ? "&ir=" + f : "");
+  try {
+    if (GPU.base?.key !== key) await GPU.loadBase(query, key);
+    const r = await (await fetch("/api/gpu/recipe?" + query)).json();
+    if (seq !== renderSeq) return true;
+    if (r.cpu) return false;
+    GPU.draw(r);
+    $("#stage").classList.add("gpu");
+    // The histogram reads the image back from the GPU (~50 ms): not on
+    // every frame of a drag, once it settles.
+    clearTimeout(GPUV.hist); GPUV.hist = setTimeout(afterBig, 250);
+    return true;
+  } catch (e) { console.warn("GPU render failed:", e); return false; }
+}
+// gpuNow draws the current settings, at most one at a time (the latest wins).
+async function gpuNow(){
+  if (GPUV.busy){ GPUV.pending = true; return; }
+  GPUV.busy = true; GPUV.pending = false;
+  try { await renderBig(); } finally { GPUV.busy = false; if (GPUV.pending) gpuNow(); }
+}
+
+async function renderBig(showOrig){
   if (!S.photo) return;
   const seq = ++renderSeq;
   const p = current();
@@ -1105,7 +1148,12 @@ function renderBig(showOrig){
   else url = renderURL({w: bigW(), params: S.params, big: true});
   VIEW.tag = showOrig ? "CAMERA ORIGINAL" : (dirty() ? "tuned" : (p ? "preset" : ""));
   setTag();
-  if (ZOOM.on && !showOrig){ renderZoom(url, seq); return; }
+  if (ZOOM.on && !showOrig){ gpuOff(); renderZoom(url, seq); return; }
+  if (gpuUsable(showOrig) && S.params){
+    const gurl = renderURL({w: bigW(), params: S.params, big: true});
+    if (await renderGPU(gurl, seq)) return;
+  }
+  gpuOff();
   const img = new Image();
   const busy = setTimeout(() => $("#busy").style.display = "block", 150);
   img.onload = () => { clearTimeout(busy); $("#busy").style.display = "none"; if (seq === renderSeq){ $("#big").src = img.src; $("#big").onload = afterBig; } };
@@ -1360,14 +1408,16 @@ function batchClose(){
 const VIEW = {split: store.get("split", false), clip: store.get("clip", false), splitX: 0.5, tag: ""};
 
 // Places an overlay exactly over the displayed photo (#big is centred in #stage).
+// shown is the element showing the photo: the GPU canvas or #big.
+const shown = () => $("#stage").classList.contains("gpu") ? $("#bigGL") : $("#big");
 function fitOver(el){
-  const b = $("#big");
+  const b = shown();
   el.style.left = b.offsetLeft + "px"; el.style.top = b.offsetTop + "px";
   el.style.width = b.clientWidth + "px"; el.style.height = b.clientHeight + "px";
 }
 
 function layoutSplit(){
-  const o = $("#bigOrig"), b = $("#big"), line = $("#splitLine");
+  const o = $("#bigOrig"), b = shown(), line = $("#splitLine");
   fitOver(o);
   o.style.clipPath = `inset(0 ${(1 - VIEW.splitX) * 100}% 0 0)`;
   line.style.left = (b.offsetLeft + b.clientWidth * VIEW.splitX - 1) + "px";
@@ -1394,9 +1444,9 @@ function setTag(){
 
 // Histogram + clipping, measured on the rendered image itself.
 function afterBig(){
-  const b = $("#big");
-  if (!b.naturalWidth) return;
-  const w = Math.min(b.naturalWidth, 800), h = Math.round(b.naturalHeight * w / b.naturalWidth);
+  const b = shown(), bw = b.naturalWidth ?? b.width, bh = b.naturalHeight ?? b.height;
+  if (!bw) return;
+  const w = Math.min(bw, 800), h = Math.round(bh * w / bw);
   const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
   const cx = cv.getContext("2d", {willReadFrequently: true});
   cx.drawImage(b, 0, 0, w, h);

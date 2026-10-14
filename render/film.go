@@ -47,7 +47,6 @@ type filmOp struct {
 	mono   bool
 	halo   []float32 // the spread light, nil = none
 	haloK  float32
-	seed   uint64
 	stride int
 }
 
@@ -64,7 +63,7 @@ func (b *Base) newFilm(p preset.Params, mono bool) *filmOp {
 	if p.Grain <= 0 && p.Halation <= 0 {
 		return nil
 	}
-	f := &filmOp{mono: mono, seed: 0x9e3779b97f4a7c15, stride: b.W}
+	f := &filmOp{mono: mono, stride: b.W}
 	pt := b.pitch(p)
 	if p.Grain > 0 {
 		f.sigma = float32(p.Grain / 1000 * math.Sqrt(selwynArea) / pt)
@@ -116,16 +115,24 @@ func (f *filmOp) addHalo(i int, r, g, bl float32) (float32, float32, float32) {
 }
 
 // gauss is a deterministic standard normal for (pixel, channel): the sum
-// of four uniforms from one hash, rescaled (close enough for grain).
+// of four 16-bit uniforms from two 32-bit hashes (lowbias32), rescaled
+// (close enough for grain). 32-bit so the GPU preview (web/gpu.js) draws
+// exactly the same grain.
 func (f *filmOp) gauss(i, c int) float32 {
-	z := f.seed ^ uint64(i)*0xbf58476d1ce4e5b9 ^ uint64(c+1)*0x94d049bb133111eb
-	z ^= z >> 31
-	z *= 0x7fb5d329728ea185
-	z ^= z >> 27
-	z *= 0x81dadef4bc2dd44d
-	z ^= z >> 33
-	s := float32(z&0xffff) + float32(z>>16&0xffff) + float32(z>>32&0xffff) + float32(z>>48)
+	a := hash32(uint32(i)*3 + uint32(c) + 0x9e3779b9)
+	b := hash32(a ^ 0x85ebca6b)
+	s := float32(a&0xffff) + float32(a>>16) + float32(b&0xffff) + float32(b>>16)
 	return (s/65535 - 2) * 1.7320508 // variance of 4 uniforms is 1/3
+}
+
+// hash32 is lowbias32 (Chris Wellons): a 32-bit integer hash.
+func hash32(x uint32) uint32 {
+	x ^= x >> 16
+	x *= 0x7feb352d
+	x ^= x >> 15
+	x *= 0x846ca68b
+	x ^= x >> 16
+	return x
 }
 
 // grain applies the density noise to an output-linear pixel.
