@@ -13,6 +13,7 @@ package render
 import (
 	_ "embed"
 	"encoding/json"
+	"strings"
 )
 
 //go:embed layerfilters.json
@@ -32,6 +33,9 @@ func init() {
 func lensFilter(sensor, name string) *[9]float64 {
 	if name == "" {
 		return nil
+	}
+	if strings.HasPrefix(name, "pad:") {
+		return padFilter(sensor, name)
 	}
 	g, ok := layerFilters[sensor]
 	if !ok {

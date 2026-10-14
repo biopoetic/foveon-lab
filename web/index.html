@@ -93,6 +93,7 @@ button.on{border-color:var(--accent);color:var(--accent)}
 #nav .name{flex:1;text-align:center;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #panel{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:10px 12px}
 #panel h3{margin:4px 0 2px;font-size:13px}
+#pad{width:100%;height:auto;aspect-ratio:300/170;border-radius:6px;cursor:crosshair;touch-action:none;display:block;margin-top:6px}
 #panel .subh{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin:12px 0 6px;padding-top:8px;border-top:1px solid var(--line)}
 #panel .src{color:var(--dim);font-size:12px;margin-bottom:8px;word-break:break-all}
 .row{margin:9px 0}
@@ -261,7 +262,12 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <div class="src" id="filmLink" style="display:none"></div>
         </div>
         <div class="row" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky."><div class="lab">Filter on the lens <span class="dim">(Wratten)</span></div>
-          <select id="lensSel" style="width:100%"><option value="">None</option><option value="yellow">Yellow (Wratten 8)</option><option value="deepyellow">Deep yellow (Wratten 15)</option><option value="orange">Orange (Wratten 21)</option><option value="red">Red (Wratten 25)</option><option value="deepred">Deep red (Wratten 29)</option><option value="yellowgreen">Yellow-green (Wratten 11)</option><option value="green">Green (Wratten 58)</option><option value="blue">Blue (Wratten 47)</option><option value="warm">Warming (81A)</option><option value="cool">Cooling (82A)</option></select>
+          <select id="lensSel" style="width:100%"><option value="">None</option><option value="pad" disabled>Custom (filter pad)</option><option value="yellow">Yellow (Wratten 8)</option><option value="deepyellow">Deep yellow (Wratten 15)</option><option value="orange">Orange (Wratten 21)</option><option value="red">Red (Wratten 25)</option><option value="deepred">Deep red (Wratten 29)</option><option value="yellowgreen">Yellow-green (Wratten 11)</option><option value="green">Green (Wratten 58)</option><option value="blue">Blue (Wratten 47)</option><option value="warm">Warming (81A)</option><option value="cool">Cooling (82A)</option></select>
+          <div id="padWrap" title="The filter pad: every point is a real filter, painted in its own colour. Left to right: where it starts passing light (its lower edge); top to bottom: where it stops (its upper edge). Drag to choose; the Wratten filters are marked. Computed from the sensor's physics, like the Wratten list.">
+            <canvas id="pad" width="300" height="170"></canvas>
+            <div class="lab" style="margin-top:4px"><span>Filter strength</span><b id="padSVal"></b></div>
+            <input type="range" id="padS" min="0" max="1" step="0.01" value="1">
+          </div>
         </div>
         <div class="row"><div class="lab">Film format <span class="dim" title="Foveon Lab only. The film frame the grain and halation are sized on: a larger format shows the same film finer.">(grain, halation)</span></div>
           <select id="filmWidth" style="width:100%">
@@ -758,6 +764,7 @@ function buildSliders(){
   $("#rotL").onclick = () => setRot(rotOf(S.photo.id) + 90);
   $("#rotR").onclick = () => setRot(rotOf(S.photo.id) - 90);
   $("#rot0").onclick = () => setRot(0);
+  padInit();
   $("#lensSel").onchange = () => {
     S.params.filter = $("#lensSel").value;
     [S.params.layerBottom, S.params.layerMiddle, S.params.layerTop] = [0, 0, 0];
@@ -824,6 +831,91 @@ function pushTime(d, push){
 function fmtMin(t){ const m = Math.floor(t + 1e-6), s = Math.round((t - m) * 60); return s ? `${m}:${String(s).padStart(2, "0")} min` : `${m} min`; }
 // syncDev shows the development controls of a film with a characteristic
 // curve: its data sheet's developers, time and push.
+// The filter pad (render/spectralfilter.go): a filter passes light from
+// its lower edge a to its upper edge b (nm; a = 380 none, b = 720 none),
+// strength s. Each point is painted in the filter's own colour: its
+// transmission under 5500 K daylight seen by the CIE observer.
+const PAD = {a0: 380, a1: 700, b0: 400, b1: 720, edge: 10};
+const PAD_WRATTEN = {yellow: [495, 720], deepyellow: [530, 720], orange: [555, 720], red: [595, 720], deepred: [615, 720], green: [490, 585], blue: [380, 505], yellowgreen: [480, 590]};
+const PAD_LABEL = {yellow: "8", deepyellow: "15", orange: "21", red: "25", deepred: "29", green: "58", blue: "47", yellowgreen: "11"};
+function padT(l, a, b, s){
+  let p = 1;
+  if (a > PAD.a0) p *= 1 / (1 + Math.exp(-(l - a) / PAD.edge));
+  if (b < PAD.b1) p *= 1 - 1 / (1 + Math.exp(-(l - b) / PAD.edge));
+  return 1 - s * (1 - p);
+}
+function cieG(l, mu, s1, s2){ const t = (l - mu) / (l < mu ? s1 : s2); return Math.exp(-0.5 * t * t); }
+const PAD_SPEC = (() => {
+  const out = [];
+  for (let l = 380; l <= 720; l += 5){
+    const lm = l * 1e-9, E = 1 / (Math.pow(lm, 5) * (Math.exp(1.4388e-2 / (lm * 5500)) - 1));
+    out.push([l, E * (1.056*cieG(l,599.8,37.9,31.0) + 0.362*cieG(l,442.0,16.0,26.7) - 0.065*cieG(l,501.1,20.4,26.2)),
+      E * (0.821*cieG(l,568.8,46.9,40.5) + 0.286*cieG(l,530.9,16.3,31.1)), E * (1.217*cieG(l,437.0,11.8,36.0) + 0.681*cieG(l,459.0,26.0,13.8))]);
+  }
+  return out;
+})();
+function padColour(a, b, s){
+  const sum = T => PAD_SPEC.reduce((c, [l, X, Y, Z]) => { const t = T(l); c[0] += X*t; c[1] += Y*t; c[2] += Z*t; return c; }, [0, 0, 0]);
+  const toRGB = ([X, Y, Z]) => [3.2406*X - 1.5372*Y - 0.4986*Z, -0.9689*X + 1.8758*Y + 0.0415*Z, 0.0557*X - 0.2040*Y + 1.0570*Z];
+  const w = toRGB(sum(() => 1)), c = toRGB(sum(l => padT(l, a, b, s)));
+  const enc = v => { v = Math.max(0, Math.min(1, v)); return 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055); };
+  return c.map((v, k) => enc(v / w[k]));
+}
+const padX = a => (a - PAD.a0) / (PAD.a1 - PAD.a0), padY = b => (PAD.b1 - b) / (PAD.b1 - PAD.b0);
+let padBg = null;
+function padDraw(){
+  const cv = $("#pad"); if (!cv) return;
+  const ctx = cv.getContext("2d"), W = cv.width, H = cv.height;
+  if (!padBg){
+    padBg = ctx.createImageData(W, H);
+    const step = 4;
+    for (let y = 0; y < H; y += step) for (let x = 0; x < W; x += step){
+      const a = PAD.a0 + (x + step / 2) / W * (PAD.a1 - PAD.a0), b = PAD.b1 - (y + step / 2) / H * (PAD.b1 - PAD.b0);
+      const c = b > a + 20 ? padColour(a, b, 1) : [40, 40, 40];
+      for (let yy = y; yy < Math.min(H, y + step); yy++) for (let xx = x; xx < Math.min(W, x + step); xx++){
+        const i = (yy * W + xx) * 4; padBg.data[i] = c[0]; padBg.data[i+1] = c[1]; padBg.data[i+2] = c[2]; padBg.data[i+3] = 255;
+      }
+    }
+  }
+  ctx.putImageData(padBg, 0, 0);
+  ctx.font = "10px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const [k, [a, b]] of Object.entries(PAD_WRATTEN)){
+    const x = Math.max(8, Math.min(W - 8, padX(a) * W)), y = Math.max(8, Math.min(H - 8, padY(b) * H));
+    ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.fillText(PAD_LABEL[k], x, y);
+  }
+  const f = padOf(S.params?.filter);
+  if (f){
+    const x = padX(f[0]) * W, y = Math.max(5, padY(f[1]) * H);
+    ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.stroke();
+    ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, 11, 0, 7); ctx.stroke();
+  }
+}
+// padOf is the pad position [a, b, s] of a filter param, or null.
+function padOf(f){
+  if (!f) return null;
+  if (f.startsWith("pad:")) { const v = f.slice(4).split(",").map(Number); return v.length === 3 && v.every(isFinite) ? v : null; }
+  return PAD_WRATTEN[f] ? [...PAD_WRATTEN[f], 1] : null;
+}
+function padSet(a, b, s){
+  a = Math.round(Math.max(PAD.a0, Math.min(PAD.a1, a))); b = Math.round(Math.max(PAD.b0, Math.min(PAD.b1, b)));
+  if (b < a + 25) b = Math.min(PAD.b1, a + 25);
+  S.params.filter = (a <= PAD.a0 && b >= PAD.b1) || s <= 0 ? "" : `pad:${a},${b},${+s.toFixed(2)}`;
+  [S.params.layerBottom, S.params.layerMiddle, S.params.layerTop] = [0, 0, 0];
+  syncSliders(); scheduleRender();
+}
+function padInit(){
+  const cv = $("#pad"); if (!cv) return;
+  const at = e => { const r = cv.getBoundingClientRect(); return [PAD.a0 + (e.clientX - r.left) / r.width * (PAD.a1 - PAD.a0), PAD.b1 - (e.clientY - r.top) / r.height * (PAD.b1 - PAD.b0)]; };
+  let drag = false;
+  const move = e => { const [a, b] = at(e); padSet(a, b, padOf(S.params.filter)?.[2] ?? 1); };
+  cv.onpointerdown = e => { drag = true; cv.setPointerCapture(e.pointerId); move(e); };
+  cv.onpointermove = e => { if (drag) move(e); };
+  cv.onpointerup = cv.onpointercancel = () => { drag = false; };
+  $("#padS").oninput = () => { const f = padOf(S.params.filter); if (f) padSet(f[0], f[1], +$("#padS").value); };
+  $("#padS").onchange = e => e.target.blur();
+  padDraw();
+}
 function syncDev(f){
   const c = f && f.curve;
   $("#filmDev").style.display = c ? "" : "none";
@@ -858,8 +950,11 @@ function syncSliders(){
   const lf = [S.params.layerBottom || 0, S.params.layerMiddle || 0, S.params.layerTop || 0];
   const zero = lf.every(x => Math.abs(x) < 1e-9);
   const mix = Object.keys(LAYER_MIX).find(k => LAYER_MIX[k].every((x, i) => Math.abs(x - lf[i]) < 1e-9));
-  const colour = COLOUR_FILTERS.has(S.params.filter);
-  $("#lensSel").value = colour ? S.params.filter : "";
+  const isPad = (S.params.filter || "").startsWith("pad:"), colour = COLOUR_FILTERS.has(S.params.filter) || isPad;
+  $("#lensSel").value = isPad ? "pad" : colour ? S.params.filter : "";
+  const pf = padOf(S.params.filter);
+  $("#padS").value = pf ? pf[2] : 1; $("#padSVal").textContent = pf ? Math.round(pf[2] * 100) + "%" : "–";
+  padDraw();
   $("#layerPreset").value = zero && (!S.params.filter || colour) ? "" : S.params.filter && !colour && zero ? "lens:" + S.params.filter : !S.params.filter && mix ? "mix:" + mix : "custom";
   $("#filmWidth").value = String(S.params.filmWidth || 0);
   syncFilm();
