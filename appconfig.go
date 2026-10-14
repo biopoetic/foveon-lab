@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,6 +24,8 @@ type appConfig struct {
 	AI *aiSettings `json:"ai,omitempty"`
 	// Accurate: raw-based previews where measured to help (nil = on).
 	Accurate *bool `json:"accurate,omitempty"`
+	// Favorites: the photos marked with a star (file paths).
+	Favorites []string `json:"favorites,omitempty"`
 }
 
 func configPath() string {
@@ -70,14 +73,72 @@ func (s *server) setPhotos(roots []string, all bool) {
 		ps = []*Photo{} // JSON [] rather than null
 	}
 	m := make(map[string]*Photo, len(ps))
+	favs := map[string]bool{}
+	if c, ok := loadConfig(); ok {
+		for _, f := range c.Favorites {
+			favs[f] = true
+		}
+	}
 	for _, p := range ps {
 		m[p.ID] = p
+		p.Favorite = favs[p.path]
 	}
 	s.photoMu.Lock()
 	s.photos, s.byID, s.photoRoots, s.allImages = ps, m, roots, all
 	s.photoMu.Unlock()
 	log.Printf("found %d photos in %v (%s)", len(ps), time.Since(start).Round(time.Millisecond), strings.Join(roots, "; "))
 }
+
+// handlePhotos lists the photos (under the lock: Favorite can change).
+func (s *server) handlePhotos(w http.ResponseWriter, r *http.Request) {
+	s.photoMu.RLock()
+	defer s.photoMu.RUnlock()
+	writeJSON(w, s.photos)
+}
+
+// handleFavorite stars or unstars a photo (POST {"id", "on"}) and remembers
+// it in the app's config, by file path, across rescans and restarts.
+func (s *server) handleFavorite(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID string `json:"id"`
+		On bool   `json:"on"`
+	}
+	if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&req) != nil {
+		httpErr(w, 400, errors.New("POST {id, on}"))
+		return
+	}
+	s.photoMu.Lock()
+	ph := s.byID[req.ID]
+	if ph == nil {
+		s.photoMu.Unlock()
+		httpErr(w, 404, errors.New("unknown photo"))
+		return
+	}
+	ph.Favorite = req.On
+	path := ph.path
+	s.photoMu.Unlock()
+	cfgMu.Lock()
+	defer cfgMu.Unlock()
+	c, _ := loadConfig()
+	var out []string
+	for _, f := range c.Favorites {
+		if f != path {
+			out = append(out, f)
+		}
+	}
+	if req.On {
+		out = append(out, path)
+	}
+	c.Favorites = out
+	if err := saveConfig(c); err != nil {
+		httpErr(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]bool{"favorite": req.On})
+}
+
+// cfgMu serialises read-modify-write of the config file.
+var cfgMu sync.Mutex
 
 func (s *server) lookup(id string) *Photo {
 	s.photoMu.RLock()

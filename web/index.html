@@ -36,6 +36,11 @@ aside{border-right:1px solid var(--line);overflow:auto;background:var(--panel)}
 .ph.sel{background:#3a2f18}
 .ph img{width:72px;height:48px;object-fit:cover;border-radius:3px;background:#000;flex:none}
 .ph small{display:block;color:var(--dim)}
+.ph .star{margin-left:auto;flex:none;color:#555;font-size:18px;line-height:1;padding:2px 4px;border-radius:3px}
+.ph .star:hover{color:#bbb;background:#2c2c2c}
+.ph.fav .star{color:#f0b429}
+body.favonly .ph:not(.fav){display:none}
+body.favonly .fhidden{display:none}
 main{overflow:auto;position:relative}
 #bar{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:2}
 .chips{display:flex;flex-wrap:wrap;gap:4px}
@@ -141,6 +146,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <span id="updateBox" style="display:none"></span>
     <label class="chk" id="accLab" title="Accurate previews: start from the raw data mapped onto SPP's own neutral rendering instead of the camera's JPEG (measured ~3x closer to SPP on SD1 Merrill files; the camera JPEG carries the in-camera colour mode). The first view of a photo decodes its raw data in the background: a quick version in ~2-5 s, then the full, denoised one (~10-30 s)."><input type="checkbox" id="accurate"> Accurate</label>
     <label class="chk" title="Also list ordinary JPEG, TIFF and PNG files (e.g. your SPP exports or other cameras). Presets only imitate the look on them — they are not Foveon raw data and SPP can't open them."><input type="checkbox" id="allImages"> All images</label>
+    <label class="chk" title="Show only the photos you starred (☆ next to each photo, or the F key)"><input type="checkbox" id="favOnly"> ★ Favorites</label>
     <button id="folders" title="Choose where your X3F photos and SPP preset files are">Folders…</button>
     <button id="quit" title="Stop Foveon Lab">Quit</button>
   </header>
@@ -328,10 +334,40 @@ async function loadPhotos(){
     const el = document.createElement("div");
     el.className = "ph"; el.dataset.id = p.id;
     const sub = p.unsupported ? "not supported yet" : [p.lowRes && "low-res preview", p.rawDecoded && "raw-decoded", p.info.ISO && "ISO "+p.info.ISO, p.info.SH_DESC, p.info.AP_DESC && "f/"+p.info.AP_DESC].filter(Boolean).join(" · ");
-    el.innerHTML = `<img loading="lazy" src="/api/thumb?id=${p.id}" onerror="this.style.visibility='hidden'"><div>${esc(p.name)}<small>${esc(sub)}</small></div>`;
+    el.innerHTML = `<img loading="lazy" src="/api/thumb?id=${p.id}" onerror="this.style.visibility='hidden'"><div>${esc(p.name)}<small>${esc(sub)}</small></div><span class="star" title="Favorite (F)">${p.favorite ? "★" : "☆"}</span>`;
+    if (p.favorite) el.classList.add("fav");
+    el.querySelector(".star").onclick = ev => { ev.stopPropagation(); toggleFavorite(p.id); };
     if (p.unsupported) el.style.opacity = .55;
     el.onclick = () => selectPhoto(p.id);
     group.appendChild(el);
+  }
+  applyFavFilter();
+}
+
+// toggleFavorite stars or unstars a photo (remembered by the app).
+async function toggleFavorite(id){
+  const p = S.photos.find(x => x.id === id);
+  if (!p) return;
+  const on = !p.favorite;
+  try {
+    const r = await fetch("/api/favorite", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id, on})});
+    if (!r.ok) throw new Error(await r.text());
+  } catch (e) { alert("Could not save the favorite: " + e.message); return; }
+  p.favorite = on;
+  const el = document.querySelector(`.ph[data-id="${id}"]`);
+  if (el){ el.classList.toggle("fav", on); el.querySelector(".star").textContent = on ? "★" : "☆"; }
+  applyFavFilter();
+}
+
+// applyFavFilter hides folders without a starred photo while "★ Favorites"
+// is on (the photos themselves are hidden by CSS).
+function applyFavFilter(){
+  const on = $("#favOnly").checked;
+  document.body.classList.toggle("favonly", on);
+  for (const g of document.querySelectorAll("#photos .fgroup")){
+    const empty = on && !g.querySelector(".ph.fav");
+    g.classList.toggle("fhidden", empty);
+    g.previousElementSibling?.classList.toggle("fhidden", empty);
   }
 }
 
@@ -1270,6 +1306,7 @@ function bind(){
     }
     // ↑/↓ = previous/next photo, ←/→ = previous/next preset (in the grid
     // ←/→ opens the editor on the first/last preset).
+    if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && S.photo){ e.preventDefault(); toggleFavorite(S.photo.id); return; }
     if (e.key === "ArrowDown" || e.key === "PageDown"){ e.preventDefault(); stepPhoto(1); }
     else if (e.key === "ArrowUp" || e.key === "PageUp"){ e.preventDefault(); stepPhoto(-1); }
     else if (e.key === "ArrowRight"){ e.preventDefault(); stepPreset(1); }
@@ -1288,6 +1325,9 @@ function bind(){
 (async function init(){
   bind();
   await Promise.all([loadPhotos(), loadPresets(false), aiInit(), sppInit(), capsInit(), allImagesInit(), accInit()]);
+  $("#favOnly").checked = !!store.get("favOnly", false);
+  $("#favOnly").onchange = e => { store.set("favOnly", e.target.checked); applyFavFilter(); };
+  applyFavFilter();
   updateInit();
   setInterval(updateInit, 6 * 3600 * 1000);
   // Deep link: ?photo=<id or file name>&groups=SLIDE,BW&q=velvia&tile=400

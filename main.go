@@ -61,8 +61,10 @@ type Photo struct {
 	// RawDecoded: shown from its raw data (natively, else via x3f_extract;
 	// full resolution, no in-camera styling) because the file has no
 	// full-size preview.
-	RawDecoded bool              `json:"rawDecoded,omitempty"`
-	Info       map[string]string `json:"info"`
+	RawDecoded bool `json:"rawDecoded,omitempty"`
+	// Favorite: starred by the user (remembered in the app's config).
+	Favorite bool              `json:"favorite,omitempty"`
+	Info     map[string]string `json:"info"`
 	// Accurate: an accurate (raw-based) preview exists for this camera.
 	Accurate bool `json:"accurate,omitempty"`
 
@@ -1254,7 +1256,8 @@ func main() {
 	mux := http.NewServeMux()
 	sub, _ := fs.Sub(webFS, "web")
 	mux.Handle("/", http.FileServer(http.FS(sub)))
-	mux.HandleFunc("/api/photos", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.photoList()) })
+	mux.HandleFunc("/api/photos", s.handlePhotos)
+	mux.HandleFunc("/api/favorite", s.handleFavorite)
 	mux.HandleFunc("/api/folders", s.handleFolders)
 	mux.HandleFunc("/api/allimages", s.handleAllImages)
 	mux.HandleFunc("/api/looks", s.handleLooks)
