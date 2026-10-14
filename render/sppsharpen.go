@@ -7,8 +7,8 @@ package render
 // every band within ~5% of SPP's, from 2.9x short in the finest), falling
 // with ISO as SPP's noise reduction takes the fine detail away (the
 // SDIM0358-0363 ISO 200-6400 series, each fitted on its own). SPP sharpens
-// the SD15 far less (SDIM1240-1245, ISO 100-3200: 0.3 at ISO 100, none from
-// ISO 400; unsharpened we already match it). Generations not measured yet
+// the SD15 far less (SDIM1240-1245, ISO 100-3200: 0.2-0.7, fitted after
+// the black-level fix). Generations not measured yet
 // (SD9/SD10, Quattro) get none.
 // A reduced view gets the full-size filter's gain at its own Nyquist
 // frequency, as a sigma-1 mask at that size.
@@ -24,7 +24,7 @@ const sppSharpSigma = 1.0
 // ISO 100 = 0 … 6400 = 6).
 var sppSharpByISO = map[string][]float64{
 	"Merrill": {2.7, 2.5, 2.4, 1.4, 1.0, 0.8, 0.5},
-	"TRUEII":  {0.3, 0.2, 0, 0, 0, 0, 0},
+	"TRUEII":  {0.3, 0.2, 0.7, 0.5, 0.4, 0.2, 0.2},
 }
 
 // sppFullAmount is the full-size amount for a photo of sensor at iso (0 =
