@@ -88,7 +88,7 @@ func RawBaseFor(family string) *RawCorrection {
 // beat the camera JPEG at base ISO (nil if none was fitted).
 func RawBaseFitted(family string) *RawCorrection {
 	c := rawBases[family]
-	if c == nil || c.Photos < 3 {
+	if c == nil || (c.Photos < 3 && c.TasteFrom == "") {
 		return nil
 	}
 	return c

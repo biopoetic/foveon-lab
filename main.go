@@ -363,6 +363,11 @@ func decodePreview(ph *Photo) (image.Image, error) {
 			if goRaw {
 				var l *render.Linear
 				if l, err = goLinear(ph, 0, defaultNR); err == nil {
+					// SD9/SD10: no SPP pairs of their own yet; their base
+					// is the SD1's taste (render/rawbase.json, tasteFrom).
+					if c := render.RawBaseFor(calibGroup(ph)); c != nil {
+						c.Apply(l)
+					}
 					img = linearToSRGB16(l)
 				}
 			} else {
