@@ -223,8 +223,10 @@ Karlsson, Mark Roden; BSD-style). The knowledge of the X3F format is theirs. The
 notices in `third_party/x3fuse-core/` apply to these files and ship with every release.
 
 **Foveon Lab's own work** — everything done with the image once it is read:
-- the Foveon noise reduction (`denoise.go`), built on the three layers' different noise; on
-  Photography Blog's DP2 Merrill ISO series it beats SPP's own (ISO 6400: dE 6.6 vs 18.1);
+- the Foveon noise reduction (`denoise.go`), built on the three layers' different noise and a
+  noise model measured on each photo. (An earlier claim that it beat SPP's own, ISO 6400 dE 6.6
+  vs 18.1, rested on a measure that rewards smoothing; side by side, SPP keeps more texture and
+  sharpens. Withdrawn 2026-10-14 until a fair comparison is done.);
 - the X3F encoder (`encode.go`), which writes files back byte-identically, and the recovery of
   damaged files;
 - a floating-point pipeline that keeps the noise below black, and neutral clipped highlights;
