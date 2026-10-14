@@ -381,11 +381,44 @@ func WriteCameraDNG(out io.Writer, pix []float32, w, h int, gain [3]float64, cc 
 		baselineExposure: math.Log2(k), profile: name,
 	}
 	if prof != nil {
-		for _, v := range prof.Tone {
+		// With a profile the grey's brightness goes into its tone curve
+		// instead of BaselineExposure: RawTherapee (5.13) ignores
+		// BaselineExposure, so a Merrill DNG came out 1.7 stops dark there
+		// (dE2000 vs SPP 23 instead of 5, 2026-10-14). Scaling the curve's
+		// input by k is what a reader applying BaselineExposure then the
+		// curve does, so readers that honour it see the same image.
+		for _, v := range bakeExposure(prof.Tone, k) {
 			meta.tone = append(meta.tone, float32(v))
 		}
+		meta.baselineExposure = 0
 	}
 	return writeDNG(out, w, h, rowsPerStrip, strips, meta)
+}
+
+// bakeExposure turns tone curve pairs (x0, y0, x1, y1, …; (0,0) to (1,1))
+// into the curve of x -> tone(min(1, k·x)).
+func bakeExposure(tone []float64, k float64) []float64 {
+	at := func(x float64) float64 {
+		for i := 2; i < len(tone); i += 2 {
+			if x <= tone[i] {
+				x0, y0, x1, y1 := tone[i-2], tone[i-1], tone[i], tone[i+1]
+				if x1 <= x0 {
+					return y1
+				}
+				return y0 + (y1-y0)*(x-x0)/(x1-x0)
+			}
+		}
+		return tone[len(tone)-1]
+	}
+	var out []float64
+	for i := 0; i+1 < len(tone); i += 2 {
+		x := tone[i] / k
+		if x >= 1 {
+			break
+		}
+		out = append(out, x, tone[i+1])
+	}
+	return append(out, 1, at(math.Min(1, k)))
 }
 
 func mul33(a, b [9]float64) (c [9]float64) {

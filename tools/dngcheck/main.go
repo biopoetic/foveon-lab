@@ -14,9 +14,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	_ "golang.org/x/image/tiff"
+	"image"
+	"image/jpeg"
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -50,7 +54,11 @@ func check(path, export string) error {
 		return err
 	}
 	x3f.FixBadPixels(raw, c)
+	// As the app develops (camfread.go developWB): the camera's Auto WB.
 	wb := c.CameraWB(strings.TrimSpace(f.Props["WB_DESC"]))
+	if c.Props["WhiteBalanceGains"]["Auto"] != "" {
+		wb = "Auto"
+	}
 	img, err := x3f.CameraLinear(raw, c, x3f.NewSpatialGain(c, f.Props, wb), wb)
 	if err != nil {
 		return err
@@ -67,6 +75,13 @@ func check(path, export string) error {
 	var buf bytes.Buffer
 	if err := render.WriteCameraDNG(&buf, img.Pix, img.W, img.H, gain, cc, base.DNGProfile("check"), "SIGMA", "x", "dngcheck"); err != nil {
 		return err
+	}
+	// DNGCHECK_SAVE=dir keeps the DNG, to develop it in a real raw editor.
+	if d := os.Getenv("DNGCHECK_SAVE"); d != "" {
+		name := path[strings.LastIndexAny(path, `/\`)+1:]
+		if err := os.WriteFile(filepath.Join(d, strings.TrimSuffix(name, filepath.Ext(name))+".dng"), buf.Bytes(), 0o644); err != nil {
+			return err
+		}
 	}
 	spp, err := calib.LoadLinear(export)
 	if err != nil {
@@ -85,6 +100,31 @@ func check(path, export string) error {
 	d, _ := calib.DeltaEStats(dng, app)
 	fmt.Printf("%-28s %-8s dE2000 vs SPP: DNG as a reader develops it %.2f | app raw base %.2f | DNG vs app %.2f\n",
 		path[strings.LastIndexAny(path, `/\`)+1:], group, a, b, d)
+	// DNGCHECK_RENDERED=dir: the same DNG developed by a real raw editor
+	// (e.g. rawtherapee-cli, embedded profile, no sharpening/NR), as
+	// dir/<name>.tif.
+	if dir := os.Getenv("DNGCHECK_RENDERED"); dir != "" {
+		name := path[strings.LastIndexAny(path, `/\`)+1:]
+		fh, err := os.Open(filepath.Join(dir, strings.TrimSuffix(name, filepath.Ext(name))+".tif"))
+		if err != nil {
+			return err
+		}
+		im, _, err := image.Decode(fh)
+		fh.Close()
+		if err != nil {
+			return err
+		}
+		ed := centreCrop(render.FromImage(im, spp.W, 0), spp.W, spp.H)
+		e, _ := calib.DeltaEStats(ed, spp)
+		g, _ := calib.DeltaEStats(ed, dng)
+		fmt.Printf("%-28s %-8s   raw editor's development: vs SPP %.2f | vs the spec development %.2f\n", name, group, e, g)
+		if os.Getenv("DNGCHECK_JPEG") != "" {
+			stem := filepath.Join(dir, strings.TrimSuffix(name, filepath.Ext(name)))
+			saveJPEG(spp, stem+"-spp.jpg")
+			saveJPEG(dng, stem+"-spec.jpg")
+			saveJPEG(ed, stem+"-editor.jpg")
+		}
+	}
 	return nil
 }
 
@@ -260,4 +300,20 @@ func inv3(m [9]float64) [9]float64 {
 	return [9]float64{(e*i - f*h) / det, (c*h - b*i) / det, (b*f - c*e) / det,
 		(f*g - d*i) / det, (a*i - c*g) / det, (c*d - a*f) / det,
 		(d*h - e*g) / det, (b*g - a*h) / det, (a*e - b*d) / det}
+}
+
+// saveJPEG writes a linear image as an sRGB JPEG (for looking at).
+func saveJPEG(l *render.Linear, path string) {
+	img := image.NewRGBA(image.Rect(0, 0, l.W, l.H))
+	for i := 0; i < l.W*l.H; i++ {
+		for k := 0; k < 3; k++ {
+			v := math.Max(0, math.Min(1, float64(render.ToSRGB(l.Pix[i*3+k]))))
+			img.Pix[i*4+k] = uint8(v*255 + 0.5)
+		}
+		img.Pix[i*4+3] = 255
+	}
+	if o, err := os.Create(path); err == nil {
+		jpeg.Encode(o, img, &jpeg.Options{Quality: 88})
+		o.Close()
+	}
 }

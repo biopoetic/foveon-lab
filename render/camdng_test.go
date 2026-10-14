@@ -99,9 +99,17 @@ func TestCameraDNGProfile(t *testing.T) {
 	}
 	b := buf.Bytes()
 	neutral, fm, be := readTag(t, b, 50728), readTag(t, b, 50964), readTag(t, b, 50730)[0]
-	if tone := readTag(t, b, 50940); len(tone) != 6 || tone[3] < 0.399 || tone[3] > 0.401 {
-		t.Errorf("ProfileToneCurve %v", tone)
+	// The grey's brightness is baked into the curve (RawTherapee ignores
+	// BaselineExposure): the curve is tone(k·x), so its second point sits
+	// at x = 0.25/k, and BaselineExposure is 0.
+	tone := readTag(t, b, 50940)
+	if len(tone) < 6 || tone[3] < 0.399 || tone[3] > 0.401 || tone[len(tone)-2] != 1 || tone[len(tone)-1] != 1 {
+		t.Fatalf("ProfileToneCurve %v", tone)
 	}
+	if be != 0 {
+		t.Errorf("BaselineExposure %g with a profile, want 0 (in the curve)", be)
+	}
+	be = math.Log2(0.25 / tone[2])
 	white := [3]float64{0.9642, 1, 0.8249}
 	for i := 0; i < 3; i++ {
 		if s := fm[i*3] + fm[i*3+1] + fm[i*3+2]; math.Abs(s-white[i]) > 2e-3 {
