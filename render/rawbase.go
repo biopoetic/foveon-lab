@@ -38,7 +38,31 @@ func init() {
 	}
 	rawBases = map[string]*RawCorrection{}
 	for i := range list {
+		list[i].MakeMonotone()
 		rawBases[list[i].Family] = &list[i]
+	}
+}
+
+// MakeMonotone makes each channel curve non-decreasing, working down from
+// the top: a brighter input never comes out darker. The fitted curves'
+// lowest bin can be polluted by matrix outputs clipped at 0 (a saturated
+// colour whose channel went negative), which SPP shows bright: the SD1
+// base's green came out 0.85 there instead of ~0.014, turning near-black
+// pixels bright green (a night shot, v0.4.2).
+func (c *RawCorrection) MakeMonotone() {
+	for k := 0; k < 3; k++ {
+		next := -1.0
+		for b := 63; b >= 0; b-- {
+			v := c.Curves[k][b]
+			if v < 0 {
+				continue
+			}
+			if next >= 0 && v > next {
+				c.Curves[k][b] = next
+			} else {
+				next = v
+			}
+		}
 	}
 }
 

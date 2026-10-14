@@ -70,6 +70,9 @@ func fitRaw(pairs []RawPair) render.RawCorrection {
 			r, g, b := float64(p.Raw.Pix[i]), float64(p.Raw.Pix[i+1]), float64(p.Raw.Pix[i+2])
 			v := [3]float64{m[0]*r + m[1]*g + m[2]*b, m[3]*r + m[4]*g + m[5]*b, m[6]*r + m[7]*g + m[8]*b}
 			for k := 0; k < 3; k++ {
+				if v[k] <= 0 {
+					continue // clipped: not a dark value, would pollute bin 0
+				}
 				e := float64(render.ToSRGB(float32(math.Max(0, math.Min(1, v[k])))))
 				bin := min(63, int(e*64))
 				sum[k][bin] += float64(render.ToSRGB(p.SPP.Pix[i+k]))
@@ -85,6 +88,7 @@ func fitRaw(pairs []RawPair) render.RawCorrection {
 			}
 		}
 	}
+	c.MakeMonotone()
 	return c
 }
 
