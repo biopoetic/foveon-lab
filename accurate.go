@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/biopoetic/foveon-lab/preset"
 	"github.com/biopoetic/foveon-lab/render"
 	"github.com/biopoetic/foveon-lab/x3f"
 )
@@ -252,10 +253,19 @@ func (s *server) rawWorker() {
 // rawLinear decodes ph's raw data (blocking), fixes the aspect of
 // reduced-resolution files, rotates it and maps it onto SPP's neutral look.
 func rawLinear(ph *Photo, maxW int, color string) (*render.Linear, error) {
+	return rawLinearFor(ph, maxW, color, "")
+}
+
+// rawLinearFor: for an infrared look (irFilter "ir-..."), the
+// Sunlight-balanced sensor layers (native decode only), with no raw base
+// on top and clipped highlights going to that look's white.
+func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, error) {
 	var l *render.Linear
+	irWhite := render.IRWhite(render.SensorGeneration(calibGroup(ph)), irFilter)
+	layers := irWhite != nil
 	if goRaw {
 		var err error
-		if l, err = goLinear(ph, maxW, goStrength(color)); err != nil {
+		if l, err = goLinearFor(ph, maxW, goStrength(color), irWhite); err != nil {
 			return nil, err
 		}
 	} else {
@@ -276,10 +286,23 @@ func rawLinear(ph *Photo, maxW int, color string) (*render.Linear, error) {
 	if ph.rotation != 0 {
 		l = l.Rotate(ph.rotation)
 	}
-	if c := rawCorrectionFor(ph); c != nil {
+	if c := rawCorrectionFor(ph); c != nil && !layers {
 		c.Apply(l)
 	}
 	return l, nil
+}
+
+// irLayers: the params ask for an infrared look and ph's raw data can give
+// it the sensor layers it models.
+func irLayers(ph *Photo, p preset.Params) bool {
+	return strings.HasPrefix(p.Filter, "ir-") && goRaw && ph.Kind == "x3f" && ph.Unsupported == "" && rawDecodable(ph.props)
+}
+
+// layerCompensation is the compensation for a render from the layers: the
+// layers are the output space (no colour matrix, nothing to undo).
+func layerCompensation(c render.Compensation) render.Compensation {
+	id := identity33
+	return render.Compensation{SatFactor: 1, Family: c.Family, CC: &id, Sensor: c.Sensor}
 }
 
 // handleRawPrefetch queues the raw decode of the given photos (the ones

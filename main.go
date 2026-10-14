@@ -431,6 +431,9 @@ func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
 		if mode == "raw" {
 			return rawLinear(ph, sourceW, "sRGB")
 		}
+		if f, ok := strings.CutPrefix(mode, "rawlayers:"); ok {
+			return rawLinearFor(ph, sourceW, "sRGB", f)
+		}
 		if mode == "rawfast" {
 			return rawLinear(ph, sourceW, rawFastColor)
 		}
@@ -460,8 +463,11 @@ func (s *server) fullGeo(ph *Photo, mode string, g render.Geometry) (*render.Lin
 	v, err := s.sources.get(ph.ID+"|"+mode+"|full"+geoKey(g), func() (any, error) {
 		var src *render.Linear
 		var err error
-		switch mode {
-		case "raw", "rawfast":
+		irFilter, ir := strings.CutPrefix(mode, "rawlayers:")
+		switch {
+		case ir:
+			src, err = rawLinearFor(ph, 0, "sRGB", irFilter)
+		case mode == "raw", mode == "rawfast":
 			src, err = rawLinear(ph, 0, "sRGB")
 		default:
 			var img image.Image
@@ -581,6 +587,8 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	mode := s.sourceMode(ph)
 	if q.Get("src") == "camera" && !ph.jpegBroken.Load() {
 		mode = "jpg"
+	} else if irLayers(ph, p) {
+		mode = "rawlayers:" + p.Filter
 	}
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
@@ -613,7 +621,11 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	out := render.Render(b, p, s.compensation(ph, q.Get("comp") == "1"))
+	comp := s.compensation(ph, q.Get("comp") == "1")
+	if strings.HasPrefix(mode, "rawlayers:") {
+		comp = layerCompensation(comp)
+	}
+	out := render.Render(b, p, comp)
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, out, &jpeg.Options{Quality: 88}); err != nil {
 		httpErr(w, 500, err)
@@ -742,7 +754,14 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
 	var src *render.Linear
-	if s.wantRaw(ph) || ph.jpegBroken.Load() {
+	ir := irLayers(ph, p)
+	if ir {
+		l, err := rawLinearFor(ph, 0, rawExportColor(denoise), p.Filter)
+		if err != nil {
+			return "", err
+		}
+		src = l
+	} else if s.wantRaw(ph) || ph.jpegBroken.Load() {
 		// Accurate mode: export from the raw data even if the preview
 		// hasn't switched yet (this waits for the decode).
 		color := rawExportColor(denoise)
@@ -767,6 +786,9 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	}
 	base := render.NewBase(render.ApplyGeometry(src, geometryOf(ph)))
 	c := s.compensation(ph, comp)
+	if ir {
+		c = layerCompensation(c)
+	}
 	ext := ".jpg"
 	switch format {
 	case "tiff":

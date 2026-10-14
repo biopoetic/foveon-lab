@@ -78,6 +78,16 @@ func photoCC(ph *Photo) *[9]float64 {
 // output RGB — its CAMF white balance + colour matrix (x3f.WBTransform,
 // which also covers the SD9/SD10/SD14/DP1's camera-to-XYZ form).
 func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
+	return goDevelopFor(ph, false)
+}
+
+// identity33 is the 3×3 identity.
+var identity33 = [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
+
+// goDevelopFor: layers = the sensor's own layers balanced by the camera's
+// Sunlight gains, with no colour matrix (for the infrared looks, which
+// model the layers themselves; the matrix assumes the IR cut).
+func goDevelopFor(ph *Photo, layers bool) (*x3f.CamImage, render.CamTransform, error) {
 	var t render.CamTransform
 	f, err := x3f.Open(ph.path)
 	if err != nil {
@@ -93,6 +103,9 @@ func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
 	}
 	x3f.FixBadPixels(raw, c)
 	wb := developWB(c, ph)
+	if layers {
+		wb = "Sunlight"
+	}
 	img, err := x3f.CameraLinear(raw, c, x3f.NewSpatialGain(c, f.Props, wb), wb)
 	if err != nil {
 		return nil, t, err
@@ -102,6 +115,9 @@ func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
 		return nil, t, err
 	}
 	t.Gain, t.CC = gain, cc
+	if layers {
+		t.CC = identity33
+	}
 	return img, t, nil
 }
 
@@ -111,13 +127,23 @@ func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
 // that scale (binning already averages noise; the denoiser measures what
 // is left).
 func goLinear(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
-	img, t, err := goDevelop(ph)
+	return goLinearFor(ph, maxW, strength, nil)
+}
+
+// goLinearFor is goLinear, as Sunlight-balanced layers when irWhite is
+// set (clipped highlights then go to that white).
+func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64) (*render.Linear, error) {
+	img, t, err := goDevelopFor(ph, irWhite != nil)
 	if err != nil {
 		return nil, err
 	}
 	// Before the denoiser: its chroma filter would spread the clipped
 	// highlights' false colour into their neighbours.
-	x3f.ClipHighlights(img, t.Gain)
+	if irWhite != nil {
+		x3f.ClipHighlightsTo(img, t.Gain, *irWhite)
+	} else {
+		x3f.ClipHighlights(img, t.Gain)
+	}
 	if strength > 0 {
 		b := 1
 		if maxW > 0 {

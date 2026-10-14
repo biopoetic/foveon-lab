@@ -80,6 +80,31 @@ func (m model) fullSens(i int) [3]float64 {
 
 func sig(l, edge, w float64) float64 { return 1 / (1 + math.Exp(-(l-edge)/w)) }
 
+// visSens: the layers with the camera's IR-cut filter in place, on the IR
+// grid (the response the camera's Sunlight white balance is set for).
+func (m model) visSens(i int) [3]float64 {
+	s := m.fullSens(i)
+	cut := 1 / (1 + math.Exp((irLams[i]-m.lc)/m.w))
+	return [3]float64{s[0] * cut, s[1] * cut, s[2] * cut}
+}
+
+// sunToLook: per layer, how a white surface's response on the camera's
+// Sunlight-balanced layers (IR cut in, normalised to 1) changes with the
+// IR cut out and the look's lens filter on: the white balance the look
+// needs on top of the camera's Sunlight gains.
+func sunToLook(m model, lk irLook) [3]float64 {
+	var vis, look [3]float64
+	for i, l := range irLams {
+		il := planck(l, 5500)
+		v, f := m.visSens(i), m.fullSens(i)
+		for k := 0; k < 3; k++ {
+			vis[k] += v[k] * il
+			look[k] += f[k] * il * lk.filter(l)
+		}
+	}
+	return [3]float64{vis[0] / look[0], vis[1] / look[1], vis[2] / look[2]}
+}
+
 // irMaterials: reflectance spectra of real surfaces, with variations.
 func irMaterials(rng *rand.Rand) [][]float64 {
 	var out [][]float64
@@ -149,6 +174,12 @@ type irLook struct {
 }
 
 var irLooks = []irLook{
+	{name: "fs-aerochrome", filter: func(l float64) float64 { return 1 }, // no lens filter
+		bands: []func(float64) float64{
+			func(l float64) float64 { return sig(l, 700, 10) * (1 - sig(l, 900, 20)) },
+			func(l float64) float64 { return sig(l, 600, 10) * (1 - sig(l, 700, 10)) },
+			func(l float64) float64 { return sig(l, 500, 10) * (1 - sig(l, 600, 10)) },
+		}},
 	{name: "aerochrome", filter: func(l float64) float64 { return sig(l, 515, 8) },
 		bands: []func(float64) float64{
 			func(l float64) float64 { return sig(l, 700, 10) * (1 - sig(l, 900, 20)) }, // IR layer -> red
@@ -176,10 +207,13 @@ func irFit(m model, lk irLook, refl [][]float64) ([9]float64, float64) {
 	}
 	var wht [3]float64
 	bw := make([]float64, len(lk.bands))
+	// Normalise the layers as the app delivers them: balanced by the
+	// camera's Sunlight gains, i.e. to a white surface's response with the
+	// IR cut in (so the ridge bound holds for the actual input noise).
 	for i, l := range irLams {
-		S := m.fullSens(i)
+		V := m.visSens(i)
 		for k := 0; k < 3; k++ {
-			wht[k] += S[k] * illum[i] * lk.filter(l)
+			wht[k] += V[k] * illum[i]
 		}
 		for b, f := range lk.bands {
 			bw[b] += f(l) * illum[i]
@@ -281,6 +315,10 @@ func irMain(path string) {
 	b.WriteString("{")
 	for gi, gen := range []string{"Merrill", "TRUEII", "SD9", "Quattro"} {
 		m := loadModel(gen)
+		if c, ok := irCalibrated[gen]; ok {
+			m.d2, m.d3 = c[0], c[1]
+			fmt.Printf("%s: IR-calibrated depths d2 %.2f d3 %.2f µm\n", gen, m.d2, m.d3)
+		}
 		var s [3]float64
 		for i := range irLams {
 			v := m.fullSens(i)
@@ -305,6 +343,8 @@ func irMain(path string) {
 		fmt.Fprintf(&b, "%q: {", gen)
 		for li, lk := range irLooks {
 			M, e := irFit(m, lk, refl)
+			r := sunToLook(m, lk)
+			fmt.Printf("  %-13s white per layer vs Sunlight: %.2f %.2f %.2f (x %.2f %.2f %.2f)\n", lk.name, 1/r[0], 1/r[1], 1/r[2], r[0], r[1], r[2])
 			fmt.Printf("  %-10s fit RMS %.3f (white = 1)  %.3f\n", lk.name, e, M)
 			for mi, name := range []string{"foliage", "dry grass", "blue sky", "skin", "water", "soil", "concrete"} {
 				o := irRender(m, lk, M, mats[mi])
@@ -313,14 +353,16 @@ func irMain(path string) {
 			if li > 0 {
 				b.WriteString(", ")
 			}
-			fmt.Fprintf(&b, "%q: [", lk.name)
+			// m: the look's matrix; white: a white surface's response on
+			// the Sunlight-balanced layers (where clipped highlights go).
+			fmt.Fprintf(&b, "%q: {\"m\": [", lk.name)
 			for k, v := range M {
 				if k > 0 {
 					b.WriteString(", ")
 				}
 				fmt.Fprintf(&b, "%.5f", v)
 			}
-			b.WriteString("]")
+			fmt.Fprintf(&b, "], \"white\": [%.5f, %.5f, %.5f]}", 1/r[0], 1/r[1], 1/r[2])
 		}
 		b.WriteString("}")
 	}
@@ -334,15 +376,90 @@ func irMain(path string) {
 func irRender(m model, lk irLook, M [9]float64, r []float64) [3]float64 {
 	var x, wht [3]float64
 	for i, l := range irLams {
-		S := m.fullSens(i)
-		il := planck(l, 5500) * lk.filter(l)
+		S, V := m.fullSens(i), m.visSens(i)
+		il := planck(l, 5500)
 		for k := 0; k < 3; k++ {
-			x[k] += S[k] * il * r[i]
-			wht[k] += S[k] * il
+			x[k] += S[k] * il * lk.filter(l) * r[i]
+			wht[k] += V[k] * il
 		}
 	}
 	for k := range x {
 		x[k] /= wht[k]
 	}
 	return apply(M, x)
+}
+
+// irCalib prints, per generation, the Sunlight-balanced layers the model
+// predicts with the IR cut out and no lens filter, for a white surface and
+// for foliage, as bottom/top and middle/top ratios (what tools/irprobe
+// measures on a real full-spectrum shot); IRD3 overrides the bottom
+// collection depth (µm) to see its effect.
+func irCalib() {
+	irGrid()
+	rng := rand.New(rand.NewSource(7))
+	mats := irMaterials(rng)
+	white := make([]float64, len(irLams))
+	for i := range white {
+		white[i] = 1
+	}
+	for _, gen := range []string{"Merrill", "TRUEII", "SD9", "Quattro"} {
+		m := loadModel(gen)
+		var d3s []float64
+		for _, s := range strings.Split(os.Getenv("IRD3"), ",") {
+			var v float64
+			if _, err := fmt.Sscan(s, &v); err == nil {
+				d3s = append(d3s, v)
+			}
+		}
+		if len(d3s) == 0 {
+			d3s = []float64{m.d3}
+		}
+		d2s := []float64{m.d2}
+		if v := os.Getenv("IRD2"); v != "" {
+			d2s = nil
+			for _, s := range strings.Split(v, ",") {
+				var x float64
+				if _, err := fmt.Sscan(s, &x); err == nil {
+					d2s = append(d2s, x)
+				}
+			}
+		}
+		for _, dd := range d2s {
+			for _, d3 := range d3s {
+				mm := m
+				mm.d2, mm.d3 = dd, d3
+				lay := func(r []float64) [3]float64 {
+					var x, wht [3]float64
+					for i, l := range irLams {
+						S, V := mm.fullSens(i), mm.visSens(i)
+						il := planck(l, 5500)
+						for k := 0; k < 3; k++ {
+							x[k] += S[k] * il * r[i]
+							wht[k] += V[k] * il
+						}
+					}
+					for k := range x {
+						x[k] /= wht[k]
+					}
+					return x
+				}
+				w, f := lay(white), lay(mats[0])
+				fmt.Printf("%-8s d2 %.2f d3 %5.2f: white b/t %.2f m/t %.2f | foliage b/t %.2f m/t %.2f\n", gen, mm.d2, d3, w[0]/w[2], w[1]/w[2], f[0]/f[2], f[1]/f[2])
+			}
+		}
+	}
+}
+
+// irCalibrated: the middle zone's lower edge and the bottom zone's depth
+// (µm) measured on real full-spectrum shots, which visible light cannot
+// pin down (it barely reaches below ~4 µm; the visible fit left the bottom
+// zone at 15.8 µm, predicting twice the infrared a real SD1 gives).
+// Merrill: an SD1 Merrill with its IR-cut dust protector removed, no lens
+// filter, 2026-10-14 (SDIM0365-0368; tools/irprobe): a white window frame
+// gave bottom/top 2.35, middle/top 1.27, sunlit foliage ~4.6 and ~1.65
+// on the Sunlight-balanced layers; d2 2.8, d3 7.0 give 2.35, 1.27, 4.47,
+// 1.66 (IRCALIB=1 IRD2=... IRD3=...). The other generations are not
+// calibrated yet (no full-spectrum shots).
+var irCalibrated = map[string][2]float64{
+	"Merrill": {2.8, 7.0},
 }

@@ -1,20 +1,28 @@
 package render
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
-// Every infrared look maps the white-balanced white (1,1,1) to white: the
-// model normalises each band to a flat spectrum's response.
-func TestIRLooksWhite(t *testing.T) {
+// Every generation has every infrared look, finite; the 720 nm look is
+// black and white (equal rows). The matrices take the camera's
+// Sunlight-balanced layers, so white does not map to (1,1,1) any more: with
+// the IR cut out, a white surface gives the bottom layer ~5x its signal.
+func TestIRLooks(t *testing.T) {
 	for _, gen := range []string{"Merrill", "TRUEII", "SD9", "Quattro"} {
-		for _, look := range []string{"aerochrome", "ir590", "ir720"} {
-			m, _ := irLook(gen, "ir-"+look)
+		for _, look := range []string{"fs-aerochrome", "aerochrome", "ir590", "ir720"} {
+			m, mono := irLook(gen, "ir-"+look)
 			if m == nil {
 				t.Fatalf("%s %s missing", gen, look)
 			}
-			for r := 0; r < 3; r++ {
-				if s := m[r*3] + m[r*3+1] + m[r*3+2]; s < 0.9 || s > 1.1 {
-					t.Errorf("%s %s row %d sums to %.3f", gen, look, r, s)
+			for _, v := range m {
+				if math.IsNaN(v) || math.Abs(v) > 20 {
+					t.Errorf("%s %s coefficient %g", gen, look, v)
 				}
+			}
+			if mono != (look == "ir720") || (mono && (m[0] != m[3] || m[1] != m[7])) {
+				t.Errorf("%s %s mono %v", gen, look, mono)
 			}
 		}
 	}

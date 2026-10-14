@@ -167,7 +167,19 @@ func CameraLinear(raw *RawImage, c *CAMF, sg *SpatialGain, wb string) (*CamImage
 // brightest white-balanced layer (Sigma Photo Pro renders them white).
 // gain is the white balance (WBTransform's).
 func ClipHighlights(img *CamImage, gain [3]float64) {
+	ClipHighlightsTo(img, gain, [3]float64{1, 1, 1})
+}
+
+// ClipHighlightsTo is ClipHighlights towards a given white (as the
+// white-balanced layers of a white surface): with the IR cut out a white
+// surface is not equal on the Sunlight-balanced layers (the bottom one
+// gets ~2.4x), and a neutral fill made blown skies cyan in the infrared
+// looks.
+func ClipHighlightsTo(img *CamImage, gain, white [3]float64) {
 	const lo, hi = 0.9, 1.0
+	for k := range gain {
+		gain[k] /= white[k]
+	}
 	g := [3]float32{float32(gain[0]), float32(gain[1]), float32(gain[2])}
 	for i := 0; i+2 < len(img.Pix); i += 3 {
 		p := img.Pix[i : i+3]

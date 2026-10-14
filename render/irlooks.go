@@ -20,7 +20,10 @@ import (
 //go:embed irlooks.json
 var irLooksJSON []byte
 
-var irLooks map[string]map[string][9]float64
+var irLooks map[string]map[string]struct {
+	M     [9]float64 `json:"m"`
+	White [3]float64 `json:"white"`
+}
 
 func init() {
 	json.Unmarshal(irLooksJSON, &irLooks)
@@ -34,9 +37,27 @@ func irLook(sensor, filter string) (*[9]float64, bool) {
 	if !ok {
 		return nil, false
 	}
-	m, ok := irLooks[sensor][name]
+	l, ok := irLooks[sensor][name]
 	if !ok {
 		return nil, false
 	}
+	m := l.M
 	return &m, name == "ir720"
+}
+
+// IRWhite is a white surface's response, on the Sunlight-balanced layers,
+// for an infrared look (the IR cut out, the look's lens filter on): where
+// clipped highlights go instead of the visible white. nil if not an
+// infrared look.
+func IRWhite(sensor, filter string) *[3]float64 {
+	name, ok := strings.CutPrefix(filter, "ir-")
+	if !ok {
+		return nil
+	}
+	l, ok := irLooks[sensor][name]
+	if !ok {
+		return nil
+	}
+	w := l.White
+	return &w
 }
