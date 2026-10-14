@@ -384,42 +384,126 @@ func boxBlur(p []float32, w, h, r int) []float32 {
 	parallel(h, func(y0, y1 int) {
 		for y := y0; y < y1; y++ {
 			row := p[y*w : (y+1)*w]
+			o := tmp[y*w : (y+1)*w]
+			if 2*r+1 >= w {
+				// Narrow image: the general form.
+				var s float32
+				cnt := 0
+				for x := -r; x < w; x++ {
+					if x+r < w {
+						s += row[x+r]
+						cnt++
+					}
+					if x-r-1 >= 0 {
+						s -= row[x-r-1]
+						cnt--
+					}
+					if x >= 0 {
+						o[x] = s / float32(cnt)
+					}
+				}
+				continue
+			}
+			// Left edge, middle (full window, no branches), right edge.
 			var s float32
-			cnt := 0
-			for x := -r; x < w; x++ {
-				if x+r < w {
-					s += row[x+r]
-					cnt++
-				}
-				if x-r-1 >= 0 {
-					s -= row[x-r-1]
-					cnt--
-				}
-				if x >= 0 {
-					tmp[y*w+x] = s / float32(cnt)
-				}
+			for x := 0; x < r; x++ {
+				s += row[x]
+			}
+			for x := 0; x <= r; x++ {
+				s += row[x+r]
+				o[x] = s / float32(x+r+1)
+			}
+			inv := 1 / float32(2*r+1)
+			for x := r + 1; x < w-r; x++ {
+				s += row[x+r] - row[x-r-1]
+				o[x] = s * inv
+			}
+			for x := max(r+1, w-r); x < w; x++ {
+				s -= row[x-r-1]
+				o[x] = s / float32(w-(x-r))
 			}
 		}
 	})
-	parallel(w, func(x0, x1 int) {
-		for x := x0; x < x1; x++ {
-			var s float32
+	// Vertical pass row by row over bands of columns, a running sum per
+	// column: walking each column top to bottom strides a whole row per
+	// step and missed the cache, 46% of a full-size development's time.
+	const band = 64
+	nb := (w + band - 1) / band
+	parallel(nb, func(b0, b1 int) {
+		sum := make([]float32, band)
+		for bi := b0; bi < b1; bi++ {
+			x0 := bi * band
+			bw := min(band, w-x0)
+			s := sum[:bw]
+			clear(s)
 			cnt := 0
 			for y := -r; y < h; y++ {
 				if y+r < h {
-					s += tmp[(y+r)*w+x]
+					add := tmp[(y+r)*w+x0 : (y+r)*w+x0+bw]
+					for i, v := range add {
+						s[i] += v
+					}
 					cnt++
 				}
 				if y-r-1 >= 0 {
-					s -= tmp[(y-r-1)*w+x]
+					sub := tmp[(y-r-1)*w+x0 : (y-r-1)*w+x0+bw]
+					for i, v := range sub {
+						s[i] -= v
+					}
 					cnt--
 				}
 				if y >= 0 {
-					out[y*w+x] = s / float32(cnt)
+					o := out[y*w+x0 : y*w+x0+bw]
+					inv := 1 / float32(cnt)
+					for i, v := range s {
+						o[i] = v * inv
+					}
 				}
 			}
 		}
 	})
+	return out
+}
+
+// boxBlurRef is the column-by-column vertical pass, kept as the reference
+// for the test.
+func boxBlurRef(p []float32, w, h, r int) []float32 {
+	tmp := make([]float32, len(p))
+	out := make([]float32, len(p))
+	for y := 0; y < h; y++ {
+		var s float32
+		cnt := 0
+		for x := -r; x < w; x++ {
+			if x+r < w {
+				s += p[y*w+x+r]
+				cnt++
+			}
+			if x-r-1 >= 0 {
+				s -= p[y*w+x-r-1]
+				cnt--
+			}
+			if x >= 0 {
+				tmp[y*w+x] = s / float32(cnt)
+			}
+		}
+	}
+	for x := 0; x < w; x++ {
+		var s float32
+		cnt := 0
+		for y := -r; y < h; y++ {
+			if y+r < h {
+				s += tmp[(y+r)*w+x]
+				cnt++
+			}
+			if y-r-1 >= 0 {
+				s -= tmp[(y-r-1)*w+x]
+				cnt--
+			}
+			if y >= 0 {
+				out[y*w+x] = s / float32(cnt)
+			}
+		}
+	}
 	return out
 }
 
@@ -533,24 +617,36 @@ func median(p []float32) float64 {
 func estimateNoise(p []float32, w, h int) noiseModel {
 	const B = 16
 	type blk struct{ m, s float64 }
-	var bs []blk
-	res := make([]float64, 0, B*B)
+	// Rows of blocks in parallel, each block's median by selection (it was
+	// a full sort per block, serially: a tenth of a development's time).
+	nby := 0
 	for by := 1; by+B < h-1; by += B {
-		for bx := 1; bx+B < w-1; bx += B {
-			res = res[:0]
-			var sum float64
-			for y := by; y < by+B; y++ {
-				for x := bx; x < bx+B; x++ {
-					v := p[y*w+x]
-					sum += float64(v)
-					r := v - (p[y*w+x-1]+p[y*w+x+1]+p[(y-1)*w+x]+p[(y+1)*w+x])/4
-					res = append(res, math.Abs(float64(r)))
+		nby++
+	}
+	rows := make([][]blk, nby)
+	parallel(nby, func(r0, r1 int) {
+		res := make([]float64, 0, B*B)
+		for ri := r0; ri < r1; ri++ {
+			by := 1 + ri*B
+			for bx := 1; bx+B < w-1; bx += B {
+				res = res[:0]
+				var sum float64
+				for y := by; y < by+B; y++ {
+					for x := bx; x < bx+B; x++ {
+						v := p[y*w+x]
+						sum += float64(v)
+						r := v - (p[y*w+x-1]+p[y*w+x+1]+p[(y-1)*w+x]+p[(y+1)*w+x])/4
+						res = append(res, math.Abs(float64(r)))
+					}
 				}
+				// Laplacian residual of white noise: variance 1.25 sigma².
+				rows[ri] = append(rows[ri], blk{sum / (B * B), selectK(res, len(res)/2) / 0.6745 / math.Sqrt(1.25)})
 			}
-			sort.Float64s(res)
-			// Laplacian residual of white noise: variance 1.25 sigma².
-			bs = append(bs, blk{sum / (B * B), res[len(res)/2] / 0.6745 / math.Sqrt(1.25)})
 		}
+	})
+	var bs []blk
+	for _, r := range rows {
+		bs = append(bs, r...)
 	}
 	if len(bs) < 32 {
 		s := noiseSigma(p, w, h)
@@ -586,4 +682,36 @@ func estimateNoise(p []float32, w, h int) noiseModel {
 	}
 	a := math.Max(1e-14, (sy-b*sx)/nf)
 	return noiseModel{a: a, b: b}
+}
+
+// selectK returns the k-th smallest value of v (reordering v), as
+// sort.Float64s(v); v[k] would, in linear time (Hoare's selection).
+func selectK(v []float64, k int) float64 {
+	lo, hi := 0, len(v)-1
+	for lo < hi {
+		pv := v[(lo+hi)/2]
+		i, j := lo, hi
+		for i <= j {
+			for v[i] < pv {
+				i++
+			}
+			for v[j] > pv {
+				j--
+			}
+			if i <= j {
+				v[i], v[j] = v[j], v[i]
+				i++
+				j--
+			}
+		}
+		switch {
+		case k <= j:
+			hi = j
+		case k >= i:
+			lo = i
+		default:
+			return v[k]
+		}
+	}
+	return v[k]
 }

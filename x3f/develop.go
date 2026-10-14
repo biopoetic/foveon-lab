@@ -123,39 +123,43 @@ func CameraLinear(raw *RawImage, c *CAMF, sg *SpatialGain, wb string) (*CamImage
 	den2 := hw*hw + hh*hh
 	ow, oh := x1-x0+1, y1-y0+1
 	out := &CamImage{W: ow, H: oh, Pix: make([]float32, ow*oh*3)}
-	gain := make([]float64, ow*3)
-	for i := range gain {
-		gain[i] = 1
-	}
-	for y := y0; y <= y1; y++ {
-		src := raw.Pix[(y*raw.W+x0)*3:]
-		dst := out.Pix[(y-y0)*ow*3:]
-		if sg != nil {
-			for x := 0; x < ow; x++ {
+	// Rows in parallel (each worker its own gain row): serial, this was a
+	// sixth of a full-size development.
+	parallel(oh, func(r0, r1 int) {
+		gain := make([]float64, ow*3)
+		for i := range gain {
+			gain[i] = 1
+		}
+		for y := y0 + r0; y < y0+r1; y++ {
+			src := raw.Pix[(y*raw.W+x0)*3:]
+			dst := out.Pix[(y-y0)*ow*3:]
+			if sg != nil {
+				for x := 0; x < ow; x++ {
+					for k := 0; k < 3; k++ {
+						gain[x*3+k] = sg.At(y-y0, x, k, oh, ow)
+					}
+				}
+			}
+			for x := 0; x <= x1-x0; x++ {
+				fb, ft := 1.0, 1.0
+				if shade != nil {
+					dx, dy := float64(x+x0)-cx, float64(y)-cy
+					r2 := (dx*dx + dy*dy) / den2
+					fb = 1 + shade[0]*r2*r2 + shade[1]*r2
+					ft = 1 + shade[2]*r2*r2 + shade[3]*r2
+				}
 				for k := 0; k < 3; k++ {
-					gain[x*3+k] = sg.At(y-y0, x, k, oh, ow)
+					v := (float64(src[x*3+k]) - black[k]) * scale[k] * gain[x*3+k]
+					if k == 0 {
+						v *= fb
+					} else if k == 2 {
+						v *= ft
+					}
+					dst[x*3+k] = float32(v)
 				}
 			}
 		}
-		for x := 0; x <= x1-x0; x++ {
-			fb, ft := 1.0, 1.0
-			if shade != nil {
-				dx, dy := float64(x+x0)-cx, float64(y)-cy
-				r2 := (dx*dx + dy*dy) / den2
-				fb = 1 + shade[0]*r2*r2 + shade[1]*r2
-				ft = 1 + shade[2]*r2*r2 + shade[3]*r2
-			}
-			for k := 0; k < 3; k++ {
-				v := (float64(src[x*3+k]) - black[k]) * scale[k] * gain[x*3+k]
-				if k == 0 {
-					v *= fb
-				} else if k == 2 {
-					v *= ft
-				}
-				dst[x*3+k] = float32(v)
-			}
-		}
-	}
+	})
 	return out, nil
 }
 
