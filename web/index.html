@@ -18,7 +18,7 @@ button:disabled{opacity:.45;cursor:default}
 button.primary{background:var(--accent);color:#1a1300;border-color:var(--accent);font-weight:600}
 select,input[type=text],input[type=password],input[type=search]{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
 #app{display:grid;grid-template-columns:230px 1fr;grid-template-rows:auto 1fr;height:100vh}
-header{grid-column:1/3;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+header{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel)}
 header h1{font-size:15px;margin:0;letter-spacing:.5px}
 header h1 span{color:var(--accent)}
 #updateBox{display:flex;gap:8px;align-items:center;color:var(--accent)}
@@ -58,6 +58,13 @@ main{overflow:auto;position:relative}
 .tile.ref{border-color:#444;border-style:dashed}
 #detail{display:none;height:100%;grid-template-columns:1fr 300px}
 #detail.on{display:grid}
+body.noList #app{grid-template-columns:1fr}
+body.noList aside#photos{display:none}
+body.noPanel #detail{grid-template-columns:1fr}
+body.noPanel #panel{display:none}
+body.full header{display:none}
+body.full #app{grid-template-rows:1fr}
+#nav .sideBtn.on{border-color:var(--accent);color:var(--accent)}
 #view{display:flex;flex-direction:column;min-width:0;min-height:0}
 #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#0b0b0b;position:relative}
 #stage img{max-width:100%;max-height:100%;object-fit:contain}
@@ -184,6 +191,9 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="clipBtn" title="Mark clipped highlights (red) and crushed shadows (blue) (C)">Clipping</button>
           <button id="zoomBtn" title="100% view (Z, or double-click the image where you want to look); drag to move around">1:1</button>
           <button id="cropBtn" title="Straighten and crop this photo (R) — applies to the preview and every export">Crop</button>
+          <button class="sideBtn" id="listBtn" title="Show / hide the photo list (Tab hides or shows both side panels)">◧</button>
+          <button class="sideBtn" id="panelBtn" title="Show / hide the settings panel (Tab hides or shows both side panels)">◨</button>
+          <button id="fullBtn" title="Full screen: only the photo (Shift+F or F11; Esc to leave)">⛶</button>
           <button class="ai" id="aiOpen2" title="Let an AI agent pick and tune the best preset">✦ AI</button>
         </div>
       </div>
@@ -1146,6 +1156,45 @@ async function editFolders(){
   toast(`Found ${r.photoCount} photos and ${r.presetCount} presets. Saved for next time.`, 6000);
 }
 
+// ---------- side panels and full screen ----------
+// The photo list and the settings panel can be hidden (remembered); full
+// screen hides them and the header too, leaving the photo and its bar.
+function setSides(list, panel){
+  document.body.classList.toggle("noList", !list);
+  document.body.classList.toggle("noPanel", !panel);
+  $("#listBtn").classList.toggle("on", list);
+  $("#panelBtn").classList.toggle("on", panel);
+  store.set("sides", {list, panel});
+  window.dispatchEvent(new Event("resize"));
+}
+function sides(){ return {list: !document.body.classList.contains("noList"), panel: !document.body.classList.contains("noPanel")}; }
+let preFull = null;
+// The layout changes at once; the browser's own full screen is asked for on
+// top and may be refused (some windows don't allow it) without harm.
+function toggleFull(){
+  if (document.body.classList.contains("full")){
+    onFull(false);
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    return;
+  }
+  onFull(true);
+  const p = document.documentElement.requestFullscreen?.();
+  if (p) p.catch(() => {});
+}
+function onFull(on){
+  if (on && !preFull){ preFull = sides(); document.body.classList.add("full"); setSides(false, false); }
+  else if (!on && preFull){ document.body.classList.remove("full"); setSides(preFull.list, preFull.panel); preFull = null; }
+  $("#fullBtn").classList.toggle("on", on);
+}
+function sidesInit(){
+  const sd = store.get("sides", {list: true, panel: true});
+  setSides(sd.list !== false, sd.panel !== false);
+  $("#listBtn").onclick = () => { const v = sides(); setSides(!v.list, v.panel); };
+  $("#panelBtn").onclick = () => { const v = sides(); setSides(v.list, !v.panel); };
+  $("#fullBtn").onclick = toggleFull;
+  document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) onFull(false); });
+}
+
 // ---------- self-update ----------
 let updatePolling = false;
 async function updateInit(){
@@ -1499,6 +1548,10 @@ function bind(){
     }
     // ↑/↓ = previous/next photo, ←/→ = previous/next preset (in the grid
     // ←/→ opens the editor on the first/last preset).
+    if ((e.key === "F" || e.key === "f") && e.shiftKey && !e.ctrlKey && !e.metaKey){ e.preventDefault(); toggleFull(); return; }
+    if (e.key === "F11"){ e.preventDefault(); toggleFull(); return; }
+    if (e.key === "Escape" && document.body.classList.contains("full")){ e.preventDefault(); toggleFull(); return; }
+    if (e.key === "Tab" && !e.ctrlKey && !e.altKey && !e.metaKey){ e.preventDefault(); const v = sides(); const show = !(v.list || v.panel); setSides(show, show); return; }
     if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && S.photo){ e.preventDefault(); toggleFavorite(S.photo.id); return; }
     if ((e.key === "z" || e.key === "Z") && !e.ctrlKey && !e.metaKey && $("#detail").classList.contains("on")){ e.preventDefault(); setZoom(!ZOOM.on); return; }
     if ((e.key === "[" || e.key === "]") && S.photo){ e.preventDefault(); setRot(rotOf(S.photo.id) + (e.key === "[" ? 90 : -90)); return; }
@@ -1524,6 +1577,7 @@ function bind(){
   $("#favOnly").checked = !!store.get("favOnly", false);
   $("#favOnly").onchange = e => { store.set("favOnly", e.target.checked); applyFavFilter(); };
   applyFavFilter();
+  sidesInit();
   updateInit();
   setInterval(updateInit, 6 * 3600 * 1000);
   // Deep link: ?photo=<id or file name>&groups=SLIDE,BW&q=velvia&tile=400
