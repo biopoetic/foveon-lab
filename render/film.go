@@ -68,6 +68,11 @@ func (b *Base) newFilm(p preset.Params, mono bool) *filmOp {
 	pt := b.pitch(p)
 	if p.Grain > 0 {
 		f.sigma = float32(p.Grain / 1000 * math.Sqrt(selwynArea) / pt)
+		// The granularity is published for the standard development; the
+		// density noise grows with the density, so with the contrast.
+		if c, ok := FilmCurveFor(p.Film); ok {
+			f.sigma *= float32(c.DevelopmentFor(p).Scale)
+		}
 	}
 	if p.Halation > 0 {
 		f.halo = b.haloLight(max(1, int(math.Round(haloSigma/pt))))

@@ -35,6 +35,9 @@ type Film struct {
 	BW          bool                  `json:"bw"`
 	Mono        map[string][3]float64 `json:"mono,omitempty"`
 	SpectralSrc string                `json:"spectral_src,omitempty"`
+	// Curve: its characteristic curve and developers (filmcurve.go), nil
+	// if the library has none.
+	Curve *FilmCurve `json:"curve,omitempty"`
 }
 
 var filmByKey = sync.OnceValue(func() map[string]Film {
@@ -67,6 +70,7 @@ func Films() []Film {
 		if f.Kind != "slide" {
 			f.Grain *= printGain
 		}
+		f.Curve = filmCurves()[f.Maker+" "+f.Name]
 	}
 	return d.Films
 }

@@ -523,6 +523,8 @@ type pixOp struct {
 	pre, post  []toneOp       // tone steps before / after Fill Light
 	fillM      *fillOp
 	satMeasure float64
+
+	tone *filmTone // a black-and-white film's characteristic curve
 }
 
 func newPixOp(p preset.Params, c Compensation) pixOp {
@@ -564,6 +566,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 		op.satF *= c.SatFactor
 	}
 	op.setLayerFilter(p, c)
+	op.tone = newFilmTone(p)
 	if md := modelFor(c.Family); md != nil {
 		op.measured = true
 		op.wb = md.wbFor(p.WhiteBalance)
@@ -762,6 +765,9 @@ func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, f
 		x, k = op.pre[i].apply(x)
 		chroma *= k
 	}
+	if op.tone != nil {
+		x = float64(enc(op.tone.at(dec(float32(x)))))
+	}
 	if op.fillM != nil {
 		x, k = op.fillM.apply(x, float64(m), float64(da), float64(db))
 		chroma *= k
@@ -800,6 +806,13 @@ func (op *pixOp) apply(r, g, bl, m, da, db float32) (float32, float32, float32) 
 	}
 
 	Y := 0.2126*r + 0.7152*g + 0.0722*bl
+	if op.tone != nil && Y > 1e-6 {
+		// The film: the exposure (above) is the camera's, the tone steps
+		// (below) the print's.
+		Yf := op.tone.at(Y)
+		kk := Yf / Y
+		r, g, bl, Y = r*kk, g*kk, bl*kk, Yf
+	}
 	if Y > 1e-6 {
 		Y2 := Y
 		if op.hl < 0 {

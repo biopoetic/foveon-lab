@@ -63,8 +63,15 @@ type Params struct {
 	Grain     float64 `json:"grain,omitempty"`
 	FilmWidth float64 `json:"filmWidth,omitempty"`
 	Halation  float64 `json:"halation,omitempty"`
-	// Film names the library film the grain was taken from (display only).
+	// Film names the library film: its grain, and for a black-and-white
+	// film its spectral sensitivity and characteristic curve.
 	Film string `json:"film,omitempty"`
+	// Development of a film with a characteristic curve: Developer from
+	// its data sheet ("" = the first), DevTime in minutes (0 = the
+	// developer's standard time), Push in stops over the developer's EI.
+	Developer string  `json:"developer,omitempty"`
+	DevTime   float64 `json:"devTime,omitempty"`
+	Push      float64 `json:"push,omitempty"`
 }
 
 const (

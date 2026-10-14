@@ -260,6 +260,17 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <div class="src" id="filmSrc"></div>
           <div class="src" id="filmLink" style="display:none"></div>
         </div>
+        <div id="filmDev" style="display:none">
+          <div class="row" title="The developer from the film's data sheet: its time-gamma curve sets the negative's contrast, its exposure index the film's speed."><div class="lab">Developer <span class="dim" id="devSrc"></span></div>
+            <select id="devSel" style="width:100%"></select>
+          </div>
+          <div class="row" title="Development time. Longer = more contrast (and more grain), from the developer's time-gamma curve. Double-click = the data sheet's time."><div class="lab"><span>Time</span><b id="devTimeVal"></b></div>
+            <input type="range" id="devTime" step="0.1">
+          </div>
+          <div class="row" title="Push / pull: the film rated at a higher (lower) exposure index. Pushed, the shadows sink into the film's toe; develop longer to bring the contrast back. Double-click = box speed."><div class="lab"><span>Push / pull</span><b id="pushVal"></b></div>
+            <input type="range" id="push" min="-2" max="3" step="0.3333333">
+          </div>
+        </div>
         <div class="row"><div class="lab">Film format <span class="dim" title="Foveon Lab only. The film frame the grain and halation are sized on: a larger format shows the same film finer.">(grain, halation)</span></div>
           <select id="filmWidth" style="width:100%">
             <option value="0">35 mm (36 × 24)</option><option value="56">Medium format 6 × 6 / 6 × 4.5</option><option value="70">Medium format 6 × 7</option><option value="127">Large format 4 × 5 in</option>
@@ -373,7 +384,7 @@ const GRAIN_TIPS = "Film grain as the RMS granularity of the final image (Selwyn
 const HALATION_TIP = "Light reflected back by the film base into its red-sensitive layer: a red-orange glow around bright lights. 0 = film with an anti-halation layer, 1 = none (the Cinestill look).";
 // Layer mix presets, in stops per sensor layer (bottom, middle, top).
 const LAYER_MIX = { top: [-6,-6,0] };
-const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false,layerBottom:0,layerMiddle:0,layerTop:0,filter:"",grain:0,halation:0,filmWidth:0,film:""};
+const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false,layerBottom:0,layerMiddle:0,layerTop:0,filter:"",grain:0,halation:0,filmWidth:0,film:"",developer:"",devTime:0,push:0};
 
 const S = {
   photos: [], presets: [], photo: null,
@@ -682,7 +693,7 @@ const GROUPS = {
   colour: ["saturation","r","g","b","colorMode","mono"],
   detail: ["sharpness"],
   layer: ["layerBottom","layerMiddle","layerTop","filter"],
-  film: ["grain","halation","filmWidth","film"],
+  film: ["grain","halation","filmWidth","film","developer","devTime","push"],
   geometry: [], export: [], keys: [],
 };
 const GROUPS_CLOSED = new Set(store.get("groupsClosed", ["keys"]));
@@ -724,6 +735,12 @@ function buildSliders(){
     useFilm(FILMS[+$("#filmStock").value]);
     $("#filmStock").blur();
   };
+  $("#devSel").onchange = () => { S.params.developer = $("#devSel").value; S.params.devTime = 0; $("#devSel").blur(); syncSliders(); scheduleRender(); };
+  $("#devTime").oninput = () => { S.params.devTime = +$("#devTime").value; syncSliders(); scheduleRender(); };
+  $("#push").oninput = () => { S.params.push = Math.round(+$("#push").value * 3) / 3; syncSliders(); scheduleRender(); };
+  $("#devTime").onchange = $("#push").onchange = e => e.target.blur();
+  $("#devTimeVal").ondblclick = () => { S.params.devTime = 0; syncSliders(); scheduleRender(); };
+  $("#pushVal").ondblclick = () => { S.params.push = 0; syncSliders(); scheduleRender(); };
   $("#filmWidth").onchange = () => { S.params.filmWidth = +$("#filmWidth").value; $("#filmWidth").blur(); syncSliders(); scheduleRender(); };
   document.querySelector('#panel .row[data-k="grain"]').title = GRAIN_TIPS;
   document.querySelector('#panel .row[data-k="halation"]').title = HALATION_TIP;
@@ -759,6 +776,7 @@ async function filmsInit(){
 // spectral sensitivity where the library has it).
 function useFilm(f){
   S.params.film = f ? f.maker + " " + f.name : "";
+  S.params.developer = ""; S.params.devTime = 0; S.params.push = 0;
   if (f) {
     if (f.rms) S.params.grain = Math.round(f.grain * 2) / 2;
     S.params.mono = !!f.bw;
@@ -780,6 +798,31 @@ function syncFilm(){
     $("#useLinked").onclick = () => useFilm(link);
     box.style.display = "";
   } else box.style.display = "none";
+  syncDev(f);
+}
+// syncDev shows the development controls of a film with a characteristic
+// curve: its data sheet's developers, time and push.
+function syncDev(f){
+  const c = f && f.curve;
+  $("#filmDev").style.display = c ? "" : "none";
+  if (!c) return;
+  const sel = $("#devSel");
+  if (sel.dataset.film !== f.name){
+    sel.innerHTML = c.developers.map(d => `<option value="${esc(d.name)}">${esc(d.name)} · ${d.time} min · EI ${d.ei}</option>`).join("");
+    sel.dataset.film = f.name;
+  }
+  const d = c.developers.find(x => x.name === S.params.developer) || c.developers[0];
+  sel.value = d.name;
+  $("#devSrc").innerHTML = `(<a href="${esc(c.url)}" target="_blank" rel="noopener" title="${esc(c.src)}">data sheet</a>)`;
+  const t = S.params.devTime || d.time, push = S.params.push || 0;
+  const tm = $("#devTime");
+  tm.min = d.t[0]; tm.max = d.t[d.t.length - 1]; tm.value = t;
+  $("#devTimeVal").textContent = `${t.toFixed(1)} min${S.params.devTime ? "" : " (standard)"}`;
+  $("#push").value = push;
+  const stops = Math.round(push * 3);
+  const a = Math.abs(stops), whole = Math.floor(a / 3), rem = a % 3;
+  const ps = stops === 0 ? "box" : (stops > 0 ? "+" : "−") + [whole || "", rem ? rem + "/3" : ""].filter(Boolean).join(" ");
+  $("#pushVal").textContent = `EI ${Math.round(d.ei * Math.pow(2, push))} (${ps})`;
 }
 
 function syncSliders(){
