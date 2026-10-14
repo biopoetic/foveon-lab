@@ -595,6 +595,7 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
+	t0 := time.Now()
 	// nogeo=1: the whole (turned) frame, for the crop editor.
 	g := geometryOf(ph)
 	if q.Get("nogeo") == "1" {
@@ -628,15 +629,62 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(mode, "rawlayers:") {
 		comp = layerCompensation(comp)
 	}
-	out := render.Render(b, p, comp)
+	t1 := time.Now()
+	out := render.RenderOpt(b, p, comp, q.Get("fast") != "1")
+	t2 := time.Now()
 	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, out, &jpeg.Options{Quality: 88}); err != nil {
+	ctype := "image/jpeg"
+	if q.Get("fmt") == "bmp" {
+		// The editor on this machine: uncompressed (JPEG encoding took longer
+		// than the render itself; over loopback size costs nothing).
+		writeBMP(&buf, out)
+		ctype = "image/bmp"
+	} else if err := jpeg.Encode(&buf, out, &jpeg.Options{Quality: 88}); err != nil {
 		httpErr(w, 500, err)
 		return
 	}
-	w.Header().Set("Content-Type", "image/jpeg")
+	// Where the time goes (browser devtools show it; the editor measures it).
+	w.Header().Set("Server-Timing", fmt.Sprintf("base;dur=%.1f, render;dur=%.1f, encode;dur=%.1f",
+		t1.Sub(t0).Seconds()*1000, t2.Sub(t1).Seconds()*1000, time.Since(t2).Seconds()*1000))
+	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Cache-Control", "private, max-age=600")
 	w.Write(buf.Bytes())
+}
+
+// writeBMP writes img as a 24-bit top-down BMP.
+func writeBMP(buf *bytes.Buffer, img *image.RGBA) {
+	w, h := img.Rect.Dx(), img.Rect.Dy()
+	stride := (w*3 + 3) &^ 3
+	size := 54 + stride*h
+	le := func(v uint32, n int) {
+		for i := 0; i < n; i++ {
+			buf.WriteByte(byte(v >> (8 * i)))
+		}
+	}
+	buf.Grow(size)
+	buf.WriteString("BM")
+	le(uint32(size), 4)
+	le(0, 4)
+	le(54, 4)
+	le(40, 4)
+	le(uint32(w), 4)
+	le(uint32(-int32(h)), 4) // negative height: rows top to bottom
+	le(1, 2)
+	le(24, 2)
+	le(0, 4)
+	le(uint32(stride*h), 4)
+	le(2835, 4)
+	le(2835, 4)
+	le(0, 4)
+	le(0, 4)
+	row := make([]byte, stride)
+	for y := 0; y < h; y++ {
+		src := img.Pix[y*img.Stride:]
+		for x := 0; x < w; x++ {
+			row[x*3], row[x*3+1], row[x*3+2] = src[x*4+2], src[x*4+1], src[x*4]
+		}
+		buf.Write(row)
+	}
 }
 
 func (s *server) handleThumb(w http.ResponseWriter, r *http.Request) {

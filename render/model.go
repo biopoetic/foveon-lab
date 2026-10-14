@@ -247,6 +247,41 @@ func bilerp8(t *[8][8]float64, s, p float64) float64 {
 // multi reports whether the steps use the two-scale model.
 func (f *fillOp) multi() bool { return len(f.steps) > 0 && f.steps[0].Multi }
 
+// fillLUT: the two-scale Fill Light at one setting is, for each
+// brightness x, linear in the two surroundings: d = A(x) + B(x)·da +
+// C(x)·db, with a chroma factor of x alone. Baked once per render.
+type fillLUT struct{ a, b, c, k [toneLUTN + 1]float32 }
+
+func (f *fillOp) bake() *fillLUT {
+	if !f.multi() {
+		return nil
+	}
+	t := &fillLUT{}
+	for i := 0; i <= toneLUTN; i++ {
+		x := float64(i) / toneLUTN
+		var a, b, c float64
+		k := 1.0
+		for j, s := range f.steps {
+			w := f.weights[j]
+			a0 := fillCoef(&s.Coef, x, 0, 0)
+			a += a0 * w
+			b += (fillCoef(&s.Coef, x, 1, 0) - a0) * w
+			c += (fillCoef(&s.Coef, x, 0, 1) - a0) * w
+			k += (knot(&s.Chroma, x) - 1) * math.Abs(w)
+		}
+		t.a[i], t.b[i], t.c[i], t.k[i] = float32(a), float32(b), float32(c), float32(k)
+	}
+	return t
+}
+
+func (t *fillLUT) apply(x, da, db float64) (float64, float64) {
+	f := math.Max(0, math.Min(1, x)) * toneLUTN
+	i := min(int(f), toneLUTN-1)
+	fr := float32(f - float64(i))
+	l := func(v *[toneLUTN + 1]float32) float64 { return float64(v[i] + fr*(v[i+1]-v[i])) }
+	return math.Max(0, math.Min(1, x+l(&t.a)+l(&t.b)*da+l(&t.c)*db)), math.Max(0, l(&t.k))
+}
+
 func (f *fillOp) apply(x, m, da, db float64) (float64, float64) {
 	var d float64
 	c := 1.0

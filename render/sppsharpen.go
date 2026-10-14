@@ -71,40 +71,54 @@ var gauss1 = func() [7]float32 {
 }()
 
 // usmPlanes sharpens interleaved channels (n per pixel, the first 3
-// sharpened) given as floats: v + a·(v − gauss(v)), edges clamped.
+// sharpened) given as floats: v + a·(v − gauss(v)), edges clamped. Each
+// channel goes through its own plane: a horizontal pass (no clamping away
+// from the edges) and a vertical pass accumulated row by row.
 func usmPlanes(v []float32, w, h, n int, a float32) []float32 {
-	tmp := make([]float32, len(v))
 	out := make([]float32, len(v))
+	copy(out, v)
 	k := gauss1
-	parallelRows(h, func(y0, y1 int) {
-		for y := y0; y < y1; y++ {
-			for x := 0; x < w; x++ {
-				for c := 0; c < 3; c++ {
+	for c := 0; c < 3; c++ {
+		pl := make([]float32, w*h)
+		for i := range pl {
+			pl[i] = v[i*n+c]
+		}
+		tmp := make([]float32, w*h)
+		parallelRows(h, func(y0, y1 int) {
+			for y := y0; y < y1; y++ {
+				row, t := pl[y*w:(y+1)*w], tmp[y*w:(y+1)*w]
+				for x := 0; x < w; x++ {
+					if x >= 3 && x < w-3 {
+						r := row[x-3 : x+4]
+						t[x] = k[0]*r[0] + k[1]*r[1] + k[2]*r[2] + k[3]*r[3] + k[4]*r[4] + k[5]*r[5] + k[6]*r[6]
+						continue
+					}
 					var s float32
 					for j := -3; j <= 3; j++ {
-						xx := min(w-1, max(0, x+j))
-						s += k[j+3] * v[(y*w+xx)*n+c]
+						s += k[j+3] * row[min(w-1, max(0, x+j))]
 					}
-					tmp[(y*w+x)*n+c] = s
+					t[x] = s
 				}
 			}
-		}
-	})
-	parallelRows(h, func(y0, y1 int) {
-		for y := y0; y < y1; y++ {
-			for x := 0; x < w; x++ {
-				for c := 0; c < 3; c++ {
-					var s float32
-					for j := -3; j <= 3; j++ {
-						yy := min(h-1, max(0, y+j))
-						s += k[j+3] * tmp[(yy*w+x)*n+c]
+		})
+		parallelRows(h, func(y0, y1 int) {
+			acc := make([]float32, w)
+			for y := y0; y < y1; y++ {
+				clear(acc)
+				for j := -3; j <= 3; j++ {
+					src := tmp[min(h-1, max(0, y+j))*w:]
+					kj := k[j+3]
+					for x := 0; x < w; x++ {
+						acc[x] += kj * src[x]
 					}
-					i := (y*w+x)*n + c
-					out[i] = v[i] + a*(v[i]-s)
+				}
+				for x := 0; x < w; x++ {
+					i := (y*w + x) * n
+					out[i+c] = pl[y*w+x] + a*(pl[y*w+x]-acc[x])
 				}
 			}
-		}
-	})
+		})
+	}
 	return out
 }
 

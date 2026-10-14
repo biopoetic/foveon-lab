@@ -368,6 +368,31 @@ type Base struct {
 
 	filmMu sync.Mutex
 	halos  map[int][]float32 // halation light by spread (film.go)
+
+	// Per-pixel Fill Light inputs, fixed for the image: the mask, and the
+	// two surroundings minus the pixel's own brightness (computed once,
+	// not interpolated from their grids on every render).
+	fieldsOnce   sync.Once
+	mPix, da, db []float32
+}
+
+// fields computes the per-pixel Fill Light inputs once.
+func (b *Base) fields() {
+	b.fieldsOnce.Do(func() {
+		n := b.W * b.H
+		b.mPix, b.da, b.db = make([]float32, n), make([]float32, n), make([]float32, n)
+		parallelRows(b.H, func(y0, y1 int) {
+			for y := y0; y < y1; y++ {
+				for x := 0; x < b.W; x++ {
+					j := y*b.W + x
+					i := j * 3
+					v := enc(0.2126*b.Pix[i] + 0.7152*b.Pix[i+1] + 0.0722*b.Pix[i+2])
+					b.mPix[j] = b.m.at(x, y)
+					b.da[j], b.db[j] = b.sa.At(x, y)-v, b.sb.At(x, y)-v
+				}
+			}
+		})
+	})
 }
 
 // NewBase prepares a linear image for repeated rendering.
@@ -453,6 +478,12 @@ func hueWeight(h, center, half float64) float64 {
 
 // Render applies p to the base image and returns 8-bit sRGB.
 func Render(b *Base, p preset.Params, c Compensation) *image.RGBA {
+	return RenderOpt(b, p, c, true)
+}
+
+// RenderOpt is Render; sharp false skips the sharpening (a quick preview
+// while a slider is dragged).
+func RenderOpt(b *Base, p preset.Params, c Compensation, sharp bool) *image.RGBA {
 	out := image.NewRGBA(image.Rect(0, 0, b.W, b.H))
 	renderInto(b, p, c, func(i int, r, g, bl float32) {
 		o := out.Pix[i*4:]
@@ -461,10 +492,10 @@ func Render(b *Base, p preset.Params, c Compensation) *image.RGBA {
 		o[2] = uint8(enc(bl)*255 + 0.5)
 		o[3] = 255
 	})
-	if b.Raw {
+	if b.Raw && sharp {
 		sppSharpen8(out, b.scale(), b.ISO, b.Sensor)
 	}
-	if p.Sharpness != 0 {
+	if p.Sharpness != 0 && sharp {
 		sharpen(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale()))))
 	}
 	return out
@@ -497,16 +528,21 @@ func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, 
 	w, h := b.W, b.H
 	op := newPixOp(p, c)
 	film := b.newFilm(p, op.mono || op.layerMono != nil)
+	fill := op.fill != 0 || op.fillM != nil
+	if fill {
+		b.fields()
+	}
+	multi := op.fillM != nil && op.fillM.multi()
 	parallelRows(h, func(y0, y1 int) {
 		for y := y0; y < y1; y++ {
 			for x := 0; x < w; x++ {
-				i := (y*w + x) * 3
+				j := y*w + x
+				i := j * 3
 				var m, da, db float32
-				if op.fill != 0 || op.fillM != nil {
-					m = b.m.at(x, y)
-					if op.fillM != nil && op.fillM.multi() {
-						v := enc(0.2126*b.Pix[i] + 0.7152*b.Pix[i+1] + 0.0722*b.Pix[i+2])
-						da, db = b.sa.At(x, y)-v, b.sb.At(x, y)-v
+				if fill {
+					m = b.mPix[j]
+					if multi {
+						da, db = b.da[j], b.db[j]
 					}
 				}
 				r, g, bl := film.addHalo(y*w+x, b.Pix[i], b.Pix[i+1], b.Pix[i+2])
@@ -540,6 +576,33 @@ type pixOp struct {
 	satMeasure float64
 
 	tone *filmTone // a black-and-white film's characteristic curve
+
+	// The measured tone steps before / after Fill Light (pre includes the
+	// film's curve), baked once per render: they depend on brightness only.
+	preL, postL *toneLUT
+	fillL       *fillLUT // the two-scale Fill Light, baked
+}
+
+// toneLUT: brightness x (sRGB 0..1) -> new brightness and chroma factor,
+// sampled at toneLUTN+1 points and interpolated linearly.
+const toneLUTN = 2048
+
+type toneLUT struct{ x, c [toneLUTN + 1]float32 }
+
+func bakeTone(f func(x float64) (float64, float64)) *toneLUT {
+	t := &toneLUT{}
+	for i := 0; i <= toneLUTN; i++ {
+		x, c := f(float64(i) / toneLUTN)
+		t.x[i], t.c[i] = float32(x), float32(c)
+	}
+	return t
+}
+
+func (t *toneLUT) at(x float64) (float64, float64) {
+	f := math.Max(0, math.Min(1, x)) * toneLUTN
+	i := min(int(f), toneLUTN-1)
+	fr := float32(f - float64(i))
+	return float64(t.x[i] + fr*(t.x[i+1]-t.x[i])), float64(t.c[i] + fr*(t.c[i+1]-t.c[i]))
 }
 
 func newPixOp(p preset.Params, c Compensation) pixOp {
@@ -588,6 +651,9 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 		op.tint = [3]float32{float32(p.R * k), float32(p.G * k), float32(p.B * k)}
 		op.pre = md.newToneOp("Exposure", p.Exposure)
 		op.fillM = md.newFillOp(p.FillLight)
+		if op.fillM != nil {
+			op.fillL = op.fillM.bake()
+		}
 		for _, t := range []struct {
 			param string
 			v     float64
@@ -601,6 +667,28 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 				op.post = append(op.post, md.newToneOp(fmt.Sprintf("ColorMode%d", p.ColorMode), 1)...)
 			}
 		}
+		pre, post, tone := op.pre, op.post, op.tone
+		op.preL = bakeTone(func(x float64) (float64, float64) {
+			c := 1.0
+			var k float64
+			for i := range pre {
+				x, k = pre[i].apply(x)
+				c *= k
+			}
+			if tone != nil {
+				x = float64(enc(tone.at(dec(float32(x)))))
+			}
+			return x, c
+		})
+		op.postL = bakeTone(func(x float64) (float64, float64) {
+			c := 1.0
+			var k float64
+			for i := range post {
+				x, k = post[i].apply(x)
+				c *= k
+			}
+			return x, c
+		})
 		// Measured: Saturation ±0.5 → ×1.25 / ×0.75, ±1 → ×1.5 / ×0.5.
 		op.satMeasure = math.Max(0, 1+0.5*sat)
 		if c.SatFactor > 0 {
@@ -789,24 +877,17 @@ func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, f
 	r, g, bl = r*op.tint[0], g*op.tint[1], bl*op.tint[2]
 	Y := 0.2126*r + 0.7152*g + 0.0722*bl
 	cr, cg, cb := r-Y, g-Y, bl-Y
-	x := float64(enc(Y))
-	chroma := 1.0
+	x, chroma := op.preL.at(float64(enc(Y)))
 	var k float64
-	for i := range op.pre {
-		x, k = op.pre[i].apply(x)
+	if op.fillL != nil {
+		x, k = op.fillL.apply(x, float64(da), float64(db))
 		chroma *= k
-	}
-	if op.tone != nil {
-		x = float64(enc(op.tone.at(dec(float32(x)))))
-	}
-	if op.fillM != nil {
+	} else if op.fillM != nil {
 		x, k = op.fillM.apply(x, float64(m), float64(da), float64(db))
 		chroma *= k
 	}
-	for i := range op.post {
-		x, k = op.post[i].apply(x)
-		chroma *= k
-	}
+	x, k = op.postL.at(x)
+	chroma *= k
 	Y2 := dec(float32(x))
 	if op.mono {
 		return Y2, Y2, Y2

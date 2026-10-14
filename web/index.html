@@ -421,6 +421,9 @@ function renderURL(opts){
   if (opts.preset) u.set("preset", opts.preset);
   if (opts.params) u.set("p", JSON.stringify(opts.params));
   if (opts.camera) u.set("src", "camera");
+  // The big view: uncompressed (encoding a JPEG took longer than rendering).
+  if (opts.big) u.set("fmt", "bmp");
+  if (opts.fast) u.set("fast", "1");
   return "/api/render?" + u;
 }
 
@@ -1003,7 +1006,29 @@ function stepPreset(d){
 function bigW(){ const st = $("#stage"); return Math.min(1600, Math.round(st.clientWidth * (window.devicePixelRatio||1) / 40) * 40); }
 
 let renderSeq = 0, renderTimer = 0;
-function scheduleRender(){ clearTimeout(renderTimer); renderTimer = setTimeout(renderBig, 70); }
+// While a slider is dragged (changes closer than 400 ms apart) the view
+// shows quick renders: half size, no sharpening, at most one in flight;
+// 350 ms after the last change comes the full render.
+const DRAG = {last: 0, busy: false, pending: false, final: 0};
+function scheduleRender(){
+  const now = performance.now(), dragging = now - DRAG.last < 400 && !ZOOM.on && !$("#big").hidden;
+  DRAG.last = now;
+  clearTimeout(renderTimer); clearTimeout(DRAG.final);
+  if (!dragging){ renderTimer = setTimeout(renderBig, 70); return; }
+  if (DRAG.busy) DRAG.pending = true; else renderFast();
+  DRAG.final = setTimeout(renderBig, 350);
+}
+function renderFast(){
+  if (!S.photo) return;
+  DRAG.busy = true; DRAG.pending = false;
+  const seq = renderSeq, img = new Image();
+  img.onload = img.onerror = () => {
+    DRAG.busy = false;
+    if (img.naturalWidth && seq === renderSeq) $("#big").src = img.src;
+    if (DRAG.pending) renderFast();
+  };
+  img.src = renderURL({w: Math.max(320, Math.round(bigW() / 2 / 40) * 40), params: S.params, big: true, fast: true});
+}
 // ---------- 100% view ----------
 // ZOOM: the window's centre (cx, cy) as fractions of the full-resolution,
 // geometry-applied frame; full = [W, H, x0, y0] from the last response.
@@ -1075,16 +1100,16 @@ function renderBig(showOrig){
   const seq = ++renderSeq;
   const p = current();
   let url;
-  if (showOrig || S.idx === -2 && !dirty()) url = renderURL({w: bigW(), comp: "0", camera: true});
-  else if (p && !dirty()) url = renderURL({w: bigW(), preset: p.id});
-  else url = renderURL({w: bigW(), params: S.params});
+  if (showOrig || S.idx === -2 && !dirty()) url = renderURL({w: bigW(), comp: "0", camera: true, big: true});
+  else if (p && !dirty()) url = renderURL({w: bigW(), preset: p.id, big: true});
+  else url = renderURL({w: bigW(), params: S.params, big: true});
   VIEW.tag = showOrig ? "CAMERA ORIGINAL" : (dirty() ? "tuned" : (p ? "preset" : ""));
   setTag();
   if (ZOOM.on && !showOrig){ renderZoom(url, seq); return; }
   const img = new Image();
   const busy = setTimeout(() => $("#busy").style.display = "block", 150);
   img.onload = () => { clearTimeout(busy); $("#busy").style.display = "none"; if (seq === renderSeq){ $("#big").src = img.src; $("#big").onload = afterBig; } };
-  if (!showOrig) $("#bigOrig").src = renderURL({w: bigW(), comp: "0", camera: true});
+  if (!showOrig) $("#bigOrig").src = renderURL({w: bigW(), comp: "0", camera: true, big: true});
   img.onerror = () => { clearTimeout(busy); $("#busy").style.display = "none"; toast("Render failed."); };
   img.src = url;
 }
