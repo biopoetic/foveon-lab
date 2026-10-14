@@ -31,6 +31,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"math"
+	"sort"
 	"strconv"
 	"sync"
 
@@ -47,7 +48,8 @@ type Developer struct {
 	Time float64   `json:"time"` // its standard time (minutes)
 	T    []float64 `json:"t"`
 	C    []float64 `json:"c"` // contrast (the sheet's gamma or contrast index) at time T
-	// Push: the sheet's times (minutes) for pushing the given stops.
+	// Push: the sheet's times (minutes) for rating the film the given stops
+	// over EI (negative: pulled).
 	Push map[string]float64 `json:"push,omitempty"`
 	// Src: where the developer's data comes from when not the film's own
 	// sheet (times from another source, a curve shape carried over).
@@ -68,7 +70,10 @@ type FilmCurve struct {
 	URL      string    `json:"url"`
 	Contrast string    `json:"contrast"` // the sheet's measure: gamma or CI
 	LgH      []float64 `json:"lgh"`
-	Curves   []Curve   `json:"curves"`
+	// Relative: the sheet's exposure axis is relative (Ilford), so only
+	// the curve's speed point (put at the box ISO) places it.
+	Relative bool    `json:"relative,omitempty"`
+	Curves   []Curve `json:"curves"`
 	// RefTime: the standard time of the curves' process (several curves).
 	RefTime    float64     `json:"ref_time,omitempty"`
 	Developers []Developer `json:"developers"`
@@ -220,18 +225,22 @@ func (c *FilmCurve) Developer(name string) Developer {
 	return c.Developers[0]
 }
 
-// PushTime is the developer's time for pushing push stops: the sheet's
-// push times, interpolated from the standard time; past them the last one;
-// the standard time where the sheet gives none (and for a pull).
+// PushTime is the developer's time for rating the film push stops over
+// its EI (negative = pull): the sheet's times, interpolated through the
+// standard time; past them the last one; the standard time where the sheet
+// gives none in that direction.
 func (d Developer) PushTime(push float64) float64 {
-	if push <= 0 || len(d.Push) == 0 {
-		return d.Time
-	}
-	xs, ys := []float64{0}, []float64{d.Time}
-	for s := 1; s <= 6; s++ {
-		if t, ok := d.Push[strconv.Itoa(s)]; ok {
-			xs, ys = append(xs, float64(s)), append(ys, t)
+	type pt struct{ s, t float64 }
+	pts := []pt{{0, d.Time}}
+	for k, t := range d.Push {
+		if s, err := strconv.ParseFloat(k, 64); err == nil && s != 0 {
+			pts = append(pts, pt{s, t})
 		}
+	}
+	sort.Slice(pts, func(i, j int) bool { return pts[i].s < pts[j].s })
+	xs, ys := make([]float64, len(pts)), make([]float64, len(pts))
+	for i, p := range pts {
+		xs[i], ys[i] = p.s, p.t
 	}
 	return interp(xs, ys, push)
 }

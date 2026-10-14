@@ -255,7 +255,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         </div>
         <div class="grp" data-g="film"><div class="gh"><span class="chev">▾</span><span class="gt">Film &amp; Darkroom</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
           <div class="gb" id="g-film">
-        <div class="row"><div class="lab">Film stock <span class="dim" title="Foveon Lab only. Each film's RMS granularity from its maker's technical data (the document is in the tooltip). Films whose makers publish no RMS are listed but can't be picked.">(grain from its data sheet)</span></div>
+        <div class="row"><div class="lab">Film stock <span class="dim" title="Foveon Lab only. Each film's RMS granularity from its maker's technical data (the document is in the tooltip). Films whose makers publish no RMS are listed but can't be picked, unless the darkroom has their characteristic curve (their grain then stays yours to set).">(grain from its data sheet)</span></div>
           <select id="filmStock" style="width:100%"><option value="">None (set the grain by hand)</option></select>
           <div class="src" id="filmSrc"></div>
           <div class="src" id="filmLink" style="display:none"></div>
@@ -781,7 +781,7 @@ async function filmsInit(){
   FILMS.forEach((f, i) => (byMaker[f.maker] ||= []).push([f, i]));
   $("#filmStock").insertAdjacentHTML("beforeend", Object.keys(byMaker).sort().map(m =>
     `<optgroup label="${esc(m)}">` + byMaker[m].map(([f, i]) =>
-      `<option value="${i}"${f.rms ? "" : " disabled"} title="${esc(f.src)}">${esc(f.name)}${f.iso ? " · ISO " + f.iso : ""} · ${kinds[f.kind] || f.kind}${f.rms ? " · RMS " + f.rms : " · no published RMS"}</option>`).join("") + "</optgroup>").join(""));
+      `<option value="${i}"${f.rms || f.curve ? "" : " disabled"} title="${esc(f.src)}">${esc(f.name)}${f.iso ? " · ISO " + f.iso : ""} · ${kinds[f.kind] || f.kind}${f.rms ? " · RMS " + f.rms : " · no published RMS"}${f.curve ? " · darkroom" : ""}</option>`).join("") + "</optgroup>").join(""));
   syncFilm();
 }
 // useFilm makes the photo use a library film: its grain (from its data
@@ -815,12 +815,11 @@ function syncFilm(){
 }
 // pushTime: the sheet's time for pushing push stops (render.PushTime).
 function pushTime(d, push){
-  if (push <= 0 || !d.push) return d.time;
-  const xs = [0], ys = [d.time];
-  for (let s = 1; s <= 6; s++) if (d.push[s] != null) { xs.push(s); ys.push(d.push[s]); }
-  if (push >= xs[xs.length - 1]) return ys[ys.length - 1];
-  let i = 1; while (xs[i] < push) i++;
-  return ys[i-1] + (push - xs[i-1]) / (xs[i] - xs[i-1]) * (ys[i] - ys[i-1]);
+  const pts = [[0, d.time], ...Object.entries(d.push || {}).map(([k, t]) => [+k, t]).filter(([k]) => k)].sort((a, b) => a[0] - b[0]);
+  if (push <= pts[0][0]) return pts[0][1];
+  if (push >= pts[pts.length - 1][0]) return pts[pts.length - 1][1];
+  let i = 1; while (pts[i][0] < push) i++;
+  return pts[i-1][1] + (push - pts[i-1][0]) / (pts[i][0] - pts[i-1][0]) * (pts[i][1] - pts[i-1][1]);
 }
 function fmtMin(t){ const m = Math.floor(t + 1e-6), s = Math.round((t - m) * 60); return s ? `${m}:${String(s).padStart(2, "0")} min` : `${m} min`; }
 // syncDev shows the development controls of a film with a characteristic
@@ -836,7 +835,7 @@ function syncDev(f){
   }
   const d = c.developers.find(x => x.name === S.params.developer) || c.developers[0];
   sel.value = d.name;
-  $("#devSrc").innerHTML = d.src ? `(<span title="${esc(d.src)}">other sources ⓘ</span>)` : `(<a href="${esc(c.url)}" target="_blank" rel="noopener" title="${esc(c.src)}">data sheet</a>)`;
+  $("#devSrc").innerHTML = `(<a href="${esc(c.url)}" target="_blank" rel="noopener" title="${esc(c.src)}">data sheet</a>${d.src ? ` <span title="${esc(d.src)}">ⓘ</span>` : ""})`;
   const push = S.params.push || 0, auto = pushTime(d, push), t = S.params.devTime || auto;
   const tm = $("#devTime");
   tm.min = d.t[0]; tm.max = d.t[d.t.length - 1]; tm.value = t;

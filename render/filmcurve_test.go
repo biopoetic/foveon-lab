@@ -29,7 +29,7 @@ func TestFilmCurves(t *testing.T) {
 		// ISO speed: the curve's fog + 0.1 point near 0.8/ISO lux·s (the
 		// axis read right); the tone puts it there exactly.
 		off := c.SpeedPoint() - math.Log10(0.8/float64(f.ISO))
-		if math.Abs(off) > 0.35 {
+		if !c.Relative && math.Abs(off) > 0.35 {
 			t.Errorf("%s: speed point %.2f stops from the box speed", key, off/math.Log10(2))
 		}
 		// The sheet's standard times all aim at one contrast.
@@ -47,7 +47,10 @@ func TestFilmCurves(t *testing.T) {
 				t.Errorf("%s %s: push time %.2f below the standard %.2f", key, d.Name, d.PushTime(2), d.Time)
 			}
 		}
-		lo, hi := slices.Min(cs), slices.Max(cs)
+		lo, hi := 0.0, 0.0
+		if len(cs) > 0 {
+			lo, hi = slices.Min(cs), slices.Max(cs)
+		}
 		if hi-lo > 0.04 {
 			t.Errorf("%s: standard times develop to %.3f..%.3f", key, lo, hi)
 		}
@@ -98,7 +101,7 @@ func TestFilmTone(t *testing.T) {
 		t.Logf("Tri-X curve %v min: gamma %.3f", k.Time, k.gamma)
 	}
 	// No curve, no tone.
-	if newFilmTone(preset.Params{Film: "Ilford HP5 Plus"}) != nil || newFilmTone(preset.Params{}) != nil {
+	if newFilmTone(preset.Params{Film: "Foma Fomapan 100 Classic"}) != nil || newFilmTone(preset.Params{}) != nil {
 		t.Error("tone without a curve")
 	}
 }
