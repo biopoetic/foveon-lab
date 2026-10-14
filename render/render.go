@@ -32,6 +32,12 @@ type Linear struct {
 	// 100% window or a crop keeps the frame's, so film grain and halation,
 	// sized on the film, stay the same size.
 	Frame int
+	// Raw: developed from the raw data, so without the sharpening SPP (or
+	// the camera, for its JPEG) gives every image; Render adds SPP's.
+	Raw bool
+	// ISO the photo was taken at (0 = unknown): SPP sharpens less as
+	// its noise reduction takes the fine detail away.
+	ISO float64
 }
 
 // frame is the whole frame's long side in full-resolution pixels.
@@ -216,7 +222,7 @@ func pixelGetter(img image.Image) func(x, y int) (uint8, uint8, uint8) {
 func (l *Linear) Window(x0, y0, w, h int) *Linear {
 	x0, y0 = max(0, min(x0, l.W-1)), max(0, min(y0, l.H-1))
 	w, h = max(1, min(w, l.W-x0)), max(1, min(h, l.H-y0))
-	o := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, Frame: int(math.Round(l.frame()))}
+	o := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, Frame: int(math.Round(l.frame())), Raw: l.Raw, ISO: l.ISO}
 	for y := 0; y < h; y++ {
 		copy(o.Pix[y*w*3:(y+1)*w*3], l.Pix[((y+y0)*l.W+x0)*3:])
 	}
@@ -228,7 +234,7 @@ func (l *Linear) Rotate(deg int) *Linear {
 		return l
 	}
 	w, h := l.W, l.H
-	o := &Linear{W: w, H: h, Pix: make([]float32, len(l.Pix)), Scale: l.Scale, Frame: l.Frame}
+	o := &Linear{W: w, H: h, Pix: make([]float32, len(l.Pix)), Scale: l.Scale, Frame: l.Frame, Raw: l.Raw, ISO: l.ISO}
 	if deg != 180 {
 		o.W, o.H = h, w
 	}
@@ -256,7 +262,7 @@ func (l *Linear) Downscale(maxW int) *Linear {
 	}
 	dw := maxW
 	dh := max(1, int(math.Round(float64(l.H)*float64(dw)/float64(l.W))))
-	o := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame}
+	o := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame, Raw: l.Raw, ISO: l.ISO}
 	parallelRows(dh, func(y0, y1 int) {
 		for dy := y0; dy < y1; dy++ {
 			sy0, sy1 := dy*l.H/dh, (dy+1)*l.H/dh
@@ -452,6 +458,9 @@ func Render(b *Base, p preset.Params, c Compensation) *image.RGBA {
 		o[2] = uint8(enc(bl)*255 + 0.5)
 		o[3] = 255
 	})
+	if b.Raw {
+		sppSharpen8(out, b.scale(), b.ISO)
+	}
 	if p.Sharpness != 0 {
 		sharpen(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale()))))
 	}
@@ -470,6 +479,9 @@ func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 		}
 		o[6], o[7] = 0xff, 0xff
 	})
+	if b.Raw {
+		sppSharpen16(out, b.scale(), b.ISO)
+	}
 	if p.Sharpness != 0 {
 		sharpen16(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale()))))
 	}

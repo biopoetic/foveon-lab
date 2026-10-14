@@ -52,7 +52,7 @@ func FromCameraRaw(img image.Image, maxW, rot int, t CamTransform) *Linear {
 	for i, v := range m {
 		mf[i] = float32(v / 65535)
 	}
-	l := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: float64(dw) / float64(sw)}
+	l := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: float64(dw) / float64(sw), Raw: true}
 	parallelRows(dh, func(y0, y1 int) {
 		sum := make([]float32, dw*3)
 		cnt := make([]float32, dw)
@@ -125,7 +125,7 @@ func FromCamLinear(pix []float32, sw, sh, maxW, rot int, t CamTransform) *Linear
 	for x := range colMap {
 		colMap[x] = x * dw / sw
 	}
-	l := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: float64(dw) / float64(sw)}
+	l := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: float64(dw) / float64(sw), Raw: true}
 	parallelRows(dh, func(y0, y1 int) {
 		sum := make([]float32, dw*3)
 		cnt := make([]float32, dw)

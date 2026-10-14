@@ -10,7 +10,9 @@ package main
 
 import (
 	"fmt"
-	_ "image/png"
+	"image"
+	"image/png"
+	"path/filepath"
 
 	_ "golang.org/x/image/tiff"
 	"log"
@@ -18,6 +20,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/biopoetic/foveon-lab/preset"
 	"github.com/biopoetic/foveon-lab/render"
 	"github.com/biopoetic/foveon-lab/x3f"
 )
@@ -29,6 +32,24 @@ func main() {
 	if len(a) > 0 && a[0] == "-gain" {
 		gains(a[1:])
 		return
+	}
+	if len(a) > 0 && strings.HasPrefix(a[0], "-sigma=") {
+		fmt.Sscanf(a[0], "-sigma=%g", &fixSigma)
+		a = a[1:]
+	}
+	if len(a) > 0 && strings.HasPrefix(a[0], "-save=") {
+		saveDir = strings.TrimPrefix(a[0], "-save=")
+		a = a[1:]
+	}
+	if len(a) > 0 && a[0] == "-nofit" {
+		noFit = true
+		a = a[1:]
+	}
+	if len(a) > 0 && a[0] == "-render" {
+		// Check the app's own render (SPP sharpening included): the fit
+		// should then find nothing left to add.
+		viaRender = true
+		a = a[1:]
 	}
 	if len(a) > 0 && strings.HasPrefix(a[0], "-nr=") {
 		fmt.Sscanf(a[0], "-nr=%g", &nrStrength)
@@ -55,6 +76,9 @@ func main() {
 			fmt.Printf("%s: sizes differ (%dx%d vs %dx%d), skipped\n", a[i], w, h, sw, sh)
 			continue
 		}
+		if saveDir != "" {
+			saveCrop(filepath.Base(a[i]), ours, spp, w, h)
+		}
 		// Four 400×400 crops around the centre (SPP's export is aligned with
 		// the raw decode on SD1 HI files: offset 0,0 measured).
 		for _, c := range [][2]int{{w/2 - 450, h/2 - 450}, {w/2 + 50, h/2 - 450}, {w/2 - 450, h/2 + 50}, {w/2 + 50, h/2 + 50}} {
@@ -70,11 +94,18 @@ func main() {
 		}
 		fmt.Println()
 	}
+	if noFit {
+		return
+	}
 	// Grid search: unsharp mask (Gaussian sigma, amount) on ours whose band
 	// amplitudes best match SPP's (log ratio, summed over pairs and bands).
 	best, bs, ba := math.Inf(1), 0.0, 0.0
-	for _, sig := range []float64{0.5, 0.7, 1.0, 1.4, 2.0} {
-		for amt := 0.0; amt <= 2.0001; amt += 0.1 {
+	sigmas := []float64{0.5, 0.7, 0.85, 1.0, 1.2, 1.4, 1.7, 2.0}
+	if fixSigma > 0 {
+		sigmas = []float64{fixSigma}
+	}
+	for _, sig := range sigmas {
+		for amt := 0.0; amt <= 4.0001; amt += 0.1 {
 			var cost float64
 			for _, p := range pairs {
 				sh := usm(p.ours, p.w, p.h, sig, amt)
@@ -105,6 +136,37 @@ func main() {
 // sRGB-encoded luminance.
 var nrStrength = 1.0
 
+// viaRender: measure the app's rendered output instead of the linear image.
+var viaRender bool
+
+// noFit: only report the band ratios.
+var noFit bool
+
+// fixSigma: fit only the amount, at this sigma.
+var fixSigma float64
+
+// saveDir: write each photo's centre crop, ours | SPP, as a PNG there.
+var saveDir string
+
+func saveCrop(name string, ours, spp []float32, w, h int) {
+	const cs = 500
+	x0, y0 := w/2-cs/2, h/2-cs/2
+	img := image.NewGray(image.Rect(0, 0, 2*cs+8, cs))
+	for y := 0; y < cs; y++ {
+		for x := 0; x < cs; x++ {
+			i := (y0+y)*w + x0 + x
+			img.Pix[y*img.Stride+x] = uint8(math.Max(0, math.Min(1, float64(ours[i])))*255 + 0.5)
+			img.Pix[y*img.Stride+cs+8+x] = uint8(math.Max(0, math.Min(1, float64(spp[i])))*255 + 0.5)
+		}
+	}
+	f, err := os.Create(filepath.Join(saveDir, name+".png"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	png.Encode(f, img)
+	f.Close()
+}
+
 func develop(path string) ([]float32, int, int, error) {
 	f, err := x3f.Open(path)
 	if err != nil {
@@ -133,8 +195,13 @@ func develop(path string) ([]float32, int, int, error) {
 		x3f.Denoise(img, x3f.DenoiseOptions{Strength: nrStrength, Scale: 1})
 	}
 	l := render.FromCamLinear(img.Pix, img.W, img.H, 0, 0, render.CamTransform{Gain: gain, CC: cc})
+	fmt.Sscan(f.Props["ISO"], &l.ISO)
 	if b := render.RawBaseFitted(x3f.CalibGroup(f.Props["CAMMODEL"])); b != nil {
 		b.Apply(l)
+	}
+	if viaRender {
+		img := render.Render(render.NewBase(l), preset.Params{R: 1, G: 1, B: 1, ColorMode: preset.ModeStandard}, render.Compensation{})
+		l = render.FromImage(img, 0, 0)
 	}
 	return luma(l), l.W, l.H, nil
 }

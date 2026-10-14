@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -154,7 +155,9 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64) (*r
 		}
 		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(b)})
 	}
-	return render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t), nil
+	l := render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t)
+	l.ISO, _ = strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
+	return l, nil
 }
 
 // binCam averages b×b blocks of camera RGB.
