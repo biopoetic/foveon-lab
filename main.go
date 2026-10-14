@@ -1246,8 +1246,10 @@ func main() {
 	os.Args = args
 	flag.Parse()
 	rawTool = findRawTool(*rawToolPath)
-	if rawTool != "" {
-		log.Printf("raw decoding for SD9/SD10 via %s", rawTool)
+	// Raw data is decoded natively; x3f_extract (left next to the program by
+	// v0.4.1 and older) is only used with FOVEON_RAW=x3f.
+	if rawTool != "" && !goRaw {
+		log.Printf("raw decoding via %s (FOVEON_RAW=x3f)", rawTool)
 	}
 
 	log.SetFlags(log.Ltime)
