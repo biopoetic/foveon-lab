@@ -550,10 +550,10 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
-	// nogeo=1: the whole frame (for the crop editor).
+	// nogeo=1: the whole (turned) frame, for the crop editor.
 	g := geometryOf(ph)
 	if q.Get("nogeo") == "1" {
-		g = render.Geometry{}
+		g = render.Geometry{Turn: g.Turn}
 	}
 	b, err := s.baseAs(ph, width, mode, g)
 	if err != nil {

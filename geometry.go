@@ -54,7 +54,7 @@ func geoKey(g render.Geometry) string {
 	if g.IsZero() {
 		return ""
 	}
-	return fmt.Sprintf("|g%.3f,%.4f,%.4f,%.4f,%.4f", g.Angle, g.X, g.Y, g.W, g.H)
+	return fmt.Sprintf("|g%d,%.3f,%.4f,%.4f,%.4f,%.4f", g.Turn, g.Angle, g.X, g.Y, g.W, g.H)
 }
 
 // handleGeometry: GET ?id= → the photo's geometry; POST {"id", "angle",
@@ -83,7 +83,7 @@ func (s *server) handleGeometry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	g := req.Geometry
-	if g.Angle < -45 || g.Angle > 45 || g.X < 0 || g.Y < 0 || g.W < 0 || g.H < 0 || g.X+g.W > 1.0001 || g.Y+g.H > 1.0001 {
+	if g.Turn < 0 || g.Turn > 3 || g.Angle < -45 || g.Angle > 45 || g.X < 0 || g.Y < 0 || g.W < 0 || g.H < 0 || g.X+g.W > 1.0001 || g.Y+g.H > 1.0001 {
 		httpErr(w, 400, fmt.Errorf("geometry out of range"))
 		return
 	}

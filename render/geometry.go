@@ -2,12 +2,15 @@ package render
 
 import "math"
 
-// Geometry is a photo's straighten + crop. Angle is in degrees
+// Geometry is a photo's rotation, straighten and crop. Turn is a number of
+// quarter turns clockwise (0-3) applied first, so the frame can become
+// portrait; then Angle is in degrees
 // (counter-clockwise positive, as a horizon tilted down to the right is
 // fixed by a positive angle); the crop is a rectangle in [0,1] coordinates
 // of the rotated canvas (same size as the image, rotated about its centre).
 // The zero value means "uncropped, not rotated".
 type Geometry struct {
+	Turn  int     `json:"turn,omitempty"`
 	Angle float64 `json:"angle"`
 	X     float64 `json:"x"`
 	Y     float64 `json:"y"`
@@ -17,7 +20,7 @@ type Geometry struct {
 
 // IsZero reports whether g changes nothing.
 func (g Geometry) IsZero() bool {
-	return math.Abs(g.Angle) < 1e-6 && (g.W == 0 || g.H == 0 || (g.X == 0 && g.Y == 0 && g.W == 1 && g.H == 1))
+	return g.Turn%4 == 0 && math.Abs(g.Angle) < 1e-6 && (g.W == 0 || g.H == 0 || (g.X == 0 && g.Y == 0 && g.W == 1 && g.H == 1))
 }
 
 // InscribedScale is the largest s such that a centred s·w × s·h rectangle
@@ -49,6 +52,13 @@ func (g Geometry) Clamp(w, h int) Geometry {
 func ApplyGeometry(l *Linear, g Geometry) *Linear {
 	if g.IsZero() {
 		return l
+	}
+	if t := ((g.Turn % 4) + 4) % 4; t != 0 {
+		l = l.Rotate(90 * t)
+		g.Turn = 0
+		if g.IsZero() {
+			return l
+		}
 	}
 	g = g.Clamp(l.W, l.H)
 	W, H := float64(l.W), float64(l.H)
