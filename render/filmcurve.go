@@ -4,10 +4,12 @@ package render
 // exposes the negative, the developer sets its contrast, the print makes the
 // positive (render/filmcurves.json has the makers' curves).
 //
-// Negative: the metered mid-grey gets the exposure lg H = lg(10/EI) lux·s (an
-// exposure meter puts it ~3.6 stops above the ISO speed point 0.8/ISO, where
-// the density is fog + 0.1; on the APX 400 curve 0.8/400 lands there). The
-// density follows the data sheet's curve, toe and shoulder included.
+// Negative: the metered mid-grey gets the exposure lg H = lg(10/EI) lux·s, an
+// exposure meter's ~3.6 stops above the ISO speed point 0.8/ISO (where the
+// density is fog + 0.1). The curve's own speed point is put at the box ISO:
+// Tri-X and APX 400 land there as printed, APX 100 and 25 are printed up to
+// a stop faster than their rating, and the rating is what the photographer
+// meters with. The density follows the curve, toe and shoulder included.
 // Development: the developer's contrast-time curve (gamma or Kodak's
 // contrast index) sets the gamma, relative to its standard time's, which
 // gives the film's standard gamma. Where the sheet gives a family of curves
@@ -47,6 +49,9 @@ type Developer struct {
 	C    []float64 `json:"c"` // contrast (the sheet's gamma or contrast index) at time T
 	// Push: the sheet's times (minutes) for pushing the given stops.
 	Push map[string]float64 `json:"push,omitempty"`
+	// Src: where the developer's data comes from when not the film's own
+	// sheet (times from another source, a curve shape carried over).
+	Src string `json:"src,omitempty"`
 }
 
 // Curve is one characteristic curve of a film's family.
@@ -188,6 +193,23 @@ func (c *FilmCurve) Density(g float64) func(lgH float64) float64 {
 	return func(x float64) float64 { return (1-w)*fa(x) + w*fb(x) }
 }
 
+// SpeedPoint is the lg H where the standard development's density is
+// fog + 0.1 (the ISO speed point).
+func (c *FilmCurve) SpeedPoint() float64 {
+	dens := c.Density(c.GammaRef())
+	fog := dens(c.LgH[0])
+	lo, hi := c.LgH[0], c.LgH[len(c.LgH)-1]
+	for i := 0; i < 50; i++ {
+		m := (lo + hi) / 2
+		if dens(m)-fog < 0.1 {
+			lo = m
+		} else {
+			hi = m
+		}
+	}
+	return (lo + hi) / 2
+}
+
 // Developer is the film's developer by name (the first one if unknown).
 func (c *FilmCurve) Developer(name string) Developer {
 	for _, d := range c.Developers {
@@ -268,7 +290,7 @@ func newFilmTone(p preset.Params) *filmTone {
 	iso := float64(f.ISO)
 	// The metered grey's exposure, moved by the developer's speed: a
 	// developer rated at EI 320 for ISO 400 needs 1/3 stop more.
-	lgGrey := math.Log10(10/dv.EI) - math.Log10(iso/dv.Dev.EI)
+	lgGrey := math.Log10(10/dv.EI) - math.Log10(iso/dv.Dev.EI) + c.SpeedPoint() - math.Log10(0.8/iso)
 	density := c.Density(dv.Gamma)
 	fog := density(c.LgH[0])
 	dGrey := density(lgGrey)

@@ -26,10 +26,11 @@ func TestFilmCurves(t *testing.T) {
 			}
 		}
 		g := c.GammaRef()
-		// ISO speed: the density is fog + 0.1 at H = 0.8/ISO lux·s.
-		dens := c.Density(g)
-		if d := dens(math.Log10(0.8/float64(f.ISO))) - dens(c.LgH[0]); math.Abs(d-0.1) > 0.08 {
-			t.Errorf("%s: density %.2f above fog at the ISO speed point, want 0.1", key, d)
+		// ISO speed: the curve's fog + 0.1 point near 0.8/ISO lux·s (the
+		// axis read right); the tone puts it there exactly.
+		off := c.SpeedPoint() - math.Log10(0.8/float64(f.ISO))
+		if math.Abs(off) > 0.35 {
+			t.Errorf("%s: speed point %.2f stops from the box speed", key, off/math.Log10(2))
 		}
 		// The sheet's standard times all aim at one contrast.
 		var cs []float64
@@ -37,7 +38,11 @@ func TestFilmCurves(t *testing.T) {
 			if len(d.T) != len(d.C) {
 				t.Fatalf("%s %s: %d times, %d contrasts", key, d.Name, len(d.T), len(d.C))
 			}
-			cs = append(cs, interp(d.T, d.C, d.Time))
+			// A borrowed curve shape is on its own sheet's scale (only its
+			// ratios are used).
+			if d.Src == "" {
+				cs = append(cs, interp(d.T, d.C, d.Time))
+			}
 			if d.PushTime(2) < d.Time {
 				t.Errorf("%s %s: push time %.2f below the standard %.2f", key, d.Name, d.PushTime(2), d.Time)
 			}
@@ -46,7 +51,7 @@ func TestFilmCurves(t *testing.T) {
 		if hi-lo > 0.04 {
 			t.Errorf("%s: standard times develop to %.3f..%.3f", key, lo, hi)
 		}
-		t.Logf("%s: gamma_ref %.3f, standard contrast %.3f..%.3f, %d developers", key, g, lo, hi, len(c.Developers))
+		t.Logf("%s: gamma_ref %.3f, speed point %+.2f stops off the box (curve faster if -), standard contrast %.3f..%.3f, %d developers", key, g, off/math.Log10(2), lo, hi, len(c.Developers))
 	}
 }
 
