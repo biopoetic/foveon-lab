@@ -29,6 +29,7 @@ package x3f
 // Pro keeps more texture and also sharpens, which this does not.
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"runtime"
@@ -52,6 +53,8 @@ type DenoiseOptions struct {
 // switch: FOVEON_DN_ADD=1).
 var additive = os.Getenv("FOVEON_DN_ADD") != ""
 
+var debugNoise = os.Getenv("FOVEON_DN_DEBUG") != ""
+
 // Tuning (research switches FOVEON_DN_K, FOVEON_DN_EPSC): the luminance
 // wavelet threshold in noise sigmas, and the colour filter's eps in units
 // of the relative luminance noise.
@@ -73,6 +76,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		return
 	}
 	w, h, n := img.W, img.H, img.W*img.H
+	orig := append([]float32(nil), img.Pix...)
 	plane := func(k int) []float32 {
 		p := make([]float32, n)
 		for i := range p {
@@ -124,6 +128,9 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	// units) is a few times the luminance noise at the mean level, so a clean
 	// image keeps its colour texture and a noisy one is smoothed hard.
 	rel := ym.at(mean) / mean
+	if debugNoise {
+		fmt.Fprintf(os.Stderr, "denoise: relative luminance noise %.4f (sigma %.5f at mean %.4f)\n", rel, ym.at(mean), mean)
+	}
 	eps := float32(math.Max(1e-6, (dnEpsC*o.Strength*rel)*(dnEpsC*o.Strength*rel)))
 	scale := o.Scale
 	if scale <= 0 {
@@ -163,6 +170,69 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		}
 		a, b, c = ma, mb, mc
 		img.Pix[i*3], img.Pix[i*3+1], img.Pix[i*3+2] = a, b, c
+	}
+	if !noRestore {
+		restoreDetail(img, orig, rel, o.Strength)
+	}
+}
+
+// Detail given back after the filters, per frequency band (box radii
+// 0-1, 1-2, 2-4, 4-8 px; finest first): the fraction of each band of
+// (original - denoised) that returns, by the frame's relative luminance
+// noise (log-interpolated between the rows). Fitted so that the result
+// keeps each band about as Sigma Photo Pro's neutral export does
+// (tools/sharpfit -gain: regression of the output's band on the
+// no-NR band, same raw data, SD1 ISO 100-6400, 2026-10-14). SPP, finest
+// band: 0.8 at ISO 100-200, 0.5 at 400, 0.27 at 800, 0.15-0.25 from 1600;
+// the filters alone kept 0.03-0.2.
+var (
+	keepNoise = []float64{0.011, 0.017, 0.026, 0.042, 0.072, 0.109}
+	keepBand  = [][4]float64{
+		{0.76, 1, 1, 1},
+		{0.45, 0.82, 1, 1},
+		{0.20, 0.36, 0.77, 1},
+		{0.12, 0.14, 0.29, 1},
+		{0.17, 0.20, 0.36, 1},
+		{0.21, 0.17, 0.21, 0.46},
+	}
+	noRestore = os.Getenv("FOVEON_DN_NORESTORE") != ""
+)
+
+func keepFor(rel float64) [4]float64 {
+	if rel <= keepNoise[0] {
+		return keepBand[0]
+	}
+	last := len(keepNoise) - 1
+	if rel >= keepNoise[last] {
+		return keepBand[last]
+	}
+	i := sort.SearchFloat64s(keepNoise, rel)
+	t := (math.Log(rel) - math.Log(keepNoise[i-1])) / (math.Log(keepNoise[i]) - math.Log(keepNoise[i-1]))
+	var k [4]float64
+	for b := range k {
+		k[b] = keepBand[i-1][b]*(1-t) + keepBand[i][b]*t
+	}
+	return k
+}
+
+// restoreDetail adds back, per layer and band, keepFor(rel) of what the
+// filters removed; a lower strength (NR Medium, Low) gives back more.
+func restoreDetail(img *CamImage, orig []float32, rel, strength float64) {
+	keep := keepFor(rel)
+	var wb [4]float32
+	for b := range keep {
+		wb[b] = float32(1 - math.Min(1, strength)*(1-keep[b]))
+	}
+	w, h, n := img.W, img.H, img.W*img.H
+	d := make([]float32, n)
+	for k := 0; k < 3; k++ {
+		for i := range d {
+			d[i] = orig[i*3+k] - img.Pix[i*3+k]
+		}
+		b1, b2, b4, b8 := boxBlur(d, w, h, 1), boxBlur(d, w, h, 2), boxBlur(d, w, h, 4), boxBlur(d, w, h, 8)
+		for i := range d {
+			img.Pix[i*3+k] += wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i])
+		}
 	}
 }
 
