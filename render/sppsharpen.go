@@ -6,7 +6,10 @@ package render
 // 1.0 px on the full-size image, amount 2.7 at ISO 100 (SDIM0260, 0042:
 // every band within ~5% of SPP's, from 2.9x short in the finest), falling
 // with ISO as SPP's noise reduction takes the fine detail away (the
-// SDIM0358-0363 ISO 200-6400 series, each fitted on its own).
+// SDIM0358-0363 ISO 200-6400 series, each fitted on its own). SPP sharpens
+// the SD15 far less (SDIM1240-1245, ISO 100-3200: 0.3 at ISO 100, none from
+// ISO 400; unsharpened we already match it). Generations not measured yet
+// (SD9/SD10, Quattro) get none.
 // A reduced view gets the full-size filter's gain at its own Nyquist
 // frequency, as a sigma-1 mask at that size.
 
@@ -17,25 +20,34 @@ import (
 
 const sppSharpSigma = 1.0
 
-// sppSharpByISO: the fitted amount per ISO (log2 ISO 100 = 0 … 6400 = 6).
-var sppSharpByISO = []float64{2.7, 2.5, 2.4, 1.4, 1.0, 0.8, 0.5}
+// sppSharpByISO: the fitted amount per sensor generation and ISO (log2
+// ISO 100 = 0 … 6400 = 6).
+var sppSharpByISO = map[string][]float64{
+	"Merrill": {2.7, 2.5, 2.4, 1.4, 1.0, 0.8, 0.5},
+	"TRUEII":  {0.3, 0.2, 0, 0, 0, 0, 0},
+}
 
-// sppFullAmount is the full-size amount for a photo at iso (0 = 100).
-func sppFullAmount(iso float64) float64 {
+// sppFullAmount is the full-size amount for a photo of sensor at iso (0 =
+// 100); 0 for a generation not measured.
+func sppFullAmount(iso float64, sensor string) float64 {
+	tab := sppSharpByISO[sensor]
+	if tab == nil {
+		return 0
+	}
 	if iso <= 0 {
 		iso = 100
 	}
-	steps := make([]float64, len(sppSharpByISO))
+	steps := make([]float64, len(tab))
 	for i := range steps {
 		steps[i] = float64(i)
 	}
-	return interp(steps, sppSharpByISO, math.Log2(iso/100))
+	return interp(steps, tab, math.Log2(iso/100))
 }
 
 // sppAmount is the amount of a sigma-1 mask at a view of scale s that
 // matches the full-size mask's gain at the view's Nyquist frequency.
-func sppAmount(s, iso float64) float32 {
-	a := sppFullAmount(iso)
+func sppAmount(s, iso float64, sensor string) float32 {
+	a := sppFullAmount(iso, sensor)
 	if s >= 1 {
 		return float32(a)
 	}
@@ -97,13 +109,17 @@ func usmPlanes(v []float32, w, h, n int, a float32) []float32 {
 }
 
 // sppSharpen8 applies SPP's sharpening to an 8-bit image at view scale s.
-func sppSharpen8(img *image.RGBA, s, iso float64) {
+func sppSharpen8(img *image.RGBA, s, iso float64, sensor string) {
+	a := sppAmount(s, iso, sensor)
+	if a == 0 {
+		return
+	}
 	w, h := img.Rect.Dx(), img.Rect.Dy()
 	v := make([]float32, len(img.Pix))
 	for i, b := range img.Pix {
 		v[i] = float32(b)
 	}
-	o := usmPlanes(v, w, h, 4, sppAmount(s, iso))
+	o := usmPlanes(v, w, h, 4, a)
 	for i := range img.Pix {
 		if i%4 != 3 {
 			img.Pix[i] = uint8(max(0, min(255, o[i])) + 0.5)
@@ -112,13 +128,17 @@ func sppSharpen8(img *image.RGBA, s, iso float64) {
 }
 
 // sppSharpen16 is sppSharpen8 for 16-bit images (big-endian samples).
-func sppSharpen16(img *image.RGBA64, s, iso float64) {
+func sppSharpen16(img *image.RGBA64, s, iso float64, sensor string) {
+	a := sppAmount(s, iso, sensor)
+	if a == 0 {
+		return
+	}
 	w, h := img.Rect.Dx(), img.Rect.Dy()
 	v := make([]float32, w*h*4)
 	for i := range v {
 		v[i] = float32(uint16(img.Pix[2*i])<<8 | uint16(img.Pix[2*i+1]))
 	}
-	o := usmPlanes(v, w, h, 4, sppAmount(s, iso))
+	o := usmPlanes(v, w, h, 4, a)
 	for i := range v {
 		if i%4 != 3 {
 			u := uint16(max(0, min(65535, o[i])) + 0.5)
