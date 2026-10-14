@@ -42,6 +42,14 @@ type Params struct {
 	// can't be used — SPP always opens photos in Color mode, whatever its
 	// saved X3F_FilterMode says (tested).
 	Mono bool `json:"mono"`
+	// Layer filter (Foveon Lab only; not in SPP's XML): a gain per sensor
+	// layer in stops (0 = unchanged), applied to the camera's own layers
+	// before its colour matrix, like a filter on the lens. In Monochrome
+	// the grey is the layers' weighted sum (bottom heavy = a red filter;
+	// top only = the cleanest layer).
+	LayerBottom float64 `json:"layerBottom"`
+	LayerMiddle float64 `json:"layerMiddle"`
+	LayerTop    float64 `json:"layerTop"`
 }
 
 const (

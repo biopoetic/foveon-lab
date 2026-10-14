@@ -353,6 +353,10 @@ type Compensation struct {
 	// UndoGamma applies it to gamma-encoded values instead of linear.
 	Undo      *[9]float32
 	UndoGamma bool
+	// CC is the photo's camera-to-linear-sRGB colour matrix (white
+	// balanced camera layers in; rows sum to 1), for the layer filter;
+	// nil = no layer filter.
+	CC *[9]float64
 }
 
 // CompensationFor derives the compensation from X3F PROP metadata:
@@ -475,6 +479,8 @@ type pixOp struct {
 	mode                                     int
 	undo                                     *[9]float32
 	undoGamma                                bool
+	layer                                    *[9]float32 // layer filter, colour
+	layerMono                                *[3]float32 // layer filter, monochrome grey
 
 	// Measured emulation (model.go), when a model is embedded.
 	measured   bool
@@ -519,6 +525,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	if c.SatFactor > 0 {
 		op.satF *= c.SatFactor
 	}
+	op.setLayerFilter(p, c)
 	if md := modelFor(c.Family); md != nil {
 		op.measured = true
 		op.wb = md.wbFor(p.WhiteBalance)
@@ -545,6 +552,76 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 		}
 	}
 	return op
+}
+
+// colourLayerScale: how much of the layer filter's stops apply in colour.
+const colourLayerScale = 0.1
+
+// setLayerFilter prepares the layer filter: back to the camera's
+// (white-balanced) layers with the inverse of its colour matrix, a gain per
+// layer, forward again; in colour scaled so white keeps its brightness, in
+// monochrome the grey is the layers' gain-weighted mean (grey stays grey).
+func (op *pixOp) setLayerFilter(p preset.Params, c Compensation) {
+	if c.CC == nil || (p.LayerBottom == 0 && p.LayerMiddle == 0 && p.LayerTop == 0) {
+		return
+	}
+	cc := *c.CC
+	inv, ok := invert3x3(cc)
+	if !ok {
+		return
+	}
+	ev := [3]float64{p.LayerBottom, p.LayerMiddle, p.LayerTop}
+	if !op.mono {
+		// In colour the camera matrix amplifies a difference between the
+		// layers about tenfold (they overlap spectrally; SD1 coefficients
+		// reach ±4.8), so the sliders act at a tenth: 1 stop = a clear warm
+		// or cool shift, as a mono filter's few stops are a clear filter.
+		for i := range ev {
+			ev[i] *= colourLayerScale
+		}
+	}
+	f := [3]float64{math.Exp2(ev[0]), math.Exp2(ev[1]), math.Exp2(ev[2])}
+	if op.mono {
+		sum := f[0] + f[1] + f[2]
+		var v [3]float32
+		for j := 0; j < 3; j++ {
+			for k := 0; k < 3; k++ {
+				v[j] += float32(f[k] * inv[k*3+j] / sum)
+			}
+		}
+		op.layerMono = &v
+		return
+	}
+	var m [9]float64
+	for i := 0; i < 3; i++ {
+		for j := 0; j < 3; j++ {
+			for k := 0; k < 3; k++ {
+				m[i*3+j] += cc[i*3+k] * f[k] * inv[k*3+j]
+			}
+		}
+	}
+	y := 0.0
+	for i, wt := range [3]float64{0.2126, 0.7152, 0.0722} {
+		y += wt * (m[i*3] + m[i*3+1] + m[i*3+2])
+	}
+	if y <= 0 {
+		return
+	}
+	var mf [9]float32
+	for i := range m {
+		mf[i] = float32(m[i] / y)
+	}
+	op.layer = &mf
+}
+
+// layerFilter applies the prepared layer filter to one linear pixel.
+func (op *pixOp) layerFilter(r, g, bl float32) (float32, float32, float32) {
+	if v := op.layerMono; v != nil {
+		y := max(0, v[0]*r+v[1]*g+v[2]*bl)
+		return y, y, y
+	}
+	m := op.layer
+	return m[0]*r + m[1]*g + m[2]*bl, m[3]*r + m[4]*g + m[5]*bl, m[6]*r + m[7]*g + m[8]*bl
 }
 
 // unstyle undoes the camera's colour-mode matrix.
@@ -600,6 +677,9 @@ func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, f
 func (op *pixOp) apply(r, g, bl, m, da, db float32) (float32, float32, float32) {
 	if op.undo != nil {
 		r, g, bl = op.unstyle(r, g, bl)
+	}
+	if op.layer != nil || op.layerMono != nil {
+		r, g, bl = op.layerFilter(r, g, bl)
 	}
 	if op.measured {
 		return op.applyMeasured(r, g, bl, m, da, db)

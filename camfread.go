@@ -235,3 +235,26 @@ func dngModel(ph *Photo) string {
 	}
 	return ph.Camera
 }
+
+// layerCC is ph's camera-to-linear-sRGB colour matrix for its in-camera
+// white balance (x3f.WBTransform, every body), for the layer filter; nil
+// when the CAMF can't be read. Read once per photo.
+func layerCC(ph *Photo) *[9]float64 {
+	ph.layerOnce.Do(func() {
+		if ph.Kind != "x3f" {
+			return
+		}
+		f, err := x3f.Open(ph.path)
+		if err != nil {
+			return
+		}
+		c, err := f.CAMF()
+		if err != nil {
+			return
+		}
+		if _, cc, err := c.WBTransform(c.CameraWB(strings.TrimSpace(ph.props["WB_DESC"]))); err == nil {
+			ph.layerCC = &cc
+		}
+	})
+	return ph.layerCC
+}

@@ -74,6 +74,8 @@ type Photo struct {
 	rawFailed atomic.Bool // raw decode failed once; stay on the preview
 	camfOnce  sync.Once   // photoCC: the as-shot WB colour matrix, read once
 	camfCC    *[9]float64
+	layerOnce sync.Once // layerCC: the colour matrix for the layer filter
+	layerCC   *[9]float64
 	// Size of the embedded full preview (for the raw decode's aspect).
 	previewW, previewH int
 	// jpegBroken: the embedded JPEG is damaged; shown from the raw data.
@@ -469,10 +471,11 @@ func (s *server) compensation(ph *Photo, on bool) render.Compensation {
 	// A raw decode carries no in-camera styling, so there is nothing to undo.
 	fam := x3f.PresetFamily(ph.Camera)
 	if !on || ph.props == nil || (ph.RawDecoded && !ph.rawFailed.Load()) || s.useRaw(ph) || ph.jpegBroken.Load() {
-		return render.Compensation{SatFactor: 1, Family: fam}
+		return render.Compensation{SatFactor: 1, Family: fam, CC: layerCC(ph)}
 	}
 	c := render.CompensationWith(ph.props, fam, photoCC(ph))
 	c.Family = fam
+	c.CC = layerCC(ph)
 	return c
 }
 

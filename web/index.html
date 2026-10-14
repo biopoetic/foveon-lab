@@ -196,6 +196,11 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           </select>
         </div>
         <div class="row"><label class="chk" title="Black & white: rendered monochrome here and opened in SPP's Monochrome mode. Pack B&W presets (Saturation -1) have it on."><input type="checkbox" id="mono"> Monochrome (SPP B&amp;W mode)</label></div>
+        <div class="row"><div class="lab">Layer filter <span class="dim" title="Foveon Lab only: a gain per sensor layer, applied to the camera's own layers before its colour matrix, like a filter on the lens. In Monochrome it chooses how the three layers mix into grey (the top layer alone is the cleanest at high ISO). Not saved into SPP presets or .cube LUTs.">ⓘ</span></div>
+          <select id="layerPreset" style="width:100%">
+            <option value="">None</option><option value="red">Red filter</option><option value="orange">Orange filter</option><option value="yellow">Yellow filter</option><option value="green">Green filter</option><option value="blue">Blue filter</option><option value="top">Top layer only (cleanest)</option><option value="warm">Warm</option><option value="cool">Cool</option><option value="custom" disabled>Custom (sliders)</option>
+          </select>
+        </div>
         <div class="src" id="wbNote"></div>
         <div class="btns">
           <button id="reset">Reset to preset</button>
@@ -277,8 +282,19 @@ const SLIDERS = [
   ["r","Color adjust R",.7,1.3,.005],
   ["g","Color adjust G",.7,1.3,.005],
   ["b","Color adjust B",.7,1.3,.005],
+  ["layerBottom","Layer filter: bottom (red)",-6,2,.05],
+  ["layerMiddle","Layer filter: middle (green)",-6,2,.05],
+  ["layerTop","Layer filter: top (blue)",-6,2,.05],
 ];
-const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false};
+// Layer filter presets, in stops per sensor layer (bottom, middle, top):
+// like a filter on the lens, before the colour matrix. In Monochrome they
+// pick how the layers mix into grey.
+const LAYER_FILTERS = {
+  "": [0,0,0],
+  red: [0,-2.5,-5], orange: [0,-1,-4], yellow: [0,0,-2], green: [-1.5,0,-1.5], blue: [-4,-1.5,0],
+  top: [-6,-6,0], warm: [.25,0,-.25], cool: [-.25,0,.25],
+};
+const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false,layerBottom:0,layerMiddle:0,layerTop:0};
 
 const S = {
   photos: [], presets: [], photo: null,
@@ -593,6 +609,11 @@ function buildSliders(){
   });
   $("#mode").onchange = () => { S.params.colorMode = +$("#mode").value; $("#mode").blur(); syncSliders(); scheduleRender(); };
   $("#mono").onchange = () => { S.params.mono = $("#mono").checked; syncSliders(); scheduleRender(); };
+  $("#layerPreset").onchange = () => {
+    const v = LAYER_FILTERS[$("#layerPreset").value];
+    if (v){ [S.params.layerBottom, S.params.layerMiddle, S.params.layerTop] = v; }
+    $("#layerPreset").blur(); syncSliders(); scheduleRender();
+  };
 }
 
 function syncSliders(){
@@ -603,6 +624,8 @@ function syncSliders(){
     row.classList.toggle("changed", Math.abs(v - S.base[k]) > 1e-9);
   }
   $("#mono").checked = !!S.params.mono;
+  const lf = [S.params.layerBottom || 0, S.params.layerMiddle || 0, S.params.layerTop || 0];
+  $("#layerPreset").value = Object.keys(LAYER_FILTERS).find(k => LAYER_FILTERS[k].every((x, i) => Math.abs(x - lf[i]) < 1e-9)) ?? "custom";
   const m = S.params.colorMode;
   $("#mode").value = [4,6,7].includes(m) ? m : 0;
   $("#modeNote").textContent = [4,6,7].includes(m) ? "" : `(code ${m})`;
