@@ -24,6 +24,14 @@ type RawCorrection struct {
 	HeldOutRaw  float64 `json:"heldOutRaw"`
 	HeldOutJPEG float64 `json:"heldOutJPEG"`
 	Photos      int     `json:"photos"`
+	// Taste, when set, replaces the matrix and curves: the camera's own
+	// colour (already colorimetric) with only SPP's tone curve on luminance
+	// (Tone, sRGB-encoded, one value per equal bin) and a saturation (Sat).
+	// It has few parameters, so it carries over between bodies: TasteFrom
+	// names the group it was learnt on (e.g. the Quattro uses the SD1's).
+	Tone      []float64 `json:"tone,omitempty"`
+	Sat       float64   `json:"sat,omitempty"`
+	TasteFrom string    `json:"tasteFrom,omitempty"`
 }
 
 //go:embed rawbase.json
@@ -107,8 +115,42 @@ func (c *RawCorrection) curve(k int, e float64) float64 {
 	return at(b)*(1-t) + at(b+1)*t
 }
 
+// tone maps linear luminance y through the taste curve.
+func (c *RawCorrection) tone(y float64) float64 {
+	n := len(c.Tone)
+	e := float64(enc(float32(max(0, min(1, y)))))
+	f := e*float64(n) - 0.5
+	var v float64
+	switch {
+	case f <= 0:
+		v = c.Tone[0] * e * 2 * float64(n)
+	case f >= float64(n-1):
+		v = c.Tone[n-1]
+	default:
+		b := int(f)
+		t := f - float64(b)
+		v = c.Tone[b]*(1-t) + c.Tone[b+1]*t
+	}
+	return float64(dec(float32(max(0, min(1, v)))))
+}
+
+// tastePixel: scale to the new luminance (hue kept), then chroma by Sat.
+func (c *RawCorrection) tastePixel(r, g, b float32) (float32, float32, float32) {
+	y := 0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)
+	if y <= 1e-6 {
+		return 0, 0, 0
+	}
+	y2 := c.tone(y)
+	k := y2 / y
+	f := func(v float32) float32 { return float32(y2 + c.Sat*(float64(v)*k-y2)) }
+	return f(r), f(g), f(b)
+}
+
 // Pixel maps one linear pixel.
 func (c *RawCorrection) Pixel(r, g, b float32) (float32, float32, float32) {
+	if len(c.Tone) > 0 {
+		return c.tastePixel(r, g, b)
+	}
 	m := c.Matrix
 	fr, fg, fb := float64(r), float64(g), float64(b)
 	v := [3]float64{m[0]*fr + m[1]*fg + m[2]*fb, m[3]*fr + m[4]*fg + m[5]*fb, m[6]*fr + m[7]*fg + m[8]*fb}

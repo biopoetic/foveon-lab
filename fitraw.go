@@ -14,6 +14,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -113,6 +114,10 @@ func fitRawCommand(desk string) {
 	noSgain := fsFlags.Bool("nosgain", false, "research: decode without x3f_extract's spatial gain (colour shading)")
 	goRaw := fsFlags.Bool("go", false, "decode and develop raw natively (x3f package) instead of with x3f_extract: camera RGB through each photo's CAMF white balance + colour matrix")
 	camfRaw := fsFlags.Bool("camf", false, "decode raw as camera RGB and apply each photo's CAMF white balance + colour matrix (as SPP does) instead of x3f_extract's sRGB")
+	taste := fsFlags.Bool("taste", false, "research: held-out dE of a first-principles base (the camera's colour + a tone curve and a saturation only), within and across camera groups")
+	transfer := fsFlags.String("transfer", "", "research: FROM:TO (e.g. SD1:Quattro) — dE of TO's photos with FROM's taste and full base vs TO's own base and its camera JPEG")
+	tasteOut := fsFlags.String("tasteout", "", "print the taste (tone + saturation) learnt on all of this group's photos, as JSON for render/rawbase.json")
+	onlyGroups := fsFlags.String("groups", "", "decode only these groups (comma separated), to save time")
 	dngProfile := fsFlags.Bool("dngprofile", false, "research: held-out dE of the raw base as a DNG camera profile (ForwardMatrix + one Adobe tone curve) vs the full per-channel raw base")
 	charts := fsFlags.Bool("charts", false, "research: also train on synthetic charts (…/charts/*.X3F). Off by default: on 2026-10-13 two in-gamut SD1 charts (166/192 clean patches) made the held-out SD1 starting image worse, 6.87 -> 7.58 dE (SPP's response on them is strongly non-linear in the shadows)")
 	fsFlags.Parse(os.Args[2:])
@@ -138,6 +143,9 @@ func fitRawCommand(desk string) {
 		family, group := x3f.PresetFamily(ph.Camera), calibGroup(ph)
 		if family == "" && group != "Quattro" { // Quattro: no presets, but its own raw base
 			fmt.Printf("  %s: %s has no family, skipped\n", name, ph.Camera)
+			continue
+		}
+		if *onlyGroups != "" && !slices.Contains(strings.Split(*onlyGroups, ","), group) {
 			continue
 		}
 		// Charts (tools/synth -gamut) are drawn inside the gamut on purpose.
@@ -253,6 +261,19 @@ func fitRawCommand(desk string) {
 		for _, f := range fams {
 			calib.DeltaEReport(f, groups[f], jgroups[f], os.Stdout)
 		}
+		return
+	}
+	if *tasteOut != "" {
+		js, _ := json.Marshal(calib.TasteJSON(groups[*tasteOut]))
+		fmt.Println("TASTE " + string(js))
+		return
+	}
+	if ft := strings.SplitN(*transfer, ":", 2); len(ft) == 2 {
+		calib.TransferReport(groups, ft[0], ft[1], os.Stdout)
+		return
+	}
+	if *taste {
+		calib.TasteReport(groups, os.Stdout)
 		return
 	}
 	if *dngProfile {

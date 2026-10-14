@@ -292,7 +292,11 @@ func (c *RawCorrection) DNGProfile(name string) *DNGProfile {
 		tone = append(tone, x, y)
 		prev = y
 	}
-	return &DNGProfile{Name: name, Matrix: c.Matrix, Tone: tone}
+	m := c.Matrix
+	if len(c.Tone) > 0 { // a taste base: the camera's own colour, no matrix
+		m = id.Matrix
+	}
+	return &DNGProfile{Name: name, Matrix: m, Tone: tone}
 }
 
 // WriteCameraDNG writes linear camera RGB (0 = black, 1 = white per layer;
