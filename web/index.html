@@ -93,6 +93,7 @@ button.on{border-color:var(--accent);color:var(--accent)}
 #nav .name{flex:1;text-align:center;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #panel{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:10px 12px}
 #panel h3{margin:4px 0 2px;font-size:13px}
+#panel .subh{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin:12px 0 6px;padding-top:8px;border-top:1px solid var(--line)}
 #panel .src{color:var(--dim);font-size:12px;margin-bottom:8px;word-break:break-all}
 .row{margin:9px 0}
 .row .lab{display:flex;justify-content:space-between;color:var(--dim)}
@@ -243,8 +244,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div class="row"><div class="lab">Lens filter or layer mix <span class="dim" title="Foveon Lab only. Lens filters are simulated from first principles: each sensor generation's layer sensitivities are modelled from silicon's light absorption and fitted to the camera's own colour matrix, and the filter's transmission spectrum is applied to them. The layer sliders set a gain per sensor layer (in Monochrome: how the three layers mix into grey; the top layer alone is the cleanest at high ISO). Not saved into SPP presets or .cube LUTs.">ⓘ</span></div>
           <select id="layerPreset" style="width:100%">
             <option value="">None</option>
-            <optgroup label="Lens filter (simulated on the sensor's layers)">
-              <option value="lens:yellow">Yellow (Wratten 8)</option><option value="lens:deepyellow">Deep yellow (Wratten 15)</option><option value="lens:orange">Orange (Wratten 21)</option><option value="lens:red">Red (Wratten 25)</option><option value="lens:deepred">Deep red (Wratten 29)</option><option value="lens:yellowgreen">Yellow-green (Wratten 11)</option><option value="lens:green">Green (Wratten 58)</option><option value="lens:blue">Blue (Wratten 47)</option><option value="lens:warm">Warming (81A)</option><option value="lens:cool">Cooling (82A)</option></optgroup><optgroup label="Full spectrum (IR filter removed)"><option value="lens:ir-fs-aerochrome">False colour, no lens filter</option><option value="lens:ir-aerochrome">Aerochrome (Wratten 12)</option><option value="lens:ir-ir590">Colour infrared (590 nm)</option><option value="lens:ir-ir720">Infrared B&amp;W (720 nm)</option>
+            <optgroup label="Full spectrum (IR filter removed)"><option value="lens:ir-fs-aerochrome">False colour, no lens filter</option><option value="lens:ir-aerochrome">Aerochrome (Wratten 12)</option><option value="lens:ir-ir590">Colour infrared (590 nm)</option><option value="lens:ir-ir720">Infrared B&amp;W (720 nm)</option>
             </optgroup>
             <optgroup label="Layer mix">
               <option value="mix:top">Top layer only (cleanest)</option><option value="custom" disabled>Custom (layer sliders)</option>
@@ -253,14 +253,23 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         </div>
           </div>
         </div>
-        <div class="grp" data-g="film"><div class="gh"><span class="chev">▾</span><span class="gt">Film</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
+        <div class="grp" data-g="film"><div class="gh"><span class="chev">▾</span><span class="gt">Film &amp; Darkroom</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
           <div class="gb" id="g-film">
         <div class="row"><div class="lab">Film stock <span class="dim" title="Foveon Lab only. Each film's RMS granularity from its maker's technical data (the document is in the tooltip). Films whose makers publish no RMS are listed but can't be picked.">(grain from its data sheet)</span></div>
           <select id="filmStock" style="width:100%"><option value="">None (set the grain by hand)</option></select>
           <div class="src" id="filmSrc"></div>
           <div class="src" id="filmLink" style="display:none"></div>
         </div>
+        <div class="row" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky."><div class="lab">Filter on the lens <span class="dim">(Wratten)</span></div>
+          <select id="lensSel" style="width:100%"><option value="">None</option><option value="yellow">Yellow (Wratten 8)</option><option value="deepyellow">Deep yellow (Wratten 15)</option><option value="orange">Orange (Wratten 21)</option><option value="red">Red (Wratten 25)</option><option value="deepred">Deep red (Wratten 29)</option><option value="yellowgreen">Yellow-green (Wratten 11)</option><option value="green">Green (Wratten 58)</option><option value="blue">Blue (Wratten 47)</option><option value="warm">Warming (81A)</option><option value="cool">Cooling (82A)</option></select>
+        </div>
+        <div class="row"><div class="lab">Film format <span class="dim" title="Foveon Lab only. The film frame the grain and halation are sized on: a larger format shows the same film finer.">(grain, halation)</span></div>
+          <select id="filmWidth" style="width:100%">
+            <option value="0">35 mm (36 × 24)</option><option value="56">Medium format 6 × 6 / 6 × 4.5</option><option value="70">Medium format 6 × 7</option><option value="127">Large format 4 × 5 in</option>
+          </select>
+        </div>
         <div id="filmDev" style="display:none">
+          <div class="subh" title="Foveon Lab only. The film's characteristic curve and its developers, from the makers' data sheets.">Darkroom</div>
           <div class="row" title="The developer from the film's data sheet: its time-gamma curve sets the negative's contrast, its exposure index the film's speed."><div class="lab">Developer <span class="dim" id="devSrc"></span></div>
             <select id="devSel" style="width:100%"></select>
           </div>
@@ -270,11 +279,6 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <div class="row" title="Push / pull: the film rated at a higher (lower) exposure index. Pushed, the shadows sink into the film's toe; develop longer to bring the contrast back. Double-click = box speed."><div class="lab"><span>Push / pull</span><b id="pushVal"></b></div>
             <input type="range" id="push" min="-2" max="3" step="0.3333333">
           </div>
-        </div>
-        <div class="row"><div class="lab">Film format <span class="dim" title="Foveon Lab only. The film frame the grain and halation are sized on: a larger format shows the same film finer.">(grain, halation)</span></div>
-          <select id="filmWidth" style="width:100%">
-            <option value="0">35 mm (36 × 24)</option><option value="56">Medium format 6 × 6 / 6 × 4.5</option><option value="70">Medium format 6 × 7</option><option value="127">Large format 4 × 5 in</option>
-          </select>
         </div>
           </div>
         </div>
@@ -384,6 +388,9 @@ const GRAIN_TIPS = "Film grain as the RMS granularity of the final image (Selwyn
 const HALATION_TIP = "Light reflected back by the film base into its red-sensitive layer: a red-orange glow around bright lights. 0 = film with an anti-halation layer, 1 = none (the Cinestill look).";
 // Layer mix presets, in stops per sensor layer (bottom, middle, top).
 const LAYER_MIX = { top: [-6,-6,0] };
+// The colour filters on the lens (Film & Darkroom); the IR looks and layer
+// mixes stay in the Layer group. Both set params.filter (one filter).
+const COLOUR_FILTERS = new Set(["yellow","deepyellow","orange","red","deepred","yellowgreen","green","blue","warm","cool"]);
 const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false,layerBottom:0,layerMiddle:0,layerTop:0,filter:"",grain:0,halation:0,filmWidth:0,film:"",developer:"",devTime:0,push:0};
 
 const S = {
@@ -693,7 +700,7 @@ const GROUPS = {
   colour: ["saturation","r","g","b","colorMode","mono"],
   detail: ["sharpness"],
   layer: ["layerBottom","layerMiddle","layerTop","filter"],
-  film: ["grain","halation","filmWidth","film","developer","devTime","push"],
+  film: ["grain","halation","filmWidth","film","developer","devTime","push","filter"],
   geometry: [], export: [], keys: [],
 };
 const GROUPS_CLOSED = new Set(store.get("groupsClosed", ["keys"]));
@@ -751,9 +758,15 @@ function buildSliders(){
   $("#rotL").onclick = () => setRot(rotOf(S.photo.id) + 90);
   $("#rotR").onclick = () => setRot(rotOf(S.photo.id) - 90);
   $("#rot0").onclick = () => setRot(0);
+  $("#lensSel").onchange = () => {
+    S.params.filter = $("#lensSel").value;
+    [S.params.layerBottom, S.params.layerMiddle, S.params.layerTop] = [0, 0, 0];
+    $("#lensSel").blur(); syncSliders(); scheduleRender();
+  };
   $("#layerPreset").onchange = () => {
     const v = $("#layerPreset").value;
-    S.params.filter = v.startsWith("lens:") ? v.slice(5) : "";
+    // "None" keeps a colour filter on the lens (that's the Film group's).
+    S.params.filter = v.startsWith("lens:") ? v.slice(5) : v === "" && COLOUR_FILTERS.has(S.params.filter) ? S.params.filter : "";
     [S.params.layerBottom, S.params.layerMiddle, S.params.layerTop] = v.startsWith("mix:") ? LAYER_MIX[v.slice(4)] : [0, 0, 0];
     $("#layerPreset").blur(); syncSliders(); scheduleRender();
   };
@@ -846,7 +859,9 @@ function syncSliders(){
   const lf = [S.params.layerBottom || 0, S.params.layerMiddle || 0, S.params.layerTop || 0];
   const zero = lf.every(x => Math.abs(x) < 1e-9);
   const mix = Object.keys(LAYER_MIX).find(k => LAYER_MIX[k].every((x, i) => Math.abs(x - lf[i]) < 1e-9));
-  $("#layerPreset").value = S.params.filter && zero ? "lens:" + S.params.filter : !S.params.filter && zero ? "" : !S.params.filter && mix ? "mix:" + mix : "custom";
+  const colour = COLOUR_FILTERS.has(S.params.filter);
+  $("#lensSel").value = colour ? S.params.filter : "";
+  $("#layerPreset").value = zero && (!S.params.filter || colour) ? "" : S.params.filter && !colour && zero ? "lens:" + S.params.filter : !S.params.filter && mix ? "mix:" + mix : "custom";
   $("#filmWidth").value = String(S.params.filmWidth || 0);
   syncFilm();
   for (const [g, keys] of Object.entries(GROUPS)){

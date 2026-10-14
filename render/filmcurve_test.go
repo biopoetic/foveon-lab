@@ -102,3 +102,30 @@ func TestFilmTone(t *testing.T) {
 		t.Error("tone without a curve")
 	}
 }
+
+// A red filter in front of Tri-X: blue sky darker, red lighter, white the
+// same grey (the photographer opens up by the filter factor).
+func TestFilmWithLensFilter(t *testing.T) {
+	cc := camfSunlight["SD1"]
+	c := Compensation{CC: &cc, Sensor: "Merrill"}
+	grey := func(p preset.Params, r, g, b float32) float32 {
+		op := newPixOp(p, c)
+		if op.layerMono == nil {
+			t.Fatalf("%+v: no film grey", p)
+		}
+		v := op.layerMono
+		return v[0]*r + v[1]*g + v[2]*b
+	}
+	film := preset.Params{Film: "Kodak Tri-X Pan 400 (TX)"}
+	red := film
+	red.Filter = "red"
+	if w0, w1 := grey(film, 1, 1, 1), grey(red, 1, 1, 1); math.Abs(float64(w1-w0)) > 0.001 {
+		t.Errorf("white: %.3f without the filter, %.3f with", w0, w1)
+	}
+	sky0, sky1 := grey(film, 0.05, 0.1, 0.6), grey(red, 0.05, 0.1, 0.6)
+	rose0, rose1 := grey(film, 0.6, 0.08, 0.05), grey(red, 0.6, 0.08, 0.05)
+	t.Logf("blue sky %.3f -> %.3f, red %.3f -> %.3f", sky0, sky1, rose0, rose1)
+	if !(sky1 < sky0*0.6 && rose1 > rose0*1.3) {
+		t.Errorf("red filter: sky %.3f -> %.3f, red %.3f -> %.3f", sky0, sky1, rose0, rose1)
+	}
+}

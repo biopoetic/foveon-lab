@@ -615,11 +615,27 @@ const colourLayerScale = 0.1
 // layer, forward again; in colour scaled so white keeps its brightness, in
 // monochrome the grey is the layers' gain-weighted mean (grey stays grey).
 func (op *pixOp) setLayerFilter(p preset.Params, c Compensation) {
-	// A black-and-white film from the library, with no lens filter or
-	// layer mix of its own: the grey is the film's spectral sensitivity
-	// (its data sheet's, as layer weights), linear sRGB -> layers (cc⁻¹).
-	if f, ok := FilmByKey(p.Film); ok && f.BW && c.CC != nil && p.Filter == "" && p.LayerBottom == 0 && p.LayerMiddle == 0 && p.LayerTop == 0 {
+	// A black-and-white film from the library, with no layer mix of its
+	// own: the grey is the film's spectral sensitivity (its data sheet's, as
+	// layer weights), linear sRGB -> layers (cc⁻¹). A colour filter on the
+	// lens sits in front of the film: the film sees the filtered layers
+	// (w·G), and the photographer opens up by the filter factor, so white
+	// keeps its grey.
+	lensG := lensFilter(c.Sensor, p.Filter)
+	if f, ok := FilmByKey(p.Film); ok && f.BW && c.CC != nil && (p.Filter == "" || lensG != nil) && p.LayerBottom == 0 && p.LayerMiddle == 0 && p.LayerTop == 0 {
 		if w, ok := f.Mono[c.Sensor]; ok {
+			if G := lensG; G != nil {
+				var wf [3]float64
+				for k := 0; k < 3; k++ {
+					for i := 0; i < 3; i++ {
+						wf[k] += w[i] * G[i*3+k]
+					}
+				}
+				if sf := wf[0] + wf[1] + wf[2]; sf > 0 {
+					s := (w[0] + w[1] + w[2]) / sf
+					w = [3]float64{wf[0] * s, wf[1] * s, wf[2] * s}
+				}
+			}
 			if inv, ok := invert3x3(*c.CC); ok {
 				var v [3]float32
 				for j := 0; j < 3; j++ {
