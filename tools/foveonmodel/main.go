@@ -486,6 +486,10 @@ func wbReport(m model, c *x3f.CAMF, wb string) {
 }
 
 func main() {
+	if out := os.Getenv("IR"); out != "" {
+		irMain(out)
+		return
+	}
 	if len(os.Args) < 2 {
 		log.Fatal("usage: foveonmodel photo.X3F")
 	}

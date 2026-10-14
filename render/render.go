@@ -576,6 +576,10 @@ const colourLayerScale = 0.1
 // layer, forward again; in colour scaled so white keeps its brightness, in
 // monochrome the grey is the layers' gain-weighted mean (grey stays grey).
 func (op *pixOp) setLayerFilter(p preset.Params, c Compensation) {
+	if ir, mono := irLook(c.Sensor, p.Filter); ir != nil && c.CC != nil {
+		op.setIRLook(*ir, mono, p, *c.CC)
+		return
+	}
 	lens := lensFilter(c.Sensor, p.Filter)
 	if c.CC == nil || (lens == nil && p.LayerBottom == 0 && p.LayerMiddle == 0 && p.LayerTop == 0) {
 		return
@@ -645,6 +649,32 @@ func (op *pixOp) setLayerFilter(p preset.Params, c Compensation) {
 	var mf [9]float32
 	for i := range m {
 		mf[i] = float32(m[i] / y)
+	}
+	op.layer = &mf
+}
+
+// setIRLook: linear sRGB -> white-balanced layers (cc⁻¹) -> the look's
+// bands (M), the layer sliders acting on the layers in between.
+func (op *pixOp) setIRLook(M [9]float64, mono bool, p preset.Params, cc [9]float64) {
+	inv, ok := invert3x3(cc)
+	if !ok {
+		return
+	}
+	ev := [3]float64{p.LayerBottom, p.LayerMiddle, p.LayerTop}
+	for i := 0; i < 3; i++ {
+		for j := 0; j < 3; j++ {
+			M[i*3+j] *= math.Exp2(ev[j])
+		}
+	}
+	m := mul33(M, inv)
+	if mono {
+		v := [3]float32{float32(m[0]), float32(m[1]), float32(m[2])}
+		op.layerMono = &v
+		return
+	}
+	var mf [9]float32
+	for i := range m {
+		mf[i] = float32(m[i])
 	}
 	op.layer = &mf
 }

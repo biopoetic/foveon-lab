@@ -1,0 +1,348 @@
+package main
+
+// Infrared on a full-spectrum Foveon (the SD bodies' IR-cut "dust
+// protector" removed): the same silicon model as for visible light,
+// without the IR-cut edge and out to 1100 nm. Near-infrared photons are
+// absorbed deep (1/α ≈ 8 µm at 800 nm, 60 µm at 950 nm), so they land
+// mostly in the bottom layer, some in the middle one, almost none in the
+// top one, and those that pass the bottom zone are lost.
+//
+// For each look, a 3×3 maps the white-balanced layers (normalised to the
+// filtered daylight's white, as the camera's own white balance does) to
+// the bands the look shows, fitted by least squares over smooth random
+// reflectance spectra and real materials (foliage with its red edge at
+// ~715 nm, sky, skin, water, soil, concrete), each band normalised so a
+// flat white is 1:
+//
+//   - aerochrome: through a Wratten 12 (deep yellow, cut below ~515 nm), as
+//     Kodak Aerochrome EIR (shot with the same filter): its infrared layer
+//     prints red, its red layer green, its green layer blue.
+//   - ir590: through a 590 nm long-pass, the classic channel-swapped colour
+//     infrared: red = green = infrared, blue = visible red (golden foliage,
+//     blue sky).
+//   - ir720: through a 720 nm long-pass: black and white infrared.
+//
+//	IR=render/irlooks.json go run ./tools/foveonmodel
+
+import (
+	"bufio"
+	"fmt"
+	"log"
+	"math"
+	"math/rand"
+	"os"
+	"sort"
+	"strings"
+)
+
+const irMin, irMax, irStep = 380.0, 1100.0, 5.0
+
+// irMaxGain bounds each look's noise gain (row norm on white-balanced
+// layers); the camera's own SD1 colour matrix rows reach ~6.
+var irMaxGain = 6.0
+
+var (
+	irLams  []float64
+	irAlpha []float64
+)
+
+func irGrid() {
+	if irLams != nil {
+		return
+	}
+	type row struct{ l, k float64 }
+	var rows []row
+	sc := bufio.NewScanner(strings.NewReader(siData))
+	for sc.Scan() {
+		var l, n, k float64
+		if c, _ := fmt.Sscan(sc.Text(), &l, &n, &k); c == 3 {
+			rows = append(rows, row{l * 1000, k})
+		}
+	}
+	for l := irMin; l <= irMax+1e-9; l += irStep {
+		i := sort.Search(len(rows), func(i int) bool { return rows[i].l >= l })
+		k := rows[i].k
+		if rows[i].l > l {
+			t := (l - rows[i-1].l) / (rows[i].l - rows[i-1].l)
+			k = math.Exp(math.Log(rows[i-1].k)*(1-t) + math.Log(rows[i].k)*t)
+		}
+		irLams = append(irLams, l)
+		irAlpha = append(irAlpha, 4*math.Pi*k/(l*1e-3))
+	}
+}
+
+// fullSens: the layers' response with no IR-cut filter (bottom, middle, top).
+func (m model) fullSens(i int) [3]float64 {
+	a := irAlpha[i]
+	e := func(z float64) float64 { return math.Exp(-a * z) }
+	return [3]float64{e(m.d2) - e(m.d3), e(m.d1) - e(m.d2), e(m.d0) - e(m.d1)}
+}
+
+func sig(l, edge, w float64) float64 { return 1 / (1 + math.Exp(-(l-edge)/w)) }
+
+// irMaterials: reflectance spectra of real surfaces, with variations.
+func irMaterials(rng *rand.Rand) [][]float64 {
+	var out [][]float64
+	add := func(f func(l float64) float64) {
+		r := make([]float64, len(irLams))
+		for i, l := range irLams {
+			r[i] = math.Max(0.005, math.Min(0.98, f(l)))
+		}
+		out = append(out, r)
+	}
+	for v := 0; v < 25; v++ {
+		k := 0.8 + 0.4*rng.Float64()
+		edge := 705 + 20*rng.Float64()
+		nir := 0.35 + 0.25*rng.Float64()
+		// Green foliage: chlorophyll absorbs blue and red, a green bump at
+		// 550 nm, then the red edge up to a high near-infrared plateau.
+		add(func(l float64) float64 {
+			return k*(0.04+0.08*math.Exp(-0.5*math.Pow((l-550)/35, 2))) + nir*sig(l, edge, 12)
+		})
+		// Dry grass / straw: rising through the visible, high NIR.
+		add(func(l float64) float64 { return k * (0.08 + 0.3*sig(l, 560, 60) + 0.15*sig(l, 750, 40)) })
+		// Blue sky (as a radiance ratio to daylight): Rayleigh, little NIR.
+		add(func(l float64) float64 { return k * 0.5 * math.Pow(450/l, 4) })
+		// Skin: rising to a red-NIR plateau, haemoglobin dip near 560 nm.
+		add(func(l float64) float64 {
+			return k * (0.15 + 0.45*sig(l, 600, 30) - 0.06*math.Exp(-0.5*math.Pow((l-560)/20, 2)))
+		})
+		// Water: dark, darker still in the infrared.
+		add(func(l float64) float64 { return k * (0.06 - 0.05*sig(l, 720, 30)) })
+		// Soil, concrete: slowly rising.
+		add(func(l float64) float64 { return k * (0.1 + 0.25*(l-380)/720) })
+		add(func(l float64) float64 { return k * (0.3 + 0.05*(l-380)/720) })
+	}
+	return out
+}
+
+func irRandom(rng *rand.Rand, n int) [][]float64 {
+	var out [][]float64
+	for j := 0; j < n; j++ {
+		r := make([]float64, len(irLams))
+		base := 0.05 + 0.3*rng.Float64()
+		for i := range r {
+			r[i] = base
+		}
+		for b := 0; b < 1+rng.Intn(3); b++ {
+			mu, sd, amp := irMin+(irMax-irMin)*rng.Float64(), 20+150*rng.Float64(), 0.7*rng.Float64()
+			if rng.Float64() < 0.3 {
+				amp = -amp * base / 0.7
+			}
+			for i, l := range irLams {
+				r[i] += amp * math.Exp(-0.5*((l-mu)/sd)*((l-mu)/sd))
+			}
+		}
+		for i := range r {
+			r[i] = math.Max(0.01, math.Min(0.95, r[i]))
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+type irLook struct {
+	name   string
+	filter func(l float64) float64
+	bands  []func(l float64) float64 // the output channels' spectral bands
+	mono   bool
+}
+
+var irLooks = []irLook{
+	{name: "aerochrome", filter: func(l float64) float64 { return sig(l, 515, 8) },
+		bands: []func(float64) float64{
+			func(l float64) float64 { return sig(l, 700, 10) * (1 - sig(l, 900, 20)) }, // IR layer -> red
+			func(l float64) float64 { return sig(l, 600, 10) * (1 - sig(l, 700, 10)) }, // red layer -> green
+			func(l float64) float64 { return sig(l, 500, 10) * (1 - sig(l, 600, 10)) }, // green layer -> blue
+		}},
+	{name: "ir590", filter: func(l float64) float64 { return sig(l, 590, 8) },
+		bands: []func(float64) float64{
+			func(l float64) float64 { return sig(l, 700, 10) },                        // infrared -> red
+			func(l float64) float64 { return sig(l, 700, 10) },                        // infrared -> green
+			func(l float64) float64 { return sig(l, 590, 8) * (1 - sig(l, 700, 10)) }, // visible red -> blue
+		}},
+	{name: "ir720", filter: func(l float64) float64 { return sig(l, 720, 8) }, mono: true,
+		bands: []func(float64) float64{func(l float64) float64 { return sig(l, 720, 8) }}},
+}
+
+// irFit returns the look's 3×3 (rows: output red, green, blue; a mono look
+// repeats its one row) on layers normalised to the filtered white, and the
+// fit's RMS over the spectra (relative to white = 1) plus each material's
+// output for the report.
+func irFit(m model, lk irLook, refl [][]float64) ([9]float64, float64) {
+	illum := make([]float64, len(irLams))
+	for i, l := range irLams {
+		illum[i] = planck(l, 5500)
+	}
+	var wht [3]float64
+	bw := make([]float64, len(lk.bands))
+	for i, l := range irLams {
+		S := m.fullSens(i)
+		for k := 0; k < 3; k++ {
+			wht[k] += S[k] * illum[i] * lk.filter(l)
+		}
+		for b, f := range lk.bands {
+			bw[b] += f(l) * illum[i]
+		}
+	}
+	X := make([][3]float64, len(refl))
+	Y := make([][]float64, len(refl))
+	for j, r := range refl {
+		Y[j] = make([]float64, len(lk.bands))
+		for i, l := range irLams {
+			S := m.fullSens(i)
+			for k := 0; k < 3; k++ {
+				X[j][k] += S[k] * illum[i] * lk.filter(l) * r[i]
+			}
+			for b, f := range lk.bands {
+				Y[j][b] += f(l) * illum[i] * r[i]
+			}
+		}
+		for k := 0; k < 3; k++ {
+			X[j][k] /= wht[k]
+		}
+		for b := range lk.bands {
+			Y[j][b] /= bw[b]
+		}
+	}
+	var ata [3][3]float64
+	for _, x := range X {
+		for r := 0; r < 3; r++ {
+			for q := 0; q < 3; q++ {
+				ata[r][q] += x[r] * x[q]
+			}
+		}
+	}
+	var M [9]float64
+	var e, n float64
+	for b := range lk.bands {
+		var atb [3]float64
+		for j, x := range X {
+			for q := 0; q < 3; q++ {
+				atb[q] += Y[j][b] * x[q]
+			}
+		}
+		// Ridge: the plain least-squares rows reach coefficients of 50-150
+		// for the 720 nm look (all layers see the same infrared, so it
+		// fits their tiny differences), which would multiply the noise as
+		// much. The smallest penalty that keeps the row's noise gain (its
+		// norm, for equal noise per white-balanced layer) under irMaxGain.
+		solve := func(lam float64) [3]float64 {
+			a := ata
+			for q := 0; q < 3; q++ {
+				a[q][q] += lam
+			}
+			inv := inv3(a)
+			var row [3]float64
+			for q := 0; q < 3; q++ {
+				for k := 0; k < 3; k++ {
+					row[q] += inv[q][k] * atb[k]
+				}
+			}
+			return row
+		}
+		norm := func(r [3]float64) float64 { return math.Sqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]) }
+		row := solve(0)
+		if norm(row) > irMaxGain {
+			lo, hi := 0.0, ata[0][0]+ata[1][1]+ata[2][2]
+			for it := 0; it < 60; it++ {
+				mid := (lo + hi) / 2
+				if norm(solve(mid)) > irMaxGain {
+					lo = mid
+				} else {
+					hi = mid
+				}
+			}
+			row = solve(hi)
+		}
+		for j, x := range X {
+			d := row[0]*x[0] + row[1]*x[1] + row[2]*x[2] - Y[j][b]
+			e, n = e+d*d, n+1
+		}
+		outs := []int{b}
+		if lk.mono {
+			outs = []int{0, 1, 2}
+		}
+		for _, o := range outs {
+			copy(M[o*3:o*3+3], row[:])
+		}
+	}
+	return M, math.Sqrt(e / n)
+}
+
+// irMain writes every generation's IR looks to path and reports the fits
+// and a few materials' renderings.
+func irMain(path string) {
+	irGrid()
+	rng := rand.New(rand.NewSource(7))
+	mats := irMaterials(rng)
+	refl := append(irRandom(rng, 400), mats...)
+	var b strings.Builder
+	b.WriteString("{")
+	for gi, gen := range []string{"Merrill", "TRUEII", "SD9", "Quattro"} {
+		m := loadModel(gen)
+		var s [3]float64
+		for i := range irLams {
+			v := m.fullSens(i)
+			for k := range s {
+				s[k] += v[k]
+			}
+		}
+		fmt.Printf("%s: share of a flat spectrum's signal 700-1100 nm per layer:", gen)
+		for k := 0; k < 3; k++ {
+			var ir float64
+			for i, l := range irLams {
+				if l >= 700 {
+					ir += m.fullSens(i)[k]
+				}
+			}
+			fmt.Printf(" %s %.0f%%", []string{"bottom", "middle", "top"}[k], 100*ir/s[k])
+		}
+		fmt.Println()
+		if gi > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "%q: {", gen)
+		for li, lk := range irLooks {
+			M, e := irFit(m, lk, refl)
+			fmt.Printf("  %-10s fit RMS %.3f (white = 1)  %.3f\n", lk.name, e, M)
+			for mi, name := range []string{"foliage", "dry grass", "blue sky", "skin", "water", "soil", "concrete"} {
+				o := irRender(m, lk, M, mats[mi])
+				fmt.Printf("      %-9s -> %.2f %.2f %.2f\n", name, o[0], o[1], o[2])
+			}
+			if li > 0 {
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(&b, "%q: [", lk.name)
+			for k, v := range M {
+				if k > 0 {
+					b.WriteString(", ")
+				}
+				fmt.Fprintf(&b, "%.5f", v)
+			}
+			b.WriteString("]")
+		}
+		b.WriteString("}")
+	}
+	b.WriteString("}\n")
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// irRender is the look's output for one reflectance (white = 1,1,1).
+func irRender(m model, lk irLook, M [9]float64, r []float64) [3]float64 {
+	var x, wht [3]float64
+	for i, l := range irLams {
+		S := m.fullSens(i)
+		il := planck(l, 5500) * lk.filter(l)
+		for k := 0; k < 3; k++ {
+			x[k] += S[k] * il * r[i]
+			wht[k] += S[k] * il
+		}
+	}
+	for k := range x {
+		x[k] /= wht[k]
+	}
+	return apply(M, x)
+}
