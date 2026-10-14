@@ -2,6 +2,7 @@ package render
 
 import (
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/biopoetic/foveon-lab/preset"
@@ -14,29 +15,38 @@ func TestFilmCurves(t *testing.T) {
 		if !ok || !f.BW {
 			t.Fatalf("%s: not a black-and-white library film", key)
 		}
-		if len(c.LgH) != len(c.D) || len(c.LgH) < 5 {
-			t.Fatalf("%s: curve has %d/%d points", key, len(c.LgH), len(c.D))
-		}
-		for i := 1; i < len(c.D); i++ {
-			if c.LgH[i] <= c.LgH[i-1] || c.D[i] < c.D[i-1] {
-				t.Errorf("%s: curve not increasing at %d", key, i)
+		for _, k := range c.Curves {
+			if len(k.D) != len(c.LgH) {
+				t.Fatalf("%s: curve has %d points, lgh %d", key, len(k.D), len(c.LgH))
+			}
+			for i := 1; i < len(k.D); i++ {
+				if c.LgH[i] <= c.LgH[i-1] || k.D[i] < k.D[i-1] {
+					t.Errorf("%s: curve %v not increasing at %d", key, k.Time, i)
+				}
 			}
 		}
 		g := c.GammaRef()
 		// ISO speed: the density is fog + 0.1 at H = 0.8/ISO lux·s.
-		if d := interp(c.LgH, c.D, math.Log10(0.8/float64(f.ISO))) - c.Fog(); math.Abs(d-0.1) > 0.08 {
+		dens := c.Density(g)
+		if d := dens(math.Log10(0.8/float64(f.ISO))) - dens(c.LgH[0]); math.Abs(d-0.1) > 0.08 {
 			t.Errorf("%s: density %.2f above fog at the ISO speed point, want 0.1", key, d)
 		}
+		// The sheet's standard times all aim at one contrast.
+		var cs []float64
 		for _, d := range c.Developers {
-			if len(d.T) != len(d.Gamma) {
-				t.Fatalf("%s %s: %d times, %d gammas", key, d.Name, len(d.T), len(d.Gamma))
+			if len(d.T) != len(d.C) {
+				t.Fatalf("%s %s: %d times, %d contrasts", key, d.Name, len(d.T), len(d.C))
 			}
-			// A developer's standard time develops to the curve's gamma.
-			if gs := interp(d.T, d.Gamma, d.Time); math.Abs(gs-g) > 0.04 {
-				t.Errorf("%s %s: gamma %.3f at its standard %.1f min, curve's %.3f", key, d.Name, gs, d.Time, g)
+			cs = append(cs, interp(d.T, d.C, d.Time))
+			if d.PushTime(2) < d.Time {
+				t.Errorf("%s %s: push time %.2f below the standard %.2f", key, d.Name, d.PushTime(2), d.Time)
 			}
 		}
-		t.Logf("%s: gamma_ref %.3f, fog %.2f, %d developers", key, g, c.Fog(), len(c.Developers))
+		lo, hi := slices.Min(cs), slices.Max(cs)
+		if hi-lo > 0.04 {
+			t.Errorf("%s: standard times develop to %.3f..%.3f", key, lo, hi)
+		}
+		t.Logf("%s: gamma_ref %.3f, standard contrast %.3f..%.3f, %d developers", key, g, lo, hi, len(c.Developers))
 	}
 }
 
@@ -71,6 +81,16 @@ func TestFilmTone(t *testing.T) {
 	}
 	if !(pushDev.at(0.6) > push.at(0.6)) {
 		t.Errorf("longer development: highlights %.4f, not above %.4f", pushDev.at(0.6), push.at(0.6))
+	}
+	// Tri-X, D-76 pushed two stops: Kodak's 9 1/2 minutes, more contrast.
+	tx, _ := FilmCurveFor("Kodak Tri-X Pan 400 (TX)")
+	pd := tx.DevelopmentFor(preset.Params{Film: "Kodak Tri-X Pan 400 (TX)", Developer: "D-76", Push: 2})
+	if pd.Time != 9.5 || pd.EI != 1600 || pd.Scale < 1.1 {
+		t.Errorf("Tri-X D-76 +2: %.2f min, EI %.0f, contrast x%.2f", pd.Time, pd.EI, pd.Scale)
+	}
+	t.Logf("Tri-X D-76 +2: %.2f min, EI %.0f, gamma %.3f (x%.2f)", pd.Time, pd.EI, pd.Gamma, pd.Scale)
+	for _, k := range tx.Curves {
+		t.Logf("Tri-X curve %v min: gamma %.3f", k.Time, k.gamma)
 	}
 	// No curve, no tone.
 	if newFilmTone(preset.Params{Film: "Ilford HP5 Plus"}) != nil || newFilmTone(preset.Params{}) != nil {

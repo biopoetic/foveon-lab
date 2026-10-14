@@ -800,6 +800,16 @@ function syncFilm(){
   } else box.style.display = "none";
   syncDev(f);
 }
+// pushTime: the sheet's time for pushing push stops (render.PushTime).
+function pushTime(d, push){
+  if (push <= 0 || !d.push) return d.time;
+  const xs = [0], ys = [d.time];
+  for (let s = 1; s <= 6; s++) if (d.push[s] != null) { xs.push(s); ys.push(d.push[s]); }
+  if (push >= xs[xs.length - 1]) return ys[ys.length - 1];
+  let i = 1; while (xs[i] < push) i++;
+  return ys[i-1] + (push - xs[i-1]) / (xs[i] - xs[i-1]) * (ys[i] - ys[i-1]);
+}
+function fmtMin(t){ const m = Math.floor(t + 1e-6), s = Math.round((t - m) * 60); return s ? `${m}:${String(s).padStart(2, "0")} min` : `${m} min`; }
 // syncDev shows the development controls of a film with a characteristic
 // curve: its data sheet's developers, time and push.
 function syncDev(f){
@@ -808,16 +818,16 @@ function syncDev(f){
   if (!c) return;
   const sel = $("#devSel");
   if (sel.dataset.film !== f.name){
-    sel.innerHTML = c.developers.map(d => `<option value="${esc(d.name)}">${esc(d.name)} · ${d.time} min · EI ${d.ei}</option>`).join("");
+    sel.innerHTML = c.developers.map(d => `<option value="${esc(d.name)}">${esc(d.name)} · ${fmtMin(d.time)} · EI ${d.ei}</option>`).join("");
     sel.dataset.film = f.name;
   }
   const d = c.developers.find(x => x.name === S.params.developer) || c.developers[0];
   sel.value = d.name;
   $("#devSrc").innerHTML = `(<a href="${esc(c.url)}" target="_blank" rel="noopener" title="${esc(c.src)}">data sheet</a>)`;
-  const t = S.params.devTime || d.time, push = S.params.push || 0;
+  const push = S.params.push || 0, auto = pushTime(d, push), t = S.params.devTime || auto;
   const tm = $("#devTime");
   tm.min = d.t[0]; tm.max = d.t[d.t.length - 1]; tm.value = t;
-  $("#devTimeVal").textContent = `${t.toFixed(1)} min${S.params.devTime ? "" : " (standard)"}`;
+  $("#devTimeVal").textContent = `${fmtMin(t)}${S.params.devTime ? "" : auto !== d.time ? " (sheet's push time)" : " (standard)"}`;
   $("#push").value = push;
   const stops = Math.round(push * 3);
   const a = Math.abs(stops), whole = Math.floor(a / 3), rem = a % 3;
