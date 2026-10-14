@@ -1147,6 +1147,7 @@ async function editFolders(){
 }
 
 // ---------- self-update ----------
+let updatePolling = false;
 async function updateInit(){
   let u;
   try { u = await (await fetch("/api/update")).json(); } catch { return; }
@@ -1160,6 +1161,13 @@ async function updateInit(){
   }
   const box = $("#updateBox");
   if (u.enabled && !u.latest && !u.error) setTimeout(updateInit, 10000); // first check still running
+  if (u.enabled && !updatePolling){
+    // The app is often left open for days: look again now and then and when
+    // the window comes back (the server asks GitHub only every few hours).
+    updatePolling = true;
+    setInterval(updateInit, 15 * 60 * 1000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) updateInit(); });
+  }
   if (!u.available){ box.style.display = "none"; return; }
   const link = `<a href="https://github.com/biopoetic/foveon-lab/releases/tag/${esc(u.latest)}" target="_blank" rel="noopener">${esc(u.latest)}</a>`;
   if (u.canInstall){

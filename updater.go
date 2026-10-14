@@ -208,17 +208,24 @@ func (u *updater) enabled() bool {
 	return u.pub != nil && version != "dev" && os.Getenv("FOVEON_NO_UPDATE") == ""
 }
 
-// loop checks shortly after start and then twice a day.
+// loop checks shortly after start and then every few hours of WALL-clock
+// time. A plain 12-hour sleep missed releases: Go's timers on Windows stop
+// while the computer sleeps, so an app left open for days could go a day or
+// more without looking.
 func (u *updater) loop() {
 	if !u.enabled() {
 		return
 	}
 	time.Sleep(5 * time.Second)
+	var last time.Time
 	for {
-		if err := u.check(); err != nil {
-			log.Printf("update check: %v", err)
+		if now := time.Now().Round(0); last.IsZero() || now.Sub(last) >= 3*time.Hour {
+			last = now
+			if err := u.check(); err != nil {
+				log.Printf("update check: %v", err)
+			}
 		}
-		time.Sleep(12 * time.Hour)
+		time.Sleep(10 * time.Minute)
 	}
 }
 
