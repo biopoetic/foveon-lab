@@ -357,6 +357,9 @@ type Compensation struct {
 	// balanced camera layers in; rows sum to 1), for the layer filter;
 	// nil = no layer filter.
 	CC *[9]float64
+	// Sensor is the Foveon generation for the physical lens filters
+	// ("Merrill", "TRUEII", "SD9", "Quattro"); "" = no lens filters.
+	Sensor string
 }
 
 // CompensationFor derives the compensation from X3F PROP metadata:
@@ -562,7 +565,8 @@ const colourLayerScale = 0.1
 // layer, forward again; in colour scaled so white keeps its brightness, in
 // monochrome the grey is the layers' gain-weighted mean (grey stays grey).
 func (op *pixOp) setLayerFilter(p preset.Params, c Compensation) {
-	if c.CC == nil || (p.LayerBottom == 0 && p.LayerMiddle == 0 && p.LayerTop == 0) {
+	lens := lensFilter(c.Sensor, p.Filter)
+	if c.CC == nil || (lens == nil && p.LayerBottom == 0 && p.LayerMiddle == 0 && p.LayerTop == 0) {
 		return
 	}
 	cc := *c.CC
@@ -581,7 +585,20 @@ func (op *pixOp) setLayerFilter(p preset.Params, c Compensation) {
 		}
 	}
 	f := [3]float64{math.Exp2(ev[0]), math.Exp2(ev[1]), math.Exp2(ev[2])}
-	if op.mono {
+	// G: the change in white-balanced layer space: the lens filter, then
+	// the per-layer gains.
+	G := [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
+	if lens != nil {
+		G = *lens
+	}
+	for i := 0; i < 3; i++ {
+		for j := 0; j < 3; j++ {
+			G[i*3+j] *= f[i]
+		}
+	}
+	lum := [3]float64{0.2126, 0.7152, 0.0722}
+	if op.mono && lens == nil {
+		// Layer mix: grey = the layers' gain-weighted mean (grey stays grey).
 		sum := f[0] + f[1] + f[2]
 		var v [3]float32
 		for j := 0; j < 3; j++ {
@@ -592,19 +609,26 @@ func (op *pixOp) setLayerFilter(p preset.Params, c Compensation) {
 		op.layerMono = &v
 		return
 	}
-	var m [9]float64
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
-			for k := 0; k < 3; k++ {
-				m[i*3+j] += cc[i*3+k] * f[k] * inv[k*3+j]
-			}
-		}
-	}
+	// m = cc · G · cc⁻¹ in linear sRGB; scaled so white keeps its
+	// brightness (the photographer's filter-factor exposure).
+	m := mul33(cc, mul33(G, inv))
 	y := 0.0
-	for i, wt := range [3]float64{0.2126, 0.7152, 0.0722} {
+	for i, wt := range lum {
 		y += wt * (m[i*3] + m[i*3+1] + m[i*3+2])
 	}
 	if y <= 0 {
+		return
+	}
+	if op.mono {
+		// A lens filter in black and white: the grey is the filtered
+		// image's luminance.
+		var v [3]float32
+		for j := 0; j < 3; j++ {
+			for i, wt := range lum {
+				v[j] += float32(wt * m[i*3+j] / y)
+			}
+		}
+		op.layerMono = &v
 		return
 	}
 	var mf [9]float32

@@ -471,11 +471,12 @@ func (s *server) compensation(ph *Photo, on bool) render.Compensation {
 	// A raw decode carries no in-camera styling, so there is nothing to undo.
 	fam := x3f.PresetFamily(ph.Camera)
 	if !on || ph.props == nil || (ph.RawDecoded && !ph.rawFailed.Load()) || s.useRaw(ph) || ph.jpegBroken.Load() {
-		return render.Compensation{SatFactor: 1, Family: fam, CC: layerCC(ph)}
+		return render.Compensation{SatFactor: 1, Family: fam, CC: layerCC(ph), Sensor: render.SensorGeneration(calibGroup(ph))}
 	}
 	c := render.CompensationWith(ph.props, fam, photoCC(ph))
 	c.Family = fam
 	c.CC = layerCC(ph)
+	c.Sensor = render.SensorGeneration(calibGroup(ph))
 	return c
 }
 

@@ -196,9 +196,15 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           </select>
         </div>
         <div class="row"><label class="chk" title="Black & white: rendered monochrome here and opened in SPP's Monochrome mode. Pack B&W presets (Saturation -1) have it on."><input type="checkbox" id="mono"> Monochrome (SPP B&amp;W mode)</label></div>
-        <div class="row"><div class="lab">Layer filter <span class="dim" title="Foveon Lab only: a gain per sensor layer, applied to the camera's own layers before its colour matrix, like a filter on the lens. In Monochrome it chooses how the three layers mix into grey (the top layer alone is the cleanest at high ISO). Not saved into SPP presets or .cube LUTs.">ⓘ</span></div>
+        <div class="row"><div class="lab">Layer filter <span class="dim" title="Foveon Lab only. Lens filters are simulated from first principles: each sensor generation's layer sensitivities are modelled from silicon's light absorption and fitted to the camera's own colour matrix, and the filter's transmission spectrum is applied to them. The layer sliders set a gain per sensor layer (in Monochrome: how the three layers mix into grey; the top layer alone is the cleanest at high ISO). Not saved into SPP presets or .cube LUTs.">ⓘ</span></div>
           <select id="layerPreset" style="width:100%">
-            <option value="">None</option><option value="red">Red filter</option><option value="orange">Orange filter</option><option value="yellow">Yellow filter</option><option value="green">Green filter</option><option value="blue">Blue filter</option><option value="top">Top layer only (cleanest)</option><option value="warm">Warm</option><option value="cool">Cool</option><option value="custom" disabled>Custom (sliders)</option>
+            <option value="">None</option>
+            <optgroup label="Lens filter (simulated on the sensor's layers)">
+              <option value="lens:yellow">Yellow (Wratten 8)</option><option value="lens:deepyellow">Deep yellow (Wratten 15)</option><option value="lens:orange">Orange (Wratten 21)</option><option value="lens:red">Red (Wratten 25)</option><option value="lens:deepred">Deep red (Wratten 29)</option><option value="lens:yellowgreen">Yellow-green (Wratten 11)</option><option value="lens:green">Green (Wratten 58)</option><option value="lens:blue">Blue (Wratten 47)</option><option value="lens:warm">Warming (81A)</option><option value="lens:cool">Cooling (82A)</option>
+            </optgroup>
+            <optgroup label="Layer mix">
+              <option value="mix:top">Top layer only (cleanest)</option><option value="custom" disabled>Custom (layer sliders)</option>
+            </optgroup>
           </select>
         </div>
         <div class="src" id="wbNote"></div>
@@ -286,15 +292,9 @@ const SLIDERS = [
   ["layerMiddle","Layer filter: middle (green)",-6,2,.05],
   ["layerTop","Layer filter: top (blue)",-6,2,.05],
 ];
-// Layer filter presets, in stops per sensor layer (bottom, middle, top):
-// like a filter on the lens, before the colour matrix. In Monochrome they
-// pick how the layers mix into grey.
-const LAYER_FILTERS = {
-  "": [0,0,0],
-  red: [0,-2.5,-5], orange: [0,-1,-4], yellow: [0,0,-2], green: [-1.5,0,-1.5], blue: [-4,-1.5,0],
-  top: [-6,-6,0], warm: [.25,0,-.25], cool: [-.25,0,.25],
-};
-const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false,layerBottom:0,layerMiddle:0,layerTop:0};
+// Layer mix presets, in stops per sensor layer (bottom, middle, top).
+const LAYER_MIX = { top: [-6,-6,0] };
+const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false,layerBottom:0,layerMiddle:0,layerTop:0,filter:""};
 
 const S = {
   photos: [], presets: [], photo: null,
@@ -610,8 +610,9 @@ function buildSliders(){
   $("#mode").onchange = () => { S.params.colorMode = +$("#mode").value; $("#mode").blur(); syncSliders(); scheduleRender(); };
   $("#mono").onchange = () => { S.params.mono = $("#mono").checked; syncSliders(); scheduleRender(); };
   $("#layerPreset").onchange = () => {
-    const v = LAYER_FILTERS[$("#layerPreset").value];
-    if (v){ [S.params.layerBottom, S.params.layerMiddle, S.params.layerTop] = v; }
+    const v = $("#layerPreset").value;
+    S.params.filter = v.startsWith("lens:") ? v.slice(5) : "";
+    [S.params.layerBottom, S.params.layerMiddle, S.params.layerTop] = v.startsWith("mix:") ? LAYER_MIX[v.slice(4)] : [0, 0, 0];
     $("#layerPreset").blur(); syncSliders(); scheduleRender();
   };
 }
@@ -625,7 +626,9 @@ function syncSliders(){
   }
   $("#mono").checked = !!S.params.mono;
   const lf = [S.params.layerBottom || 0, S.params.layerMiddle || 0, S.params.layerTop || 0];
-  $("#layerPreset").value = Object.keys(LAYER_FILTERS).find(k => LAYER_FILTERS[k].every((x, i) => Math.abs(x - lf[i]) < 1e-9)) ?? "custom";
+  const zero = lf.every(x => Math.abs(x) < 1e-9);
+  const mix = Object.keys(LAYER_MIX).find(k => LAYER_MIX[k].every((x, i) => Math.abs(x - lf[i]) < 1e-9));
+  $("#layerPreset").value = S.params.filter && zero ? "lens:" + S.params.filter : !S.params.filter && zero ? "" : !S.params.filter && mix ? "mix:" + mix : "custom";
   const m = S.params.colorMode;
   $("#mode").value = [4,6,7].includes(m) ? m : 0;
   $("#modeNote").textContent = [4,6,7].includes(m) ? "" : `(code ${m})`;
@@ -633,7 +636,7 @@ function syncSliders(){
 }
 
 function current(){ return S.idx >= 0 ? S.list[S.idx] : null; }
-function dirty(){ return Object.keys(NEUTRAL).some(k => Math.abs(S.params[k] - S.base[k]) > 1e-9); }
+function dirty(){ return Object.keys(NEUTRAL).some(k => typeof NEUTRAL[k] === "string" ? (S.params[k] || "") !== (S.base[k] || "") : Math.abs(S.params[k] - S.base[k]) > 1e-9); }
 
 function openDetail(i){
   S.idx = i;

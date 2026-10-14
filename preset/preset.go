@@ -47,6 +47,11 @@ type Params struct {
 	// before its colour matrix, like a filter on the lens. In Monochrome
 	// the grey is the layers' weighted sum (bottom heavy = a red filter;
 	// top only = the cleanest layer).
+	// Filter is a lens filter simulated on the sensor's modelled layer
+	// sensitivities (render/layerfilters.json): "yellow", "deepyellow",
+	// "orange", "red", "deepred", "yellowgreen", "green", "blue", "warm",
+	// "cool"; "" = none.
+	Filter      string  `json:"filter,omitempty"`
 	LayerBottom float64 `json:"layerBottom"`
 	LayerMiddle float64 `json:"layerMiddle"`
 	LayerTop    float64 `json:"layerTop"`
