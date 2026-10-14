@@ -199,6 +199,17 @@ func pixelGetter(img image.Image) func(x, y int) (uint8, uint8, uint8) {
 }
 
 // Rotate returns the image rotated clockwise by 90, 180 or 270 degrees.
+// Window is the w×h part of l at (x0, y0) (clamped to l), at full scale.
+func (l *Linear) Window(x0, y0, w, h int) *Linear {
+	x0, y0 = max(0, min(x0, l.W-1)), max(0, min(y0, l.H-1))
+	w, h = max(1, min(w, l.W-x0)), max(1, min(h, l.H-y0))
+	o := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1}
+	for y := 0; y < h; y++ {
+		copy(o.Pix[y*w*3:(y+1)*w*3], l.Pix[((y+y0)*l.W+x0)*3:])
+	}
+	return o
+}
+
 func (l *Linear) Rotate(deg int) *Linear {
 	if deg != 90 && deg != 180 && deg != 270 {
 		return l

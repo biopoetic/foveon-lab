@@ -21,6 +21,7 @@ import (
 	"image/jpeg"
 	"io/fs"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -448,6 +449,34 @@ func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
 	return v.(*render.Linear), nil
 }
 
+// fullGeo is ph's source at full resolution with its geometry applied
+// (the 100% view), cached.
+func (s *server) fullGeo(ph *Photo, mode string, g render.Geometry) (*render.Linear, error) {
+	v, err := s.sources.get(ph.ID+"|"+mode+"|full"+geoKey(g), func() (any, error) {
+		var src *render.Linear
+		var err error
+		switch mode {
+		case "raw", "rawfast":
+			src, err = rawLinear(ph, 0, "sRGB")
+		default:
+			var img image.Image
+			if img, err = decodePreview(ph); err == nil {
+				src = balanceJPEG(ph, render.FromImage(img, 0, ph.rotation))
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		l := render.ApplyGeometry(src, g)
+		l.Scale = 1
+		return l, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*render.Linear), nil
+}
+
 func (s *server) base(ph *Photo, w int) (*render.Base, error) {
 	return s.baseAs(ph, w, s.sourceMode(ph), geometryOf(ph))
 }
@@ -555,10 +584,29 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	if q.Get("nogeo") == "1" {
 		g = render.Geometry{Turn: g.Turn}
 	}
-	b, err := s.baseAs(ph, width, mode, g)
-	if err != nil {
-		httpErr(w, 500, err)
-		return
+	var b *render.Base
+	if q.Get("z") == "1" {
+		// 100% view: only the visible window of the full-resolution image.
+		full, err := s.fullGeo(ph, mode, g)
+		if err != nil {
+			httpErr(w, 500, err)
+			return
+		}
+		zx, _ := strconv.ParseFloat(q.Get("zx"), 64)
+		zy, _ := strconv.ParseFloat(q.Get("zy"), 64)
+		zw, _ := strconv.Atoi(q.Get("zw"))
+		zh, _ := strconv.Atoi(q.Get("zh"))
+		zw, zh = max(64, min(full.W, zw, 4000)), max(64, min(full.H, zh, 4000))
+		x0 := max(0, min(full.W-zw, int(math.Round(zx*float64(full.W)))-zw/2))
+		y0 := max(0, min(full.H-zh, int(math.Round(zy*float64(full.H)))-zh/2))
+		b = render.NewBase(full.Window(x0, y0, zw, zh))
+		w.Header().Set("X-Full", fmt.Sprintf("%d,%d,%d,%d", full.W, full.H, x0, y0))
+	} else {
+		var err error
+		if b, err = s.baseAs(ph, width, mode, g); err != nil {
+			httpErr(w, 500, err)
+			return
+		}
 	}
 	out := render.Render(b, p, s.compensation(ph, q.Get("comp") == "1"))
 	var buf bytes.Buffer

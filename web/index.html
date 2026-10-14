@@ -61,6 +61,8 @@ main{overflow:auto;position:relative}
 #view{display:flex;flex-direction:column;min-width:0;min-height:0}
 #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#0b0b0b;position:relative}
 #stage img{max-width:100%;max-height:100%;object-fit:contain}
+#stage.zoomed #big{max-width:none;max-height:none;cursor:grab}
+#stage.zoomed #big.drag{cursor:grabbing}
 #bigOrig,#clipCv{position:absolute;display:none;pointer-events:none}
 #splitLine{position:absolute;display:none;width:2px;background:#fffc;pointer-events:none;box-shadow:0 0 4px #000}
 #stage.split #bigOrig,#stage.split #splitLine{display:block}
@@ -180,6 +182,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="orig" title="Hold O">Original</button>
           <button id="splitBtn" title="Before / after: move the mouse over the photo (S)">Split</button>
           <button id="clipBtn" title="Mark clipped highlights (red) and crushed shadows (blue) (C)">Clipping</button>
+          <button id="zoomBtn" title="100% view (Z, or double-click the image where you want to look); drag to move around">1:1</button>
           <button id="cropBtn" title="Straighten and crop this photo (R) — applies to the preview and every export">Crop</button>
           <button class="ai" id="aiOpen2" title="Let an AI agent pick and tune the best preset">✦ AI</button>
         </div>
@@ -663,6 +666,7 @@ function openDetail(i){
 }
 
 function closeDetail(){
+  if (ZOOM.on){ ZOOM.on = false; $("#stage").classList.remove("zoomed"); $("#zoomBtn")?.classList.remove("on"); $("#big").style.width = ""; }
   $("#detail").classList.remove("on");
   $("#gridView").style.display = "";
   drawGrid();
@@ -679,6 +683,72 @@ function bigW(){ const st = $("#stage"); return Math.min(1600, Math.round(st.cli
 
 let renderSeq = 0, renderTimer = 0;
 function scheduleRender(){ clearTimeout(renderTimer); renderTimer = setTimeout(renderBig, 70); }
+// ---------- 100% view ----------
+// ZOOM: the window's centre (cx, cy) as fractions of the full-resolution,
+// geometry-applied frame; full = [W, H, x0, y0] from the last response.
+const ZOOM = {on: false, cx: .5, cy: .5, full: null, drag: null};
+function zoomQuery(){
+  const st = $("#stage"), d = window.devicePixelRatio || 1;
+  return `&z=1&zx=${ZOOM.cx.toFixed(4)}&zy=${ZOOM.cy.toFixed(4)}&zw=${Math.round(st.clientWidth * d)}&zh=${Math.round(st.clientHeight * d)}`;
+}
+async function renderZoom(url, seq){
+  const busy = setTimeout(() => $("#busy").style.display = "block", 150);
+  try {
+    const res = await fetch(url + zoomQuery());
+    if (!res.ok) throw new Error(await res.text());
+    const f = (res.headers.get("X-Full") || "").split(",").map(Number);
+    const blob = await res.blob();
+    if (seq !== renderSeq) return;
+    if (f.length === 4) ZOOM.full = f;
+    const big = $("#big"), old = big.src;
+    big.onload = () => { big.style.width = (big.naturalWidth / (window.devicePixelRatio || 1)) + "px"; big.style.transform = ""; afterBig(); };
+    big.src = URL.createObjectURL(blob);
+    if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+  } catch (e) { toast("Render failed: " + esc(e.message)); }
+  finally { clearTimeout(busy); $("#busy").style.display = "none"; }
+}
+// setZoom turns the 100% view on (centred at cx, cy) or off.
+function setZoom(on, cx, cy){
+  if (on && CROP.on) return;
+  ZOOM.on = on;
+  if (on){ ZOOM.cx = cx ?? ZOOM.cx; ZOOM.cy = cy ?? ZOOM.cy; }
+  $("#stage").classList.toggle("zoomed", on);
+  $("#zoomBtn")?.classList.toggle("on", on);
+  if (!on){ $("#big").style.width = ""; $("#big").style.transform = ""; }
+  renderBig();
+}
+function zoomInit(){
+  const big = $("#big");
+  $("#zoomBtn").onclick = () => setZoom(!ZOOM.on, .5, .5);
+  big.addEventListener("dblclick", e => {
+    if (ZOOM.on){ setZoom(false); return; }
+    const r = big.getBoundingClientRect();
+    setZoom(true, Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)));
+  });
+  big.addEventListener("mousedown", e => {
+    if (!ZOOM.on || e.button !== 0) return;
+    e.preventDefault();
+    ZOOM.drag = {x: e.clientX, y: e.clientY};
+    big.classList.add("drag");
+  });
+  window.addEventListener("mousemove", e => {
+    if (!ZOOM.drag) return;
+    big.style.transform = `translate(${e.clientX - ZOOM.drag.x}px, ${e.clientY - ZOOM.drag.y}px)`;
+  });
+  window.addEventListener("mouseup", e => {
+    if (!ZOOM.drag) return;
+    const d = window.devicePixelRatio || 1, f = ZOOM.full;
+    const dx = (e.clientX - ZOOM.drag.x) * d, dy = (e.clientY - ZOOM.drag.y) * d;
+    ZOOM.drag = null;
+    big.classList.remove("drag");
+    if (f && (Math.abs(dx) > 1 || Math.abs(dy) > 1)){
+      ZOOM.cx = Math.max(0, Math.min(1, ZOOM.cx - dx / f[0]));
+      ZOOM.cy = Math.max(0, Math.min(1, ZOOM.cy - dy / f[1]));
+      renderBig();
+    } else big.style.transform = "";
+  });
+}
+
 function renderBig(showOrig){
   if (!S.photo) return;
   const seq = ++renderSeq;
@@ -689,6 +759,7 @@ function renderBig(showOrig){
   else url = renderURL({w: bigW(), params: S.params});
   VIEW.tag = showOrig ? "CAMERA ORIGINAL" : (dirty() ? "tuned" : (p ? "preset" : ""));
   setTag();
+  if (ZOOM.on && !showOrig){ renderZoom(url, seq); return; }
   const img = new Image();
   const busy = setTimeout(() => $("#busy").style.display = "block", 150);
   img.onload = () => { clearTimeout(busy); $("#busy").style.display = "none"; if (seq === renderSeq){ $("#big").src = img.src; $("#big").onload = afterBig; } };
@@ -796,6 +867,7 @@ function cropLayout(){
 }
 function cropOpen(){
   if (!S.photo || CROP.on) return;
+  if (ZOOM.on){ ZOOM.on = false; $("#stage").classList.remove("zoomed"); $("#zoomBtn")?.classList.remove("on"); $("#big").style.width = ""; }
   const g0 = GEO[S.photo.id] || {};
   CROP.on = true;
   CROP.g = {angle: g0.angle || 0, x: g0.x || 0, y: g0.y || 0, w: g0.w || 0, h: g0.h || 0};
@@ -1381,6 +1453,7 @@ function bind(){
     // ↑/↓ = previous/next photo, ←/→ = previous/next preset (in the grid
     // ←/→ opens the editor on the first/last preset).
     if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && S.photo){ e.preventDefault(); toggleFavorite(S.photo.id); return; }
+    if ((e.key === "z" || e.key === "Z") && !e.ctrlKey && !e.metaKey && $("#detail").classList.contains("on")){ e.preventDefault(); setZoom(!ZOOM.on); return; }
     if ((e.key === "[" || e.key === "]") && S.photo){ e.preventDefault(); setRot(rotOf(S.photo.id) + (e.key === "[" ? 90 : -90)); return; }
     if (e.key === "ArrowDown" || e.key === "PageDown"){ e.preventDefault(); stepPhoto(1); }
     else if (e.key === "ArrowUp" || e.key === "PageUp"){ e.preventDefault(); stepPhoto(-1); }
@@ -1399,6 +1472,7 @@ function bind(){
 
 (async function init(){
   bind();
+  zoomInit();
   await Promise.all([loadPhotos(), loadPresets(false), aiInit(), sppInit(), capsInit(), allImagesInit(), accInit()]);
   $("#favOnly").checked = !!store.get("favOnly", false);
   $("#favOnly").onchange = e => { store.set("favOnly", e.target.checked); applyFavFilter(); };
