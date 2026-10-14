@@ -40,8 +40,7 @@ import (
 
 // DenoiseOptions tunes Denoise. Zero values pick defaults.
 type DenoiseOptions struct {
-	// Strength scales the colour smoothing radius and luminance threshold
-	// (1 = default, 0 = off).
+	// Strength blends the result with the original (1 = full, 0 = off).
 	Strength float64
 	// Scale is the image's size relative to the full sensor readout (a
 	// preview downscaled 4x is 0.25; 0 = 1), so the smoothing covers the
@@ -110,7 +109,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	for i := range sig {
 		sig[i] = float32(max(ym.at(float64(local[i])), 1e-6))
 	}
-	Yd := atrous(Y, w, h, sig, dnK*o.Strength, 5)
+	Yd := atrous(Y, w, h, sig, dnK, 5)
 	var mean float64
 	for _, v := range Yd {
 		mean += float64(v)
@@ -131,12 +130,12 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	if debugNoise {
 		fmt.Fprintf(os.Stderr, "denoise: relative luminance noise %.4f (sigma %.5f at mean %.4f)\n", rel, ym.at(mean), mean)
 	}
-	eps := float32(math.Max(1e-6, (dnEpsC*o.Strength*rel)*(dnEpsC*o.Strength*rel)))
+	eps := float32(math.Max(1e-6, (dnEpsC*rel)*(dnEpsC*rel)))
 	scale := o.Scale
 	if scale <= 0 {
 		scale = 1
 	}
-	r := max(2, int(math.Round(32*o.Strength*scale)))
+	r := max(2, int(math.Round(32*scale)))
 	var out [3][]float32
 	var wg sync.WaitGroup
 	for k := 0; k < 3; k++ {
@@ -216,13 +215,18 @@ func keepFor(rel float64) [4]float64 {
 }
 
 // restoreDetail adds back, per layer and band, keepFor(rel) of what the
-// filters removed; a lower strength (NR Medium, Low) gives back more.
+// filters removed. Strength below 1 (NR Medium, Low) blends towards the
+// original in every band, the coarse rest included: the filters always
+// run at full strength, since a weaker colour filter (smaller radius and
+// eps) left blotches about 20 px wide in near-black areas, which no fine
+// band restores (a night shot at NR Low).
 func restoreDetail(img *CamImage, orig []float32, rel, strength float64) {
 	keep := keepFor(rel)
 	var wb [4]float32
 	for b := range keep {
 		wb[b] = float32(1 - math.Min(1, strength)*(1-keep[b]))
 	}
+	rest := float32(1 - math.Min(1, strength))
 	w, h, n := img.W, img.H, img.W*img.H
 	d := make([]float32, n)
 	for k := 0; k < 3; k++ {
@@ -231,7 +235,7 @@ func restoreDetail(img *CamImage, orig []float32, rel, strength float64) {
 		}
 		b1, b2, b4, b8 := boxBlur(d, w, h, 1), boxBlur(d, w, h, 2), boxBlur(d, w, h, 4), boxBlur(d, w, h, 8)
 		for i := range d {
-			img.Pix[i*3+k] += wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i])
+			img.Pix[i*3+k] += wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
 		}
 	}
 }
