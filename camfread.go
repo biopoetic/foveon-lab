@@ -92,7 +92,7 @@ func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
 		return nil, t, err
 	}
 	x3f.FixBadPixels(raw, c)
-	wb := c.CameraWB(strings.TrimSpace(ph.props["WB_DESC"]))
+	wb := developWB(c, ph)
 	img, err := x3f.CameraLinear(raw, c, x3f.NewSpatialGain(c, f.Props, wb), wb)
 	if err != nil {
 		return nil, t, err
@@ -252,9 +252,25 @@ func layerCC(ph *Photo) *[9]float64 {
 		if err != nil {
 			return
 		}
-		if _, cc, err := c.WBTransform(c.CameraWB(strings.TrimSpace(ph.props["WB_DESC"]))); err == nil {
+		if _, cc, err := c.WBTransform(developWB(c, ph)); err == nil {
 			ph.layerCC = &cc
 		}
 	})
 	return ph.layerCC
 }
+
+// developWB is the white balance a raw development uses: the camera's own
+// Auto estimate of the light (stored with every shot), as Sigma Photo
+// Pro's "as shot" does, not the WB set on the camera. Measured 2026-10-14
+// on exports with every SPP WB code: SPP's as-shot equals codes 0/1/9 and
+// differs from its Sunlight even on a Sunlight shot; with the camera's
+// Auto WB the held-out raw base vs SPP fell SD1 6.87 -> 3.97, DP Merrill
+// 6.42 -> 4.21, SD15 8.44 -> 6.03 dE2000. FOVEON_WB=camera uses the set WB.
+func developWB(c *x3f.CAMF, ph *Photo) string {
+	if !wbCamera && c.Props["WhiteBalanceGains"]["Auto"] != "" {
+		return "Auto"
+	}
+	return c.CameraWB(strings.TrimSpace(ph.props["WB_DESC"]))
+}
+
+var wbCamera = os.Getenv("FOVEON_WB") == "camera"
