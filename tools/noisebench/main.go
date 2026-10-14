@@ -356,6 +356,14 @@ func main() {
 		mean, p95 := calib.DeltaEStats(l, refL)
 		bm, _ := calib.DeltaEStats(blurLin(l, 6), blurLin(refL, 6))
 		fmt.Printf("%-16s dE2000 mean %5.2f p95 %5.2f | colour only (blurred) %5.2f | detail kept %.2f   (%v)\n", m, mean, p95, bm, detailKept(l, refL), el.Round(time.Millisecond))
+		// Renderings with more contrast show the same noise as a larger dE:
+		// divide by the reference's own fine structure (dE to its blur), so
+		// a flat rendering (x3fuse's sRGB) and a contrasty one (SPP's look)
+		// compare fairly.
+		if os.Getenv("NB_NORM") != "" {
+			st, _ := calib.DeltaEStats(refL, blurLin(refL, 6))
+			fmt.Printf("%-16s structure dE %.2f, noise / structure %.3f\n", m, st, mean/st)
+		}
 		if *saveDir != "" {
 			save(l, filepath.Join(*saveDir, m+".jpg"))
 		}
