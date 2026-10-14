@@ -359,7 +359,7 @@ func decodePreview(ph *Photo) (image.Image, error) {
 			var err error
 			if goRaw {
 				var l *render.Linear
-				if l, err = goLinear(ph, 0, 1); err == nil {
+				if l, err = goLinear(ph, 0, defaultNR); err == nil {
 					img = linearToSRGB16(l)
 				}
 			} else {
@@ -669,8 +669,8 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 // rawExportColor is the raw decode for an export at denoise strength dn.
 func rawExportColor(dn *int) string {
 	switch {
-	case dn == nil || *dn >= 10:
-		return "sRGB"
+	case dn == nil:
+		return "sRGB" // the default (defaultNR)
 	case *dn <= 0:
 		return "sRGB-nodenoise"
 	}

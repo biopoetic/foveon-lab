@@ -93,8 +93,14 @@ func nativeRaw(ph *Photo) bool {
 	return ok
 }
 
+// defaultNR is the noise reduction for previews and for exports left at
+// the default: "Low". Side by side with SPP (SD1 ISO 100-6400, 2026-10-14)
+// Sigma Photo Pro's own noise reduction looks better than Full; Low keeps
+// the photo's grain and detail and only calms the colour noise.
+const defaultNR = 0.3
+
 // goStrength maps a decode name to the native denoiser's strength: the
-// full decode (and NR "Full") 1, "-nodenoise" 0, "-dnN" N/10.
+// default decode defaultNR, "-nodenoise" 0, "-dnN" N/10 (NR Full: -dn10).
 func goStrength(color string) float64 {
 	_, opts, _ := strings.Cut(color, "-")
 	switch {
@@ -105,7 +111,7 @@ func goStrength(color string) float64 {
 			return float64(max(0, min(10, n))) / 10
 		}
 	}
-	return 1
+	return defaultNR
 }
 
 func cachedAs(ph *Photo, color string) bool {

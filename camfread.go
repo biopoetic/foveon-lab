@@ -183,7 +183,7 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 		httpErr(w, 500, err)
 		return
 	}
-	nr := 1.0
+	nr := defaultNR
 	if denoise != nil {
 		nr = float64(max(0, min(10, *denoise))) / 10
 	}
