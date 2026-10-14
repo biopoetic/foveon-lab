@@ -171,7 +171,12 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		img.Pix[i*3], img.Pix[i*3+1], img.Pix[i*3+2] = a, b, c
 	}
 	if !noRestore {
-		restoreDetail(img, orig, rel, o.Strength)
+		if perLayerRestore {
+			restoreDetail(img, orig, rel, o.Strength)
+		} else {
+			restoreLuma(img, orig, wf, rel, o.Strength)
+			restoreChroma(img, orig, wf, models)
+		}
 	}
 }
 
@@ -195,6 +200,15 @@ var (
 		{0.21, 0.17, 0.21, 0.46},
 	}
 	noRestore = os.Getenv("FOVEON_DN_NORESTORE") != ""
+	// perLayerRestore: give back each layer's own difference, as up to
+	// v0.4.8 (research switch FOVEON_DN_PERLAYER=1), which gave back each
+	// layer's noise with it. The default gives back the luminance detail
+	// (restoreLuma) and the colour detail that stands clear of the noise per
+	// band (restoreChroma). Photography Blog's DP2 Merrill ISO series
+	// (noisebench vs the ISO 100 frame, 2026-10-14), NR Low, per layer ->
+	// now: dE2000 ISO 200 6.11 -> 4.06, ISO 1600 16.78 -> 4.51, ISO 6400
+	// 26.32 -> 7.88; detail kept 0.81 -> 0.77, 0.79 -> 0.77, 0.67 -> 0.65.
+	perLayerRestore = os.Getenv("FOVEON_DN_PERLAYER") != ""
 )
 
 func keepFor(rel float64) [4]float64 {
@@ -237,6 +251,101 @@ func restoreDetail(img *CamImage, orig []float32, rel, strength float64) {
 		for i := range d {
 			img.Pix[i*3+k] += wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
 		}
+	}
+}
+
+// restoreLuma is restoreDetail on the luminance only: the bands of what
+// the filters removed from the noise-weighted luminance (whose noise is
+// mostly the clean top layer's) go back into every layer alike. Giving
+// back each layer's own difference also gives back each layer's noise, the
+// bottom layer's above all: at ISO 6400 that was most of the noise left.
+func restoreLuma(img *CamImage, orig []float32, wf [3]float32, rel, strength float64) {
+	keep := keepFor(rel)
+	var wb [4]float32
+	for b := range keep {
+		wb[b] = float32(1 - math.Min(1, strength)*(1-keep[b]))
+	}
+	rest := float32(1 - math.Min(1, strength))
+	w, h, n := img.W, img.H, img.W*img.H
+	d := make([]float32, n)
+	for i := range d {
+		for k := 0; k < 3; k++ {
+			d[i] += wf[k] * (orig[i*3+k] - img.Pix[i*3+k])
+		}
+	}
+	b1, b2, b4, b8 := boxBlur(d, w, h, 1), boxBlur(d, w, h, 2), boxBlur(d, w, h, 4), boxBlur(d, w, h, 8)
+	for i := range d {
+		v := wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
+		// Scale the layers, keeping their ratios (the colour): the same
+		// amount added to each layer is not grey once the colour matrix
+		// (which amplifies layer differences ~10x) is applied, and washed
+		// out saturated colours (an orange spatula at ISO 200). Near black
+		// the ratios are noise, so there it is added.
+		p := img.Pix[i*3 : i*3+3]
+		y := wf[0]*p[0] + wf[1]*p[1] + wf[2]*p[2]
+		if y > 1e-6 && y+v > 0 {
+			s := (y + v) / y
+			p[0], p[1], p[2] = p[0]*s, p[1]*s, p[2]*s
+		} else {
+			p[0], p[1], p[2] = p[0]+v, p[1]+v, p[2]+v
+		}
+	}
+}
+
+// Chroma restore threshold, in noise sigmas (research switch FOVEON_DN_CT).
+// It does not follow the NR strength: scaling it down for NR Low brought
+// the colour noise back (DP2 Merrill ISO 6400, dE2000 8.3 -> 18.1).
+var dnCT = envFloat("FOVEON_DN_CT", 3.0)
+
+// restoreChroma gives back the colour detail the filters removed where it
+// stands clear of the noise: each layer's difference minus the luminance
+// difference, split into bands (box radii 0-1, 1-2, 2-4, 4-8, 8+) and
+// soft-thresholded per band at a few times that layer's noise in the band
+// (a box mean over (2r+1)^2 pixels cuts the noise (2r+1)-fold). Foveon's
+// colour signal is small in camera space (the colour matrix amplifies layer
+// differences ~10x), so at the pixel scale real colour detail and colour
+// noise are alike; a coloured surface or edge is large at the coarse scales,
+// where the noise is not. Without it a clean ISO 200 frame lost its colour
+// detail (print on an orange spatula) and its saturated edges bled.
+func restoreChroma(img *CamImage, orig []float32, wf [3]float32, models [3]noiseModel) {
+	w, h, n := img.W, img.H, img.W*img.H
+	t := float32(dnCT)
+	if debugNoise {
+		for k := 0; k < 3; k++ {
+			fmt.Fprintf(os.Stderr, "denoise: layer %d noise a=%.3g b=%.3g, sigma at 0.05/0.2/0.5: %.5f %.5f %.5f\n", k, models[k].a, models[k].b, models[k].at(0.05), models[k].at(0.2), models[k].at(0.5))
+		}
+	}
+	soft := func(c, th float32) float32 {
+		switch {
+		case c > th:
+			return c - th
+		case c < -th:
+			return c + th
+		}
+		return 0
+	}
+	// Each band's noise relative to the pixel noise: the finer box's.
+	fr := [5]float32{1, 1.0 / 3, 1.0 / 5, 1.0 / 9, 1.0 / 17}
+	c := make([]float32, n)
+	p := make([]float32, n)
+	for k := 0; k < 3; k++ {
+		for i := 0; i < n; i++ {
+			var dy float32
+			for j := 0; j < 3; j++ {
+				dy += wf[j] * (orig[i*3+j] - img.Pix[i*3+j])
+			}
+			c[i] = orig[i*3+k] - img.Pix[i*3+k] - dy
+			p[i] = orig[i*3+k]
+		}
+		lvl := boxBlur(p, w, h, 2)
+		b1, b2, b4, b8 := boxBlur(c, w, h, 1), boxBlur(c, w, h, 2), boxBlur(c, w, h, 4), boxBlur(c, w, h, 8)
+		parallel(n, func(a, b int) {
+			for i := a; i < b; i++ {
+				sg := t * float32(models[k].at(float64(lvl[i])))
+				img.Pix[i*3+k] += soft(c[i]-b1[i], sg*fr[0]) + soft(b1[i]-b2[i], sg*fr[1]) + soft(b2[i]-b4[i], sg*fr[2]) +
+					soft(b4[i]-b8[i], sg*fr[3]) + soft(b8[i], sg*fr[4])
+			}
+		})
 	}
 }
 
