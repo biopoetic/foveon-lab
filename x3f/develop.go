@@ -7,8 +7,8 @@ import (
 )
 
 // CameraRGB turns decoded raw data into linear camera RGB scaled to 0-65535:
-// cropped to the sensor's ActiveImageArea, the black level (mean of the
-// DarkShieldTop/Bottom rows) subtracted and each layer divided by its white
+// cropped to the sensor's ActiveImageArea, the black level (blackLevel:
+// the sensor's masked rows and columns) subtracted and each layer divided by its white
 // level (2^ImageDepth-1, else RawSaturationLevel / SaturationLevel), then
 // multiplied by the spatial gain sg (lens colour shading; nil = none) and,
 // on Merrill files, the radial WB colour shading for white balance wb
@@ -69,29 +69,7 @@ func CameraLinear(raw *RawImage, c *CAMF, sg *SpatialGain, wb string) (*CamImage
 		x1, y1 = min(x1, raw.W-1), min(y1, raw.H-1)
 		return x0, y0, x1, y1, x1 >= x0 && y1 >= y0
 	}
-	var sum [3]float64
-	n := 0
-	for _, name := range []string{"DarkShieldTop", "DarkShieldBottom"} {
-		x0, y0, x1, y1, ok := rect(name)
-		if !ok {
-			continue
-		}
-		for y := y0; y <= y1; y++ {
-			for x := x0; x <= x1; x++ {
-				p := raw.Pix[(y*raw.W+x)*3:]
-				sum[0] += float64(p[0])
-				sum[1] += float64(p[1])
-				sum[2] += float64(p[2])
-				n++
-			}
-		}
-	}
-	var black [3]float64
-	if n > 0 {
-		for k := range black {
-			black[k] = sum[k] / float64(n)
-		}
-	}
+	black := blackLevel(raw, c, rect, func(x float64) int { return int(math.Round((x - kx0) * sx)) })
 	white := [3]float64{65535, 65535, 65535}
 	if d := c.Matrices["ImageDepth"]; len(d) == 1 && d[0] > 0 && d[0] <= 16 {
 		v := math.Exp2(d[0]) - 1
@@ -198,4 +176,79 @@ func ClipHighlightsTo(img *CamImage, gain, white [3]float64) {
 			p[k] += h * (l/g[k] - p[k])
 		}
 	}
+}
+
+// blackLevel is the black of each layer, from the sensor's masked areas: the
+// DarkShieldTop/Bottom rows and the DarkShieldColRange columns (two at each
+// side, over the active rows). A masked area can only read above the true
+// black (light reaching it, or other data), never below it, so the black
+// is the mean of the areas that agree with the lowest one. Not every area
+// holds the black: on the SD15 from ISO 400 the masked rows read ~100-127
+// while the masked columns and the image's darkest pixels read ~4 (taking
+// the rows crushed every high-ISO SD15 photo to near black); on the SD1 and
+// SD14 the right-hand columns read ~20 above the rest.
+func blackLevel(raw *RawImage, c *CAMF, rect func(string) (int, int, int, int, bool), col func(float64) int) [3]float64 {
+	type ref struct{ m [3]float64 }
+	var refs []ref
+	mean := func(x0, y0, x1, y1 int) (r ref, ok bool) {
+		n := 0.0
+		for y := y0; y <= y1; y++ {
+			for x := x0; x <= x1; x++ {
+				p := raw.Pix[(y*raw.W+x)*3:]
+				r.m[0] += float64(p[0])
+				r.m[1] += float64(p[1])
+				r.m[2] += float64(p[2])
+				n++
+			}
+		}
+		if n == 0 {
+			return r, false
+		}
+		for k := range r.m {
+			r.m[k] /= n
+		}
+		return r, true
+	}
+	for _, name := range []string{"DarkShieldTop", "DarkShieldBottom"} {
+		if x0, y0, x1, y1, ok := rect(name); ok {
+			if r, ok := mean(x0, y0, x1, y1); ok {
+				refs = append(refs, r)
+			}
+		}
+	}
+	if dc := c.Matrices["DarkShieldColRange"]; len(dc) == 4 {
+		if _, y0, _, y1, ok := rect("ActiveImageArea"); ok {
+			for _, pr := range [][2]float64{{dc[0], dc[1]}, {dc[2], dc[3]}} {
+				x0, x1 := max(0, col(pr[0])), min(raw.W-1, col(pr[1]))
+				if x1 >= x0 {
+					if r, ok := mean(x0, y0, x1, y1); ok {
+						refs = append(refs, r)
+					}
+				}
+			}
+		}
+	}
+	var black [3]float64
+	if len(refs) == 0 {
+		return black
+	}
+	level := func(r ref) float64 { return (r.m[0] + r.m[1] + r.m[2]) / 3 }
+	low := level(refs[0])
+	for _, r := range refs[1:] {
+		low = math.Min(low, level(r))
+	}
+	tol := 3 + 0.05*low
+	n := 0.0
+	for _, r := range refs {
+		if level(r) <= low+tol {
+			for k := range black {
+				black[k] += r.m[k]
+			}
+			n++
+		}
+	}
+	for k := range black {
+		black[k] /= n
+	}
+	return black
 }
