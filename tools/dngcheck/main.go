@@ -115,6 +115,14 @@ func check(path, export string) error {
 			return err
 		}
 		ed := centreCrop(render.FromImage(im, spp.W, 0), spp.W, spp.H)
+		if os.Getenv("DNGCHECK_DEBUG") != "" {
+			var m [3]float64
+			for i, v := range ed.Pix {
+				m[i%3] += float64(v)
+			}
+			n := float64(len(ed.Pix) / 3)
+			fmt.Printf("  debug %T bounds %v mean %.5f %.5f %.5f\n", im, im.Bounds(), m[0]/n, m[1]/n, m[2]/n)
+		}
 		e, _ := calib.DeltaEStats(ed, spp)
 		g, _ := calib.DeltaEStats(ed, dng)
 		fmt.Printf("%-28s %-8s   raw editor's development: vs SPP %.2f | vs the spec development %.2f\n", name, group, e, g)
