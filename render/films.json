@@ -8,7 +8,8 @@
    "iso": 25,
    "rms": 7.0,
    "src": "Agfa APX 25 technical data",
-   "url": "https://125px.com/docs/film/agfa/agfapanapx25.pdf"
+   "url": "https://125px.com/docs/film/agfa/agfapanapx25.pdf",
+   "bw": true
   },
   {
    "maker": "Agfa",
@@ -17,7 +18,31 @@
    "iso": 100,
    "rms": 9.0,
    "src": "Agfa Professional Films F-PF-E4 (2004)",
-   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf"
+   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf",
+   "bw": true,
+   "mono": {
+    "Merrill": [
+     0.4137,
+     -0.9865,
+     1.5599
+    ],
+    "Quattro": [
+     0.4157,
+     -0.8845,
+     1.4568
+    ],
+    "SD9": [
+     0.3923,
+     -1.126,
+     1.7208
+    ],
+    "TRUEII": [
+     0.5191,
+     -0.9636,
+     1.4334
+    ]
+   },
+   "spectral_src": "agfa/apx100.pdf"
   },
   {
    "maker": "Agfa",
@@ -26,7 +51,31 @@
    "iso": 400,
    "rms": 14.0,
    "src": "Agfa APX 400 technical data (08/1995)",
-   "url": "https://125px.com/docs/film/agfa/apx400.pdf"
+   "url": "https://125px.com/docs/film/agfa/apx400.pdf",
+   "bw": true,
+   "mono": {
+    "Merrill": [
+     0.4387,
+     -1.1281,
+     1.6743
+    ],
+    "Quattro": [
+     0.4371,
+     -1.0105,
+     1.5593
+    ],
+    "SD9": [
+     0.4282,
+     -1.301,
+     1.8575
+    ],
+    "TRUEII": [
+     0.5443,
+     -1.0891,
+     1.5317
+    ]
+   },
+   "spectral_src": "agfa/apx400.pdf"
   },
   {
    "maker": "Agfa",
@@ -35,7 +84,31 @@
    "iso": 200,
    "rms": 11.0,
    "src": "Agfa Professional Films F-PF-E4 (2004)",
-   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf"
+   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf",
+   "bw": true,
+   "mono": {
+    "Merrill": [
+     0.4586,
+     -0.9481,
+     1.4799
+    ],
+    "Quattro": [
+     0.4628,
+     -0.8537,
+     1.3821
+    ],
+    "SD9": [
+     0.4321,
+     -1.0652,
+     1.6237
+    ],
+    "TRUEII": [
+     0.561,
+     -0.9278,
+     1.3585
+    ]
+   },
+   "spectral_src": "agfa/agfa_scala.pdf"
   },
   {
    "maker": "Agfa",
@@ -44,7 +117,8 @@
    "iso": 100,
    "rms": 4.0,
    "src": "Agfa Professional Films F-PF-E4 (2004)",
-   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf"
+   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf",
+   "bw": false
   },
   {
    "maker": "Agfa",
@@ -53,7 +127,8 @@
    "iso": 200,
    "rms": 4.3,
    "src": "Agfa Professional Films F-PF-E4 (2004)",
-   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf"
+   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf",
+   "bw": false
   },
   {
    "maker": "Agfa",
@@ -62,7 +137,8 @@
    "iso": 400,
    "rms": 4.5,
    "src": "Agfa Professional Films F-PF-E4 (2004)",
-   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf"
+   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf",
+   "bw": false
   },
   {
    "maker": "Agfa",
@@ -71,7 +147,8 @@
    "iso": 160,
    "rms": 3.5,
    "src": "Agfa Professional Films F-PF-E4 (2004)",
-   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf"
+   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf",
+   "bw": false
   },
   {
    "maker": "Agfa",
@@ -80,7 +157,8 @@
    "iso": 50,
    "rms": 10.0,
    "src": "Agfa Professional Films F-PF-E4 (2004)",
-   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf"
+   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf",
+   "bw": false
   },
   {
    "maker": "Agfa",
@@ -89,7 +167,8 @@
    "iso": 100,
    "rms": 10.0,
    "src": "Agfa Professional Films F-PF-E4 (2004)",
-   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf"
+   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf",
+   "bw": false
   },
   {
    "maker": "Agfa",
@@ -98,7 +177,8 @@
    "iso": 200,
    "rms": 12.0,
    "src": "Agfa Professional Films F-PF-E4 (2004)",
-   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf"
+   "url": "https://125px.com/docs/film/agfa/Datasheet_F_PF_E4.pdf",
+   "bw": false
   },
   {
    "maker": "Foma",
@@ -107,7 +187,8 @@
    "iso": 100,
    "rms": 13.5,
    "src": "Foma technical data (Microphen, gamma 0.6)",
-   "url": "https://foma.cz/en/fomapan-100"
+   "url": "https://foma.cz/en/fomapan-100",
+   "bw": true
   },
   {
    "maker": "Foma",
@@ -116,7 +197,8 @@
    "iso": 200,
    "rms": 14.0,
    "src": "Foma technical data (Microphen, gamma 0.6)",
-   "url": "https://foma.cz/en/fomapan-200"
+   "url": "https://foma.cz/en/fomapan-200",
+   "bw": true
   },
   {
    "maker": "Foma",
@@ -125,7 +207,8 @@
    "iso": 400,
    "rms": 17.5,
    "src": "Foma technical data (Microphen, gamma 0.6)",
-   "url": "https://foma.cz/en/fomapan-400"
+   "url": "https://foma.cz/en/fomapan-400",
+   "bw": true
   },
   {
    "maker": "Fujifilm",
@@ -134,7 +217,8 @@
    "iso": 100,
    "rms": 7,
    "src": "Fujifilm AF3-083E",
-   "url": "https://125px.com/docs/film/fuji/NeopanAcros100.pdf"
+   "url": "https://125px.com/docs/film/fuji/NeopanAcros100.pdf",
+   "bw": true
   },
   {
    "maker": "Fujifilm",
@@ -143,7 +227,8 @@
    "iso": 50,
    "rms": 9,
    "src": "Fujifilm AF3-0221E",
-   "url": "https://125px.com/docs/film/fuji/velvia_50_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/velvia_50_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -152,7 +237,8 @@
    "iso": 100,
    "rms": 8,
    "src": "Fujifilm Velvia 100 data sheet",
-   "url": "https://125px.com/docs/film/fuji/velvia_100_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/velvia_100_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -161,7 +247,8 @@
    "iso": 100,
    "rms": 8,
    "src": "Fujifilm AF3-148E",
-   "url": "https://125px.com/docs/film/fuji/velvia_100f_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/velvia_100f_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -170,7 +257,8 @@
    "iso": 100,
    "rms": 8,
    "src": "Fujifilm Provia 100F data sheet",
-   "url": "https://125px.com/docs/film/fuji/provia_100f_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/provia_100f_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -179,7 +267,8 @@
    "iso": 400,
    "rms": 13,
    "src": "Fujifilm AF3-066E",
-   "url": "https://125px.com/docs/film/fuji/PROVIA400FAF3-066E_1.pdf"
+   "url": "https://125px.com/docs/film/fuji/PROVIA400FAF3-066E_1.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -188,7 +277,8 @@
    "iso": 400,
    "rms": 11,
    "src": "Fujifilm Provia 400X PIB (2007)",
-   "url": "https://125px.com/docs/film/fuji/Provia_400X_PIB_1007.pdf"
+   "url": "https://125px.com/docs/film/fuji/Provia_400X_PIB_1007.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -197,7 +287,8 @@
    "iso": 100,
    "rms": 7,
    "src": "Fujifilm Astia 100F data sheet",
-   "url": "https://125px.com/docs/film/fuji/astia_100f_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/astia_100f_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -206,7 +297,8 @@
    "iso": 100,
    "rms": 10,
    "src": "Fujifilm Sensia 100 data sheet",
-   "url": "https://125px.com/docs/film/fuji/sensia_100_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/sensia_100_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -215,7 +307,8 @@
    "iso": 200,
    "rms": 13,
    "src": "Fujifilm Sensia 200 data sheet",
-   "url": "https://125px.com/docs/film/fuji/sensia_200_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/sensia_200_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -224,7 +317,8 @@
    "iso": 400,
    "rms": 13,
    "src": "Fujifilm Sensia 400 data sheet",
-   "url": "https://125px.com/docs/film/fuji/sensia_400_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/sensia_400_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -233,7 +327,8 @@
    "iso": 64,
    "rms": 10,
    "src": "Fujifilm AF3-024E",
-   "url": "https://125px.com/docs/film/fuji/RTPIIAF3-024E_1.pdf"
+   "url": "https://125px.com/docs/film/fuji/RTPIIAF3-024E_1.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -242,7 +337,8 @@
    "iso": 64,
    "rms": 7,
    "src": "Fujifilm AF3-178E",
-   "url": "https://125px.com/docs/film/fuji/t64_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/t64_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -251,7 +347,8 @@
    "iso": 100,
    "rms": 4,
    "src": "Fujifilm Superia 100 data sheet",
-   "url": "https://125px.com/docs/film/fuji/superia_100_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/superia_100_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -260,7 +357,8 @@
    "iso": 200,
    "rms": 4,
    "src": "Fujifilm Superia 200 data sheet",
-   "url": "https://125px.com/docs/film/fuji/superia_200_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/superia_200_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -269,7 +367,8 @@
    "iso": 100,
    "rms": 4,
    "src": "Fujifilm Superia Reala data sheet",
-   "url": "https://125px.com/docs/film/fuji/superia_reala_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/superia_reala_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -278,7 +377,8 @@
    "iso": 400,
    "rms": 4,
    "src": "Fujifilm Superia X-TRA 400 data sheet",
-   "url": "https://125px.com/docs/film/fuji/superia_xtra400_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/superia_xtra400_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -287,7 +387,8 @@
    "iso": 800,
    "rms": 5,
    "src": "Fujifilm Superia X-TRA 800 data sheet",
-   "url": "https://125px.com/docs/film/fuji/superia_xtra800_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/superia_xtra800_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -296,7 +397,8 @@
    "iso": 160,
    "rms": 3,
    "src": "Fujifilm Pro 160S data sheet",
-   "url": "https://125px.com/docs/film/fuji/pro_160s_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/pro_160s_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -305,7 +407,8 @@
    "iso": 160,
    "rms": 3,
    "src": "Fujifilm Pro 160C data sheet",
-   "url": "https://125px.com/docs/film/fuji/pro_160c_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/pro_160c_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -314,7 +417,8 @@
    "iso": 400,
    "rms": 4,
    "src": "Fujifilm Pro 400H data sheet",
-   "url": "https://125px.com/docs/film/fuji/pro_400h_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/pro_400h_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -323,7 +427,8 @@
    "iso": 800,
    "rms": 5,
    "src": "Fujifilm Pro 800Z data sheet",
-   "url": "https://125px.com/docs/film/fuji/pro_800z_datasheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/pro_800z_datasheet.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -332,7 +437,8 @@
    "iso": 800,
    "rms": 5,
    "src": "Fujifilm NPZ data sheet",
-   "url": "https://125px.com/docs/film/fuji/NPZ.pdf"
+   "url": "https://125px.com/docs/film/fuji/NPZ.pdf",
+   "bw": false
   },
   {
    "maker": "Fujifilm",
@@ -341,7 +447,8 @@
    "iso": 400,
    "rms": 5,
    "src": "Fujifilm AF3-196E",
-   "url": "https://125px.com/docs/film/fuji/True_Definition_DataSheet.pdf"
+   "url": "https://125px.com/docs/film/fuji/True_Definition_DataSheet.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -350,7 +457,31 @@
    "iso": 400,
    "rms": 17,
    "src": "Kodak F-9 (1999)",
-   "url": "https://125px.com/docs/film/kodak/f9-Tri-X_Pan-199906.pdf"
+   "url": "https://125px.com/docs/film/kodak/f9-Tri-X_Pan-199906.pdf",
+   "bw": true,
+   "mono": {
+    "Merrill": [
+     0.9387,
+     -2.5696,
+     2.6148
+    ],
+    "Quattro": [
+     0.9119,
+     -2.3181,
+     2.3915
+    ],
+    "SD9": [
+     1.0453,
+     -3.0568,
+     2.9953
+    ],
+    "TRUEII": [
+     1.0732,
+     -2.4318,
+     2.3449
+    ]
+   },
+   "spectral_src": "kodak/f9-Tri-X_Pan-199906.pdf"
   },
   {
    "maker": "Kodak",
@@ -359,7 +490,8 @@
    "iso": 320,
    "rms": 16,
    "src": "Kodak F-9 (1999)",
-   "url": "https://125px.com/docs/film/kodak/f9-Tri-X_Pan-199906.pdf"
+   "url": "https://125px.com/docs/film/kodak/f9-Tri-X_Pan-199906.pdf",
+   "bw": true
   },
   {
    "maker": "Kodak",
@@ -368,7 +500,8 @@
    "iso": 125,
    "rms": 10,
    "src": "Kodak F-8 (1997)",
-   "url": "https://125px.com/docs/film/kodak/f8-Plus-X_Pan-199709.pdf"
+   "url": "https://125px.com/docs/film/kodak/f8-Plus-X_Pan-199709.pdf",
+   "bw": true
   },
   {
    "maker": "Kodak",
@@ -377,7 +510,8 @@
    "iso": 100,
    "rms": 8,
    "src": "Kodak F-32 (2001)",
-   "url": "https://125px.com/docs/film/kodak/f32-TMAX-200109.pdf"
+   "url": "https://125px.com/docs/film/kodak/f32-TMAX-200109.pdf",
+   "bw": true
   },
   {
    "maker": "Kodak",
@@ -386,7 +520,8 @@
    "iso": 400,
    "rms": 10,
    "src": "Kodak F-32 (2001)",
-   "url": "https://125px.com/docs/film/kodak/f32-TMAX-200109.pdf"
+   "url": "https://125px.com/docs/film/kodak/f32-TMAX-200109.pdf",
+   "bw": true
   },
   {
    "maker": "Kodak",
@@ -395,7 +530,8 @@
    "iso": 3200,
    "rms": 18,
    "src": "Kodak F-32 (2001)",
-   "url": "https://125px.com/docs/film/kodak/f32-TMAX-200109.pdf"
+   "url": "https://125px.com/docs/film/kodak/f32-TMAX-200109.pdf",
+   "bw": true
   },
   {
    "maker": "Kodak",
@@ -404,7 +540,8 @@
    "iso": 25,
    "rms": 8,
    "src": "Kodak P-255 (2003)",
-   "url": "https://125px.com/docs/film/kodak/p255-2003_06.pdf"
+   "url": "https://125px.com/docs/film/kodak/p255-2003_06.pdf",
+   "bw": true
   },
   {
    "maker": "Kodak",
@@ -413,7 +550,8 @@
    "iso": 125,
    "rms": 9,
    "src": "Kodak F-7",
-   "url": "https://125px.com/docs/film/kodak/f7-Verichrome.pdf"
+   "url": "https://125px.com/docs/film/kodak/f7-Verichrome.pdf",
+   "bw": true
   },
   {
    "maker": "Kodak",
@@ -422,7 +560,8 @@
    "iso": 100,
    "rms": 12,
    "src": "Kodak F-10 (1997)",
-   "url": "https://125px.com/docs/film/kodak/f10-Ektapan-199710.pdf"
+   "url": "https://125px.com/docs/film/kodak/f10-Ektapan-199710.pdf",
+   "bw": true
   },
   {
    "maker": "Kodak",
@@ -431,7 +570,8 @@
    "iso": 0,
    "rms": 18,
    "src": "Kodak F-13 (2000)",
-   "url": "https://125px.com/docs/film/kodak/f13-HIE-200006.pdf"
+   "url": "https://125px.com/docs/film/kodak/f13-HIE-200006.pdf",
+   "bw": true
   },
   {
    "maker": "Kodak",
@@ -440,7 +580,8 @@
    "iso": 400,
    "rms": 9,
    "src": "Kodak F-2350 (1999)",
-   "url": "https://125px.com/docs/film/kodak/f2350-T400CN-199902.pdf"
+   "url": "https://125px.com/docs/film/kodak/f2350-T400CN-199902.pdf",
+   "bw": true
   },
   {
    "maker": "Kodak",
@@ -449,7 +590,8 @@
    "iso": 400,
    "rms": 9,
    "src": "Kodak F-4012",
-   "url": "https://125px.com/docs/film/kodak/f4012-Portra_400BW.pdf"
+   "url": "https://125px.com/docs/film/kodak/f4012-Portra_400BW.pdf",
+   "bw": true
   },
   {
    "maker": "Kodak",
@@ -458,7 +600,8 @@
    "iso": 25,
    "rms": 9,
    "src": "Kodak E-55 (2009)",
-   "url": "https://125px.com/docs/film/kodak/e55-2009_06.pdf"
+   "url": "https://125px.com/docs/film/kodak/e55-2009_06.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -467,7 +610,8 @@
    "iso": 64,
    "rms": 10,
    "src": "Kodak E-55 (2009)",
-   "url": "https://125px.com/docs/film/kodak/e55-2009_06.pdf"
+   "url": "https://125px.com/docs/film/kodak/e55-2009_06.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -476,7 +620,8 @@
    "iso": 200,
    "rms": 16,
    "src": "Kodak E-55 (2009)",
-   "url": "https://125px.com/docs/film/kodak/e55-2009_06.pdf"
+   "url": "https://125px.com/docs/film/kodak/e55-2009_06.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -485,7 +630,8 @@
    "iso": 100,
    "rms": 8,
    "src": "Kodak E-4024 (2009)",
-   "url": "https://125px.com/docs/film/kodak/e4024-2009.pdf"
+   "url": "https://125px.com/docs/film/kodak/e4024-2009.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -494,7 +640,8 @@
    "iso": 100,
    "rms": 11,
    "src": "Kodak E-163",
-   "url": "https://125px.com/docs/film/kodak/e163-Ektachrome_E100VS.pdf"
+   "url": "https://125px.com/docs/film/kodak/e163-Ektachrome_E100VS.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -503,7 +650,8 @@
    "iso": 100,
    "rms": 11,
    "src": "Kodak E-113",
-   "url": "https://125px.com/docs/film/kodak/e113-Ektachrome_100_plus_EPP.pdf"
+   "url": "https://125px.com/docs/film/kodak/e113-Ektachrome_100_plus_EPP.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -512,7 +660,8 @@
    "iso": 100,
    "rms": 11,
    "src": "Kodak E-27",
-   "url": "https://125px.com/docs/film/kodak/e27-Ektachrome_100_EPN.pdf"
+   "url": "https://125px.com/docs/film/kodak/e27-Ektachrome_100_EPN.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -521,7 +670,8 @@
    "iso": 64,
    "rms": 11,
    "src": "Kodak E-8",
-   "url": "https://125px.com/docs/film/kodak/e8-Ektachrome_64_EPR.pdf"
+   "url": "https://125px.com/docs/film/kodak/e8-Ektachrome_64_EPR.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -530,7 +680,8 @@
    "iso": 200,
    "rms": 12,
    "src": "Kodak E-28",
-   "url": "https://125px.com/docs/film/kodak/e28-Ektachrome_E200.pdf"
+   "url": "https://125px.com/docs/film/kodak/e28-Ektachrome_E200.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -539,7 +690,8 @@
    "iso": 64,
    "rms": 11,
    "src": "Kodak E-130",
-   "url": "https://125px.com/docs/film/kodak/e130-Ektachrome_64T_EPY.pdf"
+   "url": "https://125px.com/docs/film/kodak/e130-Ektachrome_64T_EPY.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -548,7 +700,8 @@
    "iso": 160,
    "rms": 13,
    "src": "Kodak E-144",
-   "url": "https://125px.com/docs/film/kodak/e144-Ektachrome_160T_EPT.pdf"
+   "url": "https://125px.com/docs/film/kodak/e144-Ektachrome_160T_EPT.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -557,7 +710,8 @@
    "iso": 320,
    "rms": 19,
    "src": "Kodak E-145",
-   "url": "https://125px.com/docs/film/kodak/e145-Ektachrome_320T_EPJ.pdf"
+   "url": "https://125px.com/docs/film/kodak/e145-Ektachrome_320T_EPJ.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -566,7 +720,8 @@
    "iso": 400,
    "rms": 19,
    "src": "Kodak E-161",
-   "url": "https://125px.com/docs/film/kodak/e161-Ektachrome_400X_EPL.pdf"
+   "url": "https://125px.com/docs/film/kodak/e161-Ektachrome_400X_EPL.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -575,7 +730,8 @@
    "iso": 1600,
    "rms": 34,
    "src": "Kodak E-147",
-   "url": "https://125px.com/docs/film/kodak/e147-Ektachrome_P1600_EPH.pdf"
+   "url": "https://125px.com/docs/film/kodak/e147-Ektachrome_P1600_EPH.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -584,7 +740,8 @@
    "iso": 100,
    "rms": 8,
    "src": "Kodak E-7014",
-   "url": "https://125px.com/docs/film/kodak/E7014e-Elitechrome_100.pdf"
+   "url": "https://125px.com/docs/film/kodak/E7014e-Elitechrome_100.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -593,7 +750,8 @@
    "iso": 100,
    "rms": 11,
    "src": "Kodak E-126",
-   "url": "https://125px.com/docs/film/kodak/e126e-Elitechrome_100ec.pdf"
+   "url": "https://125px.com/docs/film/kodak/e126e-Elitechrome_100ec.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -602,7 +760,8 @@
    "iso": 200,
    "rms": 12,
    "src": "Kodak E-148",
-   "url": "https://125px.com/docs/film/kodak/e148e-Elite_chrome_200.pdf"
+   "url": "https://125px.com/docs/film/kodak/e148e-Elite_chrome_200.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -611,7 +770,8 @@
    "iso": 400,
    "rms": 19,
    "src": "Kodak E-149",
-   "url": "https://125px.com/docs/film/kodak/e149-Elite_chrome_400.pdf"
+   "url": "https://125px.com/docs/film/kodak/e149-Elite_chrome_400.pdf",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -620,7 +780,8 @@
    "iso": 0,
    "rms": 17,
    "src": "Kodak TI-2323",
-   "url": "https://125px.com/docs/film/kodak/ti2323-Ektachrome_EIR.pdf"
+   "url": "https://125px.com/docs/film/kodak/ti2323-Ektachrome_EIR.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -629,7 +790,8 @@
    "iso": 100,
    "rms": 4,
    "src": "Konica VX 100 technical data",
-   "url": "https://125px.com/docs/film/konica/VX100Improved.pdf"
+   "url": "https://125px.com/docs/film/konica/VX100Improved.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -638,7 +800,8 @@
    "iso": 200,
    "rms": 4,
    "src": "Konica VX 200 technical data",
-   "url": "https://125px.com/docs/film/konica/VX200.pdf"
+   "url": "https://125px.com/docs/film/konica/VX200.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -647,7 +810,8 @@
    "iso": 400,
    "rms": 4,
    "src": "Konica VX 400 technical data",
-   "url": "https://125px.com/docs/film/konica/VX400.pdf"
+   "url": "https://125px.com/docs/film/konica/VX400.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -656,7 +820,8 @@
    "iso": 100,
    "rms": 4,
    "src": "Konica VX Super 100 technical data",
-   "url": "https://125px.com/docs/film/konica/VX-S100.pdf"
+   "url": "https://125px.com/docs/film/konica/VX-S100.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -665,7 +830,8 @@
    "iso": 200,
    "rms": 4,
    "src": "Konica VX Super 200 technical data",
-   "url": "https://125px.com/docs/film/konica/VX-S200.pdf"
+   "url": "https://125px.com/docs/film/konica/VX-S200.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -674,7 +840,8 @@
    "iso": 400,
    "rms": 4,
    "src": "Konica VX Super 400 technical data",
-   "url": "https://125px.com/docs/film/konica/VX-S400.pdf"
+   "url": "https://125px.com/docs/film/konica/VX-S400.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -683,7 +850,8 @@
    "iso": 100,
    "rms": 4,
    "src": "Konica Centuria Super 100 technical data",
-   "url": "https://125px.com/docs/film/konica/csuper100.pdf"
+   "url": "https://125px.com/docs/film/konica/csuper100.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -692,7 +860,8 @@
    "iso": 200,
    "rms": 4,
    "src": "Konica Centuria Super 200 technical data",
-   "url": "https://125px.com/docs/film/konica/csuper200.pdf"
+   "url": "https://125px.com/docs/film/konica/csuper200.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -701,7 +870,8 @@
    "iso": 800,
    "rms": 5,
    "src": "Konica Centuria Super 800 technical data",
-   "url": "https://125px.com/docs/film/konica/csuper800.pdf"
+   "url": "https://125px.com/docs/film/konica/csuper800.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -710,7 +880,8 @@
    "iso": 1600,
    "rms": 6,
    "src": "Konica Centuria Super 1600 technical data",
-   "url": "https://125px.com/docs/film/konica/csuper1600.pdf"
+   "url": "https://125px.com/docs/film/konica/csuper1600.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -719,7 +890,8 @@
    "iso": 100,
    "rms": 11,
    "src": "Konica Chrome Centuria 100 technical data",
-   "url": "https://125px.com/docs/film/konica/chrocen100.pdf"
+   "url": "https://125px.com/docs/film/konica/chrocen100.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -728,7 +900,8 @@
    "iso": 200,
    "rms": 11,
    "src": "Konica Chrome Centuria 200 technical data",
-   "url": "https://125px.com/docs/film/konica/chrocen200.pdf"
+   "url": "https://125px.com/docs/film/konica/chrocen200.pdf",
+   "bw": false
   },
   {
    "maker": "Konica",
@@ -737,7 +910,8 @@
    "iso": 100,
    "rms": 11,
    "src": "Konica Chrome R-100 technical data",
-   "url": "https://125px.com/docs/film/konica/R100.pdf"
+   "url": "https://125px.com/docs/film/konica/R100.pdf",
+   "bw": false
   },
   {
    "maker": "Ilford",
@@ -745,7 +919,8 @@
    "kind": "neg",
    "iso": 400,
    "rms": 0,
-   "src": "Ilford publishes no RMS granularity"
+   "src": "Ilford publishes no RMS granularity",
+   "bw": true
   },
   {
    "maker": "Ilford",
@@ -753,7 +928,8 @@
    "kind": "neg",
    "iso": 125,
    "rms": 0,
-   "src": "Ilford publishes no RMS granularity"
+   "src": "Ilford publishes no RMS granularity",
+   "bw": true
   },
   {
    "maker": "Ilford",
@@ -761,7 +937,8 @@
    "kind": "neg",
    "iso": 50,
    "rms": 0,
-   "src": "Ilford publishes no RMS granularity"
+   "src": "Ilford publishes no RMS granularity",
+   "bw": true
   },
   {
    "maker": "Ilford",
@@ -769,7 +946,8 @@
    "kind": "neg",
    "iso": 100,
    "rms": 0,
-   "src": "Ilford publishes no RMS granularity"
+   "src": "Ilford publishes no RMS granularity",
+   "bw": true
   },
   {
    "maker": "Ilford",
@@ -777,7 +955,8 @@
    "kind": "neg",
    "iso": 400,
    "rms": 0,
-   "src": "Ilford publishes no RMS granularity"
+   "src": "Ilford publishes no RMS granularity",
+   "bw": true
   },
   {
    "maker": "Ilford",
@@ -785,7 +964,8 @@
    "kind": "neg",
    "iso": 3200,
    "rms": 0,
-   "src": "Ilford publishes no RMS granularity"
+   "src": "Ilford publishes no RMS granularity",
+   "bw": true
   },
   {
    "maker": "Ilford",
@@ -793,7 +973,8 @@
    "kind": "chromo",
    "iso": 400,
    "rms": 0,
-   "src": "Ilford publishes no RMS granularity"
+   "src": "Ilford publishes no RMS granularity",
+   "bw": true
   },
   {
    "maker": "Kodak",
@@ -801,7 +982,8 @@
    "kind": "cn",
    "iso": 400,
    "rms": 0,
-   "src": "Kodak publishes a Print Grain Index for these, not RMS"
+   "src": "Kodak publishes a Print Grain Index for these, not RMS",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -809,7 +991,8 @@
    "kind": "cn",
    "iso": 100,
    "rms": 0,
-   "src": "Kodak publishes a Print Grain Index for this, not RMS"
+   "src": "Kodak publishes a Print Grain Index for this, not RMS",
+   "bw": false
   },
   {
    "maker": "Kodak",
@@ -817,7 +1000,8 @@
    "kind": "cn",
    "iso": 200,
    "rms": 0,
-   "src": "Kodak publishes a Print Grain Index for these, not RMS"
+   "src": "Kodak publishes a Print Grain Index for these, not RMS",
+   "bw": false
   },
   {
    "maker": "CineStill",
@@ -825,7 +1009,8 @@
    "kind": "cn",
    "iso": 800,
    "rms": 0,
-   "src": "Kodak Vision3 stock; Kodak gives granularity only as curves, which read inconsistently (200T = 500T, 250D coarser than 500T)"
+   "src": "Kodak Vision3 stock; Kodak gives granularity only as curves, which read inconsistently (200T = 500T, 250D coarser than 500T)",
+   "bw": false
   },
   {
    "maker": "Fotokemika (Efke)",
@@ -833,7 +1018,8 @@
    "kind": "neg",
    "iso": 25,
    "rms": 0,
-   "src": "No RMS found in Fotokemika's published data (resolving power only)"
+   "src": "No RMS found in Fotokemika's published data (resolving power only)",
+   "bw": true
   },
   {
    "maker": "Ferrania",
@@ -841,7 +1027,8 @@
    "kind": "neg",
    "iso": 80,
    "rms": 0,
-   "src": "Ferrania publishes no RMS granularity"
+   "src": "Ferrania publishes no RMS granularity",
+   "bw": true
   },
   {
    "maker": "ORWO",
@@ -849,7 +1036,8 @@
    "kind": "neg",
    "iso": 100,
    "rms": 0,
-   "src": "No RMS in ORWO's published data"
+   "src": "No RMS in ORWO's published data",
+   "bw": true
   },
   {
    "maker": "Svema",
@@ -857,7 +1045,8 @@
    "kind": "neg",
    "iso": 100,
    "rms": 0,
-   "src": "No published RMS found"
+   "src": "No published RMS found",
+   "bw": true
   },
   {
    "maker": "Kentmere",
@@ -865,7 +1054,8 @@
    "kind": "neg",
    "iso": 400,
    "rms": 0,
-   "src": "No RMS in Kentmere's data sheets"
+   "src": "No RMS in Kentmere's data sheets",
+   "bw": true
   },
   {
    "maker": "Rollei",
@@ -874,7 +1064,8 @@
    "iso": 25,
    "rms": 8,
    "src": "Rollei RPX 25 data sheet (2022)",
-   "url": "https://downloads.rollei.com/en/download/rpx-black-and-white-negative-film-35-mm-roll-film-iso-25-100-400/"
+   "url": "https://downloads.rollei.com/en/download/rpx-black-and-white-negative-film-35-mm-roll-film-iso-25-100-400/",
+   "bw": true
   },
   {
    "maker": "Rollei",
@@ -883,7 +1074,8 @@
    "iso": 100,
    "rms": 7,
    "src": "Rollei RPX 100 data sheet (R210701)",
-   "url": "https://downloads.rollei.com/en/download/rpx-black-and-white-negative-film-35-mm-roll-film-iso-25-100-400/"
+   "url": "https://downloads.rollei.com/en/download/rpx-black-and-white-negative-film-35-mm-roll-film-iso-25-100-400/",
+   "bw": true
   },
   {
    "maker": "Rollei",
@@ -892,7 +1084,8 @@
    "iso": 400,
    "rms": 14,
    "src": "Rollei RPX 400 data sheet (R210701)",
-   "url": "https://downloads.rollei.com/en/download/rpx-black-and-white-negative-film-35-mm-roll-film-iso-25-100-400/"
+   "url": "https://downloads.rollei.com/en/download/rpx-black-and-white-negative-film-35-mm-roll-film-iso-25-100-400/",
+   "bw": true
   },
   {
    "maker": "Rollei",
@@ -901,7 +1094,8 @@
    "iso": 80,
    "rms": 14,
    "src": "Rollei Retro 80S data sheet (R012101)",
-   "url": "https://www.rolleianalog.com/wp-content/uploads/2021/02/RETRO80S_Datenblatt_EN_R012101.pdf"
+   "url": "https://www.rolleianalog.com/wp-content/uploads/2021/02/RETRO80S_Datenblatt_EN_R012101.pdf",
+   "bw": true
   },
   {
    "maker": "Rollei",
@@ -910,7 +1104,8 @@
    "iso": 400,
    "rms": 11,
    "src": "Rollei Retro 400S data sheet (R210701)",
-   "url": "https://downloads.rollei.com/en/download/retro-black-and-white-negative-film-35-mm-roll-film-iso-80-400/"
+   "url": "https://downloads.rollei.com/en/download/retro-black-and-white-negative-film-35-mm-roll-film-iso-80-400/",
+   "bw": true
   },
   {
    "maker": "Rollei",
@@ -919,7 +1114,8 @@
    "iso": 200,
    "rms": 14,
    "src": "Rollei Superpan 200 data sheet (R210701)",
-   "url": "https://downloads.rollei.com/en/download/superpan-black-and-white-negative-film-35-mm-roll-film-iso-200/"
+   "url": "https://downloads.rollei.com/en/download/superpan-black-and-white-negative-film-35-mm-roll-film-iso-200/",
+   "bw": true
   },
   {
    "maker": "Rollei",
@@ -927,7 +1123,8 @@
    "kind": "neg",
    "iso": 400,
    "rms": 0,
-   "src": "No RMS in Rollei's published data"
+   "src": "No RMS in Rollei's published data",
+   "bw": true
   },
   {
    "maker": "3M / Imation (made by Ferrania)",
@@ -936,7 +1133,8 @@
    "iso": 100,
    "rms": 6.0,
    "src": "Imation technical information (1997)",
-   "url": "https://discmaster.textfiles.com/file/36067/SIGCAT%2097%20-%20Conference%20on%20Convergence.ISO/Docs/00020/0205d.htm?html=true"
+   "url": "https://discmaster.textfiles.com/file/36067/SIGCAT%2097%20-%20Conference%20on%20Convergence.ISO/Docs/00020/0205d.htm?html=true",
+   "bw": false
   },
   {
    "maker": "3M / Imation (made by Ferrania)",
@@ -945,7 +1143,8 @@
    "iso": 200,
    "rms": 6.0,
    "src": "Imation technical information (1997)",
-   "url": "https://discmaster.textfiles.com/file/36067/SIGCAT%2097%20-%20Conference%20on%20Convergence.ISO/Docs/00020/0205e.htm?html=true"
+   "url": "https://discmaster.textfiles.com/file/36067/SIGCAT%2097%20-%20Conference%20on%20Convergence.ISO/Docs/00020/0205e.htm?html=true",
+   "bw": false
   },
   {
    "maker": "3M / Imation (made by Ferrania)",
@@ -954,7 +1153,8 @@
    "iso": 400,
    "rms": 7.0,
    "src": "Imation technical information (1997)",
-   "url": "https://discmaster.textfiles.com/file/36067/SIGCAT%2097%20-%20Conference%20on%20Convergence.ISO/Docs/00020/02060.htm?html=true"
+   "url": "https://discmaster.textfiles.com/file/36067/SIGCAT%2097%20-%20Conference%20on%20Convergence.ISO/Docs/00020/02060.htm?html=true",
+   "bw": false
   },
   {
    "maker": "3M / Imation (made by Ferrania)",
@@ -963,7 +1163,8 @@
    "iso": 100,
    "rms": 13.0,
    "src": "Imation technical information (1997)",
-   "url": "https://discmaster.textfiles.com/file/36067/SIGCAT%2097%20-%20Conference%20on%20Convergence.ISO/Docs/00020/02062.htm?html=true"
+   "url": "https://discmaster.textfiles.com/file/36067/SIGCAT%2097%20-%20Conference%20on%20Convergence.ISO/Docs/00020/02062.htm?html=true",
+   "bw": false
   },
   {
    "maker": "3M / Imation (made by Ferrania)",
@@ -972,7 +1173,8 @@
    "iso": 400,
    "rms": 20.0,
    "src": "Imation technical information (1997)",
-   "url": "https://discmaster.textfiles.com/file/36067/SIGCAT%2097%20-%20Conference%20on%20Convergence.ISO/Docs/00020/02063.htm?html=true"
+   "url": "https://discmaster.textfiles.com/file/36067/SIGCAT%2097%20-%20Conference%20on%20Convergence.ISO/Docs/00020/02063.htm?html=true",
+   "bw": false
   },
   {
    "maker": "3M / Imation (made by Ferrania)",
@@ -981,7 +1183,8 @@
    "iso": 640,
    "rms": 29.0,
    "src": "Imation technical information (1997)",
-   "url": "https://discmaster.textfiles.com/file/36067/SIGCAT%2097%20-%20Conference%20on%20Convergence.ISO/Docs/00020/02064.htm?html=true"
+   "url": "https://discmaster.textfiles.com/file/36067/SIGCAT%2097%20-%20Conference%20on%20Convergence.ISO/Docs/00020/02064.htm?html=true",
+   "bw": false
   }
  ]
 }

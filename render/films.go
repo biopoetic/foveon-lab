@@ -11,6 +11,7 @@ package render
 import (
 	_ "embed"
 	"encoding/json"
+	"sync"
 )
 
 //go:embed films.json
@@ -28,6 +29,26 @@ type Film struct {
 	// Grain is the RMS on the positive, the value the Film grain slider
 	// takes (0 if unknown).
 	Grain float64 `json:"grain"`
+	// BW: a black-and-white film. Mono: its spectral sensitivity (from its
+	// data sheet) as weights of the white-balanced Foveon layers, per
+	// sensor generation (tools/foveonmodel FILMBW); none = luminance.
+	BW          bool                  `json:"bw"`
+	Mono        map[string][3]float64 `json:"mono,omitempty"`
+	SpectralSrc string                `json:"spectral_src,omitempty"`
+}
+
+var filmByKey = sync.OnceValue(func() map[string]Film {
+	m := map[string]Film{}
+	for _, f := range Films() {
+		m[f.Maker+" "+f.Name] = f
+	}
+	return m
+})
+
+// FilmByKey is the library film named maker + " " + name.
+func FilmByKey(k string) (Film, bool) {
+	f, ok := filmByKey()[k]
+	return f, ok
 }
 
 // printGain: a negative's density noise on the positive (overall gamma

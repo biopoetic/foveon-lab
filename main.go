@@ -347,6 +347,9 @@ func (s *server) loadPresets() {
 		es = append(es, e.Error())
 	}
 	s.pmu.Lock()
+	for i := range ps {
+		ps[i].Film = render.FilmFor(ps[i].Name)
+	}
 	s.presets, s.pByID, s.pErrs = ps, m, es
 	s.pmu.Unlock()
 	log.Printf("loaded %d presets (folder %q + built-in + SPP) with %d errors", len(ps), s.presetsDir, len(errs))

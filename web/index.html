@@ -258,6 +258,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div class="row"><div class="lab">Film stock <span class="dim" title="Foveon Lab only. Each film's RMS granularity from its maker's technical data (the document is in the tooltip). Films whose makers publish no RMS are listed but can't be picked.">(grain from its data sheet)</span></div>
           <select id="filmStock" style="width:100%"><option value="">None (set the grain by hand)</option></select>
           <div class="src" id="filmSrc"></div>
+          <div class="src" id="filmLink" style="display:none"></div>
         </div>
         <div class="row"><div class="lab">Film format <span class="dim" title="Foveon Lab only. The film frame the grain and halation are sized on: a larger format shows the same film finer.">(grain, halation)</span></div>
           <select id="filmWidth" style="width:100%">
@@ -720,10 +721,8 @@ function buildSliders(){
     row.querySelector("b").ondblclick = () => { S.params[k] = S.base[k]; syncSliders(); scheduleRender(); };
   });
   $("#filmStock").onchange = () => {
-    const f = FILMS[+$("#filmStock").value];
-    S.params.film = f ? f.maker + " " + f.name : "";
-    if (f) S.params.grain = Math.round(f.grain * 2) / 2;
-    $("#filmStock").blur(); syncSliders(); scheduleRender();
+    useFilm(FILMS[+$("#filmStock").value]);
+    $("#filmStock").blur();
   };
   $("#filmWidth").onchange = () => { S.params.filmWidth = +$("#filmWidth").value; $("#filmWidth").blur(); syncSliders(); scheduleRender(); };
   document.querySelector('#panel .row[data-k="grain"]').title = GRAIN_TIPS;
@@ -755,11 +754,32 @@ async function filmsInit(){
       `<option value="${i}"${f.rms ? "" : " disabled"} title="${esc(f.src)}">${esc(f.name)}${f.iso ? " · ISO " + f.iso : ""} · ${kinds[f.kind] || f.kind}${f.rms ? " · RMS " + f.rms : " · no published RMS"}</option>`).join("") + "</optgroup>").join(""));
   syncFilm();
 }
+// useFilm makes the photo use a library film: its grain (from its data
+// sheet), black and white for a black-and-white film (the grey from its
+// spectral sensitivity where the library has it).
+function useFilm(f){
+  S.params.film = f ? f.maker + " " + f.name : "";
+  if (f) {
+    if (f.rms) S.params.grain = Math.round(f.grain * 2) / 2;
+    S.params.mono = !!f.bw;
+  }
+  syncSliders(); scheduleRender();
+}
 function syncFilm(){
   const i = FILMS.findIndex(f => f.maker + " " + f.name === S.params?.film);
   $("#filmStock").value = i >= 0 ? String(i) : "";
   const f = FILMS[i];
-  $("#filmSrc").innerHTML = f ? `RMS ${f.rms} (${esc(f.kind === "slide" ? "on the slide" : "on the negative, ×2.3 on the print")}) · <a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.src)}</a>` : "";
+  $("#filmSrc").innerHTML = f ? (f.rms ? `RMS ${f.rms} (${esc(f.kind === "slide" ? "on the slide" : "on the negative, ×2.3 on the print")}) · <a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.src)}</a>` : esc(f.src))
+    + (f.bw ? (f.mono ? ` · black and white through its spectral sensitivity (${esc(f.spectral_src)})` : " · black and white") : "") : "";
+  // A preset named after a film imitates it with SPP settings: offer the
+  // real film's physical emulation on top.
+  const p = current(), link = p && p.film && p.film !== S.params?.film ? FILMS.find(x => x.maker + " " + x.name === p.film) : null;
+  const box = $("#filmLink");
+  if (link){
+    box.innerHTML = `This preset imitates <b>${esc(link.name)}</b> with SPP settings. <button id="useLinked">Use the real film</button>`;
+    $("#useLinked").onclick = () => useFilm(link);
+    box.style.display = "";
+  } else box.style.display = "none";
 }
 
 function syncSliders(){

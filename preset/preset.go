@@ -109,6 +109,9 @@ type Preset struct {
 	Section string `json:"section"`
 	Params  Params `json:"params"`
 	Dupes   int    `json:"dupes"` // identical copies found in other files
+	// Film: the library film the preset's name imitates with SPP settings
+	// (render.FilmFor), "" if none.
+	Film string `json:"film,omitempty"`
 }
 
 type xmlCustom struct {

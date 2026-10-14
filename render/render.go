@@ -526,6 +526,11 @@ type pixOp struct {
 }
 
 func newPixOp(p preset.Params, c Compensation) pixOp {
+	// A black-and-white film renders in black and white.
+	film, isFilm := FilmByKey(p.Film)
+	if isFilm && film.BW {
+		p.Mono = true
+	}
 	// Colour adjust: normalised so it tints without changing brightness.
 	k := 1 / (0.2126*p.R + 0.7152*p.G + 0.0722*p.B)
 	if p.R <= 0 || p.G <= 0 || p.B <= 0 || math.IsInf(k, 0) {
@@ -595,6 +600,23 @@ const colourLayerScale = 0.1
 // layer, forward again; in colour scaled so white keeps its brightness, in
 // monochrome the grey is the layers' gain-weighted mean (grey stays grey).
 func (op *pixOp) setLayerFilter(p preset.Params, c Compensation) {
+	// A black-and-white film from the library, with no lens filter or
+	// layer mix of its own: the grey is the film's spectral sensitivity
+	// (its data sheet's, as layer weights), linear sRGB -> layers (cc⁻¹).
+	if f, ok := FilmByKey(p.Film); ok && f.BW && c.CC != nil && p.Filter == "" && p.LayerBottom == 0 && p.LayerMiddle == 0 && p.LayerTop == 0 {
+		if w, ok := f.Mono[c.Sensor]; ok {
+			if inv, ok := invert3x3(*c.CC); ok {
+				var v [3]float32
+				for j := 0; j < 3; j++ {
+					for k := 0; k < 3; k++ {
+						v[j] += float32(w[k] * inv[k*3+j])
+					}
+				}
+				op.layerMono = &v
+				return
+			}
+		}
+	}
 	if ir, mono := irLook(c.Sensor, p.Filter); ir != nil && c.CC != nil {
 		op.setIRLook(*ir, mono, p, *c.CC)
 		return

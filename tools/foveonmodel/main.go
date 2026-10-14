@@ -486,6 +486,10 @@ func wbReport(m model, c *x3f.CAMF, wb string) {
 }
 
 func main() {
+	if in := os.Getenv("FILMBW"); in != "" {
+		filmBW(in, os.Getenv("OUT"))
+		return
+	}
 	if os.Getenv("IRCALIB") != "" {
 		irCalib()
 		return
