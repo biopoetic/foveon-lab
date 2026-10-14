@@ -66,10 +66,13 @@ func assetURL(ver, name string) string {
 
 // UpdateManifest is the signed payload of update-manifest.json.
 type UpdateManifest struct {
-	App     string                 `json:"app"`
-	Version string                 `json:"version"`
-	Notes   string                 `json:"notes,omitempty"`
-	Assets  map[string]UpdateAsset `json:"assets"` // key: updatePlatform()
+	App     string `json:"app"`
+	Version string `json:"version"`
+	Notes   string `json:"notes,omitempty"`
+	// WhatsNew is the release's "What's new" (Markdown), shown once after
+	// updating to it.
+	WhatsNew string                 `json:"whatsNew,omitempty"`
+	Assets   map[string]UpdateAsset `json:"assets"` // key: updatePlatform()
 }
 
 type UpdateAsset struct {
@@ -257,6 +260,9 @@ func (u *updater) status() map[string]any {
 	if u.latest != nil {
 		st["latest"] = u.latest.Version
 		st["notes"] = u.latest.Notes
+		if u.latest.Version == version {
+			st["whatsNew"] = u.latest.WhatsNew
+		}
 		avail := newerVersion(u.latest.Version, version)
 		st["available"] = avail
 		if avail {

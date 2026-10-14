@@ -1152,6 +1152,12 @@ async function updateInit(){
   try { u = await (await fetch("/api/update")).json(); } catch { return; }
   $("header h1").title = "Foveon Lab " + u.current;
   $("#appVersion").textContent = u.current || "";
+  if (u.whatsNew){
+    $("#appVersion").style.cursor = "pointer";
+    $("#appVersion").title = "What's new in " + u.current;
+    $("#appVersion").onclick = () => showWhatsNew(u.current, u.whatsNew);
+    if (store.get("seenVersion", "") !== u.current){ store.set("seenVersion", u.current); showWhatsNew(u.current, u.whatsNew); }
+  }
   const box = $("#updateBox");
   if (u.enabled && !u.latest && !u.error) setTimeout(updateInit, 10000); // first check still running
   if (!u.available){ box.style.display = "none"; return; }
@@ -1163,6 +1169,39 @@ async function updateInit(){
     box.innerHTML = `<span title="${esc(u.reason || "")}">New version ${link} — download it from GitHub</span>`;
   }
   box.style.display = "";
+}
+
+// md renders the small Markdown subset used in release notes: ## headings,
+// - lists, **bold**, [links](url), ~~struck~~, paragraphs.
+function md(text){
+  const inline = t => esc(t)
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/~~([^~]+)~~/g, "<s>$1</s>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  let html = "", list = false;
+  for (const line of text.split(/\r?\n/)){
+    const l = line.trim();
+    if (/^- /.test(l)){ if (!list){ html += "<ul>"; list = true; } html += "<li>" + inline(l.slice(2)) + "</li>"; continue; }
+    if (list){ html += "</ul>"; list = false; }
+    if (!l || l === "---") continue;
+    const h = l.match(/^#{1,3} (.*)/);
+    html += h ? "<h3>" + inline(h[1]) + "</h3>" : "<p>" + inline(l) + "</p>";
+  }
+  return html + (list ? "</ul>" : "");
+}
+function showWhatsNew(ver, text){
+  let box = $("#whatsNew");
+  if (!box){
+    box = document.createElement("div");
+    box.id = "whatsNew";
+    box.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50";
+    box.innerHTML = '<div style="background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:720px;max-height:80vh;overflow:auto;padding:16px 22px;line-height:1.5"><div id="whatsNewBody"></div><div style="text-align:right;margin-top:10px"><button class="primary" id="whatsNewOk">OK</button></div></div>';
+    document.body.appendChild(box);
+    box.onclick = e => { if (e.target === box) box.remove(); };
+  }
+  $("#whatsNewBody").innerHTML = md(text) + `<p style="opacity:.7">Foveon Lab ${esc(ver)} · <a href="https://github.com/biopoetic/foveon-lab/releases/tag/${esc(ver)}" target="_blank" rel="noopener">release page</a></p>`;
+  $("#whatsNewOk").onclick = () => box.remove();
 }
 
 async function installUpdate(latest){

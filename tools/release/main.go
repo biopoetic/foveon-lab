@@ -274,12 +274,21 @@ func main() {
 	publish := flag.Bool("publish", false, "create the GitHub release")
 	allowUnsigned := flag.Bool("allow-unsigned", false, "continue (and allow publishing) if signing is not possible")
 	notesFlag := flag.String("notes", "", "one-line summary shown in the app's update notice (manifest notes)")
+	notesFile := flag.String("notes-file", "", "Markdown \"What's new\": shown in the app once after updating (signed manifest) and put at the top of the GitHub release notes")
 	skipX3F := flag.Bool("skip-x3f-extract", false, "ship without x3f_extract (the app decodes every body natively since v0.4.2; x3f_extract is then only a test reference)")
 	skipDMG := flag.Bool("skip-dmg", false, "do not build the macOS .app/.dmg")
 	genKey := flag.Bool("gen-update-key", false, "create the self-update signing key (once) and print its public key")
 	icoOut := flag.String("write-ico", "", "only write the Windows icon (.ico) to this path")
 	sysoOut := flag.String("write-syso", "", "only write the Windows icon resource (.syso) to this path")
 	flag.Parse()
+	whatsNew := ""
+	if *notesFile != "" {
+		b, err := os.ReadFile(*notesFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		whatsNew = strings.TrimSpace(string(b))
+	}
 	if *sysoOut != "" {
 		if err := writeSyso(*sysoOut); err != nil {
 			log.Fatal(err)
@@ -446,7 +455,7 @@ func main() {
 
 	if len(unsigned) == 0 {
 		mf := filepath.Join(dist, "update-manifest.json")
-		if err := writeManifest(mf, *version, *notesFlag, updates); err != nil {
+		if err := writeManifest(mf, *version, *notesFlag, whatsNew, updates); err != nil {
 			if *publish {
 				log.Fatalf("update manifest: %v", err)
 			}
@@ -485,6 +494,9 @@ func main() {
 		"The Windows build is Authenticode-signed and the macOS builds are signed with a Developer ID and notarized by Apple."
 	if len(unsigned) > 0 {
 		notes += fmt.Sprintf("\n\nNote: %s build(s) in this release are NOT signed.", strings.Join(unsigned, ", "))
+	}
+	if whatsNew != "" {
+		notes = whatsNew + "\n\n---\n\n" + notes
 	}
 	args := append([]string{"release", "create", *version, "--title", "Foveon Lab " + *version, "--notes", notes}, assets...)
 	if err := run("gh", args...); err != nil {

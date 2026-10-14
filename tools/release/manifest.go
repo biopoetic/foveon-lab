@@ -87,7 +87,7 @@ type manifestAsset struct {
 
 // writeManifest signs the manifest for version listing files (platform key →
 // asset path) and writes it to dst.
-func writeManifest(dst, version, notes string, files map[string]string) error {
+func writeManifest(dst, version, notes, whatsNew string, files map[string]string) error {
 	priv, err := loadUpdateKey()
 	if err != nil {
 		return err
@@ -110,7 +110,7 @@ func writeManifest(dst, version, notes string, files map[string]string) error {
 		}
 		assets[plat] = manifestAsset{Name: filepath.Base(p), Size: st.Size(), SHA256: sum}
 	}
-	payload, err := json.Marshal(map[string]any{"app": "foveon-lab", "version": version, "notes": notes, "assets": assets})
+	payload, err := json.Marshal(map[string]any{"app": "foveon-lab", "version": version, "notes": notes, "whatsNew": whatsNew, "assets": assets})
 	if err != nil {
 		return err
 	}
