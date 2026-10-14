@@ -99,7 +99,22 @@ button.on{border-color:var(--accent);color:var(--accent)}
 .row .lab b{color:var(--text);font-weight:500;cursor:pointer}
 .row input[type=range]{width:100%;accent-color:var(--accent)}
 .row.changed .lab span{color:var(--accent)}
-.btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.pbar{position:sticky;top:-10px;z-index:3;display:flex;gap:6px;background:var(--panel);padding:8px 0;margin:4px 0 2px;border-bottom:1px solid var(--line)}
+.pbar button{flex:1}
+.grp{border-bottom:1px solid var(--line)}
+.grp .gh{display:flex;align-items:center;gap:6px;padding:9px 0;cursor:pointer;user-select:none;font-weight:600;letter-spacing:.3px}
+.grp .gh:hover .gt{color:var(--accent)}
+.grp .chev{display:inline-block;width:12px;color:var(--dim);transition:transform .15s}
+.grp.closed .chev{transform:rotate(-90deg)}
+.grp.closed .gb{display:none}
+.grp .gb{padding-bottom:8px}
+.grp .gb .row:first-child{margin-top:0}
+.grp .gdot{width:7px;height:7px;border-radius:50%;background:var(--accent);display:none}
+.grp.changed .gdot{display:inline-block}
+.grp .greset{margin-left:auto;padding:0 7px;font-size:13px;line-height:20px;visibility:hidden}
+.grp.changed .greset{visibility:visible}
+.grp.nokeys .greset,.grp.nokeys .gdot{display:none}
 .kbd{color:var(--dim);font-size:11px;margin-top:14px;line-height:1.7}
 .kbd code{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:0 4px}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#2a2a2a;border:1px solid #444;padding:8px 14px;border-radius:8px;display:none;z-index:9;max-width:80vw}
@@ -202,19 +217,29 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div class="src" id="pSrc"></div>
         <canvas id="histo" width="256" height="72" title="Histogram of the rendered image (R, G, B and luminance)"></canvas>
         <div class="src" id="clipInfo"></div>
-        <div id="sliders"></div>
+        <div class="pbar"><button id="reset" title="Undo every change to this preset">Reset to preset</button><button id="save" class="primary">Save as preset</button></div>
+        <div class="grp" data-g="tone"><div class="gh"><span class="chev">▾</span><span class="gt">Tone</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
+          <div class="gb" id="g-tone">
+          </div>
+        </div>
+        <div class="grp" data-g="colour"><div class="gh"><span class="chev">▾</span><span class="gt">Colour</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
+          <div class="gb" id="g-colour">
         <div class="row"><div class="lab">Color mode <span id="modeNote"></span></div>
           <select id="mode" style="width:100%">
             <option value="4">Standard (4)</option><option value="6">Portrait (6)</option><option value="7">Landscape (7)</option><option value="0">Unknown (0) → as Standard</option>
           </select>
         </div>
         <div class="row"><label class="chk" title="Black & white: rendered monochrome here and opened in SPP's Monochrome mode. Pack B&W presets (Saturation -1) have it on."><input type="checkbox" id="mono"> Monochrome (SPP B&amp;W mode)</label></div>
-        <div class="row" title="Rotate this photo (saved with it, like the crop; applies to every preset and export). [ and ] turn by 90°.">
-          <div class="lab"><span>Rotate (this photo)</span><b id="rotVal">0°</b></div>
-          <input type="range" id="rot" min="-180" max="180" step="0.1" value="0">
-          <div style="display:flex;gap:6px;margin-top:4px"><button id="rotL" style="flex:1">⟲ 90°</button><button id="rotR" style="flex:1">⟳ 90°</button><button id="rot0" style="flex:1">0°</button></div>
+          </div>
         </div>
-        <div class="row"><div class="lab">Layer filter <span class="dim" title="Foveon Lab only. Lens filters are simulated from first principles: each sensor generation's layer sensitivities are modelled from silicon's light absorption and fitted to the camera's own colour matrix, and the filter's transmission spectrum is applied to them. The layer sliders set a gain per sensor layer (in Monochrome: how the three layers mix into grey; the top layer alone is the cleanest at high ISO). Not saved into SPP presets or .cube LUTs.">ⓘ</span></div>
+        <div class="grp" data-g="detail"><div class="gh"><span class="chev">▾</span><span class="gt">Detail &amp; noise</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
+          <div class="gb" id="g-detail">
+          <div class="row" id="nrRow"><label class="chk" id="nrLab" title="Foveon noise reduction for previews and exports made from the raw data (Accurate mode, high-ISO files, raw DNG). Low is the default (it calms colour noise and keeps the grain and fine detail); Full smooths more.">Noise reduction <select id="nr"><option value="10">Full</option><option value="6">Medium</option><option value="3" selected>Low</option><option value="0">Off</option></select></label></div>
+          </div>
+        </div>
+        <div class="grp" data-g="layer"><div class="gh"><span class="chev">▾</span><span class="gt">Layer filter</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
+          <div class="gb" id="g-layer">
+        <div class="row"><div class="lab">Lens filter or layer mix <span class="dim" title="Foveon Lab only. Lens filters are simulated from first principles: each sensor generation's layer sensitivities are modelled from silicon's light absorption and fitted to the camera's own colour matrix, and the filter's transmission spectrum is applied to them. The layer sliders set a gain per sensor layer (in Monochrome: how the three layers mix into grey; the top layer alone is the cleanest at high ISO). Not saved into SPP presets or .cube LUTs.">ⓘ</span></div>
           <select id="layerPreset" style="width:100%">
             <option value="">None</option>
             <optgroup label="Lens filter (simulated on the sensor's layers)">
@@ -225,16 +250,32 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
             </optgroup>
           </select>
         </div>
+          </div>
+        </div>
+        <div class="grp" data-g="film"><div class="gh"><span class="chev">▾</span><span class="gt">Film</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
+          <div class="gb" id="g-film">
         <div class="row"><div class="lab">Film format <span class="dim" title="Foveon Lab only. The film frame the grain and halation are sized on: a larger format shows the same film finer.">(grain, halation)</span></div>
           <select id="filmWidth" style="width:100%">
             <option value="0">35 mm (36 × 24)</option><option value="56">Medium format 6 × 6 / 6 × 4.5</option><option value="70">Medium format 6 × 7</option><option value="127">Large format 4 × 5 in</option>
           </select>
         </div>
+          </div>
+        </div>
+        <div class="grp" data-g="geometry"><div class="gh"><span class="chev">▾</span><span class="gt">Geometry</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
+          <div class="gb" id="g-geometry">
+        <div class="row" title="Rotate this photo (saved with it, like the crop; applies to every preset and export). [ and ] turn by 90°.">
+          <div class="lab"><span>Rotate (this photo)</span><b id="rotVal">0°</b></div>
+          <input type="range" id="rot" min="-180" max="180" step="0.1" value="0">
+          <div style="display:flex;gap:6px;margin-top:4px"><button id="rotL" style="flex:1">⟲ 90°</button><button id="rotR" style="flex:1">⟳ 90°</button><button id="rot0" style="flex:1">0°</button></div>
+        </div>
+          </div>
+        </div>
         <div class="src" id="wbNote"></div>
+        <div class="grp" data-g="export"><div class="gh"><span class="chev">▾</span><span class="gt">Export</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
+          <div class="gb" id="g-export">
         <div class="btns">
           <button id="reset">Reset to preset</button>
           <button id="save" class="primary">Save as preset</button>
-          <label class="chk" id="nrLab" title="Foveon noise reduction for previews and exports made from the raw data (Accurate mode, high-ISO files, raw DNG). Low is the default (it calms colour noise and keeps the grain and fine detail); Full smooths more.">NR <select id="nr"><option value="10">Full</option><option value="6">Medium</option><option value="3" selected>Low</option><option value="0">Off</option></select></label>
           <button id="export" title="Full-resolution JPEG with the preset applied">Export JPEG</button>
           <button id="exportTiff" title="Full-resolution 16-bit TIFF with the preset applied — no 8-bit rounding, for further editing">Export TIFF 16-bit</button>
           <button id="lutBtn" title="Download this look as a 3D LUT (.cube) for darktable, Photoshop, Camera Raw / Lightroom profiles, DaVinci Resolve, Affinity…">Export LUT (.cube)</button>
@@ -243,6 +284,10 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="exportDng" title="The raw sensor data as DNG for Lightroom / Capture One / darktable (presets are not applied — it's raw)" style="display:none">Export raw DNG</button>
           <button id="sppOpen" title="Put this preset into Sigma Photo Pro's list as its current setting, then open the photo in SPP (SPP must be closed)" style="display:none">Open in SPP ↗</button>
         </div>
+          </div>
+        </div>
+        <div class="grp" data-g="keys"><div class="gh"><span class="chev">▾</span><span class="gt">Keyboard shortcuts</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
+          <div class="gb" id="g-keys">
         <div class="kbd">
           <code>←</code> <code>→</code> previous / next preset<br>
           <code>↑</code> <code>↓</code> previous / next photo (same preset)<br>
@@ -250,6 +295,8 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <code>S</code> before/after split (move the mouse) · <code>C</code> clipping<br>
           <code>Esc</code> back to grid<br>
           Double-click a value = reset that slider
+        </div>
+          </div>
         </div>
       </div>
     </section>
@@ -301,21 +348,21 @@ const store = {
 };
 
 const SLIDERS = [
-  ["exposure","Exposure",-2,2,.01],
-  ["contrast","Contrast",-2,2,.01],
-  ["blackness","Shadow (Blackness)",-2,2,.01],
-  ["highlight","Highlight",-2,2,.01],
-  ["fillLight","X3 Fill Light",-2,2,.01],
-  ["saturation","Saturation",-2,2,.01],
-  ["sharpness","Sharpness",-2,2,.01],
-  ["r","Color adjust R",.7,1.3,.005],
-  ["g","Color adjust G",.7,1.3,.005],
-  ["b","Color adjust B",.7,1.3,.005],
-  ["layerBottom","Layer filter: bottom (red)",-6,2,.05],
-  ["layerMiddle","Layer filter: middle (green)",-6,2,.05],
-  ["layerTop","Layer filter: top (blue)",-6,2,.05],
-  ["grain","Film grain (RMS granularity)",0,25,.5],
-  ["halation","Halation",0,1,.01],
+  ["exposure","Exposure",-2,2,.01,"tone"],
+  ["contrast","Contrast",-2,2,.01,"tone"],
+  ["blackness","Shadow (Blackness)",-2,2,.01,"tone"],
+  ["highlight","Highlight",-2,2,.01,"tone"],
+  ["fillLight","X3 Fill Light",-2,2,.01,"tone"],
+  ["saturation","Saturation",-2,2,.01,"colour"],
+  ["sharpness","Sharpness",-2,2,.01,"detail"],
+  ["r","Color adjust R",.7,1.3,.005,"colour"],
+  ["g","Color adjust G",.7,1.3,.005,"colour"],
+  ["b","Color adjust B",.7,1.3,.005,"colour"],
+  ["layerBottom","Bottom layer (red)",-6,2,.05,"layer"],
+  ["layerMiddle","Middle layer (green)",-6,2,.05,"layer"],
+  ["layerTop","Top layer (blue)",-6,2,.05,"layer"],
+  ["grain","Film grain (RMS granularity)",0,25,.5,"film"],
+  ["halation","Halation",0,1,.01,"film"],
 ];
 // Film grain is a film's published RMS granularity (sizes on the film, so
 // a crop or 100% view shows it larger, a reduced view finer).
@@ -625,10 +672,44 @@ function drawGrid(){
 }
 
 // ---------- detail ----------
+// Panel groups: the preset keys each one holds (for its changed dot and
+// its reset), and which start closed.
+const GROUPS = {
+  tone: ["exposure","contrast","blackness","highlight","fillLight"],
+  colour: ["saturation","r","g","b","colorMode","mono"],
+  detail: ["sharpness"],
+  layer: ["layerBottom","layerMiddle","layerTop","filter"],
+  film: ["grain","halation","filmWidth"],
+  geometry: [], export: [], keys: [],
+};
+const GROUPS_CLOSED = new Set(store.get("groupsClosed", ["keys"]));
+
 function buildSliders(){
-  $("#sliders").innerHTML = SLIDERS.map(([k,label,min,max,step]) =>
-    `<div class="row" data-k="${k}"><div class="lab"><span>${label}</span><b title="double-click = reset">0</b></div><input type="range" min="${min}" max="${max}" step="${step}"></div>`).join("");
-  document.querySelectorAll("#sliders .row").forEach(row => {
+  // Each slider goes into its group: first in the group, except the layer
+  // sliders, which follow the layer filter menu.
+  for (const [k,label,min,max,step,g] of [...SLIDERS].reverse()){
+    const html = `<div class="row" data-k="${k}"><div class="lab"><span>${label}</span><b title="double-click = reset">0</b></div><input type="range" min="${min}" max="${max}" step="${step}"></div>`;
+    if (g !== "layer") $("#g-"+g).insertAdjacentHTML("afterbegin", html);
+  }
+  for (const [k,label,min,max,step,g] of SLIDERS){
+    if (g === "layer") $("#g-layer").insertAdjacentHTML("beforeend", `<div class="row" data-k="${k}"><div class="lab"><span>${label}</span><b title="double-click = reset">0</b></div><input type="range" min="${min}" max="${max}" step="${step}"></div>`);
+  }
+  document.querySelectorAll("#panel .grp").forEach(grp => {
+    const g = grp.dataset.g;
+    grp.classList.toggle("closed", GROUPS_CLOSED.has(g));
+    grp.classList.toggle("nokeys", !GROUPS[g]?.length);
+    grp.querySelector(".gh").onclick = e => {
+      if (e.target.closest(".greset")) return;
+      grp.classList.toggle("closed");
+      grp.classList.contains("closed") ? GROUPS_CLOSED.add(g) : GROUPS_CLOSED.delete(g);
+      store.set("groupsClosed", [...GROUPS_CLOSED]);
+    };
+    grp.querySelector(".greset").onclick = () => {
+      for (const k of GROUPS[g] || []) S.params[k] = S.base[k];
+      syncSliders(); scheduleRender();
+    };
+  });
+  document.querySelectorAll("#panel .row[data-k]").forEach(row => {
     const k = row.dataset.k, inp = row.querySelector("input");
     inp.oninput = () => { S.params[k] = +inp.value; syncSliders(); scheduleRender(); };
     // Release focus after a drag so the arrow keys go back to photo/preset
@@ -637,8 +718,8 @@ function buildSliders(){
     row.querySelector("b").ondblclick = () => { S.params[k] = S.base[k]; syncSliders(); scheduleRender(); };
   });
   $("#filmWidth").onchange = () => { S.params.filmWidth = +$("#filmWidth").value; $("#filmWidth").blur(); syncSliders(); scheduleRender(); };
-  document.querySelector('#sliders .row[data-k="grain"]').title = GRAIN_TIPS;
-  document.querySelector('#sliders .row[data-k="halation"]').title = HALATION_TIP;
+  document.querySelector('#panel .row[data-k="grain"]').title = GRAIN_TIPS;
+  document.querySelector('#panel .row[data-k="halation"]').title = HALATION_TIP;
   $("#mode").onchange = () => { S.params.colorMode = +$("#mode").value; $("#mode").blur(); syncSliders(); scheduleRender(); };
   $("#mono").onchange = () => { S.params.mono = $("#mono").checked; syncSliders(); scheduleRender(); };
   $("#rot").oninput = e => setRot(+e.target.value);
@@ -655,7 +736,7 @@ function buildSliders(){
 }
 
 function syncSliders(){
-  for (const row of document.querySelectorAll("#sliders .row")){
+  for (const row of document.querySelectorAll("#panel .row[data-k]")){
     const k = row.dataset.k, v = S.params[k] ?? NEUTRAL[k];
     row.querySelector("input").value = v;
     row.querySelector("b").textContent = (k.length === 1 ? v.toFixed(3) : (v > 0 ? "+" : "") + v.toFixed(2));
@@ -667,6 +748,11 @@ function syncSliders(){
   const mix = Object.keys(LAYER_MIX).find(k => LAYER_MIX[k].every((x, i) => Math.abs(x - lf[i]) < 1e-9));
   $("#layerPreset").value = S.params.filter && zero ? "lens:" + S.params.filter : !S.params.filter && zero ? "" : !S.params.filter && mix ? "mix:" + mix : "custom";
   $("#filmWidth").value = String(S.params.filmWidth || 0);
+  for (const [g, keys] of Object.entries(GROUPS)){
+    const ch = keys.some(k => typeof NEUTRAL[k] === "string" || typeof NEUTRAL[k] === "boolean"
+      ? (S.params[k] || "") !== (S.base[k] || "") : Math.abs((S.params[k] ?? NEUTRAL[k]) - (S.base[k] ?? NEUTRAL[k])) > 1e-9);
+    document.querySelector(`#panel .grp[data-g="${g}"]`)?.classList.toggle("changed", ch);
+  }
   const m = S.params.colorMode;
   $("#mode").value = [4,6,7].includes(m) ? m : 0;
   $("#modeNote").textContent = [4,6,7].includes(m) ? "" : `(code ${m})`;
