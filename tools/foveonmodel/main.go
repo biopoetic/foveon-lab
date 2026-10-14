@@ -22,7 +22,11 @@ package main
 import (
 	"bufio"
 	_ "embed"
+	"encoding/json"
 	"fmt"
+	"github.com/biopoetic/foveon-lab/render"
+	_ "golang.org/x/image/tiff"
+	_ "image/png"
 	"log"
 	"math"
 	"math/rand"
@@ -401,6 +405,86 @@ func (s *scene) filterMatrix(m model, T func(float64) float64) ([9]float64, floa
 	return F, math.Sqrt(e / n)
 }
 
+// wbReport: which black-body temperature the camera's white balance gains
+// for wb correspond to, on the modelled layers (relative to its Sunlight
+// gains, taken as 5500 K), and the per-layer residual: what the camera's
+// estimate differs from a true black body (a tint off the Planck locus).
+// camTemp is the black-body temperature (K) the camera's gains for wb
+// correspond to, and the off-locus residual of its bottom/top layers (%).
+func camTemp(m model, c *x3f.CAMF, wb string) (float64, float64, float64, bool) {
+	gs, _, err1 := c.WBTransform("Sunlight")
+	gw, _, err2 := c.WBTransform(wb)
+	if err1 != nil || err2 != nil {
+		return 0, 0, 0, false
+	}
+	white := func(T float64) [3]float64 {
+		var r [3]float64
+		for i, l := range lams {
+			S := m.sens(i)
+			e := planck(l, T)
+			for k := 0; k < 3; k++ {
+				r[k] += S[k] * e
+			}
+		}
+		return r
+	}
+	rs := white(5500)
+	norm := func(v [3]float64) [3]float64 { return [3]float64{v[0] / v[1], 1, v[2] / v[1]} }
+	want := norm([3]float64{gs[0] / gw[0], gs[1] / gw[1], gs[2] / gw[2]})
+	bestT, bestE := 0.0, math.Inf(1)
+	var bestR [3]float64
+	for T := 2000.0; T <= 12000; T += 10 {
+		r := white(T)
+		pr := norm([3]float64{r[0] / rs[0], r[1] / rs[1], r[2] / rs[2]})
+		e := math.Pow(math.Log(pr[0]/want[0]), 2) + math.Pow(math.Log(pr[2]/want[2]), 2)
+		if e < bestE {
+			bestT, bestE, bestR = T, e, pr
+		}
+	}
+	return bestT, 100 * (want[0]/bestR[0] - 1), 100 * (want[2]/bestR[2] - 1), true
+}
+
+func wbReport(m model, c *x3f.CAMF, wb string) {
+	gs, _, err1 := c.WBTransform("Sunlight")
+	gw, _, err2 := c.WBTransform(wb)
+	if err1 != nil || err2 != nil {
+		fmt.Println("no gains for", wb)
+		return
+	}
+	white := func(T float64) [3]float64 {
+		var r [3]float64
+		for i, l := range lams {
+			S := m.sens(i)
+			e := planck(l, T)
+			for k := 0; k < 3; k++ {
+				r[k] += S[k] * e
+			}
+		}
+		return r
+	}
+	rs := white(5500)
+	// Camera: gains ∝ 1/response, so response_wb/response_sun = gs/gw.
+	var want [3]float64
+	for k := range want {
+		want[k] = gs[k] / gw[k]
+	}
+	norm := func(v [3]float64) [3]float64 { return [3]float64{v[0] / v[1], 1, v[2] / v[1]} }
+	want = norm(want)
+	bestT, bestE := 0.0, math.Inf(1)
+	var bestR [3]float64
+	for T := 2000.0; T <= 10000; T += 10 {
+		r := white(T)
+		pr := norm([3]float64{r[0] / rs[0], r[1] / rs[1], r[2] / rs[2]})
+		e := math.Pow(math.Log(pr[0]/want[0]), 2) + math.Pow(math.Log(pr[2]/want[2]), 2)
+		if e < bestE {
+			bestT, bestE, bestR = T, e, pr
+		}
+	}
+	fmt.Printf("%s white balance: camera's layer response relative to Sunlight (bottom/middle/top, middle = 1): %.3f / 1 / %.3f\n", wb, want[0], want[2])
+	fmt.Printf("  nearest black body: %.0f K, which gives %.3f / 1 / %.3f; camera minus black body: bottom %+.1f%%, top %+.1f%%\n",
+		bestT, bestR[0], bestR[2], 100*(want[0]/bestR[0]-1), 100*(want[2]/bestR[2]-1))
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		log.Fatal("usage: foveonmodel photo.X3F")
@@ -419,6 +503,26 @@ func main() {
 	}
 	fmt.Printf("%s: Sunlight colour matrix %.3f\n", f.Props["CAMMODEL"], cc)
 	sc := newScene(5500, 400, 1)
+	if os.Getenv("SPPWB") != "" {
+		sppWB(c, f, os.Getenv("SPPWB"))
+		return
+	}
+	if wb := os.Getenv("WB"); wb != "" {
+		var fm model
+		gen := os.Getenv("GEN")
+		if gen == "" {
+			gen = "Merrill"
+		}
+		var lf map[string]struct{ Model []float64 }
+		data, _ := os.ReadFile("render/layerfilters.json")
+		json.Unmarshal(data, &lf)
+		v := lf[gen].Model
+		fm = model{d0: v[0], d1: v[1], d2: v[2], d3: v[3], lc: v[4], w: v[5]}
+		for _, w := range strings.Split(wb, ",") {
+			wbReport(fm, c, w)
+		}
+		return
+	}
 	if os.Getenv("LIT") != "" {
 		for _, m := range []model{{0.2, 0.6, 2.0, 660, 10, 0}, {0.2, 0.6, 3.0, 660, 10, 0}, {0.3, 0.9, 3.0, 660, 10, 0}, {0.15, 0.5, 2.0, 650, 10, 0}} {
 			M, e := sc.bestMatrix(m)
@@ -494,4 +598,114 @@ func main() {
 			fmt.Printf("  %3.0f nm  %.3f  %.3f  %.3f\n", l, s[0], s[1], s[2])
 		}
 	}
+}
+
+func loadModel(gen string) model {
+	var lf map[string]struct{ Model []float64 }
+	data, _ := os.ReadFile("render/layerfilters.json")
+	json.Unmarshal(data, &lf)
+	v := lf[gen].Model
+	return model{d0: v[0], d1: v[1], d2: v[2], d3: v[3], lc: v[4], w: v[5]}
+}
+
+// sppWB prints, for one photo and its SPP neutral export, the camera's
+// light temperature (from its WB gains on the modelled layers) and how
+// SPP's colour balance differs from the camera's own WB + matrix: the
+// median, over mid-tone pixels, of log(SPP R/G) - log(camera R/G) and the
+// same for B/G, as gains (camera = 1).
+func sppWB(c *x3f.CAMF, f *x3f.File, export string) {
+	gen := render.SensorGeneration(x3f.CalibGroup(f.Props["CAMMODEL"]))
+	m := loadModel(gen)
+	wb := c.CameraWB(strings.TrimSpace(f.Props["WB_DESC"]))
+	T, tb, tt, ok := camTemp(m, c, wb)
+	if !ok {
+		fmt.Println("no WB gains")
+		return
+	}
+	raw, err := f.DecodeRaw()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	x3f.FixBadPixels(raw, c)
+	img, err := x3f.CameraLinear(raw, c, x3f.NewSpatialGain(c, f.Props, wb), wb)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	g, cc, _ := c.WBTransform(wb)
+	data, _ := os.ReadFile(export)
+	si, _, err := render.DecodeImage(data)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	spp := render.FromImage(si, 600, 0)
+	cam := render.FromCamLinear(img.Pix, img.W, img.H, 600, 0, render.CamTransform{Gain: g, CC: cc})
+	if cam.W != spp.W || cam.H != spp.H {
+		fmt.Printf("%s: sizes differ\n", export)
+		return
+	}
+	var rg, bg []float64
+	for i := 0; i < len(cam.Pix); i += 3 {
+		a, b := cam.Pix[i:i+3], spp.Pix[i:i+3]
+		ya := 0.2126*a[0] + 0.7152*a[1] + 0.0722*a[2]
+		if ya < 0.03 || ya > 0.4 || min(a[0], a[1], a[2], b[0], b[1], b[2]) <= 0.002 || max(b[0], b[1], b[2]) > 0.95 {
+			continue
+		}
+		rg = append(rg, math.Log(float64(b[0]/b[1]))-math.Log(float64(a[0]/a[1])))
+		bg = append(bg, math.Log(float64(b[2]/b[1]))-math.Log(float64(a[2]/a[1])))
+	}
+	if len(rg) < 100 {
+		fmt.Println("too few mid-tone pixels")
+		return
+	}
+	sort.Float64s(rg)
+	sort.Float64s(bg)
+	robs, bobs := math.Exp(rg[len(rg)/2]), math.Exp(bg[len(bg)/2])
+	// Which white-balance temperature would SPP's balance correspond to?
+	// SPP's gains relative to the camera's are r(Tcam)/r(Teff) per layer;
+	// simulate that on scene colours lit at Tcam through the camera matrix.
+	sc := newScene(T, 200, 3)
+	L := sc.layers(m)
+	resp := func(Tx float64) [3]float64 {
+		var r [3]float64
+		for i, l := range lams {
+			S := m.sens(i)
+			e := planck(l, Tx)
+			for k := 0; k < 3; k++ {
+				r[k] += S[k] * e
+			}
+		}
+		return r
+	}
+	rc := resp(T)
+	bestTe, bestE, bestP := 0.0, math.Inf(1), [2]float64{}
+	for Te := 1500.0; Te <= 20000; Te *= 1.01 {
+		re := resp(Te)
+		var lr, lb []float64
+		for _, v := range L {
+			base := apply(cc, v)
+			d := [3]float64{v[0] * rc[0] / re[0] * re[1] / rc[1], v[1], v[2] * rc[2] / re[2] * re[1] / rc[1]}
+			pr := apply(cc, d)
+			if base[0] <= 0 || base[1] <= 0 || base[2] <= 0 || pr[0] <= 0 || pr[1] <= 0 || pr[2] <= 0 {
+				continue
+			}
+			lr = append(lr, math.Log(pr[0]/pr[1])-math.Log(base[0]/base[1]))
+			lb = append(lb, math.Log(pr[2]/pr[1])-math.Log(base[2]/base[1]))
+		}
+		if len(lr) < 20 {
+			continue
+		}
+		sort.Float64s(lr)
+		sort.Float64s(lb)
+		p := [2]float64{math.Exp(lr[len(lr)/2]), math.Exp(lb[len(lb)/2])}
+		e := math.Pow(math.Log(p[0]/robs), 2) + math.Pow(math.Log(p[1]/bobs), 2)
+		if e < bestE {
+			bestTe, bestE, bestP = Te, e, p
+		}
+	}
+	name := f.Path[strings.LastIndexAny(f.Path, `/\`)+1:]
+	fmt.Printf("%-14s %-7s WB %-12s %5.0f K (off-locus %+.1f%%/%+.1f%%)  SPP vs camera: R %.3f B %.3f -> as a WB of %5.0f K (gives R %.3f B %.3f)\n",
+		name, gen, wb, T, tb, tt, robs, bobs, bestTe, bestP[0], bestP[1])
 }
