@@ -27,6 +27,19 @@ type Linear struct {
 	// SPP sharpens the full-size image, so on a reduced view the effect is
 	// proportionally smaller.
 	Scale float64
+	// Frame is the long side, in full-resolution pixels, of the whole frame
+	// this image belongs to (0 = this image's own long side / Scale): a
+	// 100% window or a crop keeps the frame's, so film grain and halation,
+	// sized on the film, stay the same size.
+	Frame int
+}
+
+// frame is the whole frame's long side in full-resolution pixels.
+func (l *Linear) frame() float64 {
+	if l.Frame > 0 {
+		return float64(l.Frame)
+	}
+	return float64(max(l.W, l.H)) / l.scale()
 }
 
 func (l *Linear) scale() float64 {
@@ -203,7 +216,7 @@ func pixelGetter(img image.Image) func(x, y int) (uint8, uint8, uint8) {
 func (l *Linear) Window(x0, y0, w, h int) *Linear {
 	x0, y0 = max(0, min(x0, l.W-1)), max(0, min(y0, l.H-1))
 	w, h = max(1, min(w, l.W-x0)), max(1, min(h, l.H-y0))
-	o := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1}
+	o := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, Frame: int(math.Round(l.frame()))}
 	for y := 0; y < h; y++ {
 		copy(o.Pix[y*w*3:(y+1)*w*3], l.Pix[((y+y0)*l.W+x0)*3:])
 	}
@@ -215,7 +228,7 @@ func (l *Linear) Rotate(deg int) *Linear {
 		return l
 	}
 	w, h := l.W, l.H
-	o := &Linear{W: w, H: h, Pix: make([]float32, len(l.Pix)), Scale: l.Scale}
+	o := &Linear{W: w, H: h, Pix: make([]float32, len(l.Pix)), Scale: l.Scale, Frame: l.Frame}
 	if deg != 180 {
 		o.W, o.H = h, w
 	}
@@ -243,7 +256,7 @@ func (l *Linear) Downscale(maxW int) *Linear {
 	}
 	dw := maxW
 	dh := max(1, int(math.Round(float64(l.H)*float64(dw)/float64(l.W))))
-	o := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: l.scale() * float64(dw) / float64(l.W)}
+	o := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame}
 	parallelRows(dh, func(y0, y1 int) {
 		for dy := y0; dy < y1; dy++ {
 			sy0, sy1 := dy*l.H/dh, (dy+1)*l.H/dh
@@ -343,6 +356,9 @@ type Base struct {
 	*Linear
 	m      *mask
 	sa, sb *Surround // Fill Light surroundings (SurroundFracs)
+
+	filmMu sync.Mutex
+	halos  map[int][]float32 // halation light by spread (film.go)
 }
 
 // NewBase prepares a linear image for repeated rendering.
@@ -465,6 +481,7 @@ func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, bl float32)) {
 	w, h := b.W, b.H
 	op := newPixOp(p, c)
+	film := b.newFilm(p, op.mono || op.layerMono != nil)
 	parallelRows(h, func(y0, y1 int) {
 		for y := y0; y < y1; y++ {
 			for x := 0; x < w; x++ {
@@ -477,7 +494,9 @@ func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, 
 						da, db = b.sa.At(x, y)-v, b.sb.At(x, y)-v
 					}
 				}
-				r, g, bl := op.apply(b.Pix[i], b.Pix[i+1], b.Pix[i+2], m, da, db)
+				r, g, bl := film.addHalo(y*w+x, b.Pix[i], b.Pix[i+1], b.Pix[i+2])
+				r, g, bl = op.apply(r, g, bl, m, da, db)
+				r, g, bl = film.grain(y*w+x, r, g, bl)
 				put(y*w+x, r, g, bl)
 			}
 		}

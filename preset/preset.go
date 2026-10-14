@@ -55,6 +55,14 @@ type Params struct {
 	LayerBottom float64 `json:"layerBottom"`
 	LayerMiddle float64 `json:"layerMiddle"`
 	LayerTop    float64 `json:"layerTop"`
+	// Film (Foveon Lab only): Grain is a film's RMS granularity (the
+	// published diffuse RMS density x 1000 through a 48 µm aperture; 0 =
+	// none), FilmWidth the film frame's long side in mm (0 = 36, 35 mm
+	// film), Halation 0-1 the light the film base reflects back into the
+	// red-sensitive layer (0 = an anti-halation layer, 1 = none).
+	Grain     float64 `json:"grain,omitempty"`
+	FilmWidth float64 `json:"filmWidth,omitempty"`
+	Halation  float64 `json:"halation,omitempty"`
 }
 
 const (

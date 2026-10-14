@@ -225,6 +225,11 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
             </optgroup>
           </select>
         </div>
+        <div class="row"><div class="lab">Film format <span class="dim" title="Foveon Lab only. The film frame the grain and halation are sized on: a larger format shows the same film finer.">(grain, halation)</span></div>
+          <select id="filmWidth" style="width:100%">
+            <option value="0">35 mm (36 × 24)</option><option value="56">Medium format 6 × 6 / 6 × 4.5</option><option value="70">Medium format 6 × 7</option><option value="127">Large format 4 × 5 in</option>
+          </select>
+        </div>
         <div class="src" id="wbNote"></div>
         <div class="btns">
           <button id="reset">Reset to preset</button>
@@ -309,10 +314,16 @@ const SLIDERS = [
   ["layerBottom","Layer filter: bottom (red)",-6,2,.05],
   ["layerMiddle","Layer filter: middle (green)",-6,2,.05],
   ["layerTop","Layer filter: top (blue)",-6,2,.05],
+  ["grain","Film grain (RMS granularity)",0,25,.5],
+  ["halation","Halation",0,1,.01],
 ];
+// Film grain is a film's published RMS granularity (sizes on the film, so
+// a crop or 100% view shows it larger, a reduced view finer).
+const GRAIN_TIPS = "Film grain from the film's published RMS granularity (Selwyn's law): about 8 for the finest colour negative and slow B&W films, 10-12 for ISO 400 colour negative, 16-18 for classic ISO 400 B&W. It is sized on the film, so it depends on the film format below.";
+const HALATION_TIP = "Light reflected back by the film base into its red-sensitive layer: a red-orange glow around bright lights. 0 = film with an anti-halation layer, 1 = none (the Cinestill look).";
 // Layer mix presets, in stops per sensor layer (bottom, middle, top).
 const LAYER_MIX = { top: [-6,-6,0] };
-const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false,layerBottom:0,layerMiddle:0,layerTop:0,filter:""};
+const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false,layerBottom:0,layerMiddle:0,layerTop:0,filter:"",grain:0,halation:0,filmWidth:0};
 
 const S = {
   photos: [], presets: [], photo: null,
@@ -625,6 +636,9 @@ function buildSliders(){
     inp.onchange = () => inp.blur();
     row.querySelector("b").ondblclick = () => { S.params[k] = S.base[k]; syncSliders(); scheduleRender(); };
   });
+  $("#filmWidth").onchange = () => { S.params.filmWidth = +$("#filmWidth").value; $("#filmWidth").blur(); syncSliders(); scheduleRender(); };
+  document.querySelector('#sliders .row[data-k="grain"]').title = GRAIN_TIPS;
+  document.querySelector('#sliders .row[data-k="halation"]').title = HALATION_TIP;
   $("#mode").onchange = () => { S.params.colorMode = +$("#mode").value; $("#mode").blur(); syncSliders(); scheduleRender(); };
   $("#mono").onchange = () => { S.params.mono = $("#mono").checked; syncSliders(); scheduleRender(); };
   $("#rot").oninput = e => setRot(+e.target.value);
@@ -642,7 +656,7 @@ function buildSliders(){
 
 function syncSliders(){
   for (const row of document.querySelectorAll("#sliders .row")){
-    const k = row.dataset.k, v = S.params[k];
+    const k = row.dataset.k, v = S.params[k] ?? NEUTRAL[k];
     row.querySelector("input").value = v;
     row.querySelector("b").textContent = (k.length === 1 ? v.toFixed(3) : (v > 0 ? "+" : "") + v.toFixed(2));
     row.classList.toggle("changed", Math.abs(v - S.base[k]) > 1e-9);
@@ -652,6 +666,7 @@ function syncSliders(){
   const zero = lf.every(x => Math.abs(x) < 1e-9);
   const mix = Object.keys(LAYER_MIX).find(k => LAYER_MIX[k].every((x, i) => Math.abs(x - lf[i]) < 1e-9));
   $("#layerPreset").value = S.params.filter && zero ? "lens:" + S.params.filter : !S.params.filter && zero ? "" : !S.params.filter && mix ? "mix:" + mix : "custom";
+  $("#filmWidth").value = String(S.params.filmWidth || 0);
   const m = S.params.colorMode;
   $("#mode").value = [4,6,7].includes(m) ? m : 0;
   $("#modeNote").textContent = [4,6,7].includes(m) ? "" : `(code ${m})`;
