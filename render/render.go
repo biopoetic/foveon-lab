@@ -759,7 +759,8 @@ func (op *pixOp) setLayerFilter(p preset.Params, c Compensation) {
 		return
 	}
 	lens := lensFilter(c.Sensor, p.Filter)
-	if c.CC == nil || (lens == nil && p.LayerBottom == 0 && p.LayerMiddle == 0 && p.LayerTop == 0) {
+	mode := camModeMatrix(c.Family, p.CamMode)
+	if c.CC == nil || (lens == nil && mode == nil && p.LayerBottom == 0 && p.LayerMiddle == 0 && p.LayerTop == 0) {
 		return
 	}
 	cc := *c.CC
@@ -788,6 +789,11 @@ func (op *pixOp) setLayerFilter(p preset.Params, c Compensation) {
 		for j := 0; j < 3; j++ {
 			G[i*3+j] *= f[i]
 		}
+	}
+	// The camera's colour mode works on the layers the sensor recorded,
+	// after any filter (Sigma's matrix, in camera space, as SPP applies it).
+	if mode != nil && !op.mono {
+		G = mul33(*mode, G)
 	}
 	lum := [3]float64{0.2126, 0.7152, 0.0722}
 	if op.mono && lens == nil {

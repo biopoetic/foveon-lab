@@ -39,6 +39,52 @@ var camfModes = map[string]map[string]camfMode{
 
 var identity3 = [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
 
+// camModeFamily is the camera table a calibration family's colour modes
+// come from (Merrill bodies share the SD1's, TRUE II bodies the SD15's).
+func camModeFamily(family string) string {
+	switch family {
+	case "SD1", "DPM":
+		return "SD1"
+	case "SD15", "SD14", "DP1", "DP2", "TRUEII":
+		return "SD15"
+	}
+	return ""
+}
+
+// camModeMatrix is the camera's matrix for colour mode name (camera
+// space), nil for Standard, an unknown mode or a camera without a table.
+func camModeMatrix(family, name string) *[9]float64 {
+	if name == "" || name == "Standard" {
+		return nil
+	}
+	cm, ok := camfModes[camModeFamily(family)][name]
+	if !ok {
+		return nil
+	}
+	m := cm.M
+	return &m
+}
+
+// CameraMode is one of a camera family's own colour modes: its name and
+// its contrast offset (SPP contrast units).
+type CameraMode struct {
+	Name     string
+	Contrast float64
+}
+
+// CameraModes is the colour modes the camera family ("SD1" or "SD15")
+// carries in its calibration, Standard first.
+func CameraModes(family string) []CameraMode {
+	order := []string{"Standard", "Vivid", "Neutral", "Portrait", "Landscape", "FCBlue"}
+	var out []CameraMode
+	for _, n := range order {
+		if cm, ok := camfModes[family][n]; ok {
+			out = append(out, CameraMode{n, cm.Contrast})
+		}
+	}
+	return out
+}
+
 // camfSunlight is a SunlightCCMatrix (WB-gained camera RGB to linear output
 // RGB; rows sum to 1) of one SD1 and one SD15 body. SPP applies the mode
 // matrix in camera space (combined = WB matrix × mode matrix), so in output

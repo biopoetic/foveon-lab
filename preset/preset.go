@@ -76,6 +76,12 @@ type Params struct {
 	// ("00", "0" … "5"; "" = 2).
 	Paper string `json:"paper,omitempty"`
 	Grade string `json:"grade,omitempty"`
+	// CamMode (Foveon Lab only; not in SPP's XML): one of the camera's own
+	// colour modes ("Vivid", "Neutral", "Portrait", "Landscape", "FCBlue";
+	// "" or "Standard" = none), applied as Sigma's calibration defines it
+	// (render/camf.go). SPP's preset ColorMode codes for these modes are not
+	// known reliably, so an SPP copy of such a preset is Standard.
+	CamMode string `json:"camMode,omitempty"`
 	// The colour darkroom (a colour negative on colour paper): the
 	// enlarger's colour head on top of the neutral filtration, Y/M/C in CC
 	// units (density × 100), and the print exposure in stops.

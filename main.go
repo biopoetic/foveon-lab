@@ -338,6 +338,12 @@ func (s *server) loadPresets() {
 		})
 	}
 	ps, errs := preset.Load(srcs...)
+	for i := range ps {
+		ps[i].Film = render.FilmFor(ps[i].Name)
+	}
+	// The film stocks first: each simulated film is a preset (filmpresets.go).
+	// and the camera's own colour modes.
+	ps = append(append(filmPresets(), cameraModePresets()...), ps...)
 	m := map[string]preset.Preset{}
 	for _, p := range ps {
 		m[p.ID] = p
@@ -347,9 +353,6 @@ func (s *server) loadPresets() {
 		es = append(es, e.Error())
 	}
 	s.pmu.Lock()
-	for i := range ps {
-		ps[i].Film = render.FilmFor(ps[i].Name)
-	}
 	s.presets, s.pByID, s.pErrs = ps, m, es
 	s.pmu.Unlock()
 	log.Printf("loaded %d presets (folder %q + built-in + SPP) with %d errors", len(ps), s.presetsDir, len(errs))
