@@ -262,7 +262,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         </div>
         <div class="grp" data-g="film"><div class="gh"><span class="chev">▾</span><span class="gt">Film &amp; Darkroom</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
           <div class="gb" id="g-film">
-        <div class="row"><div class="lab">Film stock <span class="dim" title="Foveon Lab only. Each film's RMS granularity from its maker's technical data (the document is in the tooltip). Films whose makers publish no RMS are listed but can't be picked, unless the darkroom has their characteristic curve (their grain then stays yours to set).">(grain from its data sheet)</span></div>
+        <div class="row"><div class="lab">Film stock <span class="dim" title="Foveon Lab only. Each film's RMS granularity from its maker's technical data (the document is in the tooltip). Films whose makers publish no RMS are listed but can't be picked, unless the darkroom has their characteristic curve or the film is a colour film modelled from its data (their grain then stays yours to set).">(grain from its data sheet)</span></div>
           <select id="filmStock" style="width:100%"><option value="">None (set the grain by hand)</option></select>
           <div class="src" id="filmSrc"></div>
           <div class="src" id="filmLink" style="display:none"></div>
@@ -816,7 +816,7 @@ async function filmsInit(){
   FILMS.forEach((f, i) => (byMaker[f.maker] ||= []).push([f, i]));
   $("#filmStock").insertAdjacentHTML("beforeend", Object.keys(byMaker).sort().map(m =>
     `<optgroup label="${esc(m)}">` + byMaker[m].map(([f, i]) =>
-      `<option value="${i}"${f.rms || f.curve ? "" : " disabled"} title="${esc(f.src)}">${esc(f.name)}${f.iso ? " · ISO " + f.iso : ""} · ${kinds[f.kind] || f.kind}${f.rms ? " · RMS " + f.rms : " · no published RMS"}${f.curve ? " · darkroom" : ""}</option>`).join("") + "</optgroup>").join(""));
+      `<option value="${i}"${f.rms || f.curve || f.color ? "" : " disabled"} title="${esc(f.src)}">${esc(f.name)}${f.iso ? " · ISO " + f.iso : ""} · ${kinds[f.kind] || f.kind}${f.rms ? " · RMS " + f.rms : " · no published RMS"}${f.curve ? " · darkroom" : ""}${f.color ? " · colour from data" : ""}</option>`).join("") + "</optgroup>").join(""));
   syncFilm();
 }
 // The printing papers (/api/papers).
