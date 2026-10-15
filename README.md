@@ -13,8 +13,8 @@ goals (with where we are) are in the [manifest](docs/MANIFEST.md).
 - **Presets from three places:** your own preset folder, a **built-in pack of ~290 SD1/SD15
   presets** (base, negative/slide/portrait film looks, cine, B&W, white balance, scene), and the
   presets you saved in SPP itself (Windows). Comma or dot decimals; identical duplicates folded.
-  Filter by camera, `[GROUP]` tag, file or name. The film-look names describe the look only and
-  are not affiliated with any film maker.
+  Filter by camera, `[GROUP]` tag, file or name. Film-look presets are named after the film
+  they imitate with SPP settings; the physically simulated films are in Film stock.
 - **Grid view:** one photo through every preset at once. Click a tile for a large view with sliders;
   `←`/`→` steps through presets, hold `O` for the camera original.
 - **Distinct looks:** many presets are near-copies (V2/V3 of one idea, SD1/SD15 twins). This renders
@@ -239,6 +239,12 @@ notices in `third_party/x3fuse-core/` apply to these files and ship with every r
 ## Legal
 
 MIT licensed — see [LICENSE](LICENSE).
+
+Film names (Kodak, Portra, Ektar, Gold, Ultramax, Ektachrome, Tri-X, T-Max; Fujifilm, Fujichrome,
+Fujicolor, Velvia, Provia, Astia, Superia; Ilford, HP5, FP4, Pan F, Delta, Multigrade; Agfa, APX and
+others) are trademarks of their owners. Foveon Lab is not affiliated with or endorsed by them: presets
+named after a film imitate its look with SPP settings, and Film stock simulates films from the makers'
+published data.
 
 Sigma, Foveon, X3F and Sigma Photo Pro are trademarks of SIGMA Corporation. This is an independent
 project, not affiliated with or endorsed by SIGMA Corporation. It reads the documented-by-the-community

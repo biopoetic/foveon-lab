@@ -3,7 +3,6 @@ package preset
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -165,13 +164,15 @@ func TestLoadSources(t *testing.T) {
 
 func TestBuiltinPack(t *testing.T) {
 	ps, errs := Load(Source{FS: Builtin()})
-	if len(errs) != 0 || len(ps) < 200 {
+	// One curated pack per family (one preset per distinct look), ~50 each.
+	if len(errs) != 0 || len(ps) < 80 {
 		t.Fatalf("built-in pack: %d presets, errors %v", len(ps), errs)
 	}
-	brands := regexp.MustCompile(`(?i)kodak|fuji|portra([^i]|$)|velvia|provia|astia|ektar|superia|ultramax|\bgold\b|gold\d`)
+	cams := map[string]int{}
 	for _, p := range ps {
-		if brands.MatchString(p.Name) {
-			t.Errorf("built-in preset carries a film brand: %q", p.Name)
-		}
+		cams[p.Camera]++
+	}
+	if cams["SD1"] < 40 || cams["SD15"] < 40 {
+		t.Errorf("presets per camera: %v", cams)
 	}
 }
