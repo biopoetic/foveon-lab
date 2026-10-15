@@ -495,3 +495,8 @@ func jpegRawFeatures(jpeg, raw *render.Linear) [3]float64 {
 	a, b := meanColourFeatures(jpeg), meanColourFeatures(raw)
 	return [3]float64{1, a[1] - b[1], a[2] - b[2]}
 }
+
+// FitMapping is the colour mapping (matrix + per-channel curves) that best
+// turns each pair's Raw rendering into its SPP one, as the white-balance
+// and colour-mode steps are fitted.
+func FitMapping(pairs []RawPair) render.RawCorrection { return fitRaw(pairs) }
