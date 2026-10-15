@@ -85,3 +85,25 @@ func cameraModePresets() []preset.Preset {
 	}
 	return out
 }
+
+// wbPresets: SPP's white balance settings as presets. Each develops the
+// raw with the camera's own calibrated balance for that light (SPP's
+// WhiteBalance codes 2–7, cameraWBName), so they match SPP on every photo
+// and every Foveon body; the same .xml means the same balance in SPP.
+func wbPresets() []preset.Preset {
+	var out []preset.Preset
+	for code := 2; code <= 7; code++ {
+		name := cameraWBName(code)
+		p := preset.Neutral()
+		p.WhiteBalance = code
+		out = append(out, preset.Preset{
+			ID:      idOf("wb|" + name),
+			Name:    "[WB] " + name,
+			Group:   "WB",
+			Source:  "White balance",
+			Section: "Color",
+			Params:  p,
+		})
+	}
+	return out
+}

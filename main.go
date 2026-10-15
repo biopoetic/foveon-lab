@@ -343,7 +343,7 @@ func (s *server) loadPresets() {
 	}
 	// The film stocks first: each simulated film is a preset (filmpresets.go).
 	// and the camera's own colour modes.
-	ps = append(append(filmPresets(), cameraModePresets()...), ps...)
+	ps = append(append(append(filmPresets(), cameraModePresets()...), wbPresets()...), ps...)
 	m := map[string]preset.Preset{}
 	for _, p := range ps {
 		m[p.ID] = p
@@ -440,6 +440,9 @@ func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
 		if f, ok := strings.CutPrefix(mode, "rawlayers:"); ok {
 			return rawLinearFor(ph, sourceW, "sRGB", f)
 		}
+		if f, ok := strings.CutPrefix(mode, "rawwb:"); ok {
+			return rawLinearFor(ph, sourceW, "sRGB", f)
+		}
 		if mode == "rawfast" {
 			return rawLinear(ph, sourceW, rawFastColor)
 		}
@@ -470,9 +473,12 @@ func (s *server) fullGeo(ph *Photo, mode string, g render.Geometry) (*render.Lin
 		var src *render.Linear
 		var err error
 		irFilter, ir := strings.CutPrefix(mode, "rawlayers:")
+		wbFilter, wb := strings.CutPrefix(mode, "rawwb:")
 		switch {
 		case ir:
 			src, err = rawLinearFor(ph, 0, "sRGB", irFilter)
+		case wb:
+			src, err = rawLinearFor(ph, 0, "sRGB", wbFilter)
 		case mode == "raw", mode == "rawfast":
 			src, err = rawLinear(ph, 0, "sRGB")
 		default:
@@ -599,6 +605,8 @@ func (s *server) renderBase(w http.ResponseWriter, r *http.Request) (*render.Bas
 		mode = "jpg"
 	} else if lf, ok := layersSource(ph, p); ok {
 		mode = "rawlayers:" + lf
+	} else if wf, ok := wbSource(ph, p); ok && mode == "raw" {
+		mode = "rawwb:" + wf
 	}
 	// The GPU preview keeps its Base until the source changes (a colour
 	// film develops the raw layers; the raw decode replaces the JPEG).
@@ -633,6 +641,7 @@ func (s *server) renderBase(w http.ResponseWriter, r *http.Request) (*render.Bas
 	if strings.HasPrefix(mode, "rawlayers:") {
 		comp = layerCompensation(comp)
 	}
+	comp.WBDeveloped = strings.HasPrefix(mode, "rawwb:")
 	return b, p, comp, true
 }
 
@@ -846,6 +855,7 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
 	var src *render.Linear
+	wbDeveloped := false
 	lf, ir := layersSource(ph, p)
 	if ir {
 		l, err := rawLinearFor(ph, 0, rawExportColor(denoise), lf)
@@ -857,7 +867,9 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 		// Accurate mode: export from the raw data even if the preview
 		// hasn't switched yet (this waits for the decode).
 		color := rawExportColor(denoise)
-		l, err := rawLinear(ph, 0, color)
+		wf, _ := wbSource(ph, p)
+		wbDeveloped = wf != ""
+		l, err := rawLinearFor(ph, 0, color, wf)
 		if err != nil {
 			return "", err
 		}
@@ -881,6 +893,7 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	if ir {
 		c = layerCompensation(c)
 	}
+	c.WBDeveloped = wbDeveloped
 	ext := ".jpg"
 	switch format {
 	case "tiff":

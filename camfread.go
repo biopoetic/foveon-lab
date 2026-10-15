@@ -79,7 +79,7 @@ func photoCC(ph *Photo) *[9]float64 {
 // output RGB — its CAMF white balance + colour matrix (x3f.WBTransform,
 // which also covers the SD9/SD10/SD14/DP1's camera-to-XYZ form).
 func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
-	return goDevelopFor(ph, false, false)
+	return goDevelopFor(ph, false, false, "")
 }
 
 // identity33 is the 3×3 identity.
@@ -92,7 +92,10 @@ var identity33 = [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
 // matrix), balanced for Sunlight (the IR looks are calibrated on it) or,
 // with sceneWB, for the photo's own white balance like the normal path
 // (colour film starts from the scene as the photographer balanced it).
-func goDevelopFor(ph *Photo, layers, sceneWB bool) (*x3f.CamImage, render.CamTransform, error) {
+// wbName, when set, is the camera white balance to develop with instead
+// (a preset's WhiteBalance code: SPP develops its codes with the camera's
+// own balance for that light — checked against SPP's exports).
+func goDevelopFor(ph *Photo, layers, sceneWB bool, wbName string) (*x3f.CamImage, render.CamTransform, error) {
 	var t render.CamTransform
 	f, err := x3f.Open(ph.path)
 	if err != nil {
@@ -110,6 +113,9 @@ func goDevelopFor(ph *Photo, layers, sceneWB bool) (*x3f.CamImage, render.CamTra
 	wb := developWB(c, ph)
 	if layers && !sceneWB {
 		wb = "Sunlight"
+	}
+	if wbName != "" {
+		wb = wbName
 	}
 	img, err := x3f.CameraLinear(raw, c, x3f.NewSpatialGain(c, f.Props, wb), wb)
 	if err != nil {
@@ -132,14 +138,14 @@ func goDevelopFor(ph *Photo, layers, sceneWB bool) (*x3f.CamImage, render.CamTra
 // that scale (binning already averages noise; the denoiser measures what
 // is left).
 func goLinear(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
-	return goLinearFor(ph, maxW, strength, nil, false)
+	return goLinearFor(ph, maxW, strength, nil, false, "")
 }
 
 // goLinearFor is goLinear, as the sensor's layers when irWhite is set
 // (clipped highlights then go to that white): Sunlight-balanced, or with
 // sceneWB balanced like the photo itself (goDevelopFor).
-func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool) (*render.Linear, error) {
-	img, t, err := goDevelopFor(ph, irWhite != nil, sceneWB)
+func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string) (*render.Linear, error) {
+	img, t, err := goDevelopFor(ph, irWhite != nil, sceneWB, wbName)
 	if err != nil {
 		return nil, err
 	}
@@ -309,3 +315,12 @@ func developWB(c *x3f.CAMF, ph *Photo) string {
 }
 
 var wbCamera = os.Getenv("FOVEON_WB") == "camera"
+
+// cameraWBName is the camera white balance SPP develops a preset's
+// WhiteBalance code with ("" = as shot): 2 Sunlight, 3 Shade, 4 Overcast,
+// 5 Incandescent, 6 Fluorescent, 7 Flash. Developing the raw with the
+// camera's own balance for that light reproduces SPP's exports of each
+// code to about the as-shot error (exports\wb-codes, two SD1 photos).
+func cameraWBName(code int) string {
+	return map[int]string{2: "Sunlight", 3: "Shade", 4: "Overcast", 5: "Incandescent", 6: "Fluorescent", 7: "Flash"}[code]
+}

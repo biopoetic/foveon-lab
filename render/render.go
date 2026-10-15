@@ -414,6 +414,9 @@ type Compensation struct {
 	// UndoGamma applies it to gamma-encoded values instead of linear.
 	Undo      *[9]float32
 	UndoGamma bool
+	// WBDeveloped: the base was developed with the preset's camera white
+	// balance already (cameraWBName), so the measured WB mapping is skipped.
+	WBDeveloped bool
 	// CC is the photo's camera-to-linear-sRGB colour matrix (white
 	// balanced camera layers in; rows sum to 1), for the layer filter;
 	// nil = no layer filter.
@@ -662,7 +665,9 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	// A colour film is the look: SPP's measured rendering doesn't apply.
 	if md := modelFor(c.Family); md != nil && op.cfilm == nil {
 		op.measured = true
-		op.wb = md.wbFor(p.WhiteBalance)
+		if !c.WBDeveloped {
+			op.wb = md.wbFor(p.WhiteBalance)
+		}
 		op.tint = [3]float32{float32(p.R * k), float32(p.G * k), float32(p.B * k)}
 		op.pre = md.newToneOp("Exposure", p.Exposure)
 		op.fillM = md.newFillOp(p.FillLight)

@@ -261,6 +261,12 @@ func rawLinear(ph *Photo, maxW int, color string) (*render.Linear, error) {
 // on top and clipped highlights going to that look's white.
 func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, error) {
 	var l *render.Linear
+	// "wb:<name>": the normal raw rendering, developed with that camera
+	// white balance (a preset's WhiteBalance code, cameraWBName).
+	wbName := ""
+	if w, ok := strings.CutPrefix(irFilter, "wb:"); ok {
+		wbName, irFilter = w, ""
+	}
 	irWhite := render.IRWhite(render.SensorGeneration(calibGroup(ph)), irFilter)
 	if irFilter == "film" {
 		// Colour film: the layers, clipped highlights to white.
@@ -269,7 +275,7 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 	layers := irWhite != nil
 	if goRaw {
 		var err error
-		if l, err = goLinearFor(ph, maxW, goStrength(color), irWhite, irFilter == "film"); err != nil {
+		if l, err = goLinearFor(ph, maxW, goStrength(color), irWhite, irFilter == "film", wbName); err != nil {
 			return nil, err
 		}
 	} else {
@@ -314,6 +320,16 @@ func layersSource(ph *Photo, p preset.Params) (string, bool) {
 		return "film", true
 	}
 	return "", false
+}
+
+// wbSource is the raw development for p's camera white balance
+// ("wb:Shade" etc.), when the native decoder can develop ph with it.
+func wbSource(ph *Photo, p preset.Params) (string, bool) {
+	n := cameraWBName(p.WhiteBalance)
+	if n == "" || !goRaw || ph.Kind != "x3f" || ph.Unsupported != "" || !rawDecodable(ph.props) {
+		return "", false
+	}
+	return "wb:" + n, true
 }
 
 // layerCompensation is the compensation for a render from the layers: the
