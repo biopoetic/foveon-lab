@@ -72,6 +72,10 @@ type Params struct {
 	Developer string  `json:"developer,omitempty"`
 	DevTime   float64 `json:"devTime,omitempty"`
 	Push      float64 `json:"push,omitempty"`
+	// Paper: a printing paper from the library ("" = a scan), at Grade
+	// ("00", "0" … "5"; "" = 2).
+	Paper string `json:"paper,omitempty"`
+	Grade string `json:"grade,omitempty"`
 }
 
 const (

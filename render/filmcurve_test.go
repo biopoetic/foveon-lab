@@ -132,3 +132,30 @@ func TestFilmWithLensFilter(t *testing.T) {
 		t.Errorf("red filter: sky %.3f -> %.3f, red %.3f -> %.3f", sky0, sky1, rose0, rose1)
 	}
 }
+
+// HP5 printed on Multigrade: mid-grey prints 18% grey on every grade; a
+// harder grade darkens the shadows and lifts the highlights; the paper's
+// D-max (2.05) is the black, ~1%.
+func TestPaperGrades(t *testing.T) {
+	tone := func(g string) *filmTone {
+		return newFilmTone(preset.Params{Film: "Ilford HP5 Plus", Paper: "Ilford Multigrade IV RC", Grade: g})
+	}
+	soft, normal, hard := tone("00"), tone("2"), tone("5")
+	for _, tt := range []*filmTone{soft, normal, hard} {
+		if g := tt.at(0.18); math.Abs(float64(g)-0.18) > 0.01 {
+			t.Errorf("mid-grey prints %.4f", g)
+		}
+	}
+	for _, y := range []float32{0.005, 0.03, 0.18, 0.6, 2} {
+		t.Logf("scene %.3f: grade 00 %.4f, grade 2 %.4f, grade 5 %.4f", y, soft.at(y), normal.at(y), hard.at(y))
+	}
+	if !(hard.at(0.03) < normal.at(0.03) && normal.at(0.03) < soft.at(0.03)) {
+		t.Error("shadows don't darken with grade")
+	}
+	if !(hard.at(0.6) > normal.at(0.6) && normal.at(0.6) > soft.at(0.6)) {
+		t.Error("highlights don't lift with grade")
+	}
+	if b := normal.at(0.0005); b < 0.005 || b > 0.02 {
+		t.Errorf("black %.4f, want ~0.009 (D-max 2.05)", b)
+	}
+}

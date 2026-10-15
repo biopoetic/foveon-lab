@@ -1442,6 +1442,7 @@ func main() {
 	mux.HandleFunc("/api/gpu/recipe", s.handleGPURecipe)
 	mux.HandleFunc("/api/export", s.handleExport)
 	mux.HandleFunc("/api/films", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, render.Films()) })
+	mux.HandleFunc("/api/papers", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, render.Papers()) })
 	mux.HandleFunc("/api/reveal", s.handleReveal)
 	mux.HandleFunc("/api/agent/status", s.handleAISettings)
 	mux.HandleFunc("/api/agent", s.handleAgent)

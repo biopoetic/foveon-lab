@@ -79,6 +79,42 @@ type FilmCurve struct {
 	Developers []Developer `json:"developers"`
 }
 
+// Paper is a printing paper's characteristic curves by grade (relative
+// log exposure -> reflection density, base included).
+type Paper struct {
+	Paper  string                  `json:"paper"`
+	Src    string                  `json:"src"`
+	URL    string                  `json:"url"`
+	Grades map[string][][2]float64 `json:"grades"`
+}
+
+var papers = sync.OnceValue(func() map[string]*Paper {
+	var d struct {
+		Papers []*Paper `json:"papers"`
+	}
+	if err := json.Unmarshal(filmCurvesJSON, &d); err != nil {
+		panic("filmcurves.json: " + err.Error())
+	}
+	m := map[string]*Paper{}
+	for _, p := range d.Papers {
+		m[p.Paper] = p
+	}
+	return m
+})
+
+// Papers is the library's printing papers.
+func Papers() []*Paper {
+	var out []*Paper
+	for _, p := range papers() {
+		out = append(out, p)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Paper < out[j].Paper })
+	return out
+}
+
+// PaperGrades is the order of the grades.
+var PaperGrades = []string{"00", "0", "1", "2", "3", "4", "5"}
+
 var filmCurves = sync.OnceValue(func() map[string]*FilmCurve {
 	var d struct {
 		Curves []*FilmCurve `json:"curves"`
@@ -303,17 +339,48 @@ func newFilmTone(p preset.Params) *filmTone {
 	density := c.Density(dv.Gamma)
 	fog := density(c.LgH[0])
 	dGrey := density(lgGrey)
-	pos := func(d float64) float64 { return math.Pow(10, (d-dGrey)/gRef) }
-	black := pos(fog)
-	norm := 0.18 / (pos(dGrey) - black)
+	printY := func(d float64) float64 { return 0 }
+	if pp, ok := papers()[p.Paper]; ok {
+		// The print: the enlarger's light through the negative (paper
+		// exposure ∝ 10^-D), the printer exposing so that the negative's
+		// mid-grey prints as an 18% grey (reflection density 0.745); the
+		// paper's curve for the grade; the light the print reflects,
+		// relative to the paper's white.
+		g := pp.Grades[p.Grade]
+		if g == nil {
+			g = pp.Grades["2"]
+		}
+		dmin := g[0][1]
+		for _, q := range g {
+			dmin = math.Min(dmin, q[1])
+		}
+		lgE := func(D float64) float64 { // the log exposure where the paper reaches density D
+			for i := 1; i < len(g); i++ {
+				if g[i][1] >= D {
+					t := (D - g[i-1][1]) / math.Max(1e-9, g[i][1]-g[i-1][1])
+					return g[i-1][0] + t*(g[i][0]-g[i-1][0])
+				}
+			}
+			return g[len(g)-1][0]
+		}
+		k := lgE(dmin+0.745) + dGrey
+		printY = func(d float64) float64 { return math.Pow(10, -(pinterp(g, k-d) - dmin)) }
+	} else {
+		// No paper (a scan): the film base prints black and the grey grey;
+		// in between the print's log brightness follows the density at
+		// 1/gamma_ref.
+		pos := func(d float64) float64 { return math.Pow(10, (d-dGrey)/gRef) }
+		black := pos(fog)
+		norm := 0.18 / (pos(dGrey) - black)
+		printY = func(d float64) float64 { return (pos(d) - black) * norm }
+	}
 	t := &filmTone{scale: float32(filmToneN / math.Pow(filmToneMax, 0.25))}
 	for i := 0; i <= filmToneN; i++ {
 		y := math.Pow(float64(i)/float64(t.scale), 4)
 		if y <= 0 {
 			continue
 		}
-		d := density(lgGrey + math.Log10(y/0.18))
-		t.lut[i] = float32((pos(d) - black) * norm)
+		t.lut[i] = float32(printY(density(lgGrey + math.Log10(y/0.18))))
 	}
 	return t
 }
