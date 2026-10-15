@@ -1,5 +1,9 @@
 # Accuracy roadmap: from "same look" to "same pixels"
 
+> The project's mission, principles and current goals are in the [manifest](MANIFEST.md). This file
+> is the detailed record of the "match SPP" work; the "Where we are" table below is from
+> 13 October 2026 (since then: SD1 3.97, DP Merrill 4.21, SD15 6.03 held out, all from the raw base).
+
 Where Foveon Lab's preview stands against Sigma Photo Pro 6.9, and what each further step would
 take. All numbers are mean absolute difference per pixel and channel, 0–255, measured on photos the
 fitted part did **not** see (held out). SPP itself repeats to within 0.5.

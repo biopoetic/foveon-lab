@@ -1,12 +1,15 @@
 # Foveon Lab
 
-Try Sigma Photo Pro (SPP) presets on your Sigma SD1 / SD15 **X3F** files, side by side, in the browser —
-without importing, clicking and waiting in SPP for every preset.
+Get the most out of your Sigma Foveon **X3F** files, from any generation, without Sigma Photo Pro
+(SPP): first SPP's own look, then more than SPP can give — presets side by side, a native raw
+decoder, DNG export, and film and darkroom emulation from the makers' data. Everything is measured
+against SPP and from first principles; the mission, principles and goals (with where we are) are in
+the [manifest](docs/MANIFEST.md).
 
 ![Foveon Lab: one SD1 Merrill photo rendered through ten SPP presets side by side](docs/screenshot.jpg)
 
-- Scans your folders for `.X3F` files and reads the **full-size JPEG embedded in each X3F**
-  (SD1 Merrill: 4704×3136, SD15: 2640×1760). No Foveon raw decoding needed.
+- Scans your folders for `.X3F` files and shows each one at once from the **full-size JPEG embedded
+  in it**, then from its **raw data** (native Go decoder for every generation, SD9 to Quattro).
 - **Presets from three places:** your own preset folder, a **built-in pack of ~290 SD1/SD15
   presets** (base, negative/slide/portrait film looks, cine, B&W, white balance, scene), and the
   presets you saved in SPP itself (Windows). Comma or dot decimals; identical duplicates folded.
@@ -138,12 +141,12 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
 - **Where the preview starts.** The camera's own JPEG already has the in-camera colour mode applied
   (Vivid, FC Blue…), so even before any preset it differs from SPP's neutral rendering — measured on
   13 photos: about 17–21/255 on average, up to 40 for FC Blue shots. "Compensate camera JPEG" undoes
-  part of that from the X3F metadata. **Accurate** (on by default) does better for **SD1 Merrill**
-  files: it starts from the raw data (decoded natively, no external tools) mapped onto SPP's neutral
-  look — **7.4/255 on photos the mapping was not fitted on**, vs 20.8 for the camera JPEG. The first
-  view of a photo shows the JPEG at once and swaps in the accurate preview when the raw decode is
-  done (~10–25 s, cached). For SD15 the same approach measured *worse* than the camera JPEG
-  (22.7 vs 17.0), so SD15 stays on the JPEG. A damaged embedded JPEG falls back to the raw data.
+  part of that from the X3F metadata. **Accurate** (on by default) does better for **SD1 Merrill, DP
+  Merrill and SD15** files: it starts from the raw data (decoded natively, no external tools) mapped onto SPP's neutral
+  look — on photos the mapping was not fitted on: **SD1 3.97/255, DP Merrill 4.21, SD15 6.03**, vs
+  ~17–21 for the camera JPEG. The first view of a photo shows the JPEG at once and swaps in the
+  accurate preview when the raw decode is done (cached). A damaged embedded JPEG falls back to the
+  raw data.
 - **ColorMode codes**: all measured in SPP. 4 = Standard, 6 = Portrait, 7 = Landscape; 5 and 8 are
   two further looks (8 is more saturated with hue shifts); 0–3 and 9–12 all render like one default
   mode. Each is emulated within ~1–2/255.
