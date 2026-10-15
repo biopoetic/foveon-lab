@@ -184,7 +184,7 @@ func newColorNeg(d *colorNegData, pp *colorPaperData, sensor string) *colorFilm 
 	sp := spectral()
 	// 1. Sensor layers -> the negative's layer exposures (as a slide).
 	f := &colorFilm{hWhite: 10 / d.ISO / sensorGrey}
-	if !fitLayerMatrix(f, S, d.Sens) {
+	if !fitLayerMap(f, S, d.Sens) {
 		return nil
 	}
 	for k, n := range [3]string{"R", "G", "B"} {
@@ -431,55 +431,3 @@ func newColorNeg(d *colorNegData, pp *colorPaperData, sensor string) *colorFilm 
 	return f
 }
 
-// fitLayerMatrix fits f.m: the sensor's white-balanced layers (sensitivities
-// S) -> the film's layer exposures (log sensitivities sens R, G, B), least
-// squares over the reflectance set in daylight, both normalised by white.
-func fitLayerMatrix(f *colorFilm, S [][3]float64, sens map[string][][2]float64) bool {
-	sp := spectral()
-	var fs [][3]float64
-	for _, l := range sp.lams {
-		fs = append(fs, [3]float64{sensAt(sens["R"], l), sensAt(sens["G"], l), sensAt(sens["B"], l)})
-	}
-	var ws, wf [3]float64
-	for i := range sp.lams {
-		for k := 0; k < 3; k++ {
-			ws[k] += S[i][k] * sp.illum[i]
-			wf[k] += fs[i][k] * sp.illum[i]
-		}
-	}
-	var ata, atb [3][3]float64
-	for _, r := range sp.refl {
-		var p, h [3]float64
-		for i := range sp.lams {
-			e := sp.illum[i] * r[i]
-			for k := 0; k < 3; k++ {
-				p[k] += S[i][k] * e
-				h[k] += fs[i][k] * e
-			}
-		}
-		for k := 0; k < 3; k++ {
-			p[k] /= ws[k]
-			h[k] /= wf[k]
-		}
-		for a := 0; a < 3; a++ {
-			for b := 0; b < 3; b++ {
-				ata[a][b] += p[a] * p[b]
-				atb[a][b] += h[a] * p[b]
-			}
-		}
-	}
-	inv, ok := invert3x3([9]float64{ata[0][0], ata[0][1], ata[0][2], ata[1][0], ata[1][1], ata[1][2], ata[2][0], ata[2][1], ata[2][2]})
-	if !ok {
-		return false
-	}
-	for a := 0; a < 3; a++ {
-		for b := 0; b < 3; b++ {
-			var v float64
-			for k := 0; k < 3; k++ {
-				v += atb[a][k] * inv[k*3+b]
-			}
-			f.m[a*3+b] = float32(v)
-		}
-	}
-	return true
-}

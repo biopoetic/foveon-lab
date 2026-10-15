@@ -104,7 +104,7 @@ type GPURecipe struct {
 // GPUColorFilm is a colour film's per-render part.
 type GPUColorFilm struct {
 	Key    string     `json:"key"`
-	M      [9]float32 `json:"m"`   // sensor layers -> film exposures
+	RP     [18]float32 `json:"rp"`  // sensor layers -> film exposures (colorFilm.rp)
 	Inv    [9]float32 `json:"inv"` // linear sRGB -> sensor layers
 	HWhite float32    `json:"hWhite"`
 }
@@ -172,7 +172,7 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 		gpuCFMu.Lock()
 		gpuCFKeys[key] = f
 		gpuCFMu.Unlock()
-		r.ColorFilm = &GPUColorFilm{Key: key, M: f.m, Inv: op.cfInv, HWhite: float32(f.hWhite)}
+		r.ColorFilm = &GPUColorFilm{Key: key, RP: f.rp, Inv: op.cfInv, HWhite: float32(f.hWhite)}
 	}
 	if op.tone != nil && !op.measured {
 		r.FilmTone, r.FilmToneScale = op.tone.lut[:], op.tone.scale

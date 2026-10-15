@@ -22,7 +22,7 @@ func TestColorFilmSlides(t *testing.T) {
 		if f == nil {
 			t.Fatalf("no model for %s", key)
 		}
-		t.Logf("%s: layers -> film %.3f; reading wavelengths R/G/B %.0f nm, grey error %.3f", key, f.m, f.readLam, f.greyRMS)
+		t.Logf("%s: layers -> film %.3f; reading wavelengths R/G/B %.0f nm, grey error %.3f", key, f.rp, f.readLam, f.greyRMS)
 		for _, g := range []float32{0.01, 0.05, 0.128, 0.5, 1, 2} {
 			r, gg, b := f.apply(g, g, g)
 			t.Logf("  grey %.2f -> %.4f %.4f %.4f", g, r, gg, b)

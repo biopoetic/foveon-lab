@@ -30,7 +30,7 @@ float dec(float x){ x = clamp(x, 0., 1.); return x <= 0.04045 ? x / 12.92 : pow(
 uniform sampler2D uRGB, uAux, uLut, uFilm, uCFCurve;
 uniform highp sampler3D uCFLut;
 uniform bool uCF;
-uniform vec3 uCFM[3];   // the film matrix times the inverse colour matrix (one product)
+uniform vec3 uCFInv[3], uCFA[3], uCFB[3];   // linear sRGB -> layers; root-polynomial (r,g,b) and (√rg,√gb,√rb) rows
 uniform float uCFH, uCFDmax, uCFN, uCFLgMin, uCFLgMax, uCFCurveN;
 uniform int uW, uH, uFlipOut;
 uniform bool uUndo, uUndoGamma, uMeasured, uMono, uFilmTone, uWB, uWBTaste, uMM, uMMTaste, uFillABCK, uFillLocal, uGrainMono;
@@ -85,7 +85,14 @@ float cfCurve(int k, float lg){
   return a + (b - a) * (f - float(i));
 }
 vec3 colorFilm(vec3 c){
-  vec3 h = mul(uCFM, c) * uCFH;
+  // One mul per statement: ANGLE (Direct3D) got a nested
+  // mul(a, mul(b, c)) of uniform arrays wrong.
+  vec3 l = mul(uCFInv, c);
+  vec3 q = max(l, 0.);
+  vec3 s = sqrt(vec3(q.r * q.g, q.g * q.b, q.r * q.b));
+  vec3 ha = mul(uCFA, l);
+  vec3 hb = mul(uCFB, s);
+  vec3 h = (ha + hb) * uCFH;
   vec3 D = vec3(cfCurve(0, log(max(h.r, 1e-6)) / log(10.)), cfCurve(1, log(max(h.g, 1e-6)) / log(10.)), cfCurve(2, log(max(h.b, 1e-6)) / log(10.)));
   vec3 t = (clamp(D / uCFDmax, 0., 1.) * (uCFN - 1.) + 0.5) / uCFN;
   vec3 v = texture(uCFLut, vec3(t.b, t.g, t.r)).rgb;   // x = D_B (fastest), y = D_G, z = D_R
@@ -318,11 +325,9 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     const cf = r.colorFilm && cfCache.get(r.colorFilm.key);
     gl.uniform1i(u.uCF, cf ? 1 : 0);
     if (cf){
-      // One matrix, multiplied here: ANGLE (Direct3D) got the nested
-      // mul(uCFM, mul(uCFInv, c)) wrong — both calls saw the same array.
-      const a = r.colorFilm.m, b = r.colorFilm.inv || [1, 0, 0, 0, 1, 0, 0, 0, 1], ab = [];
-      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) ab.push(a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j]);
-      gl.uniform3fv(u.uCFM, ab); gl.uniform1f(u.uCFH, r.colorFilm.hWhite);
+      const rp = r.colorFilm.rp;
+      gl.uniform3fv(u.uCFInv, rows3(r.colorFilm.inv)); gl.uniform3fv(u.uCFA, rp.slice(0, 9)); gl.uniform3fv(u.uCFB, rp.slice(9, 18));
+      gl.uniform1f(u.uCFH, r.colorFilm.hWhite);
       gl.uniform1f(u.uCFDmax, cf.hdr.dmax); gl.uniform1f(u.uCFN, cf.hdr.n); gl.uniform1f(u.uCFLgMin, cf.hdr.lgMin); gl.uniform1f(u.uCFLgMax, cf.hdr.lgMax); gl.uniform1f(u.uCFCurveN, cf.hdr.curveN);
       gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_3D, cf.lut); gl.uniform1i(u.uCFLut, 4);
       bind(P, "uCFCurve", 5, cf.curve);

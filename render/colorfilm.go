@@ -131,7 +131,10 @@ const (
 
 // colorFilm is one film prepared for one sensor generation.
 type colorFilm struct {
-	m      [9]float32 // sensor layers -> film layer exposures (R, G, B), white = 1
+	// rp: sensor layers -> film layer exposures (R, G, B), white = 1, a
+	// root-polynomial (fitLayerMap): rows 0-8 times (r, g, b), rows 9-17
+	// times (√rg, √gb, √rb).
+	rp     [18]float32
 	hWhite float64    // lux·s at the sensor's saturation (layer value 1)
 	curve  [3][][2]float64
 	lut    []float32 // cfLutN^3 × 3: -log10 of linear sRGB, over (D_R, D_G, D_B)
@@ -196,52 +199,10 @@ func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 	}
 	sp := spectral()
 	names := [3]string{"R", "G", "B"}
-	// 1. Sensor layers -> film exposures, both normalised by their white.
-	var fs [][3]float64
-	for _, l := range sp.lams {
-		fs = append(fs, [3]float64{sensAt(d.Sens["R"], l), sensAt(d.Sens["G"], l), sensAt(d.Sens["B"], l)})
-	}
-	var ws, wf [3]float64
-	for i := range sp.lams {
-		for k := 0; k < 3; k++ {
-			ws[k] += S[i][k] * sp.illum[i]
-			wf[k] += fs[i][k] * sp.illum[i]
-		}
-	}
-	var ata, atb [3][3]float64
-	for _, r := range sp.refl {
-		var p, h [3]float64
-		for i := range sp.lams {
-			e := sp.illum[i] * r[i]
-			for k := 0; k < 3; k++ {
-				p[k] += S[i][k] * e
-				h[k] += fs[i][k] * e
-			}
-		}
-		for k := 0; k < 3; k++ {
-			p[k] /= ws[k]
-			h[k] /= wf[k]
-		}
-		for a := 0; a < 3; a++ {
-			for b := 0; b < 3; b++ {
-				ata[a][b] += p[a] * p[b]
-				atb[a][b] += h[a] * p[b]
-			}
-		}
-	}
-	inv, ok := invert3x3([9]float64{ata[0][0], ata[0][1], ata[0][2], ata[1][0], ata[1][1], ata[1][2], ata[2][0], ata[2][1], ata[2][2]})
-	if !ok {
-		return nil
-	}
+	// 1. Sensor layers -> film exposures (fitLayerMap).
 	f := &colorFilm{hWhite: 10 / d.ISO / sensorGrey}
-	for a := 0; a < 3; a++ {
-		for b := 0; b < 3; b++ {
-			var v float64
-			for k := 0; k < 3; k++ {
-				v += atb[a][k] * inv[k*3+b]
-			}
-			f.m[a*3+b] = float32(v)
-		}
+	if !fitLayerMap(f, S, d.Sens) {
+		return nil
 	}
 	for k, n := range names {
 		f.curve[k] = d.Char[n]
@@ -369,11 +330,22 @@ func (f *colorFilm) density(k int, lg float64) float64 { return pinterp(f.curve[
 // metered exposure: 1 = a white of reflectance 1) to the slide's linear
 // sRGB.
 func (f *colorFilm) apply(r, g, b float32) (float32, float32, float32) {
-	m := &f.m
+	x := rpFeatures(r, g, b)
+	var h [3]float64
+	for k := 0; k < 3; k++ {
+		for j := 0; j < 3; j++ {
+			h[k] += float64(f.rp[k*3+j]*x[j] + f.rp[9+k*3+j]*x[3+j])
+		}
+	}
+	return f.fromExposure(h)
+}
+
+// fromExposure is the film's linear sRGB for its layer exposures h (white
+// = 1): each layer's curve, then the table.
+func (f *colorFilm) fromExposure(h [3]float64) (float32, float32, float32) {
 	var D [3]float64
 	for k := 0; k < 3; k++ {
-		h := float64(m[k*3]*r+m[k*3+1]*g+m[k*3+2]*b) * f.hWhite
-		D[k] = f.density(k, math.Log10(math.Max(h, 1e-6)))
+		D[k] = f.density(k, math.Log10(math.Max(h[k]*f.hWhite, 1e-6)))
 	}
 	// Trilinear in the table.
 	var idx [3]int
