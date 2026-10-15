@@ -1,10 +1,10 @@
 # Foveon Lab
 
-Get the most out of your Sigma Foveon **X3F** files, from any generation, without Sigma Photo Pro
-(SPP): first SPP's own look, then more than SPP can give — presets side by side, a native raw
-decoder, DNG export, and film and darkroom emulation from the makers' data. Everything is measured
-against SPP and from first principles; the mission, principles and goals (with where we are) are in
-the [manifest](docs/MANIFEST.md).
+For Sigma Foveon **X3F** files of every generation: **match Sigma Photo Pro (SPP), then outmatch
+it**, and a **complete film simulator** — films, developers and papers from the makers' own data,
+on the sensor that comes closest to film. General editing is left to other tools through the DNG
+export. Everything is measured against SPP and from first principles; the mission, principles and
+goals (with where we are) are in the [manifest](docs/MANIFEST.md).
 
 ![Foveon Lab: one SD1 Merrill photo rendered through ten SPP presets side by side](docs/screenshot.jpg)
 
