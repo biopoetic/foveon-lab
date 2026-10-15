@@ -576,6 +576,10 @@ type pixOp struct {
 	satMeasure float64
 
 	tone *filmTone // a black-and-white film's characteristic curve
+	// A colour film (colorfilm.go): linear sRGB -> sensor layers (cfInv,
+	// the inverse of the camera matrix) -> the film -> linear sRGB.
+	cfilm *colorFilm
+	cfInv [9]float32
 
 	// The measured tone steps before / after Fill Light (pre includes the
 	// film's curve), baked once per render: they depend on brightness only.
@@ -645,7 +649,18 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	}
 	op.setLayerFilter(p, c)
 	op.tone = newFilmTone(p)
-	if md := modelFor(c.Family); md != nil {
+	if c.CC != nil {
+		if f := colorFilmFor(p.Film, c.Sensor); f != nil {
+			if inv, ok := invert3x3(*c.CC); ok {
+				op.cfilm = f
+				for i, v := range inv {
+					op.cfInv[i] = float32(v)
+				}
+			}
+		}
+	}
+	// A colour film is the look: SPP's measured rendering doesn't apply.
+	if md := modelFor(c.Family); md != nil && op.cfilm == nil {
 		op.measured = true
 		op.wb = md.wbFor(p.WhiteBalance)
 		op.tint = [3]float32{float32(p.R * k), float32(p.G * k), float32(p.B * k)}
@@ -909,6 +924,10 @@ func (op *pixOp) apply(r, g, bl, m, da, db float32) (float32, float32, float32) 
 		return op.applyMeasured(r, g, bl, m, da, db)
 	}
 	r, g, bl = r*op.cr, g*op.cg, bl*op.cb
+	if f := op.cfilm; f != nil {
+		m := &op.cfInv
+		r, g, bl = f.apply(m[0]*r+m[1]*g+m[2]*bl, m[3]*r+m[4]*g+m[5]*bl, m[6]*r+m[7]*g+m[8]*bl)
+	}
 
 	if op.fill != 0 {
 		m := min(1, m*op.maskScale)

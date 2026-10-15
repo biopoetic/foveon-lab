@@ -594,8 +594,8 @@ func (s *server) renderBase(w http.ResponseWriter, r *http.Request) (*render.Bas
 	mode := s.sourceMode(ph)
 	if q.Get("src") == "camera" && !ph.jpegBroken.Load() {
 		mode = "jpg"
-	} else if irLayers(ph, p) {
-		mode = "rawlayers:" + p.Filter
+	} else if lf, ok := layersSource(ph, p); ok {
+		mode = "rawlayers:" + lf
 	}
 	// nogeo=1: the whole (turned) frame, for the crop editor.
 	g := geometryOf(ph)
@@ -840,9 +840,9 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
 	var src *render.Linear
-	ir := irLayers(ph, p)
+	lf, ir := layersSource(ph, p)
 	if ir {
-		l, err := rawLinearFor(ph, 0, rawExportColor(denoise), p.Filter)
+		l, err := rawLinearFor(ph, 0, rawExportColor(denoise), lf)
 		if err != nil {
 			return "", err
 		}

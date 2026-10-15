@@ -262,6 +262,10 @@ func rawLinear(ph *Photo, maxW int, color string) (*render.Linear, error) {
 func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, error) {
 	var l *render.Linear
 	irWhite := render.IRWhite(render.SensorGeneration(calibGroup(ph)), irFilter)
+	if irFilter == "film" {
+		// Colour film: the layers, clipped highlights to white.
+		irWhite = &[3]float64{1, 1, 1}
+	}
 	layers := irWhite != nil
 	if goRaw {
 		var err error
@@ -296,6 +300,20 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 // it the sensor layers it models.
 func irLayers(ph *Photo, p preset.Params) bool {
 	return strings.HasPrefix(p.Filter, "ir-") && goRaw && ph.Kind == "x3f" && ph.Unsupported == "" && rawDecodable(ph.props)
+}
+
+// layersSource says whether p renders from the sensor's own layers rather
+// than the SPP look, and which: an IR look (its filter name), or a colour
+// film ("film": its physics starts from the scene, white-balanced for
+// daylight, not from SPP's rendering).
+func layersSource(ph *Photo, p preset.Params) (string, bool) {
+	if irLayers(ph, p) {
+		return p.Filter, true
+	}
+	if render.IsColorFilm(p.Film) && goRaw && ph.Kind == "x3f" && ph.Unsupported == "" && rawDecodable(ph.props) {
+		return "film", true
+	}
+	return "", false
 }
 
 // layerCompensation is the compensation for a render from the layers: the

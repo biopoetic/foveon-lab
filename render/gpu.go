@@ -109,6 +109,9 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 	if p.Halation > 0 {
 		r.CPU = "halation"
 	}
+	if op.cfilm != nil {
+		r.CPU = "colour film"
+	}
 	if op.tone != nil && !op.measured {
 		r.FilmTone, r.FilmToneScale = op.tone.lut[:], op.tone.scale
 	}
