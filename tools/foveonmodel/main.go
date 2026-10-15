@@ -522,6 +522,18 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("%s: Sunlight colour matrix %.3f\n", f.Props["CAMMODEL"], cc)
+	if os.Getenv("TRANSFER") != "" {
+		transferMain(c, os.Getenv("GEN"))
+		return
+	}
+	if os.Getenv("CALIBFIT") != "" {
+		calibFitMain(c, os.Getenv("GEN"))
+		return
+	}
+	if os.Getenv("CAMFWB") != "" {
+		camfWBMain(c)
+		return
+	}
 	if mp := os.Getenv("MEASURED"); mp != "" {
 		measuredMain(mp, os.Getenv("GEN"), cc, os.Getenv("IRFIT") != "")
 		return
