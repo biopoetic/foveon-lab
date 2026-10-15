@@ -14,7 +14,7 @@
         <ColorAdjustR>0,96</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,94</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -70,7 +70,7 @@
         <ColorAdjustR>0,95</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,80</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>6</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -126,7 +126,7 @@
         <ColorAdjustR>0,96</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,84</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>6</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -182,7 +182,7 @@
         <ColorAdjustR>0,94</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,78</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>6</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -238,7 +238,7 @@
         <ColorAdjustR>0,94</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,83</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -294,7 +294,7 @@
         <ColorAdjustR>0,93</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,80</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -350,7 +350,7 @@
         <ColorAdjustR>0,98</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,90</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>6</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -406,7 +406,7 @@
         <ColorAdjustR>0,97</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,88</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>6</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -462,7 +462,7 @@
         <ColorAdjustR>1,00</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,86</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>6</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -518,7 +518,7 @@
         <ColorAdjustR>0,90</ColorAdjustR>
         <ColorAdjustG>1,05</ColorAdjustG>
         <ColorAdjustB>0,95</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>6</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -574,7 +574,7 @@
         <ColorAdjustR>0,91</ColorAdjustR>
         <ColorAdjustG>1,04</ColorAdjustG>
         <ColorAdjustB>0,96</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>6</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -630,7 +630,7 @@
         <ColorAdjustR>0,89</ColorAdjustR>
         <ColorAdjustG>1,06</ColorAdjustG>
         <ColorAdjustB>0,96</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -686,7 +686,7 @@
         <ColorAdjustR>0,92</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>1,05</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>7</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -742,7 +742,7 @@
         <ColorAdjustR>0,96</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,98</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>7</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -798,7 +798,7 @@
         <ColorAdjustR>0,90</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>1,10</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>7</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -854,7 +854,7 @@
         <ColorAdjustR>0,95</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>1,00</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -910,7 +910,7 @@
         <ColorAdjustR>0,98</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,94</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>6</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -966,7 +966,7 @@
         <ColorAdjustR>0,93</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>1,03</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -1022,7 +1022,7 @@
         <ColorAdjustR>0,93</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,97</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -1078,7 +1078,7 @@
         <ColorAdjustR>0,97</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,90</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -1134,7 +1134,7 @@
         <ColorAdjustR>0,91</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>1,02</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -1190,7 +1190,7 @@
         <ColorAdjustR>0,94</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>0,98</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -1246,7 +1246,7 @@
         <ColorAdjustR>1</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>1</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -1302,7 +1302,7 @@
         <ColorAdjustR>1</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>1</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
@@ -1358,7 +1358,7 @@
         <ColorAdjustR>1</ColorAdjustR>
         <ColorAdjustG>1</ColorAdjustG>
         <ColorAdjustB>1</ColorAdjustB>
-        <WhiteBalance>6</WhiteBalance>
+        <WhiteBalance>1</WhiteBalance>
         <ColorTemp>5000</ColorTemp>
         <ColorMode>4</ColorMode>
         <HiglhightCorrection>1</HiglhightCorrection>
