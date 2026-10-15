@@ -269,7 +269,7 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 	layers := irWhite != nil
 	if goRaw {
 		var err error
-		if l, err = goLinearFor(ph, maxW, goStrength(color), irWhite); err != nil {
+		if l, err = goLinearFor(ph, maxW, goStrength(color), irWhite, irFilter == "film"); err != nil {
 			return nil, err
 		}
 	} else {
@@ -304,8 +304,8 @@ func irLayers(ph *Photo, p preset.Params) bool {
 
 // layersSource says whether p renders from the sensor's own layers rather
 // than the SPP look, and which: an IR look (its filter name), or a colour
-// film ("film": its physics starts from the scene, white-balanced for
-// daylight, not from SPP's rendering).
+// film ("film": its physics starts from the scene, white-balanced as the
+// photo is — camera Auto, as SPP — not from SPP's rendering).
 func layersSource(ph *Photo, p preset.Params) (string, bool) {
 	if irLayers(ph, p) {
 		return p.Filter, true

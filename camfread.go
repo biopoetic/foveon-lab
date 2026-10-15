@@ -79,7 +79,7 @@ func photoCC(ph *Photo) *[9]float64 {
 // output RGB — its CAMF white balance + colour matrix (x3f.WBTransform,
 // which also covers the SD9/SD10/SD14/DP1's camera-to-XYZ form).
 func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
-	return goDevelopFor(ph, false)
+	return goDevelopFor(ph, false, false)
 }
 
 // identity33 is the 3×3 identity.
@@ -88,7 +88,11 @@ var identity33 = [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
 // goDevelopFor: layers = the sensor's own layers balanced by the camera's
 // Sunlight gains, with no colour matrix (for the infrared looks, which
 // model the layers themselves; the matrix assumes the IR cut).
-func goDevelopFor(ph *Photo, layers bool) (*x3f.CamImage, render.CamTransform, error) {
+// goDevelopFor develops ph; layers: as the sensor's own layers (no colour
+// matrix), balanced for Sunlight (the IR looks are calibrated on it) or,
+// with sceneWB, for the photo's own white balance like the normal path
+// (colour film starts from the scene as the photographer balanced it).
+func goDevelopFor(ph *Photo, layers, sceneWB bool) (*x3f.CamImage, render.CamTransform, error) {
 	var t render.CamTransform
 	f, err := x3f.Open(ph.path)
 	if err != nil {
@@ -104,7 +108,7 @@ func goDevelopFor(ph *Photo, layers bool) (*x3f.CamImage, render.CamTransform, e
 	}
 	x3f.FixBadPixels(raw, c)
 	wb := developWB(c, ph)
-	if layers {
+	if layers && !sceneWB {
 		wb = "Sunlight"
 	}
 	img, err := x3f.CameraLinear(raw, c, x3f.NewSpatialGain(c, f.Props, wb), wb)
@@ -128,13 +132,14 @@ func goDevelopFor(ph *Photo, layers bool) (*x3f.CamImage, render.CamTransform, e
 // that scale (binning already averages noise; the denoiser measures what
 // is left).
 func goLinear(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
-	return goLinearFor(ph, maxW, strength, nil)
+	return goLinearFor(ph, maxW, strength, nil, false)
 }
 
-// goLinearFor is goLinear, as Sunlight-balanced layers when irWhite is
-// set (clipped highlights then go to that white).
-func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64) (*render.Linear, error) {
-	img, t, err := goDevelopFor(ph, irWhite != nil)
+// goLinearFor is goLinear, as the sensor's layers when irWhite is set
+// (clipped highlights then go to that white): Sunlight-balanced, or with
+// sceneWB balanced like the photo itself (goDevelopFor).
+func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool) (*render.Linear, error) {
+	img, t, err := goDevelopFor(ph, irWhite != nil, sceneWB)
 	if err != nil {
 		return nil, err
 	}
