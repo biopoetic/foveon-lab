@@ -107,3 +107,56 @@ func wbPresets() []preset.Preset {
 	}
 	return out
 }
+
+// bwFilterPresets: black and white through a classic contrast filter on
+// the lens, simulated on the sensor's own layers (render/layerfilters.json):
+// yellow and orange darken a blue sky, red turns it near black, green
+// lightens foliage.
+func bwFilterPresets() []preset.Preset {
+	var out []preset.Preset
+	for _, f := range []struct{ key, name string }{
+		{"yellow", "Yellow (Wratten 8)"}, {"deepyellow", "Deep yellow (Wratten 15)"},
+		{"orange", "Orange (Wratten 21)"}, {"red", "Red (Wratten 25)"}, {"deepred", "Deep red (Wratten 29)"},
+		{"yellowgreen", "Yellow-green (Wratten 11)"}, {"green", "Green (Wratten 58)"},
+	} {
+		p := preset.Neutral()
+		p.Mono = true
+		p.Filter = f.key
+		out = append(out, preset.Preset{
+			ID:      idOf("bwfilter|" + f.key),
+			Name:    "[BW FILTER] " + f.name,
+			Group:   "BW FILTER",
+			Source:  "Lens filters",
+			Section: "BW",
+			Params:  p,
+		})
+	}
+	return out
+}
+
+// irPresets: the infrared looks (render/irlooks.json), for a full-spectrum
+// camera: the IR-cut dust protector removed. On a stock body there is
+// almost no infrared to see.
+func irPresets() []preset.Preset {
+	var out []preset.Preset
+	for _, f := range []struct{ key, name string }{
+		{"ir-fs-aerochrome", "False colour, no lens filter"}, {"ir-aerochrome", "Aerochrome (Wratten 12)"},
+		{"ir-ir590", "Colour infrared (590 nm)"}, {"ir-ir720", "Infrared B&W (720 nm)"},
+	} {
+		p := preset.Neutral()
+		p.Filter = f.key
+		section := "Color"
+		if f.key == "ir-ir720" {
+			p.Mono, section = true, "BW"
+		}
+		out = append(out, preset.Preset{
+			ID:      idOf("ir|" + f.key),
+			Name:    "[IR] " + f.name + " – converted camera",
+			Group:   "IR",
+			Source:  "Infrared",
+			Section: section,
+			Params:  p,
+		})
+	}
+	return out
+}
