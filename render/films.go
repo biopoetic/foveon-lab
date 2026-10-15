@@ -38,6 +38,9 @@ type Film struct {
 	// Curve: its characteristic curve and developers (filmcurve.go), nil
 	// if the library has none.
 	Curve *FilmCurve `json:"curve,omitempty"`
+	// Color: a colour film rendered from its own layers and dyes
+	// (colorfilm.go, colorneg.go).
+	Color bool `json:"color,omitempty"`
 }
 
 var filmByKey = sync.OnceValue(func() map[string]Film {
@@ -71,6 +74,7 @@ func Films() []Film {
 			f.Grain *= printGain
 		}
 		f.Curve = filmCurves()[f.Maker+" "+f.Name]
+		f.Color = IsColorFilm(f.Maker + " " + f.Name)
 	}
 	return d.Films
 }

@@ -4,8 +4,9 @@
 // its matrices and its per-brightness functions sampled into tables — so
 // this file executes the Go model step by step (render.go renderInto,
 // pixOp.apply / applyMeasured, film.go grain, sppsharpen.go, sharpen),
-// and the export stays the Go render. Halation is not here yet: the recipe
-// asks for the CPU then.
+// and the export stays the Go render. A colour film's 3-D table (colorfilm.go)
+// is a 3-D texture fetched once per film. Halation is not here yet: the
+// recipe asks for the CPU then.
 "use strict";
 const GPU = (() => {
   const N = 2048;          // render.GPULutN
@@ -14,6 +15,7 @@ const GPU = (() => {
   let base = null;         // {key, w, h, hdr, rgb, aux}
   let fbs = [];            // ping-pong targets {tex, fb}
   let luts = null, film = null;
+  const cfCache = new Map();   // colour film key -> {lut (3-D), curve, hdr}
 
   const VS = `#version 300 es
 in vec2 p; void main(){ gl_Position = vec4(p, 0., 1.); }`;
@@ -25,7 +27,11 @@ float dec(float x){ x = clamp(x, 0., 1.); return x <= 0.04045 ? x / 12.92 : pow(
 `;
   // Pass 1: one pixel through pixOp (+ grain), written as 8-bit values.
   const PIX = HEAD + `
-uniform sampler2D uRGB, uAux, uLut, uFilm;
+uniform sampler2D uRGB, uAux, uLut, uFilm, uCFCurve;
+uniform highp sampler3D uCFLut;
+uniform bool uCF;
+uniform vec3 uCFM[3];   // the film matrix times the inverse colour matrix (one product)
+uniform float uCFH, uCFDmax, uCFN, uCFLgMin, uCFLgMax, uCFCurveN;
 uniform int uW, uH, uFlipOut;
 uniform bool uUndo, uUndoGamma, uMeasured, uMono, uFilmTone, uWB, uWBTaste, uMM, uMMTaste, uFillABCK, uFillLocal, uGrainMono;
 uniform int uLayerMode;   // 0 none, 1 matrix, 2 mono weights
@@ -69,6 +75,21 @@ float bilerp8(float s, float p){
   float a = uLocal[s0 * 8 + p0] + (uLocal[s0 * 8 + p0 + 1] - uLocal[s0 * 8 + p0]) * tp;
   float b = uLocal[(s0 + 1) * 8 + p0] + (uLocal[(s0 + 1) * 8 + p0 + 1] - uLocal[(s0 + 1) * 8 + p0]) * tp;
   return a + (b - a) * ts;
+}
+// A colour film (colorfilm.go apply): sensor layers -> film exposures ->
+// each layer's curve -> the 3-D table (-log10 linear sRGB).
+float cfCurve(int k, float lg){
+  float f = clamp((lg - uCFLgMin) / (uCFLgMax - uCFLgMin), 0., 1.) * (uCFCurveN - 1.);
+  int i = min(int(f), int(uCFCurveN) - 2);
+  float a = texelFetch(uCFCurve, ivec2(i, k), 0).r, b = texelFetch(uCFCurve, ivec2(i + 1, k), 0).r;
+  return a + (b - a) * (f - float(i));
+}
+vec3 colorFilm(vec3 c){
+  vec3 h = mul(uCFM, c) * uCFH;
+  vec3 D = vec3(cfCurve(0, log(max(h.r, 1e-6)) / log(10.)), cfCurve(1, log(max(h.g, 1e-6)) / log(10.)), cfCurve(2, log(max(h.b, 1e-6)) / log(10.)));
+  vec3 t = (clamp(D / uCFDmax, 0., 1.) * (uCFN - 1.) + 0.5) / uCFN;
+  vec3 v = texture(uCFLut, vec3(t.b, t.g, t.r)).rgb;   // x = D_B (fastest), y = D_G, z = D_R
+  return pow(vec3(10.), -v);
 }
 uint hash32(uint x){ x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x; }
 float gauss(uint i, uint c){
@@ -114,6 +135,7 @@ void main(){
     c = uMono ? vec3(Y2) : Y2 + ch * (chroma * uSatMeasure);
   } else {
     c *= uGain;
+    if (uCF) c = colorFilm(c);
     if (uFill != 0.){
       float m = min(1., aux.r * uMaskScale), wt = (1. - m) * (1. - m);
       c *= exp2(uFill * wt);
@@ -206,7 +228,8 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
   // it changes, the Base is fetched again).
   async function loadBase(query, key){
     if (base && base.key === key) return base;
-    const buf = await (await fetch("/api/gpu/base?" + query)).arrayBuffer();
+    const resp = await fetch("/api/gpu/base?" + query), src = resp.headers.get("X-Base-Source") || "";
+    const buf = await resp.arrayBuffer();
     const dv = new DataView(buf), hl = dv.getUint32(0, true);
     const hdr = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hl)));
     let off = 4 + hl; off += off % 2;
@@ -214,7 +237,7 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     const rgb = new Uint16Array(buf, off, n * 3), aux = new Uint16Array(n * 3), a = new Uint16Array(buf, off + n * 6, n * 3);
     for (let j = 0; j < n; j++){ aux[j * 3] = a[j]; aux[j * 3 + 1] = a[n + j]; aux[j * 3 + 2] = a[2 * n + j]; }
     if (base){ gl.deleteTexture(base.rgb); gl.deleteTexture(base.aux); }
-    base = {key, w, h, hdr,
+    base = {key, src, w, h, hdr,
       rgb: tex(w, h, gl.RGB16F, gl.RGB, gl.HALF_FLOAT, rgb),
       aux: tex(w, h, gl.RGB16F, gl.RGB, gl.HALF_FLOAT, aux)};
     for (const f of fbs){ gl.deleteTexture(f.tex); gl.deleteFramebuffer(f.fb); }
@@ -241,6 +264,26 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
   }
   const rows3 = m => m ? [m.slice(0, 3), m.slice(3, 6), m.slice(6, 9)].flat() : [1, 0, 0, 0, 1, 0, 0, 0, 1];
   const K7 = (() => { const k = []; let s = 0; for (let i = -3; i <= 3; i++){ k.push(Math.exp(-i * i / 2)); s += Math.exp(-i * i / 2); } return k.map(v => v / s); })();
+  // colorFilmTables fetches (once) and uploads a colour film's tables.
+  async function colorFilmTables(key){
+    if (cfCache.has(key)) return cfCache.get(key);
+    const buf = await (await fetch("/api/gpu/colorfilm?key=" + encodeURIComponent(key))).arrayBuffer();
+    const dv = new DataView(buf), hl = dv.getUint32(0, true);
+    const hdr = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hl)));
+    let off = 4 + hl; off += (4 - off % 4) % 4;
+    const n = hdr.n, lut = new Float32Array(buf, off, n * n * n * 3), cv = new Float32Array(buf, off + n * n * n * 12, 3 * hdr.curveN);
+    // RGB float: filtered linearly where the extension allows (exact), else half floats.
+    const lin32 = !!gl.getExtension("OES_texture_float_linear");
+    const t3 = gl.createTexture(); gl.bindTexture(gl.TEXTURE_3D, t3);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    if (lin32) gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGB32F, n, n, n, 0, gl.RGB, gl.FLOAT, lut);
+    else gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGB16F, n, n, n, 0, gl.RGB, gl.FLOAT, lut);
+    for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_3D, k, gl.LINEAR);
+    for (const k of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D, k, gl.CLAMP_TO_EDGE);
+    const t = {lut: t3, curve: tex(hdr.curveN, 3, gl.R32F, gl.RED, gl.FLOAT, cv), hdr};
+    cfCache.set(key, t);
+    return t;
+  }
   function pass(prog, target){
     gl.useProgram(prog.p);
     gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fb : null);
@@ -249,6 +292,7 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
   }
   function bind(prog, name, unit, t){ gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(prog.u[name], unit); }
   // draw renders the Base with recipe r onto the canvas.
+  async function prepare(r){ if (r.colorFilm) await colorFilmTables(r.colorFilm.key); }
   function draw(r){
     if (!base) return false;
     uploadLuts(r);
@@ -271,6 +315,21 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     gl.uniform1i(u.uFillABCK, r.fillABCK ? 1 : 0); gl.uniform1i(u.uFillLocal, r.fillLocal ? 1 : 0);
     gl.uniform1fv(u.uLocal, r.fillLocal ? r.fillLocal.slice(0, 64) : new Float32Array(64));
     gl.uniform1f(u.uGrain, r.grainSigma || 0); gl.uniform1i(u.uGrainMono, r.grainMono ? 1 : 0);
+    const cf = r.colorFilm && cfCache.get(r.colorFilm.key);
+    gl.uniform1i(u.uCF, cf ? 1 : 0);
+    if (cf){
+      // One matrix, multiplied here: ANGLE (Direct3D) got the nested
+      // mul(uCFM, mul(uCFInv, c)) wrong — both calls saw the same array.
+      const a = r.colorFilm.m, b = r.colorFilm.inv || [1, 0, 0, 0, 1, 0, 0, 0, 1], ab = [];
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) ab.push(a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j]);
+      gl.uniform3fv(u.uCFM, ab); gl.uniform1f(u.uCFH, r.colorFilm.hWhite);
+      gl.uniform1f(u.uCFDmax, cf.hdr.dmax); gl.uniform1f(u.uCFN, cf.hdr.n); gl.uniform1f(u.uCFLgMin, cf.hdr.lgMin); gl.uniform1f(u.uCFLgMax, cf.hdr.lgMax); gl.uniform1f(u.uCFCurveN, cf.hdr.curveN);
+      gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_3D, cf.lut); gl.uniform1i(u.uCFLut, 4);
+      bind(P, "uCFCurve", 5, cf.curve);
+    } else {
+      gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_3D, null); gl.uniform1i(u.uCFLut, 4);
+      bind(P, "uCFCurve", 5, luts);
+    }
     pass(P, fbs[0]);
     let cur = fbs[0];
     if (r.sppSharpen){
@@ -293,5 +352,5 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     for (let y = 0; y < base.h; y++) out.set(d.subarray((base.h - 1 - y) * row, (base.h - y) * row), y * row);
     return out;
   }
-  return {init, loadBase, draw, pixels, get base(){ return base; }};
+  return {init, loadBase, prepare, draw, pixels, get base(){ return base; }};
 })();

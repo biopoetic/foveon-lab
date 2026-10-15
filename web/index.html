@@ -279,6 +279,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         </div>
         <div id="filmDev" style="display:none">
           <div class="subh" title="Foveon Lab only. The film's characteristic curve and its developers, from the makers' data sheets.">Darkroom</div>
+          <div id="devRows">
           <div class="row" title="The developer from the film's data sheet: its time-gamma curve sets the negative's contrast, its exposure index the film's speed."><div class="lab">Developer <span class="dim" id="devSrc"></span></div>
             <select id="devSel" style="width:100%"></select>
           </div>
@@ -288,7 +289,8 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <div class="row" title="Push / pull: the film rated at a higher (lower) exposure index. Pushed, the shadows sink into the film's toe; develop longer to bring the contrast back. Double-click = box speed."><div class="lab"><span>Push / pull</span><b id="pushVal"></b></div>
             <input type="range" id="push" min="-2" max="3" step="0.3333333">
           </div>
-          <div class="row" title="The print: the enlarger's light through the negative onto a printing paper, at a contrast grade. The printer exposes so that the negative's mid-grey prints mid-grey; the paper's curve sets how the highlights roll off and how deep the blacks go (its D-max). None = a scan of the negative."><div class="lab">Paper <span class="dim" id="paperSrc"></span></div>
+          </div>
+          <div class="row" id="paperRow" title="The print: the enlarger's light through the negative onto a printing paper, at a contrast grade. The printer exposes so that the negative's mid-grey prints mid-grey; the paper's curve sets how the highlights roll off and how deep the blacks go (its D-max). None = a scan of the negative."><div class="lab">Paper <span class="dim" id="paperSrc"></span></div>
             <div style="display:flex;gap:6px"><select id="paperSel" style="flex:1"><option value="">None (scan)</option></select>
             <select id="gradeSel" title="Contrast grade: 00 softest, 5 hardest" style="width:64px"></select></div>
           </div>
@@ -808,7 +810,6 @@ async function filmsInit(){
 let PAPERS = [];
 async function papersInit(){
   try { PAPERS = await (await fetch("/api/papers")).json(); } catch { return; }
-  $("#paperSel").insertAdjacentHTML("beforeend", PAPERS.map(p => `<option value="${esc(p.paper)}" title="${esc(p.src)}">${esc(p.paper)}</option>`).join(""));
   syncFilm();
 }
 // useFilm makes the photo use a library film: its grain (from its data
@@ -936,9 +937,34 @@ function padInit(){
   $("#padS").onchange = e => e.target.blur();
   padDraw();
 }
+// syncPaper fills the Paper menu with the papers of a kind ("bw" with a
+// scan option and grades; "colour": the first is the default).
+function syncPaper(kind){
+  const sel = $("#paperSel"), list = PAPERS.filter(p => p.kind === kind);
+  if (sel.dataset.kind !== kind){
+    sel.innerHTML = (kind === "bw" ? `<option value="">None (scan)</option>` : "") +
+      list.map(p => `<option value="${esc(p.paper)}" title="${esc(p.src)}">${esc(p.paper)}</option>`).join("");
+    sel.dataset.kind = kind;
+    $("#paperRow").title = PAPER_TIP[kind];
+  }
+  const paper = list.find(x => x.paper === S.params.paper) || (kind === "colour" ? list[0] : null);
+  sel.value = paper ? paper.paper : "";
+  const grades = kind === "bw" && paper;
+  $("#gradeSel").innerHTML = grades ? ["00","0","1","2","3","4","5"].map(g => `<option value="${g}">${g}</option>`).join("") : "";
+  $("#gradeSel").style.display = grades ? "" : "none";
+  if (grades) $("#gradeSel").value = S.params.grade || "2";
+  $("#paperSrc").innerHTML = paper ? `(<a href="${esc(paper.url)}" target="_blank" rel="noopener" title="${esc(paper.src)}">data sheet</a>)` : "";
+}
+const PAPER_TIP = {
+  bw: "The print: the enlarger's light through the negative onto a printing paper, at a contrast grade. The printer exposes so that the negative's mid-grey prints mid-grey; the paper's curve sets how the highlights roll off and how deep the blacks go (its D-max). None = a scan of the negative.",
+  colour: "The print: a 3200 K enlarger lamp through the negative (its orange mask too) onto colour paper. The filtration is set so the negative's grey prints neutral 18% grey; the paper's own layers, curves and dyes make the print, seen in daylight."};
 function syncDev(f){
-  const c = f && f.curve;
-  $("#filmDev").style.display = c ? "" : "none";
+  // Black-and-white negatives with a curve: developer, time, push, and
+  // B&W papers. Colour negatives: colour papers only. Slides: nothing to print.
+  const cn = !!(f && f.color && f.kind === "cn"), c = f && !f.color && f.curve;
+  $("#filmDev").style.display = c || cn ? "" : "none";
+  $("#devRows").style.display = c ? "" : "none";
+  if (cn){ syncPaper("colour"); return; }
   if (!c) return;
   const sel = $("#devSel");
   if (sel.dataset.film !== f.name){
@@ -953,12 +979,7 @@ function syncDev(f){
   tm.min = d.t[0]; tm.max = d.t[d.t.length - 1]; tm.value = t;
   $("#devTimeVal").textContent = `${fmtMin(t)}${S.params.devTime ? "" : auto !== d.time ? " (push time)" : " (standard)"}`;
   $("#push").value = push;
-  const paper = PAPERS.find(x => x.paper === S.params.paper);
-  $("#paperSel").value = paper ? paper.paper : "";
-  $("#gradeSel").innerHTML = paper ? ["00","0","1","2","3","4","5"].map(g => `<option value="${g}">${g}</option>`).join("") : "";
-  $("#gradeSel").style.display = paper ? "" : "none";
-  if (paper) $("#gradeSel").value = S.params.grade || "2";
-  $("#paperSrc").innerHTML = paper ? `(<a href="${esc(paper.url)}" target="_blank" rel="noopener" title="${esc(paper.src)}">data sheet</a>)` : "";
+  syncPaper("bw");
   const stops = Math.round(push * 3);
   const a = Math.abs(stops), whole = Math.floor(a / 3), rem = a % 3;
   const ps = stops === 0 ? "box" : (stops > 0 ? "+" : "−") + [whole || "", rem ? rem + "/3" : ""].filter(Boolean).join(" ");
@@ -1138,10 +1159,15 @@ async function renderGPU(url, seq){
   const p = new URLSearchParams(query), f = JSON.parse(p.get("p") || "{}").filter || "";
   const key = ["id", "w", "comp", "m", "g", "src"].map(k => k + "=" + (p.get(k) || "")).join("&") + (f.startsWith("ir-") ? "&ir=" + f : "");
   try {
-    if (GPU.base?.key !== key) await GPU.loadBase(query, key);
-    const r = await (await fetch("/api/gpu/recipe?" + query)).json();
+    const resp = await fetch("/api/gpu/recipe?" + query), src = resp.headers.get("X-Base-Source") || "";
+    const r = await resp.json();
+    // A new Base when the photo or size changes, or its source does (a colour
+    // film renders from the raw layers; the raw decode replaces the JPEG).
+    if (GPU.base?.key !== key || GPU.base.src !== src) await GPU.loadBase(query, key);
     if (seq !== renderSeq) return true;
     if (r.cpu) return false;
+    await GPU.prepare(r);
+    if (seq !== renderSeq) return true;
     GPU.draw(r);
     $("#stage").classList.add("gpu");
     // The histogram reads the image back from the GPU (~50 ms): not on

@@ -12,7 +12,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"math"
+	"sync"
 
 	"github.com/biopoetic/foveon-lab/preset"
 )
@@ -93,6 +95,62 @@ type GPURecipe struct {
 	GrainMono  bool    `json:"grainMono"`
 	SppSharpen float32 `json:"sppSharpen"`
 	Sharpen    float32 `json:"sharpen"`
+
+	// A colour film (colorfilm.go): its matrices here; its curves and 3-D
+	// table from /api/gpu/colorfilm?key= (GPUColorFilmData), fetched once.
+	ColorFilm *GPUColorFilm `json:"colorFilm,omitempty"`
+}
+
+// GPUColorFilm is a colour film's per-render part.
+type GPUColorFilm struct {
+	Key    string     `json:"key"`
+	M      [9]float32 `json:"m"`   // sensor layers -> film exposures
+	Inv    [9]float32 `json:"inv"` // linear sRGB -> sensor layers
+	HWhite float32    `json:"hWhite"`
+}
+
+// GPU colour-film tables: each layer's curve sampled over log H, and the
+// 3-D table over the densities.
+const (
+	gpuCFCurveN = 2048
+	gpuCFLgMin  = -7.0
+	gpuCFLgMax  = 3.0
+)
+
+var (
+	gpuCFMu   sync.Mutex
+	gpuCFKeys = map[string]*colorFilm{}
+)
+
+// GPUColorFilmData is a colour film's tables for the GPU: a little-endian
+// uint32 header length, a JSON header, then float32s: the 3-D table
+// (cfLutN³ × 3, -log10 linear sRGB over D_R, D_G, D_B; R fastest is the
+// LAST axis, as colorFilm.lut), then the three curves (gpuCFCurveN each,
+// density over log H from gpuCFLgMin to gpuCFLgMax).
+func GPUColorFilmData(key string) ([]byte, bool) {
+	gpuCFMu.Lock()
+	f := gpuCFKeys[key]
+	gpuCFMu.Unlock()
+	if f == nil {
+		return nil, false
+	}
+	hdr, _ := json.Marshal(map[string]any{"n": cfLutN, "dmax": cfLutDMax, "curveN": gpuCFCurveN, "lgMin": gpuCFLgMin, "lgMax": gpuCFLgMax})
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.LittleEndian, uint32(len(hdr)))
+	buf.Write(hdr)
+	for buf.Len()%4 != 0 {
+		buf.WriteByte(' ')
+	}
+	binary.Write(&buf, binary.LittleEndian, f.lut)
+	cv := make([]float32, 3*gpuCFCurveN)
+	for k := 0; k < 3; k++ {
+		for i := 0; i < gpuCFCurveN; i++ {
+			lg := gpuCFLgMin + (gpuCFLgMax-gpuCFLgMin)*float64(i)/(gpuCFCurveN-1)
+			cv[k*gpuCFCurveN+i] = float32(f.density(k, lg))
+		}
+	}
+	binary.Write(&buf, binary.LittleEndian, cv)
+	return buf.Bytes(), true
 }
 
 // NewGPURecipe is the recipe for rendering b with p and c (only b's
@@ -109,8 +167,12 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 	if p.Halation > 0 {
 		r.CPU = "halation"
 	}
-	if op.cfilm != nil {
-		r.CPU = "colour film"
+	if f := op.cfilm; f != nil {
+		key := fmt.Sprintf("%s|%s|%s", p.Film, p.Paper, c.Sensor)
+		gpuCFMu.Lock()
+		gpuCFKeys[key] = f
+		gpuCFMu.Unlock()
+		r.ColorFilm = &GPUColorFilm{Key: key, M: f.m, Inv: op.cfInv, HWhite: float32(f.hWhite)}
 	}
 	if op.tone != nil && !op.measured {
 		r.FilmTone, r.FilmToneScale = op.tone.lut[:], op.tone.scale

@@ -85,6 +85,30 @@ func IsColorNegative(key string) bool { _, ok := colorNegs().negs[key]; return o
 // default).
 func ColorPapers() []string { return colorNegs().order }
 
+// PaperInfo is a printing paper in the library, for the editor's Paper
+// menu: Kind "bw" (Papers, printed at a contrast grade) or "colour"
+// (ColorPapers, for colour negatives).
+type PaperInfo struct {
+	Paper string `json:"paper"`
+	Src   string `json:"src"`
+	URL   string `json:"url"`
+	Kind  string `json:"kind"`
+}
+
+// PaperList is every printing paper: black-and-white, then colour (the
+// default colour paper first).
+func PaperList() []PaperInfo {
+	var out []PaperInfo
+	for _, p := range Papers() {
+		out = append(out, PaperInfo{p.Paper, p.Src, p.URL, "bw"})
+	}
+	for _, name := range ColorPapers() {
+		p := colorNegs().papers[name]
+		out = append(out, PaperInfo{p.Paper, p.Src, p.URL, "colour"})
+	}
+	return out
+}
+
 // NegativeFit is how a negative's borrowed dye shapes rebuild its own
 // published spectra: the dye amounts of the midscale neutral and the RMS
 // density error over 400-700 nm.

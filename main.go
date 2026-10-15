@@ -597,6 +597,9 @@ func (s *server) renderBase(w http.ResponseWriter, r *http.Request) (*render.Bas
 	} else if lf, ok := layersSource(ph, p); ok {
 		mode = "rawlayers:" + lf
 	}
+	// The GPU preview keeps its Base until the source changes (a colour
+	// film develops the raw layers; the raw decode replaces the JPEG).
+	w.Header().Set("X-Base-Source", mode)
 	// nogeo=1: the whole (turned) frame, for the crop editor.
 	g := geometryOf(ph)
 	if q.Get("nogeo") == "1" {
@@ -1440,9 +1443,18 @@ func main() {
 	mux.HandleFunc("/api/render", s.handleRender)
 	mux.HandleFunc("/api/gpu/base", s.handleGPUBase)
 	mux.HandleFunc("/api/gpu/recipe", s.handleGPURecipe)
+	mux.HandleFunc("/api/gpu/colorfilm", func(w http.ResponseWriter, r *http.Request) {
+		b, ok := render.GPUColorFilmData(r.URL.Query().Get("key"))
+		if !ok {
+			httpErr(w, 404, errors.New("unknown colour film key"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Write(b)
+	})
 	mux.HandleFunc("/api/export", s.handleExport)
 	mux.HandleFunc("/api/films", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, render.Films()) })
-	mux.HandleFunc("/api/papers", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, render.Papers()) })
+	mux.HandleFunc("/api/papers", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, render.PaperList()) })
 	mux.HandleFunc("/api/reveal", s.handleReveal)
 	mux.HandleFunc("/api/agent/status", s.handleAISettings)
 	mux.HandleFunc("/api/agent", s.handleAgent)
