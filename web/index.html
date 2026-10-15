@@ -133,6 +133,9 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 #aiPanel .ctl{padding:10px 12px;border-bottom:1px solid var(--line)}
 .modal{position:fixed;inset:0;background:#0009;z-index:20;display:none;align-items:center;justify-content:center}
 .modal.on{display:flex}
+#filmCmp .box{width:min(1500px,96vw);max-height:94vh;overflow:auto}
+#filmCmpGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}
+#filmCmpGrid .tile.cur{border-color:var(--accent)}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;width:min(440px,92vw);display:flex;flex-direction:column;gap:9px}
 #bProg{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
 #bProg div{height:100%;width:0;background:var(--accent);transition:width .2s}
@@ -263,6 +266,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <select id="filmStock" style="width:100%"><option value="">None (set the grain by hand)</option></select>
           <div class="src" id="filmSrc"></div>
           <div class="src" id="filmLink" style="display:none"></div>
+          <button id="filmCmpBtn" title="This photo, with your settings, in every colour film side by side (colour and tone only, without grain). Click one to use it. Needs a raw-decodable X3F." style="margin-top:6px">Compare colour films…</button>
         </div>
         <div class="row" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky."><div class="lab">Filter on the lens <span class="dim">(Wratten)</span></div>
           <select id="lensSel" style="width:100%"><option value="">None</option><option value="pad" disabled>Custom (filter pad)</option><option value="yellow">Yellow (Wratten 8)</option><option value="deepyellow">Deep yellow (Wratten 15)</option><option value="orange">Orange (Wratten 21)</option><option value="red">Red (Wratten 25)</option><option value="deepred">Deep red (Wratten 29)</option><option value="yellowgreen">Yellow-green (Wratten 11)</option><option value="green">Green (Wratten 58)</option><option value="blue">Blue (Wratten 47)</option><option value="warm">Warming (81A)</option><option value="cool">Cooling (82A)</option></select>
@@ -357,6 +361,12 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <span id="aiUsage" style="color:var(--dim);font-size:11px;margin-left:6px"></span>
   </div>
   <div id="aiLog"></div>
+</div>
+<div id="filmCmp" class="modal">
+  <div class="box">
+    <div style="display:flex;align-items:center;gap:8px"><b style="flex:1">Colour films on this photo</b><span class="dim">Click one to use it · Esc closes</span><button id="filmCmpClose">Close</button></div>
+    <div id="filmCmpGrid"></div>
+  </div>
 </div>
 <div id="batch" class="modal">
   <div class="box">
@@ -762,6 +772,9 @@ function buildSliders(){
     $("#filmStock").blur();
   };
   $("#devSel").onchange = () => { S.params.developer = $("#devSel").value; S.params.devTime = 0; $("#devSel").blur(); syncSliders(); scheduleRender(); };
+  $("#filmCmpBtn").onclick = () => { $("#filmCmpBtn").blur(); filmCompare(); };
+  $("#filmCmpClose").onclick = filmCompareClose;
+  $("#filmCmp").onclick = e => { if (e.target.id === "filmCmp") filmCompareClose(); };
   $("#paperSel").onchange = () => { S.params.paper = $("#paperSel").value; $("#paperSel").blur(); syncSliders(); scheduleRender(); };
   $("#gradeSel").onchange = () => { S.params.grade = $("#gradeSel").value; $("#gradeSel").blur(); syncSliders(); scheduleRender(); };
   $("#devTime").oninput = () => { S.params.devTime = +$("#devTime").value; syncSliders(); scheduleRender(); };
@@ -824,10 +837,37 @@ function useFilm(f){
   }
   syncSliders(); scheduleRender();
 }
+// filmCompare shows the photo with the current settings in every colour
+// film (each negative on each colour paper), no grain; a click uses it.
+function filmCompare(){
+  if (!S.photo || !S.params) return;
+  const w = 600, base = {...S.params, grain: 0, halation: 0, developer: "", devTime: 0, push: 0};
+  const papers = PAPERS.filter(p => p.kind === "colour");
+  const tiles = [{label: "No film", sub: "your settings as they are", film: "", paper: ""}];
+  for (const f of FILMS.filter(f => f.color && f.kind === "slide"))
+    tiles.push({label: f.name, sub: "slide · ISO " + f.iso, film: f.maker + " " + f.name, paper: ""});
+  for (const f of FILMS.filter(f => f.color && f.kind === "cn"))
+    for (const p of papers) tiles.push({label: f.name, sub: "negative printed on " + p.paper, film: f.maker + " " + f.name, paper: p.paper});
+  const cur = S.params.film || "", curPaper = S.params.paper || "";
+  $("#filmCmpGrid").innerHTML = tiles.map((t, i) => {
+    const on = t.film === cur && (!t.paper || t.paper === curPaper || (!curPaper && t.paper === papers[0]?.paper));
+    const params = {...base, film: t.film, paper: t.paper, mono: t.film ? false : S.params.mono};
+    return `<div class="tile${on ? " cur" : ""}" data-i="${i}"><div class="img"><img src="${renderURL({w, params})}"></div><div class="cap">${esc(t.label)}<small>${esc(t.sub)}</small></div></div>`;
+  }).join("");
+  $("#filmCmpGrid").querySelectorAll(".tile").forEach(el => el.onclick = () => {
+    const t = tiles[+el.dataset.i], f = FILMS.find(x => x.maker + " " + x.name === t.film);
+    if (t.paper) S.params.paper = t.paper;
+    useFilm(f || null);
+    filmCompareClose();
+  });
+  $("#filmCmp").classList.add("on");
+}
+function filmCompareClose(){ $("#filmCmp").classList.remove("on"); $("#filmCmpGrid").innerHTML = ""; }
 function syncFilm(){
   const i = FILMS.findIndex(f => f.maker + " " + f.name === S.params?.film);
   $("#filmStock").value = i >= 0 ? String(i) : "";
   const f = FILMS[i];
+  $("#filmCmpBtn").style.display = S.photo?.kind === "x3f" ? "" : "none";
   $("#filmSrc").innerHTML = f ? (f.rms ? `RMS ${f.rms} (${esc(f.kind === "slide" ? "on the slide" : "on the negative, ×2.3 on the print")}) · <a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.src)}</a>` : esc(f.src))
     + (f.bw ? (f.mono ? ` · black and white through its spectral sensitivity (${esc(f.spectral_src)})` : " · black and white") : "") : "";
   // A preset named after a film imitates it with SPP settings: offer the
@@ -1971,6 +2011,7 @@ function bind(){
   document.addEventListener("keydown", e => {
     if (e.target.matches("input[type=text],input[type=password],input[type=search],select,textarea,input[type=range]")) return;
     const inDetail = $("#detail").classList.contains("on");
+    if ($("#filmCmp").classList.contains("on")){ if (e.key === "Escape"){ e.preventDefault(); filmCompareClose(); } return; }
     // In the crop editor: Enter saves, Esc cancels, arrows do nothing else.
     if (CROP.on){
       if (e.key === "Escape"){ e.preventDefault(); cropClose(); }
