@@ -226,8 +226,8 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
   }
   // loadBase fetches and uploads the Base of a render URL's query (key: when
   // it changes, the Base is fetched again).
-  async function loadBase(query, key){
-    if (base && base.key === key) return base;
+  async function loadBase(query, key, want){
+    if (base && base.key === key && (want === undefined || base.src === want)) return base;
     const resp = await fetch("/api/gpu/base?" + query), src = resp.headers.get("X-Base-Source") || "";
     const buf = await resp.arrayBuffer();
     const dv = new DataView(buf), hl = dv.getUint32(0, true);

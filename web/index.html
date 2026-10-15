@@ -1163,7 +1163,7 @@ async function renderGPU(url, seq){
     const r = await resp.json();
     // A new Base when the photo or size changes, or its source does (a colour
     // film renders from the raw layers; the raw decode replaces the JPEG).
-    if (GPU.base?.key !== key || GPU.base.src !== src) await GPU.loadBase(query, key);
+    if (GPU.base?.key !== key || GPU.base.src !== src) await GPU.loadBase(query, key, src);
     if (seq !== renderSeq) return true;
     if (r.cpu) return false;
     await GPU.prepare(r);

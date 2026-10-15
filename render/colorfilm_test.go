@@ -39,20 +39,25 @@ func TestColorNegPortra(t *testing.T) {
 	if fit.RMS > 0.08 {
 		t.Errorf("borrowed dyes rebuild Portra's neutral with RMS %.3f", fit.RMS)
 	}
-	f := colorFilmOn("Kodak Portra 160 / 400 / 800", "", "Merrill")
-	if f == nil {
-		t.Fatal("no model")
+	if len(ColorPapers()) < 2 {
+		t.Errorf("colour papers %v", ColorPapers())
 	}
-	t.Logf("paper reading %.0f nm, filtration (log) %.3f, grey error %.3f", f.readLam, f.filtration, f.greyRMS)
-	for _, g := range []float32{0.01, 0.04, 0.128, 0.4, 1, 2} {
-		r, gg, b := f.apply(g, g, g)
-		t.Logf("grey %.3f -> %.4f %.4f %.4f", g, r, gg, b)
-	}
-	if r, g, b := f.apply(0.128, 0.128, 0.128); math.Abs(float64(g)-0.18) > 0.01 || math.Abs(float64(r-b)) > 0.02 {
-		t.Errorf("mid-grey prints %.3f %.3f %.3f", r, g, b)
-	}
-	for _, c := range [][3]float32{{0.3, 0.1, 0.05}, {0.05, 0.25, 0.08}, {0.04, 0.08, 0.3}, {0.3, 0.25, 0.05}} {
-		r, g, b := f.apply(c[0], c[1], c[2])
-		t.Logf("layers %v -> %.3f %.3f %.3f", c, r, g, b)
+	for _, paper := range ColorPapers() {
+		f := colorFilmOn("Kodak Portra 160 / 400 / 800", paper, "Merrill")
+		if f == nil {
+			t.Fatalf("no model on %s", paper)
+		}
+		t.Logf("%s: paper reading %.0f nm, filtration (log) %.3f, grey error %.3f", paper, f.readLam, f.filtration, f.greyRMS)
+		for _, g := range []float32{0.01, 0.04, 0.128, 0.4, 1, 2} {
+			r, gg, b := f.apply(g, g, g)
+			t.Logf("  grey %.3f -> %.4f %.4f %.4f", g, r, gg, b)
+		}
+		if r, g, b := f.apply(0.128, 0.128, 0.128); math.Abs(float64(g)-0.18) > 0.01 || math.Abs(float64(r-b)) > 0.02 {
+			t.Errorf("%s: mid-grey prints %.3f %.3f %.3f", paper, r, g, b)
+		}
+		for _, c := range [][3]float32{{0.3, 0.1, 0.05}, {0.05, 0.25, 0.08}, {0.04, 0.08, 0.3}, {0.3, 0.25, 0.05}} {
+			r, g, b := f.apply(c[0], c[1], c[2])
+			t.Logf("  layers %v -> %.3f %.3f %.3f", c, r, g, b)
+		}
 	}
 }
