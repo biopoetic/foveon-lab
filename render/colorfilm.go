@@ -68,7 +68,10 @@ var colorFilmData_ = sync.OnceValue(func() map[string]*colorFilmData {
 
 // IsColorFilm reports whether the library film named key has the colour
 // model (its data sheet's curves).
-func IsColorFilm(key string) bool { _, ok := colorFilmData_()[key]; return ok }
+func IsColorFilm(key string) bool {
+	_, ok := colorFilmData_()[key]
+	return ok || IsColorNegative(key)
+}
 
 // pinterp interpolates sorted points linearly, flat past the ends.
 func pinterp(pts [][2]float64, x float64) float64 {
@@ -136,6 +139,9 @@ type colorFilm struct {
 	// gives; greyRMS its remaining error (natural log of R/G and B/G).
 	readLam [3]float64
 	greyRMS float64
+	// filtration: a printed negative's enlarger filtration (log10 gain per
+	// paper layer, R G B).
+	filtration [3]float64
 }
 
 var (
@@ -144,7 +150,31 @@ var (
 )
 
 // colorFilmFor is film key prepared for sensor, nil if either has no model.
-func colorFilmFor(key, sensor string) *colorFilm {
+func colorFilmFor(key, sensor string) *colorFilm { return colorFilmOn(key, "", sensor) }
+
+// colorFilmOn is film key (a slide, or a negative printed on paper; ""
+// = the first colour paper) prepared for sensor, nil if any has no model.
+func colorFilmOn(key, paper, sensor string) *colorFilm {
+	if n := colorNegs().negs[key]; n != nil {
+		if paper == "" || colorNegs().papers[paper] == nil {
+			if o := colorNegs().order; len(o) > 0 {
+				paper = o[0]
+			}
+		}
+		pp := colorNegs().papers[paper]
+		if pp == nil {
+			return nil
+		}
+		colorFilmMu.Lock()
+		defer colorFilmMu.Unlock()
+		k := key + "|" + paper + "|" + sensor
+		if f, ok := colorFilmCache[k]; ok {
+			return f
+		}
+		f := newColorNeg(n, pp, sensor)
+		colorFilmCache[k] = f
+		return f
+	}
 	d := colorFilmData_()[key]
 	if d == nil {
 		return nil
