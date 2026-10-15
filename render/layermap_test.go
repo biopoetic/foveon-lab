@@ -99,8 +99,12 @@ func TestLayerMapReds(t *testing.T) {
 			b1, b2, b3 := f.apply(float32(p[0]), float32(p[1]), float32(p[2]))
 			ex, se := srgbHue(float64(a1), float64(a2), float64(a3)), srgbHue(float64(b1), float64(b2), float64(b3))
 			// Past ~605 nm the sensor's layer ratios no longer change with
-			// the red (layermap.go): logged, not held to the bar.
-			if d := math.Abs(math.Mod(se-ex+540, 360) - 180); d > 8 && e <= 600 {
+			// the red (layermap.go): logged, not held to the bar. With the
+			// MEASURED Merrill sensitivities (layersens.json) the sensor
+			// itself tells these reds apart less well than the old depth
+			// model claimed: root-polynomial lands within ~10 degrees of the
+			// exact exposures, a plain 3x3 up to 17 (Velvia, 600 nm).
+			if d := math.Abs(math.Mod(se-ex+540, 360) - 180); d > 12 && e <= 600 {
 				t.Errorf("%s edge %.0f: through the sensor hue %.0f, exact %.0f", key, e, se, ex)
 			}
 			t.Logf("%-32s edge %.0f: true hue %3.0f | film(exact exposure) %3.0f  rgb %.3f %.3f %.3f | film(sensor) %3.0f rgb %.3f %.3f %.3f",

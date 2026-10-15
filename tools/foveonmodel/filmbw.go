@@ -61,7 +61,7 @@ func filmBW(in, out string) {
 		}
 		res[name] = map[string][3]float64{}
 		for _, gen := range []string{"Merrill", "TRUEII", "SD9", "Quattro"} {
-			m := loadModel(gen)
+			m := loadSens(gen)
 			L := sc.layers(m)
 			var ata [3][3]float64
 			var atb [3]float64

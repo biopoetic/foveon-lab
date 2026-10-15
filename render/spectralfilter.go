@@ -20,6 +20,7 @@ package render
 import (
 	"bufio"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
@@ -90,9 +91,52 @@ var spectral = sync.OnceValue(func() (s struct {
 	return s
 })
 
+//go:embed layersens.json
+var layerSensJSON []byte
+
+// measuredSens is the measured layer sensitivities per generation
+// (layersens.json), on the spectral grid.
+var measuredSens = sync.OnceValue(func() map[string][][3]float64 {
+	var d map[string]json.RawMessage
+	if err := json.Unmarshal(layerSensJSON, &d); err != nil {
+		panic("layersens.json: " + err.Error())
+	}
+	sp := spectral()
+	out := map[string][][3]float64{}
+	for gen, raw := range d {
+		var g struct {
+			Curves [][4]float64 `json:"curves"`
+		}
+		if json.Unmarshal(raw, &g) != nil || len(g.Curves) == 0 {
+			continue
+		}
+		S := make([][3]float64, len(sp.lams))
+		for i, l := range sp.lams {
+			for _, r := range g.Curves {
+				if math.Abs(r[0]-l) < 1e-6 {
+					S[i] = [3]float64{r[1], r[2], r[3]}
+				}
+			}
+		}
+		out[gen] = S
+	}
+	return out
+})
+
 // layerSens is the generation's layer sensitivities (bottom, middle, top)
-// on the spectral grid, nil if the generation has no model.
+// on the spectral grid: measured where a measurement exists (Merrill,
+// SD9/SD10), else the fitted depth model; nil if neither.
 func layerSens(sensor string) [][3]float64 {
+	if S, ok := measuredSens()[sensor]; ok {
+		return S
+	}
+	return modelSens(sensor)
+}
+
+// modelSens is the fitted depth model's layer sensitivities (layerfilters
+// .json "model"): the IR looks use it beyond 700 nm, where nothing is
+// measured.
+func modelSens(sensor string) [][3]float64 {
 	g, ok := layerFilters[sensor]
 	if !ok || len(g.Model) != 6 {
 		return nil

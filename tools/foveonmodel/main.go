@@ -101,9 +101,17 @@ func planck(l, T float64) float64 {
 // layer, whose carriers recombine) and the IR-cut edge (nm). The zones
 // end between the junctions (≈0.2/0.6/2 µm deep), not at them: each diode
 // gathers what drifts and diffuses to it.
-type model struct{ d1, d2, d3, lc, w, d0 float64 }
+type model struct {
+	d1, d2, d3, lc, w, d0 float64
+	// meas: measured sensitivities on the grid (render/layersens.json,
+	// loadSens), used instead of the depths when set.
+	meas [][3]float64
+}
 
 func (m model) sens(i int) [3]float64 {
+	if m.meas != nil {
+		return m.meas[i]
+	}
 	a := alpha[i]
 	ir := 1 / (1 + math.Exp((lams[i]-m.lc)/m.w))
 	e := func(z float64) float64 { return math.Exp(-a * z) }
@@ -514,6 +522,10 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("%s: Sunlight colour matrix %.3f\n", f.Props["CAMMODEL"], cc)
+	if mp := os.Getenv("MEASURED"); mp != "" {
+		measuredMain(mp, os.Getenv("GEN"), cc, os.Getenv("IRFIT") != "")
+		return
+	}
 	sc := newScene(5500, 400, 1)
 	if os.Getenv("SPPWB") != "" {
 		sppWB(c, f, os.Getenv("SPPWB"))
@@ -536,7 +548,7 @@ func main() {
 		return
 	}
 	if os.Getenv("LIT") != "" {
-		for _, m := range []model{{0.2, 0.6, 2.0, 660, 10, 0}, {0.2, 0.6, 3.0, 660, 10, 0}, {0.3, 0.9, 3.0, 660, 10, 0}, {0.15, 0.5, 2.0, 650, 10, 0}} {
+		for _, m := range []model{{0.2, 0.6, 2.0, 660, 10, 0, nil}, {0.2, 0.6, 3.0, 660, 10, 0, nil}, {0.3, 0.9, 3.0, 660, 10, 0, nil}, {0.15, 0.5, 2.0, 650, 10, 0, nil}} {
 			M, e := sc.bestMatrix(m)
 			fmt.Printf("depths %.2f/%.2f/%.2f IR %.0f: camera matrix RMS %.4f | best matrix RMS %.4f %.2f\n", m.d1, m.d2, m.d3, m.lc, sc.errCC(m, cc), e, M)
 		}
@@ -610,6 +622,28 @@ func main() {
 			fmt.Printf("  %3.0f nm  %.3f  %.3f  %.3f\n", l, s[0], s[1], s[2])
 		}
 	}
+}
+
+// loadSens is loadModel with the generation's measured sensitivities
+// (render/layersens.json) when there are any.
+func loadSens(gen string) model {
+	m := loadModel(gen)
+	var d map[string]struct {
+		Curves [][4]float64 `json:"curves"`
+	}
+	data, _ := os.ReadFile("render/layersens.json")
+	json.Unmarshal(data, &d)
+	if g, ok := d[gen]; ok && len(g.Curves) == len(lams) {
+		m.meas = make([][3]float64, len(lams))
+		for i, r := range g.Curves {
+			if math.Abs(r[0]-lams[i]) > 1e-6 {
+				log.Fatalf("layersens.json %s: grid mismatch at %v", gen, r[0])
+			}
+			m.meas[i] = [3]float64{r[1], r[2], r[3]}
+		}
+		fmt.Fprintf(os.Stderr, "%s: measured sensitivities\n", gen)
+	}
+	return m
 }
 
 func loadModel(gen string) model {
