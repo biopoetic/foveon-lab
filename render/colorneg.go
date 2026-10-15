@@ -28,6 +28,7 @@ package render
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"sync"
 )
@@ -413,21 +414,45 @@ func newColorNeg(d *colorNegData, pp *colorPaperData, sensor string) *colorFilm 
 		return nil
 	}
 	f.readLam, f.greyRMS, f.filtration = bestLam, math.Sqrt(best/7), bestLg
-	f.lut = make([]float32, cfLutN*cfLutN*cfLutN*3)
-	step := cfLutDMax / (cfLutN - 1)
-	parallelRows(cfLutN, func(a0, a1 int) {
-		for a := a0; a < a1; a++ {
-			for b := 0; b < cfLutN; b++ {
-				for c := 0; c < cfLutN; c++ {
-					rgb := printRGB([3]float64{float64(a) * step, float64(b) * step, float64(c) * step}, bestLg, bestPinv)
-					i := ((a*cfLutN+b)*cfLutN + c) * 3
-					for k := 0; k < 3; k++ {
-						f.lut[i+k] = float32(-math.Log10(math.Max(1e-7, rgb[k])))
+	// The print table for a filtration: the solved one, or the darkroom's
+	// own (ColorPrint) on top of it.
+	f.printLUT = func(lg [3]float64) []float32 {
+		lut := make([]float32, cfLutN*cfLutN*cfLutN*3)
+		step := cfLutDMax / (cfLutN - 1)
+		parallelRows(cfLutN, func(a0, a1 int) {
+			for a := a0; a < a1; a++ {
+				for b := 0; b < cfLutN; b++ {
+					for c := 0; c < cfLutN; c++ {
+						rgb := printRGB([3]float64{float64(a) * step, float64(b) * step, float64(c) * step}, lg, bestPinv)
+						i := ((a*cfLutN+b)*cfLutN + c) * 3
+						for k := 0; k < 3; k++ {
+							lut[i+k] = float32(-math.Log10(math.Max(1e-7, rgb[k])))
+						}
 					}
 				}
 			}
-		}
-	})
+		})
+		return lut
+	}
+	f.lut = f.printLUT(bestLg)
 	return f
+}
+
+// ColorPrint is the enlarger's colour head on top of the filtration that
+// prints mid-grey neutral: Y, M and C filters in CC units (density × 100;
+// a dichroic head's filters each hold back one paper layer's light: Y the
+// blue-sensitive, M the green-, C the red-sensitive) and the print
+// exposure in stops. As in the darkroom, adding a colour's filter takes
+// that colour out of the print (Y holds back blue light: the blue-
+// sensitive layer forms less yellow dye), and more exposure prints darker.
+type ColorPrint struct{ Y, M, C, Exp float64 }
+
+// key identifies cp in caches.
+func (cp ColorPrint) key() string { return fmt.Sprintf("cp:%g,%g,%g,%g", cp.Y, cp.M, cp.C, cp.Exp) }
+
+// offsets is the log10 gain per paper layer (R, G, B) of the print.
+func (cp ColorPrint) offsets() [3]float64 {
+	e := cp.Exp * math.Log10(2)
+	return [3]float64{e - cp.C/100, e - cp.M/100, e - cp.Y/100}
 }
 

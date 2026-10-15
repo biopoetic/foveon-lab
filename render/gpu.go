@@ -168,7 +168,7 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 		r.CPU = "halation"
 	}
 	if f := op.cfilm; f != nil {
-		key := fmt.Sprintf("%s|%s|%s", p.Film, p.Paper, c.Sensor)
+		key := fmt.Sprintf("%s|%s|%s|%s", p.Film, p.Paper, c.Sensor, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}.key())
 		gpuCFMu.Lock()
 		gpuCFKeys[key] = f
 		gpuCFMu.Unlock()

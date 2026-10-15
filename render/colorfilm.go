@@ -31,6 +31,7 @@ import (
 	"encoding/json"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -145,6 +146,9 @@ type colorFilm struct {
 	// filtration: a printed negative's enlarger filtration (log10 gain per
 	// paper layer, R G B).
 	filtration [3]float64
+	// printLUT: a printed negative's table for a filtration (colorneg.go);
+	// nil for a slide.
+	printLUT func(lg [3]float64) []float32
 }
 
 var (
@@ -153,11 +157,12 @@ var (
 )
 
 // colorFilmFor is film key prepared for sensor, nil if either has no model.
-func colorFilmFor(key, sensor string) *colorFilm { return colorFilmOn(key, "", sensor) }
+func colorFilmFor(key, sensor string) *colorFilm { return colorFilmOn(key, "", sensor, ColorPrint{}) }
 
 // colorFilmOn is film key (a slide, or a negative printed on paper; ""
-// = the first colour paper) prepared for sensor, nil if any has no model.
-func colorFilmOn(key, paper, sensor string) *colorFilm {
+// = the first colour paper, with the enlarger's colour head cp) prepared
+// for sensor, nil if any has no model.
+func colorFilmOn(key, paper, sensor string, cp ColorPrint) *colorFilm {
 	if n := colorNegs().negs[key]; n != nil {
 		if paper == "" || colorNegs().papers[paper] == nil {
 			if o := colorNegs().order; len(o) > 0 {
@@ -171,12 +176,33 @@ func colorFilmOn(key, paper, sensor string) *colorFilm {
 		colorFilmMu.Lock()
 		defer colorFilmMu.Unlock()
 		k := key + "|" + paper + "|" + sensor
-		if f, ok := colorFilmCache[k]; ok {
+		f, ok := colorFilmCache[k]
+		if !ok {
+			f = newColorNeg(n, pp, sensor)
+			colorFilmCache[k] = f
+		}
+		if f == nil || cp == (ColorPrint{}) {
 			return f
 		}
-		f := newColorNeg(n, pp, sensor)
-		colorFilmCache[k] = f
-		return f
+		// The darkroom's filtration: its own table (the last one kept per
+		// film, paper and sensor, so a slider drag doesn't pile them up).
+		kc := k + "|" + cp.key()
+		if g, ok := colorFilmCache[kc]; ok {
+			return g
+		}
+		for old := range colorFilmCache {
+			if strings.HasPrefix(old, k+"|cp:") {
+				delete(colorFilmCache, old)
+			}
+		}
+		g := *f
+		o := cp.offsets()
+		for i := range g.filtration {
+			g.filtration[i] += o[i]
+		}
+		g.lut = f.printLUT(g.filtration)
+		colorFilmCache[kc] = &g
+		return &g
 	}
 	d := colorFilmData_()[key]
 	if d == nil {

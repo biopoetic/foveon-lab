@@ -298,6 +298,16 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
             <div style="display:flex;gap:6px"><select id="paperSel" style="flex:1"><option value="">None (scan)</option></select>
             <select id="gradeSel" title="Contrast grade: 00 softest, 5 hardest" style="width:64px"></select></div>
           </div>
+          <div id="cprintRows" style="display:none">
+            <div class="row" title="The enlarger's colour head, on top of the filtration that prints mid-grey neutral. As in the darkroom: adding a colour's filter takes that colour out of the print (too yellow? add Y). CC units = density × 100; 5 CC is a small correction, 20 a strong one. Double-click = 0."><div class="lab"><span>Filtration Y</span><b id="ccYVal"></b></div>
+              <input type="range" id="ccY" min="-40" max="40" step="5" value="0"></div>
+            <div class="row" title="Magenta filtration: adding M takes magenta out of the print (greener). Double-click = 0."><div class="lab"><span>Filtration M</span><b id="ccMVal"></b></div>
+              <input type="range" id="ccM" min="-40" max="40" step="5" value="0"></div>
+            <div class="row" title="Cyan filtration: adding C takes cyan out of the print (redder). Darkrooms seldom use it; Y and M cover every cast. Double-click = 0."><div class="lab"><span>Filtration C</span><b id="ccCVal"></b></div>
+              <input type="range" id="ccC" min="-40" max="40" step="5" value="0"></div>
+            <div class="row" title="The print exposure: more light through the negative prints darker. Colour paper is steep: a sixth of a stop is a visible step. Double-click = 0."><div class="lab"><span>Print exposure</span><b id="printExpVal"></b></div>
+              <input type="range" id="printExp" min="-1" max="1" step="0.1666667" value="0"></div>
+          </div>
         </div>
           </div>
         </div>
@@ -417,7 +427,7 @@ const LAYER_MIX = { top: [-6,-6,0] };
 // The colour filters on the lens (Film & Darkroom); the IR looks and layer
 // mixes stay in the Layer group. Both set params.filter (one filter).
 const COLOUR_FILTERS = new Set(["yellow","deepyellow","orange","red","deepred","yellowgreen","green","blue","warm","cool"]);
-const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false,layerBottom:0,layerMiddle:0,layerTop:0,filter:"",grain:0,halation:0,filmWidth:0,film:"",developer:"",devTime:0,push:0,paper:"",grade:""};
+const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,sharpness:0,fillLight:0,r:1,g:1,b:1,whiteBalance:0,colorTemp:0,colorMode:4,mono:false,layerBottom:0,layerMiddle:0,layerTop:0,filter:"",grain:0,halation:0,filmWidth:0,film:"",developer:"",devTime:0,push:0,paper:"",grade:"",ccY:0,ccM:0,ccC:0,printExp:0};
 
 const S = {
   photos: [], presets: [], photo: null,
@@ -729,7 +739,7 @@ const GROUPS = {
   colour: ["saturation","r","g","b","colorMode","mono"],
   detail: ["sharpness"],
   layer: ["layerBottom","layerMiddle","layerTop","filter"],
-  film: ["grain","halation","filmWidth","film","developer","devTime","push","filter","paper","grade"],
+  film: ["grain","halation","filmWidth","film","developer","devTime","push","filter","paper","grade","ccY","ccM","ccC","printExp"],
   geometry: [], export: [], keys: [],
 };
 const GROUPS_CLOSED = new Set(store.get("groupsClosed", ["keys"]));
@@ -777,6 +787,11 @@ function buildSliders(){
   $("#filmCmp").onclick = e => { if (e.target.id === "filmCmp") filmCompareClose(); };
   $("#paperSel").onchange = () => { S.params.paper = $("#paperSel").value; $("#paperSel").blur(); syncSliders(); scheduleRender(); };
   $("#gradeSel").onchange = () => { S.params.grade = $("#gradeSel").value; $("#gradeSel").blur(); syncSliders(); scheduleRender(); };
+  for (const k of ["ccY", "ccM", "ccC", "printExp"]){
+    $("#" + k).oninput = () => { S.params[k] = k === "printExp" ? Math.round(+$("#" + k).value * 6) / 6 : +$("#" + k).value; syncSliders(); scheduleRender(); };
+    $("#" + k).onchange = e => e.target.blur();
+    $("#" + k + "Val").ondblclick = () => { S.params[k] = 0; syncSliders(); scheduleRender(); };
+  }
   $("#devTime").oninput = () => { S.params.devTime = +$("#devTime").value; syncSliders(); scheduleRender(); };
   $("#push").oninput = () => { S.params.push = Math.round(+$("#push").value * 3) / 3; syncSliders(); scheduleRender(); };
   $("#devTime").onchange = $("#push").onchange = e => e.target.blur();
@@ -831,6 +846,7 @@ async function papersInit(){
 function useFilm(f){
   S.params.film = f ? f.maker + " " + f.name : "";
   S.params.developer = ""; S.params.devTime = 0; S.params.push = 0;
+  S.params.ccY = S.params.ccM = S.params.ccC = S.params.printExp = 0;
   if (f) {
     if (f.rms) S.params.grain = Math.round(f.grain * 2) / 2;
     S.params.mono = !!f.bw;
@@ -841,7 +857,7 @@ function useFilm(f){
 // film (each negative on each colour paper), no grain; a click uses it.
 function filmCompare(){
   if (!S.photo || !S.params) return;
-  const w = 600, base = {...S.params, grain: 0, halation: 0, developer: "", devTime: 0, push: 0};
+  const w = 600, base = {...S.params, grain: 0, halation: 0, developer: "", devTime: 0, push: 0, ccY: 0, ccM: 0, ccC: 0, printExp: 0};
   const papers = PAPERS.filter(p => p.kind === "colour");
   const tiles = [{label: "No film", sub: "your settings as they are", film: "", paper: ""}];
   for (const f of FILMS.filter(f => f.color && f.kind === "slide"))
@@ -988,6 +1004,17 @@ function syncPaper(kind){
     $("#paperRow").title = PAPER_TIP[kind];
   }
   const paper = list.find(x => x.paper === S.params.paper) || (kind === "colour" ? list[0] : null);
+  $("#cprintRows").style.display = kind === "colour" ? "" : "none";
+  if (kind === "colour"){
+    for (const [k, c] of [["ccY", "Y"], ["ccM", "M"], ["ccC", "C"]]){
+      const v = S.params[k] || 0;
+      $("#" + k).value = v; $("#" + k + "Val").textContent = v ? `${v > 0 ? "+" : "−"}${Math.abs(v)} ${c}` : "0";
+    }
+    const e = Math.round((S.params.printExp || 0) * 6);
+    $("#printExp").value = e / 6;
+    const a = Math.abs(e), w = Math.floor(a / 6), r = a % 6, fr = ["", "1/6", "1/3", "1/2", "2/3", "5/6"][r];
+    $("#printExpVal").textContent = e ? `${e > 0 ? "+" : "−"}${[w || "", fr].filter(Boolean).join(" ")} stop${a > 6 ? "s" : ""} (${e > 0 ? "darker" : "lighter"})` : "0";
+  }
   sel.value = paper ? paper.paper : "";
   const grades = kind === "bw" && paper;
   $("#gradeSel").innerHTML = grades ? ["00","0","1","2","3","4","5"].map(g => `<option value="${g}">${g}</option>`).join("") : "";

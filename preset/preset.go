@@ -76,6 +76,13 @@ type Params struct {
 	// ("00", "0" … "5"; "" = 2).
 	Paper string `json:"paper,omitempty"`
 	Grade string `json:"grade,omitempty"`
+	// The colour darkroom (a colour negative on colour paper): the
+	// enlarger's colour head on top of the neutral filtration, Y/M/C in CC
+	// units (density × 100), and the print exposure in stops.
+	CCY      float64 `json:"ccY,omitempty"`
+	CCM      float64 `json:"ccM,omitempty"`
+	CCC      float64 `json:"ccC,omitempty"`
+	PrintExp float64 `json:"printExp,omitempty"`
 }
 
 const (

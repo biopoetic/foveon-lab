@@ -68,7 +68,7 @@ func TestColorNegatives(t *testing.T) {
 			t.Errorf("%s: borrowed dyes rebuild the neutral with RMS %.3f", key, fit.RMS)
 		}
 		for _, paper := range ColorPapers() {
-			f := colorFilmOn(key, paper, "Merrill")
+			f := colorFilmOn(key, paper, "Merrill", ColorPrint{})
 			if f == nil {
 				t.Fatalf("no model for %s on %s", key, paper)
 			}
@@ -85,5 +85,43 @@ func TestColorNegatives(t *testing.T) {
 				t.Logf("    layers %v -> %.3f %.3f %.3f", c, r, g, b)
 			}
 		}
+	}
+}
+
+// The colour darkroom works like the real one: adding a colour's filter
+// takes that colour out of the print, more exposure prints darker; no
+// filtration is the neutral print.
+func TestColorPrintFiltration(t *testing.T) {
+	const neg = "Kodak Portra 160 / 400 / 800"
+	g := float32(0.128)
+	grey := func(cp ColorPrint) [3]float64 {
+		f := colorFilmOn(neg, "", "Merrill", cp)
+		if f == nil {
+			t.Fatal("no model")
+		}
+		r, gg, b := f.apply(g, g, g)
+		return [3]float64{float64(r), float64(gg), float64(b)}
+	}
+	base := grey(ColorPrint{})
+	t.Logf("neutral %.4f %.4f %.4f", base[0], base[1], base[2])
+	for _, c := range []struct {
+		name string
+		cp   ColorPrint
+		ok   func(v [3]float64) bool
+	}{
+		{"+20Y: less yellow (bluer)", ColorPrint{Y: 20}, func(v [3]float64) bool { return v[2]/v[1] > base[2]/base[1]*1.1 }},
+		{"+20M: less magenta (greener)", ColorPrint{M: 20}, func(v [3]float64) bool { return v[1]/v[0] > base[1]/base[0]*1.1 }},
+		{"+20C: less cyan (redder)", ColorPrint{C: 20}, func(v [3]float64) bool { return v[0]/v[1] > base[0]/base[1]*1.1 }},
+		{"+1 stop: darker", ColorPrint{Exp: 1}, func(v [3]float64) bool { return v[1] < base[1]*0.7 }},
+		{"-1 stop: lighter", ColorPrint{Exp: -1}, func(v [3]float64) bool { return v[1] > base[1]*1.3 }},
+	} {
+		v := grey(c.cp)
+		t.Logf("%-28s %.4f %.4f %.4f", c.name, v[0], v[1], v[2])
+		if !c.ok(v) {
+			t.Errorf("%s: got %.4f %.4f %.4f", c.name, v[0], v[1], v[2])
+		}
+	}
+	if v := grey(ColorPrint{}); v != base {
+		t.Errorf("neutral print changed after filtering: %v vs %v", v, base)
 	}
 }
