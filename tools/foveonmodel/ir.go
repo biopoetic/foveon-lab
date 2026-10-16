@@ -17,10 +17,16 @@ package main
 //   - aerochrome: through a Wratten 12 (deep yellow, cut below ~515 nm), as
 //     Kodak Aerochrome EIR (shot with the same filter): its infrared layer
 //     prints red, its red layer green, its green layer blue.
-//   - ir590: through a 590 nm long-pass, the classic channel-swapped colour
+//   - ir590: through SCHOTT OG590 glass, the classic channel-swapped colour
 //     infrared: red = green = infrared, blue = visible red (golden foliage,
 //     blue sky).
-//   - ir720: through a 720 nm long-pass: black and white infrared.
+//   - ir720: through SCHOTT RG715 glass: black and white infrared.
+//
+// The two glasses' transmission is their catalogued measured curve
+// (render/schottglass.json: internal transmittance at the reference
+// thickness times the reflection factor), in place of the logistic edges
+// they were standing in for; the Wratten 12 stays such an edge (Kodak's
+// curve is not published here).
 //
 //	IR=render/irlooks.json go run ./tools/foveonmodel
 
@@ -186,13 +192,13 @@ var irLooks = []irLook{
 			func(l float64) float64 { return sig(l, 600, 10) * (1 - sig(l, 700, 10)) }, // red layer -> green
 			func(l float64) float64 { return sig(l, 500, 10) * (1 - sig(l, 600, 10)) }, // green layer -> blue
 		}},
-	{name: "ir590", filter: func(l float64) float64 { return sig(l, 590, 8) },
+	{name: "ir590", filter: schottT("OG590"),
 		bands: []func(float64) float64{
 			func(l float64) float64 { return sig(l, 700, 10) },                        // infrared -> red
 			func(l float64) float64 { return sig(l, 700, 10) },                        // infrared -> green
 			func(l float64) float64 { return sig(l, 590, 8) * (1 - sig(l, 700, 10)) }, // visible red -> blue
 		}},
-	{name: "ir720", filter: func(l float64) float64 { return sig(l, 720, 8) }, mono: true,
+	{name: "ir720", filter: schottT("RG715"), mono: true,
 		bands: []func(float64) float64{func(l float64) float64 { return sig(l, 720, 8) }}},
 }
 

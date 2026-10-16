@@ -225,6 +225,11 @@ License 2.0), which in turn comes from the Kalpanika x3f tools (© 2015 Roland K
 Karlsson, Mark Roden; BSD-style). The knowledge of the X3F format is theirs. Their licenses and
 notices in `third_party/x3fuse-core/` apply to these files and ship with every release.
 
+**Data.** The infrared looks' lens filters are real SCHOTT filter glasses (OG590, RG715);
+their transmission curves are SCHOTT's published internal transmittance and reflection factor
+(shop.schott.com, fetched October 2026), kept in `render/schottglass.json`. SCHOTT is a
+trademark of SCHOTT AG; Foveon Lab is not affiliated with it.
+
 **Foveon Lab's own work** — everything done with the image once it is read:
 - the Foveon noise reduction (`denoise.go`), built on the three layers' different noise and a
   noise model measured on each photo. (An earlier claim that it beat SPP's own, ISO 6400 dE 6.6

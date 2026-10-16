@@ -141,7 +141,7 @@ func irPresets() []preset.Preset {
 	var out []preset.Preset
 	for _, f := range []struct{ key, name string }{
 		{"ir-fs-aerochrome", "False colour, no lens filter"}, {"ir-aerochrome", "Aerochrome (Wratten 12)"},
-		{"ir-ir590", "Colour infrared (590 nm)"}, {"ir-ir720", "Infrared B&W (720 nm)"},
+		{"ir-ir590", "Colour infrared (OG590)"}, {"ir-ir720", "Infrared B&W (RG715)"},
 	} {
 		p := preset.Neutral()
 		p.Filter = f.key
