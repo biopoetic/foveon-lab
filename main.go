@@ -341,11 +341,11 @@ func (s *server) loadPresets() {
 	for i := range ps {
 		ps[i].Film = render.FilmFor(ps[i].Name)
 	}
-	// The film stocks first: each simulated film is a preset (filmpresets.go).
-	// and the camera's own colour modes.
+	// The film stocks first: each simulated film is a preset (filmpresets.go),
+	// then the camera's own colour modes, the white balance presets and the
+	// infrared looks.
 	gen := append(append(filmPresets(), cameraModePresets()...), wbPresets()...)
-	gen = append(append(gen, bwFilterPresets()...), irPresets()...)
-	ps = append(gen, ps...)
+	ps = append(append(gen, irPresets()...), ps...)
 	m := map[string]preset.Preset{}
 	for _, p := range ps {
 		m[p.ID] = p

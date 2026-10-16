@@ -268,8 +268,8 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <div class="src" id="filmLink" style="display:none"></div>
           <button id="filmCmpBtn" title="This photo, with your settings, in every colour film side by side (colour and tone only, without grain). Click one to use it. Needs a raw-decodable X3F." style="margin-top:6px">Compare colour films…</button>
         </div>
-        <div class="row" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky."><div class="lab">Filter on the lens <span class="dim">(Wratten)</span></div>
-          <select id="lensSel" style="width:100%"><option value="">None</option><option value="pad" disabled>Custom (filter pad)</option><option value="yellow">Yellow (Wratten 8)</option><option value="deepyellow">Deep yellow (Wratten 15)</option><option value="orange">Orange (Wratten 21)</option><option value="red">Red (Wratten 25)</option><option value="deepred">Deep red (Wratten 29)</option><option value="yellowgreen">Yellow-green (Wratten 11)</option><option value="green">Green (Wratten 58)</option><option value="blue">Blue (Wratten 47)</option><option value="warm">Warming (81A)</option><option value="cool">Cooling (82A)</option></select>
+        <div class="row" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky. The full-spectrum infrared looks are for converted cameras (the IR-cut protector removed)."><div class="lab">Filter on the lens <span class="dim">(Wratten + IR)</span></div>
+          <select id="lensSel" style="width:100%"><option value="">None</option><option value="pad" disabled>Custom (filter pad)</option><option value="yellow">Yellow (Wratten 8)</option><option value="deepyellow">Deep yellow (Wratten 15)</option><option value="orange">Orange (Wratten 21)</option><option value="red">Red (Wratten 25)</option><option value="deepred">Deep red (Wratten 29)</option><option value="yellowgreen">Yellow-green (Wratten 11)</option><option value="green">Green (Wratten 58)</option><option value="blue">Blue (Wratten 47)</option><option value="warm">Warming (81A)</option><option value="cool">Cooling (82A)</option><optgroup label="Full spectrum (IR filter removed)"><option value="ir-fs-aerochrome">False colour, no lens filter</option><option value="ir-aerochrome">Aerochrome (Wratten 12)</option><option value="ir-ir590">Colour infrared (OG590)</option><option value="ir-ir720">Infrared B&amp;W (RG715)</option></optgroup></select>
           <div id="padWrap" title="The filter pad: every point is a real filter, painted in its own colour. Left to right: where it starts passing light (its lower edge); top to bottom: where it stops (its upper edge). Drag to choose; the Wratten filters are marked. Computed from the sensor's physics, like the Wratten list.">
             <canvas id="pad" width="300" height="170"></canvas>
             <div class="lab" style="margin-top:4px"><span>Filter strength</span><b id="padSVal"></b></div>
@@ -815,8 +815,9 @@ function buildSliders(){
   };
   $("#layerPreset").onchange = () => {
     const v = $("#layerPreset").value;
-    // "None" keeps a colour filter on the lens (that's the Film group's).
-    S.params.filter = v.startsWith("lens:") ? v.slice(5) : v === "" && COLOUR_FILTERS.has(S.params.filter) ? S.params.filter : "";
+    // "None" keeps a lens filter set in Film & Darkroom: colour, pad or infrared.
+    const keep = S.params.filter || "";
+    S.params.filter = v.startsWith("lens:") ? v.slice(5) : v === "" && (COLOUR_FILTERS.has(keep) || keep.startsWith("pad:") || keep.startsWith("ir-")) ? keep : "";
     [S.params.layerBottom, S.params.layerMiddle, S.params.layerTop] = v.startsWith("mix:") ? LAYER_MIX[v.slice(4)] : [0, 0, 0];
     $("#layerPreset").blur(); syncSliders(); scheduleRender();
   };
@@ -1064,8 +1065,8 @@ function syncSliders(){
   const lf = [S.params.layerBottom || 0, S.params.layerMiddle || 0, S.params.layerTop || 0];
   const zero = lf.every(x => Math.abs(x) < 1e-9);
   const mix = Object.keys(LAYER_MIX).find(k => LAYER_MIX[k].every((x, i) => Math.abs(x - lf[i]) < 1e-9));
-  const isPad = (S.params.filter || "").startsWith("pad:"), colour = COLOUR_FILTERS.has(S.params.filter) || isPad;
-  $("#lensSel").value = isPad ? "pad" : colour ? S.params.filter : "";
+  const isPad = (S.params.filter || "").startsWith("pad:"), isIR = (S.params.filter || "").startsWith("ir-"), colour = COLOUR_FILTERS.has(S.params.filter) || isPad;
+  $("#lensSel").value = isPad ? "pad" : colour || isIR ? S.params.filter : "";
   const pf = padOf(S.params.filter);
   $("#padS").value = pf ? pf[2] : 1; $("#padSVal").textContent = pf ? Math.round(pf[2] * 100) + "%" : "–";
   padDraw();
