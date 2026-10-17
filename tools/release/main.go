@@ -10,6 +10,10 @@
 //     [+ STOCKCHAT_MACOS_P12_PASSWORD], STOCKCHAT_NOTARY_API_KEY.
 //
 // It refuses to publish anything unsigned unless -allow-unsigned is given.
+//
+// A release is cut from a branch whose HEAD is pushed, by default main:
+// pass -branch to release from a release branch without merging it first.
+// The git tag is created on the released commit, not on the default branch.
 package main
 
 import (
@@ -249,24 +253,34 @@ func copyTo(src, dst string) error {
 	return out.Close()
 }
 
-// checkPublishable makes sure the release is cut from pushed, clean main.
-func checkPublishable(version string) error {
+// checkPublishable makes sure the release is cut from a clean working tree
+// whose HEAD is pushed to the branch being released.
+func checkPublishable(version, branch string) error {
 	if s, _ := output("git", "status", "--porcelain"); s != "" {
 		return errors.New("working tree is not clean — commit first")
 	}
-	if b, _ := output("git", "rev-parse", "--abbrev-ref", "HEAD"); b != "main" {
-		return fmt.Errorf("on branch %q, not main", b)
+	if b, _ := output("git", "rev-parse", "--abbrev-ref", "HEAD"); b != branch {
+		return fmt.Errorf("on branch %q, not %s", b, branch)
 	}
-	run("git", "fetch", "-q", "origin", "main")
+	// The release is cut from a commit that exists on the remote, so the
+	// tagged source can always be fetched again. That commit need not be on
+	// main: a release branch is a normal way to ship without merging.
+	run("git", "fetch", "-q", "origin", branch)
 	head, _ := output("git", "rev-parse", "HEAD")
-	remote, _ := output("git", "rev-parse", "origin/main")
+	remote, _ := output("git", "rev-parse", "origin/"+branch)
 	if head != remote {
-		return errors.New("HEAD is not pushed to origin/main — push first")
+		return fmt.Errorf("HEAD is not pushed to origin/%s — push first", branch)
 	}
 	if _, err := output("gh", "release", "view", version); err == nil {
 		return fmt.Errorf("release %s already exists", version)
 	}
 	return nil
+}
+
+// mustOutput is output for a value already proven available.
+func mustOutput(name string, args ...string) string {
+	s, _ := output(name, args...)
+	return s
 }
 
 func main() {
@@ -277,6 +291,8 @@ func main() {
 	notesFile := flag.String("notes-file", "", "Markdown \"What's new\": shown in the app once after updating (signed manifest) and put at the top of the GitHub release notes")
 	skipX3F := flag.Bool("skip-x3f-extract", false, "ship without x3f_extract (the app decodes every body natively since v0.4.2; x3f_extract is then only a test reference)")
 	skipDMG := flag.Bool("skip-dmg", false, "do not build the macOS .app/.dmg")
+	branch := flag.String("branch", "main", "branch to release from (its HEAD must be pushed to origin)")
+	checkOnly := flag.Bool("check", false, "only run the publish preflight (branch, clean tree, pushed, tag free) and exit")
 	genKey := flag.Bool("gen-update-key", false, "create the self-update signing key (once) and print its public key")
 	icoOut := flag.String("write-ico", "", "only write the Windows icon (.ico) to this path")
 	sysoOut := flag.String("write-syso", "", "only write the Windows icon resource (.syso) to this path")
@@ -312,9 +328,14 @@ func main() {
 	if !regexp.MustCompile(`^v\d+\.\d+\.\d+$`).MatchString(*version) {
 		log.Fatal("-version must look like v0.1.0")
 	}
-	if *publish {
-		if err := checkPublishable(*version); err != nil {
+	if *publish || *checkOnly {
+		if err := checkPublishable(*version, *branch); err != nil {
 			log.Fatal(err)
+		}
+		if *checkOnly {
+			log.Printf("%s could be released from %s (HEAD %s)", *version, *branch,
+				mustOutput("git", "rev-parse", "--short", "HEAD"))
+			return
 		}
 		// Fail now, not after half an hour of signing.
 		if _, err := loadUpdateKey(); err != nil {
@@ -498,7 +519,14 @@ func main() {
 	if whatsNew != "" {
 		notes = whatsNew + "\n\n---\n\n" + notes
 	}
-	args := append([]string{"release", "create", *version, "--title", "Foveon Lab " + *version, "--notes", notes}, assets...)
+	// Tag the commit actually being released. Without --target, gh tags the
+	// default branch, which on a release branch would point somewhere else.
+	head, err := output("git", "rev-parse", "HEAD")
+	if err != nil {
+		log.Fatalf("cannot resolve HEAD: %v", err)
+	}
+	args := append([]string{"release", "create", *version, "--target", head,
+		"--title", "Foveon Lab " + *version, "--notes", notes}, assets...)
 	if err := run("gh", args...); err != nil {
 		log.Fatalf("gh release create: %v", err)
 	}
