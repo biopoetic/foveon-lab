@@ -249,11 +249,28 @@ trademarks of their owners; Foveon Lab is not affiliated with them.
 
 MIT licensed — see [LICENSE](LICENSE).
 
-Film names (Kodak, Portra, Ektar, Gold, Ultramax, Ektachrome, Tri-X, T-Max; Fujifilm, Fujichrome,
-Fujicolor, Velvia, Provia, Astia, Superia; Ilford, HP5, FP4, Pan F, Delta, Multigrade; Agfa, APX and
-others) are trademarks of their owners. Foveon Lab is not affiliated with or endorsed by them: presets
-named after a film imitate its look with SPP settings, and Film stock simulates films from the makers'
-published data.
+### Trademarks
+
+Foveon Lab is independent and is not affiliated with, sponsored by or endorsed by any of the
+companies whose products it refers to.
+
+**Film names** (Kodak, Portra, Ektar, Gold, Ultramax, Ektachrome, Tri-X, T-Max; Fujifilm,
+Fujichrome, Fujicolor, Velvia, Provia, Astia, Superia; Ilford, HP5, FP4, Pan F, Delta, Multigrade;
+Agfa, APX and others) are trademarks of their owners. Presets named after a film imitate its look
+with SPP settings, and Film stock simulates films from the makers' published data.
+
+**Filter names** (B+W; Hoya; Cokin; Tiffen; K&F Concept; Kolari Vision; LEE; Formatt-Hitech;
+Schott; and the Wratten designation of Eastman Kodak) are trademarks of their owners. They are used
+descriptively, to say which physical filter a catalogue entry corresponds to, and they are never
+the entry's name: the catalogue names the thing Foveon Lab actually models — a glass type, a
+Wratten number, a cutoff wavelength or a density — and records the product that uses it as a
+compatibility note. Foveon Lab simulates a filter's transmission, not any maker's manufacturing
+process, coating or quality control, and a simulation is not a claim about how a particular sample
+of a product performs.
+
+**Sigma, Foveon, X3F and Sigma Photo Pro** are trademarks of SIGMA Corporation. This is an
+independent project, not affiliated with or endorsed by SIGMA Corporation. It reads the
+documented-by-the-community X3F container format and never modifies your original files.
 
 Sigma, Foveon, X3F and Sigma Photo Pro are trademarks of SIGMA Corporation. This is an independent
 project, not affiliated with or endorsed by SIGMA Corporation. It reads the documented-by-the-community

@@ -27,13 +27,17 @@ import (
 //go:embed brandfilters.json
 var brandFiltersJSON []byte
 
-// BrandFilter is one catalogue entry, as served to the UI.
+// BrandFilter is one catalogue entry, as served to the UI. Physical is the
+// entry's identity — the thing actually modelled (a glass, a Wratten number,
+// a cutoff, a density). Brand and Model say which product uses that
+// physical filter, so the UI can present the specification as the primary
+// name and the product only as a compatibility note.
 type BrandFilter struct {
 	ID       string  `json:"id"`
+	Physical string  `json:"physical"`
+	Kind     string  `json:"kind"`     // "colour", "ir", "nd" or "gnd"
 	Brand    string  `json:"brand"`
 	Model    string  `json:"model"`
-	Name     string  `json:"name"`
-	Kind     string  `json:"kind"`     // "colour", "ir", "nd" or "gnd"
 	Look     string  `json:"look"`     // for IR: "colour" or "mono"
 	Glass    string  `json:"glass"`    // SCHOTT glass, measured curve
 	Wratten  string  `json:"wratten"`  // Wratten spectrum this filter equals

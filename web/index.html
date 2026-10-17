@@ -880,30 +880,41 @@ async function filtersInit(){
   buildLensSel();
   syncSliders();
 }
+// filterLabel names a catalogue entry by the physical filter we model, with
+// the product that uses it as a compatibility note. Foveon Lab simulates the
+// glass, the Wratten spectrum or the density — not a maker's process — so the
+// maker's name is only where you can buy one.
+function filterLabel(f){
+  const made = f.brand ? ` <span class="dim">· ${esc(f.brand)} ${esc(f.model)}</span>` : "";
+  return esc(f.physical) + made;
+}
 function buildLensSel(){
   const sel = $("#lensSel");
   sel.innerHTML = `<option value="">None</option><optgroup label="Wratten">` +
     WRATTEN_FILTERS.map(([v, n]) => `<option value="${v}">${esc(n)}</option>`).join("") + `</optgroup>`;
+  // Grouped by the kind of filter, not by maker: a set of physical filters
+  // first, a shopping guide second.
   const colour = BRAND_FILTERS.filter(f => f.kind === "colour");
-  const brands = [...new Set(colour.map(f => f.brand))];
-  for (const b of brands)
-    sel.insertAdjacentHTML("beforeend", `<optgroup label="${esc(b)}">` + colour.filter(f => f.brand === b)
-      .map(f => `<option value="br-${esc(f.id)}" title="${esc(f.src)}">${esc(f.model)} — ${esc(f.name)}</option>`).join("") + `</optgroup>`);
+  const groups = [...new Set(colour.map(f => f.physical.split(" · ")[0]))];
+  for (const g of groups)
+    sel.insertAdjacentHTML("beforeend", `<optgroup label="${esc(g)}">` + colour.filter(f => f.physical.split(" · ")[0] === g)
+      .map(f => `<option value="br-${esc(f.id)}" title="${esc(f.src)}">${filterLabel(f)}</option>`).join("") + `</optgroup>`);
   const ir = BRAND_FILTERS.filter(f => f.kind === "ir");
   sel.insertAdjacentHTML("beforeend", `<optgroup label="Full spectrum (IR filter removed)">` +
     IR_LOOKS.map(([v, n]) => `<option value="${v}">${esc(n)}</option>`).join("") +
-    ir.map(f => `<option value="ir-${esc(f.id)}" title="${esc(f.src)}">${esc(f.brand)} ${esc(f.model)} — ${esc(f.name)}</option>`).join("") +
+    ir.map(f => `<option value="ir-${esc(f.id)}" title="${esc(f.src)}">${filterLabel(f)}</option>`).join("") +
     `</optgroup>`);
   // Density filters live in their own rows: they cost exposure, not colour,
   // and can stack with any lens filter above.
   $("#ndSel").innerHTML = `<option value="">None</option>` +
     BRAND_FILTERS.filter(f => f.kind === "nd").map(f =>
-      `<option value="${esc(f.id)}" title="${esc(f.src)}">${esc(f.brand)} ${esc(f.model)} — ${esc(f.name)}</option>`).join("");
+      `<option value="${esc(f.id)}" title="${esc(f.src)}">${filterLabel(f)}</option>`).join("");
   $("#gndSel").innerHTML = `<option value="">None</option>` +
     BRAND_FILTERS.filter(f => f.kind === "gnd").map(f =>
-      `<option value="${esc(f.id)}" title="${esc(f.src)}">${esc(f.brand)} ${esc(f.model)} — ${esc(f.name)}</option>`).join("");
+      `<option value="${esc(f.id)}" title="${esc(f.src)}">${filterLabel(f)}</option>`).join("");
   syncSliders();
 }
+
 // useFilm makes the photo use a library film: its grain (from its data
 // sheet), black and white for a black-and-white film (the grey from its
 // spectral sensitivity where the library has it).

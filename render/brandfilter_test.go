@@ -2,6 +2,7 @@ package render
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -14,6 +15,15 @@ func TestBrandFiltersHaveBasis(t *testing.T) {
 	for _, f := range BrandFilters() {
 		if f.ID == "" || f.Brand == "" || f.Model == "" {
 			t.Errorf("entry without id/brand/model: %+v", f)
+		}
+		if f.Physical == "" {
+			t.Errorf("%s: no physical name", f.ID)
+		}
+		// The physical name is what we model, so it must stand on its own and
+		// not borrow the maker's mark for its identity; the brand is a
+		// separate compatibility note.
+		if f.Brand != "" && strings.Contains(f.Physical, f.Brand) {
+			t.Errorf("%s: physical name %q repeats the brand", f.ID, f.Physical)
 		}
 		if seen[f.ID] {
 			t.Errorf("duplicate id %q", f.ID)
