@@ -13,14 +13,15 @@ import (
 // that the visible text no longer contains it.
 func TestCritique(t *testing.T) {
 	reply := "## Score\n7/10 — the light carries it.\n\n## What to improve\n- Crop the left edge.\n\n" +
-		"```json\n{\"settings\":{\"exposure\":0.2,\"highlight\":-0.4}}\n```"
+		"```json\n{\"settings\":{\"exposure\":0.2,\"highlight\":-0.4}," +
+		"\"crop\":{\"x\":0.1,\"y\":0.05,\"w\":0.8,\"h\":0.7,\"angle\":1.5}}\n```"
 	f := &fakeModel{script: []Message{{Role: "assistant", Content: reply}}}
 	srv := httptest.NewServer(f)
 	defer srv.Close()
 	cfg := Config{BaseURL: srv.URL, Model: "m", APIKey: "k", HTTP: srv.Client()}
 
 	img := image.NewRGBA(image.Rect(0, 0, 64, 48))
-	text, settings, err := Critique(context.Background(), cfg, img, "shot at dusk", map[string]float64{"exposure": 0})
+	text, settings, crop, err := Critique(context.Background(), cfg, img, "shot at dusk", map[string]float64{"exposure": 0})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,6 +33,9 @@ func TestCritique(t *testing.T) {
 	}
 	if len(settings) != 2 || settings["exposure"] != 0.2 || settings["highlight"] != -0.4 {
 		t.Errorf("settings %v, want exposure 0.2 and highlight -0.4", settings)
+	}
+	if crop == nil || crop.W != 0.8 || crop.H != 0.7 || crop.X != 0.1 || crop.Y != 0.05 || crop.Angle != 1.5 {
+		t.Errorf("crop %+v, want 0.1,0.05 0.8x0.7 at 1.5°", crop)
 	}
 	if len(f.requests) != 1 {
 		t.Fatalf("%d requests, want 1", len(f.requests))
@@ -54,7 +58,7 @@ func TestCritiqueNoText(t *testing.T) {
 	srv := httptest.NewServer(f)
 	defer srv.Close()
 	cfg := Config{BaseURL: srv.URL, Model: "m", APIKey: "k", HTTP: srv.Client()}
-	if _, _, err := Critique(context.Background(), cfg, image.NewRGBA(image.Rect(0, 0, 8, 8)), "", nil); err == nil {
+	if _, _, _, err := Critique(context.Background(), cfg, image.NewRGBA(image.Rect(0, 0, 8, 8)), "", nil); err == nil {
 		t.Error("want an error for an empty answer")
 	}
 }
@@ -80,17 +84,28 @@ func TestMessageText(t *testing.T) {
 }
 
 // splitSettings removes the block whether or not it parses, and keeps the
-// last block when the model writes more than one.
+// crop only when it would change the frame.
 func TestSplitSettings(t *testing.T) {
-	if text, s := splitSettings("no block here"); s != nil || text != "no block here" {
-		t.Errorf("plain text: %q %v", text, s)
+	if text, s, c := splitSettings("no block here"); s != nil || c != nil || text != "no block here" {
+		t.Errorf("plain text: %q %v %v", text, s, c)
 	}
-	text, s := splitSettings("a\n```json\n{\"settings\":{\"exposure\":0.1}}\n```\nb")
+	text, s, c := splitSettings("a\n```json\n{\"settings\":{\"exposure\":0.1},\"crop\":{\"x\":0.1,\"y\":0.1,\"w\":0.5,\"h\":0.5}}\n```\nb")
 	if text != "a\n\nb" || s["exposure"] != 0.1 {
 		t.Errorf("block: %q %v", text, s)
 	}
-	text, s = splitSettings("a\n```json\n{broken\n```")
-	if s != nil || strings.Contains(text, "```") {
-		t.Errorf("broken block: %q %v", text, s)
+	if c == nil || c.W != 0.5 || c.H != 0.5 {
+		t.Errorf("crop %+v, want 0.5x0.5", c)
+	}
+	// A crop of the whole frame changes nothing, so it is dropped.
+	if _, _, c := splitSettings("```json\n{\"crop\":{\"x\":0,\"y\":0,\"w\":1,\"h\":1}}\n```"); c != nil {
+		t.Errorf("full-frame crop kept: %+v", c)
+	}
+	// Values outside the frame are clamped, not passed on.
+	if _, _, c := splitSettings("```json\n{\"crop\":{\"x\":0.8,\"y\":0.9,\"w\":1,\"h\":1,\"angle\":90}}\n```"); c == nil || c.W > 0.21 || c.Angle != 45 {
+		t.Errorf("clamped crop %+v", c)
+	}
+	text, s, c = splitSettings("a\n```json\n{broken\n```")
+	if s != nil || c != nil || strings.Contains(text, "```") {
+		t.Errorf("broken block: %q %v %v", text, s, c)
 	}
 }

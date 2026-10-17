@@ -2329,18 +2329,49 @@ async function aiCritique(){
       if (CRIT_CACHE.size > 12) CRIT_CACHE.delete(CRIT_CACHE.keys().next().value);
     }
     box.remove();
-    const {text, settings} = data;
+    const {text, settings, crop} = data;
     const keys = settings ? Object.keys(settings).filter(k => RANGES[k]) : [];
     const list = keys.map(k => `${k} ${(+settings[k]).toFixed(2)}`).join(" · ");
+    const cropTxt = crop
+      ? `Crop: keep ${Math.round(crop.w * 100)}% × ${Math.round(crop.h * 100)}% from ${Math.round(crop.x * 100)}%, ${Math.round(crop.y * 100)}%${crop.angle ? `, straighten ${crop.angle}°` : ""}`
+      : "";
     const d = aiLog(`<div class="critique">${cached ? '<div class="src">Same settings as the last critique — not sent again.</div>' : ""}${mdLite(text)}${keys.length
       ? `<div class="adj">${esc(list)}</div><button class="primary" data-apply>Apply these settings</button>`
-      : ""}</div>`, "say");
+      : ""}${crop ? `<div class="adj">${esc(cropTxt)}</div><button class="primary" data-crop>Apply crop</button>` : ""}</div>`, "say");
     const btn = d.querySelector("[data-apply]");
     if (btn) btn.onclick = () => applyCritique(settings, btn);
+    const cb = d.querySelector("[data-crop]");
+    if (cb) cb.onclick = () => applyCrop(crop, cb);
   } catch (e) {
     box.remove();
     aiLog("Could not rate the photo: " + esc(e.message), "error");
   }
+}
+// applyCrop sets the photo's crop to the critic's rectangle, through the same
+// per-photo geometry store the crop tool uses, and offers to undo it.
+async function applyCrop(c, btn){
+  const before = {...(GEO[S.photo.id] || {})};
+  if (!await saveGeometry({turn: before.turn || 0, angle: c.angle || 0, x: c.x, y: c.y, w: c.w, h: c.h})) return;
+  toast("Crop applied — Undo puts the frame back.", 5000);
+  if (!btn) return;
+  btn.textContent = "Undo crop";
+  btn.onclick = async () => {
+    await saveGeometry(before);
+    btn.textContent = "Crop applied";
+    btn.disabled = true;
+  };
+}
+// saveGeometry stores a photo's geometry (all zero = no crop) and re-renders.
+async function saveGeometry(g){
+  const body = {id: S.photo.id, turn: g.turn || 0, angle: +(+g.angle || 0).toFixed(2),
+                x: g.x || 0, y: g.y || 0, w: g.w || 0, h: g.h || 0};
+  const res = await fetch("/api/geometry", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (!res.ok){ toast("Could not save the crop: " + esc(await res.text()), 7000); return false; }
+  GEO[S.photo.id] = await res.json();
+  $("#cropBtn").classList.toggle("on", !!geoKey(S.photo.id));
+  if (ZOOM.on) setZoom(false);
+  renderBig();
+  return true;
 }
 // CRIT_CACHE remembers critiques by their request (photo, settings, note).
 const CRIT_CACHE = new Map();

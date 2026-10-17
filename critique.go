@@ -28,10 +28,10 @@ func (s *server) handleCritique(w http.ResponseWriter, r *http.Request) {
 		"highlight": p.Highlight, "fillLight": p.FillLight, "saturation": p.Saturation,
 		"r": p.R, "g": p.G, "b": p.B,
 	}
-	text, settings, err := agent.Critique(r.Context(), cfg, out, strings.TrimSpace(r.URL.Query().Get("note")), current)
+	text, settings, crop, err := agent.Critique(r.Context(), cfg, out, strings.TrimSpace(r.URL.Query().Get("note")), current)
 	if err != nil {
 		httpErr(w, 502, err)
 		return
 	}
-	writeJSON(w, map[string]any{"text": text, "settings": settings})
+	writeJSON(w, map[string]any{"text": text, "settings": settings, "crop": crop})
 }
