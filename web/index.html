@@ -267,7 +267,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <select id="filmStock" style="width:100%"><option value="">None (set the grain by hand)</option></select>
           <div class="src" id="filmSrc"></div>
           <div class="src" id="filmLink" style="display:none"></div>
-          <button id="filmCmpBtn" title="This photo, with your settings, in every colour film side by side (colour and tone only, without grain). Click one to use it. Needs a raw-decodable X3F." style="margin-top:6px">Compare colour films…</button>
+          <button id="filmCmpBtn" title="This photo, with your settings, in every film side by side (colour and tone only, without grain): colour slides, colour negatives on each colour paper, and black-and-white films. Click one to use it. Needs a raw-decodable X3F." style="margin-top:6px">Compare films…</button>
         </div>
         <div class="row" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky. The full-spectrum infrared looks are for converted cameras (the IR-cut protector removed)."><div class="lab">Filter on the lens <span class="dim">(search below)</span></div>
           <input id="lensSearch" type="search" placeholder="Search filters — name, glass, brand, nm" style="width:100%;margin-bottom:4px" title="Filters the list below. Matches the physical name, the glass or Wratten number, a wavelength, the brand, and measured/documented.">
@@ -385,7 +385,18 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 </div>
 <div id="filmCmp" class="modal">
   <div class="box">
-    <div style="display:flex;align-items:center;gap:8px"><b style="flex:1">Colour films on this photo</b><span class="dim">Click one to use it · Esc closes</span><button id="filmCmpClose">Close</button></div>
+    <div style="display:flex;align-items:center;gap:8px"><b style="flex:1">Films on this photo</b><span class="dim">Click one to use it · Esc closes</span><button id="filmCmpClose">Close</button></div>
+    <div style="display:flex;gap:8px;margin:10px 0">
+      <select id="filmCmpKind" title="Which films to compare">
+        <option value="colour">Colour films</option>
+        <option value="bw">Black &amp; white films</option>
+        <option value="all">All films</option>
+      </select>
+      <select id="filmCmpIso" title="Only films within one stop of the film in use">
+        <option value="any">Any speed</option>
+        <option value="same">Same speed as the film in use (±1 stop)</option>
+      </select>
+    </div>
     <div id="filmCmpGrid"></div>
   </div>
 </div>
@@ -793,6 +804,8 @@ function buildSliders(){
   $("#devSel").onchange = () => { S.params.developer = $("#devSel").value; S.params.devTime = 0; $("#devSel").blur(); syncSliders(); scheduleRender(); };
   $("#filmCmpBtn").onclick = () => { $("#filmCmpBtn").blur(); filmCompare(); };
   $("#filmCmpClose").onclick = filmCompareClose;
+  $("#filmCmpKind").onchange = filmCompare;
+  $("#filmCmpIso").onchange = filmCompare;
   $("#filmCmp").onclick = e => { if (e.target.id === "filmCmp") filmCompareClose(); };
   $("#paperSel").onchange = () => { S.params.paper = $("#paperSel").value; $("#paperSel").blur(); syncSliders(); scheduleRender(); };
   $("#gradeSel").onchange = () => { S.params.grade = $("#gradeSel").value; $("#gradeSel").blur(); syncSliders(); scheduleRender(); };
@@ -981,21 +994,39 @@ function useFilm(f){
   }
   syncSliders(); scheduleRender();
 }
-// filmCompare shows the photo with the current settings in every colour
-// film (each negative on each colour paper), no grain; a click uses it.
+// filmCompare shows the photo with the current settings in the films the
+// filters select: colour slides, colour negatives on each colour paper, and
+// black-and-white films (each with its own developer data, no grain); a
+// click uses the film.
 function filmCompare(){
   if (!S.photo || !S.params) return;
+  const kind = $("#filmCmpKind")?.value || "colour";
+  const isoMode = $("#filmCmpIso")?.value || "any";
+  const curFilm = FILMS.find(f => f.maker + " " + f.name === (S.params.film || ""));
+  // "Same speed" is within one stop of the film in use.
+  const isoOK = f => isoMode !== "same" || !curFilm || (f.iso >= curFilm.iso / 2 && f.iso <= curFilm.iso * 2);
+  const want = k => kind === "all" || kind === k;
   const w = 600, base = {...S.params, grain: 0, halation: 0, developer: "", devTime: 0, push: 0, ccY: 0, ccM: 0, ccC: 0, printExp: 0};
   const papers = PAPERS.filter(p => p.kind === "colour");
-  const tiles = [{label: "No film", sub: "your settings as they are", film: "", paper: ""}];
-  for (const f of FILMS.filter(f => f.color && f.kind === "slide"))
-    tiles.push({label: f.name, sub: "slide · ISO " + f.iso, film: f.maker + " " + f.name, paper: ""});
-  for (const f of FILMS.filter(f => f.color && f.kind === "cn"))
-    for (const p of papers) tiles.push({label: f.name, sub: "negative printed on " + p.paper, film: f.maker + " " + f.name, paper: p.paper});
+  // A black-and-white paper is used for the black-and-white tiles when one is
+  // chosen; otherwise they are scans of the negative.
+  const bwPaper = PAPERS.some(p => p.kind === "bw" && p.paper === S.params.paper) ? S.params.paper : "";
+  const tiles = [{label: "No film", sub: "your settings as they are", film: "", paper: "", mono: S.params.mono}];
+  if (want("colour")) {
+    for (const f of FILMS.filter(f => f.color && f.kind === "slide" && isoOK(f)))
+      tiles.push({label: f.name, sub: "slide · ISO " + f.iso, film: f.maker + " " + f.name, paper: "", mono: false});
+    for (const f of FILMS.filter(f => f.color && f.kind === "cn" && isoOK(f)))
+      for (const p of papers) tiles.push({label: f.name, sub: "negative printed on " + p.paper, film: f.maker + " " + f.name, paper: p.paper, mono: false});
+  }
+  if (want("bw")) {
+    for (const f of FILMS.filter(f => f.bw && isoOK(f)))
+      tiles.push({label: f.name, sub: (f.kind === "chromo" ? "chromogenic" : "black & white") + " · ISO " + f.iso,
+                  film: f.maker + " " + f.name, paper: bwPaper, mono: true});
+  }
   const cur = S.params.film || "", curPaper = S.params.paper || "";
   $("#filmCmpGrid").innerHTML = tiles.map((t, i) => {
-    const on = t.film === cur && (!t.paper || t.paper === curPaper || (!curPaper && t.paper === papers[0]?.paper));
-    const params = {...base, film: t.film, paper: t.paper, mono: t.film ? false : S.params.mono};
+    const on = t.film === cur && (t.paper === curPaper || (!curPaper && t.paper === (t.mono ? bwPaper : papers[0]?.paper)));
+    const params = {...base, film: t.film, paper: t.paper, mono: t.film ? !!t.mono : S.params.mono};
     return `<div class="tile${on ? " cur" : ""}" data-i="${i}"><div class="img"><img src="${renderURL({w, params})}"></div><div class="cap">${esc(t.label)}<small>${esc(t.sub)}</small></div></div>`;
   }).join("");
   $("#filmCmpGrid").querySelectorAll(".tile").forEach(el => el.onclick = () => {
