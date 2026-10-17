@@ -1454,6 +1454,36 @@
    "formats_src": "Ilford technical information XP2 SUPER (Nov 2018): 35 mm film, and roll film 'available in 120 lengths'"
   },
   {
+   "maker": "Ilford",
+   "name": "SFX 200",
+   "kind": "neg",
+   "iso": 200,
+   "rms": 0,
+   "src": "Ilford publishes no RMS granularity",
+   "url": "https://125px.com/docs/film/ilford/SFX-200_201811.pdf",
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Ilford technical information SFX 200 (Nov 2018): 36-exposure 35 mm cassettes and 120 roll film"
+  },
+  {
+   "maker": "Ilford",
+   "name": "Ortho Plus",
+   "kind": "neg",
+   "iso": 80,
+   "rms": 0,
+   "src": "Ilford publishes no RMS granularity",
+   "url": "https://125px.com/docs/film/ilford/Ortho-Plus_201910.pdf",
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Ilford technical information ORTHO PLUS (Oct 2019): 36-exposure 35 mm cassettes and 120 roll film; sheet film is offered but its sizes are not listed"
+  },
+  {
    "maker": "Kodak",
    "name": "Portra 160",
    "kind": "cn",
