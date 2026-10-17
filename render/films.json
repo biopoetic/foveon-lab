@@ -881,7 +881,11 @@
    "rms": 9,
    "src": "Kodak E-55 (2009)",
    "url": "https://125px.com/docs/film/kodak/e55-2009_06.pdf",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135"
+   ],
+   "formats_src": "Kodak E-88 (1998), 'SIZES AVAILABLE': 135-24 and 135-36"
   },
   {
    "maker": "Kodak",
@@ -891,7 +895,12 @@
    "rms": 10,
    "src": "Kodak E-55 (2009)",
    "url": "https://125px.com/docs/film/kodak/e55-2009_06.pdf",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Kodak E-88 (1998), 'SIZES AVAILABLE': 135-24 and 135-36 (plain and carded); the 120 size was sold until it was discontinued in 1996"
   },
   {
    "maker": "Kodak",
@@ -901,7 +910,11 @@
    "rms": 16,
    "src": "Kodak E-55 (2009)",
    "url": "https://125px.com/docs/film/kodak/e55-2009_06.pdf",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135"
+   ],
+   "formats_src": "Kodak E-88 (1998), 'SIZES AVAILABLE': 135-24 and 135-36 (plain and carded)"
   },
   {
    "maker": "Kodak",
@@ -1600,7 +1613,14 @@
    "iso": 25,
    "rms": 0,
    "src": "No RMS found in Fotokemika's published data (resolving power only)",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120",
+    "4x5",
+    "8x10"
+   ],
+   "formats_src": "Camera-Wiki's Fotokemika page (third-party compilation): the KB series was 35 mm, the R series roll film in 127 and 120, and the PL series sheet film from 4x5 to 8x10, the same emulsion in each"
   },
   {
    "maker": "Fotokemika (Efke)",
@@ -1609,7 +1629,14 @@
    "iso": 50,
    "rms": 0,
    "src": "No RMS found in Fotokemika's published data (resolving power only)",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120",
+    "4x5",
+    "8x10"
+   ],
+   "formats_src": "Camera-Wiki's Fotokemika page (third-party compilation): the KB series was 35 mm, the R series roll film in 127 and 120, and the PL series sheet film from 4x5 to 8x10, the same emulsion in each"
   },
   {
    "maker": "Fotokemika (Efke)",
@@ -1618,7 +1645,14 @@
    "iso": 100,
    "rms": 0,
    "src": "No RMS found in Fotokemika's published data (resolving power only)",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120",
+    "4x5",
+    "8x10"
+   ],
+   "formats_src": "Camera-Wiki's Fotokemika page (third-party compilation): the KB series was 35 mm, the R series roll film in 127 and 120, and the PL series sheet film from 4x5 to 8x10, the same emulsion in each"
   },
   {
    "maker": "Ferrania",
