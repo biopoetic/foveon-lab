@@ -64,23 +64,33 @@ func brandFilter(id string) (BrandFilter, bool) {
 	return BrandFilter{}, false
 }
 
-// wrattenEdges are the Wratten long-pass edges the named set is rendered on
-// (tools/foveonmodel). A brand filter documented as a Wratten equivalent
-// resolves to the same edge.
-var wrattenEdges = map[string]float64{
-	"yellow": 495, "deepyellow": 530, "orange": 555, "red": 595, "deepred": 615,
+// wrattenT are the Wratten filter spectra a brand filter can be documented
+// as equalling, matching tools/foveonmodel's definitions (logistic edges at
+// the documented 50% points; Wratten 11 is a band).
+var wrattenT = map[string]func(float64) float64{
+	"yellow":      func(l float64) float64 { return longpassEdge(l, 495) },
+	"deepyellow":  func(l float64) float64 { return longpassEdge(l, 530) },
+	"orange":      func(l float64) float64 { return longpassEdge(l, 555) },
+	"red":         func(l float64) float64 { return longpassEdge(l, 595) },
+	"deepred":     func(l float64) float64 { return longpassEdge(l, 615) },
+	"yellowgreen": func(l float64) float64 { return longpassEdge(l, 480) * (1 - 0.6*longpassEdge(l, 590)) },
+	"green":       func(l float64) float64 { return longpassEdge(l, 490) * (1 - longpassEdge(l, 585)) },
+	"blue":        func(l float64) float64 { return 1 - longpassEdge(l, 505) },
 }
 
+// longpassEdge is the Wratten edges' logistic (10 nm) slope at edge.
+func longpassEdge(l, edge float64) float64 { return 1 / (1 + math.Exp(-(l-edge)/10)) }
+
 // brandTransmission is the entry's transmission spectrum: a measured SCHOTT
-// glass curve, the Wratten edge it equals, or its published cutoff.
+// glass curve, the Wratten spectrum it equals, or its published cutoff.
 func brandTransmission(f BrandFilter) func(float64) float64 {
 	if f.Glass != "" {
 		if T := SchottTransmission(f.Glass); T != nil {
 			return T
 		}
 	}
-	if e, ok := wrattenEdges[f.Wratten]; ok {
-		return func(l float64) float64 { return 1 / (1 + math.Exp(-(l-e)/10)) }
+	if T, ok := wrattenT[f.Wratten]; ok {
+		return T
 	}
 	e := f.Edge
 	return func(l float64) float64 { return 1 / (1 + math.Exp(-(l-e)/8)) }

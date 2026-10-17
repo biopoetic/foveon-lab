@@ -27,8 +27,8 @@ func TestBrandFiltersHaveBasis(t *testing.T) {
 				t.Errorf("%s: glass %q is not in schottglass.json", f.ID, f.Glass)
 			}
 		case f.Wratten != "":
-			if _, ok := wrattenEdges[f.Wratten]; !ok {
-				t.Errorf("%s: Wratten %q has no edge", f.ID, f.Wratten)
+			if _, ok := wrattenT[f.Wratten]; !ok {
+				t.Errorf("%s: Wratten %q has no spectrum", f.ID, f.Wratten)
 			}
 		case f.Edge > 0:
 			if f.Edge < 380 || f.Edge > 1100 {

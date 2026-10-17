@@ -32,6 +32,26 @@
       "src": "Hoya R1 Pro — documented as a 25A (Wratten 25) contrast filter; rendered on the Wratten 25 curve"
     },
     {
+      "id": "cokin-001", "brand": "Cokin", "model": "001", "name": "Yellow", "kind": "colour",
+      "wratten": "yellow",
+      "src": "Cokin 001 Yellow — documented as a Wratten 8 contrast filter; rendered on the Wratten 8 curve"
+    },
+    {
+      "id": "cokin-002", "brand": "Cokin", "model": "002", "name": "Orange", "kind": "colour",
+      "wratten": "orange",
+      "src": "Cokin 002 Orange — documented as a Wratten 21 contrast filter; rendered on the Wratten 21 curve"
+    },
+    {
+      "id": "cokin-003", "brand": "Cokin", "model": "003", "name": "Red", "kind": "colour",
+      "wratten": "red",
+      "src": "Cokin 003 Red — documented as a Wratten 25 contrast filter; rendered on the Wratten 25 curve"
+    },
+    {
+      "id": "cokin-004", "brand": "Cokin", "model": "004", "name": "Green", "kind": "colour",
+      "wratten": "yellowgreen",
+      "src": "Cokin 004 Green — documented as a Wratten 11 (yellow-green) contrast filter; rendered on the Wratten 11 curve"
+    },
+    {
       "id": "bw091", "brand": "B+W", "model": "091", "name": "IR light red (610/091)", "kind": "ir", "look": "colour",
       "glass": "RG610",
       "src": "B+W 610/091 — Schott RG610 glass; measured curve (schottglass.json)"
