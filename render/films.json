@@ -1544,7 +1544,11 @@
    "iso": 200,
    "rms": 0,
    "src": "No Print Grain Index found in Kodak's published data for this film",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135"
+   ],
+   "formats_src": "Kodak Alaris product listing and technical specification: Color Plus 200 is a 35 mm film, sold as 24 and 36 exposure cassettes; no roll or sheet format is listed"
   },
   {
    "maker": "CineStill",
