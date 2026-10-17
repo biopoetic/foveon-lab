@@ -1019,7 +1019,10 @@ function filmCompare(){
       for (const p of papers) tiles.push({label: f.name, sub: "negative printed on " + p.paper, film: f.maker + " " + f.name, paper: p.paper, mono: false});
   }
   if (want("bw")) {
-    for (const f of FILMS.filter(f => f.bw && isoOK(f)))
+    // Only films with their own curve: without one the tile would be a plain
+    // luminance conversion, not a rendering of that film. A film with no
+    // curve is not offered in black and white at all.
+    for (const f of FILMS.filter(f => f.bw && f.curve && isoOK(f)))
       tiles.push({label: f.name, sub: (f.kind === "chromo" ? "chromogenic" : "black & white") + " · ISO " + f.iso,
                   film: f.maker + " " + f.name, paper: bwPaper, mono: true});
   }
