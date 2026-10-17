@@ -33,7 +33,7 @@ func infoPlist(version string) string {
 <dict>
 	<key>CFBundleName</key><string>Foveon Lab</string>
 	<key>CFBundleDisplayName</key><string>Foveon Lab</string>
-	<key>CFBundleIdentifier</key><string>com.algobox.foveonlab</string>
+	<key>CFBundleIdentifier</key><string>com.biopoetic.foveonlab</string>
 	<key>CFBundleExecutable</key><string>foveon-lab</string>
 	<key>CFBundleIconFile</key><string>AppIcon</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
@@ -229,6 +229,9 @@ func buildMacApp(dist, version, fooArm, fooAmd, x3fArm, x3fAmd string) (string, 
 	if err := run(rc, "notary-submit", "--api-key-file", key, "--staple", "--max-wait-seconds", "1800", app); err != nil {
 		return "", fmt.Errorf("notarize app: %w", err)
 	}
+	if err := verifyStapled(rc, app, "com.biopoetic.foveonlab"); err != nil {
+		return "", fmt.Errorf("%s: %w", appName, err)
+	}
 	return app, nil
 }
 
@@ -322,5 +325,48 @@ func buildDMG(version, dist, zipPath string) (string, error) {
 	if err := run(rc, "notary-submit", "--api-key-file", key, "--staple", "--max-wait-seconds", "1800", dmg); err != nil {
 		return "", fmt.Errorf("notarize DMG: %w", err)
 	}
+	// Read the signature back out of the finished file. Notarization accepting
+	// a submission is not the same as the ticket having been stapled into it,
+	// and a DMG without the ticket is the one people report Gatekeeper for.
+	// A DMG's signature identifier is its volume name, not the bundle id,
+	// so only the signature and the ticket are checked here; the app inside
+	// was checked by identifier before it was zipped.
+	if err := verifyStapled(rc, dmg, ""); err != nil {
+		return "", fmt.Errorf("%s: %w", name, err)
+	}
 	return dmg, nil
+}
+
+// verifyStapled reads rcodesign's signature dump for a signed file and
+// asserts the two facts that make it open without a Gatekeeper prompt: a CMS
+// signature from a Developer ID Application certificate, and a stapled
+// notarization ticket. It runs wherever the release is cut, so a bad DMG
+// fails the release instead of reaching a user.
+func verifyStapled(rc, path, wantID string) error {
+	out, err := output(rc, "print-signature-info", path)
+	if err != nil {
+		return fmt.Errorf("read signature: %w", err)
+	}
+	return checkSignatureDump(out, wantID)
+}
+
+// checkSignatureDump is verifyStapled's testable half: it reads rcodesign's
+// signature dump and asserts the app carries a Developer ID signature, a
+// stapled notarization ticket, and the expected bundle identifier.
+func checkSignatureDump(out, wantID string) error {
+	if !strings.Contains(out, "CMS Signature") {
+		return errors.New("no code signature (CMS Signature missing)")
+	}
+	if !strings.Contains(out, "slot: Ticket") && !strings.Contains(out, "NotarizationTicket") {
+		return errors.New("notarization ticket is not stapled into the file")
+	}
+	if !strings.Contains(out, "developer-id-application") {
+		return errors.New("signature is not from a Developer ID Application certificate")
+	}
+	// The identifier macOS records for the app should be the project's own.
+	if wantID != "" && !strings.Contains(out, wantID) {
+		return fmt.Errorf("bundle identifier is not %s "+
+			"(a stale identifier breaks permissions and update identity)", wantID)
+	}
+	return nil
 }
