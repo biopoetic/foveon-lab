@@ -425,6 +425,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
       <button id="folderUp" title="Parent folder">↑</button>
       <input id="folderPath" type="text" spellcheck="false" placeholder="Type a path and press Enter">
       <button id="folderGo">Go</button>
+      <button id="folderPick" title="Open the system folder dialog (drives, network paths, everything)">Choose…</button>
     </div>
     <div id="folderRoots"></div>
     <div id="folderList"></div>
@@ -1891,6 +1892,17 @@ $("#foldersClose").onclick = $("#folderCancel").onclick = () => $("#foldersDlg")
 $("#foldersDlg").onclick = e => { if (e.target.id === "foldersDlg") $("#foldersDlg").classList.remove("on"); };
 $("#folderUp").onclick = () => browseTo(FB.parent || FB.path);
 $("#folderGo").onclick = () => browseTo($("#folderPath").value);
+$("#folderPick").onclick = async () => {
+  const b = $("#folderPick"), old = b.textContent;
+  b.disabled = true; b.textContent = "Waiting for the dialog…";
+  try {
+    const r = await fetch("/api/pickfolder");
+    if (!r.ok){ toast("Could not open the folder dialog: " + esc(await r.text()), 8000); return; }
+    const {path} = await r.json();
+    if (path) await browseTo(path);
+  } catch { toast("Could not open the folder dialog", 6000); }
+  finally { b.disabled = false; b.textContent = old; }
+};
 $("#folderPath").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); browseTo($("#folderPath").value); } };
 $("#folderAddPhoto").onclick = () => {
   if (FB.path && !FB.photos.includes(FB.path)){ FB.photos.push(FB.path); paintFolderChips(); }
