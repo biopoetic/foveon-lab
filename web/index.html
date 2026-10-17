@@ -197,6 +197,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <label class="chk" title="Undo the Vivid mode / contrast / saturation the camera baked into its JPEG preview, so presets start from a more neutral base (closer to SPP)"><input type="checkbox" id="comp" checked> Compensate camera JPEG</label>
     <label class="chk">Size <input type="range" id="tileSize" min="220" max="560" step="20" value="340"></label>
     <span id="updateBox" style="display:none"></span>
+    <button id="updateCheck" title="Check for a new version now">⟳ Check for updates</button>
     <label class="chk" id="accLab" title="Accurate previews: start from the raw data mapped onto SPP's own neutral rendering instead of the camera's JPEG (measured ~3x closer to SPP on SD1 Merrill files; the camera JPEG carries the in-camera colour mode). The first view of a photo decodes its raw data in the background: a quick version in ~2-5 s, then the full, denoised one (~10-30 s)."><input type="checkbox" id="accurate"> Accurate</label>
     <label class="chk" title="Also list ordinary JPEG, TIFF and PNG files (e.g. your SPP exports or other cameras). Presets only imitate the look on them — they are not Foveon raw data and SPP can't open them."><input type="checkbox" id="allImages"> All images</label>
     <label class="chk" title="Show only the photos you starred (☆ next to each photo, or the F key)"><input type="checkbox" id="favOnly"> ★ Favorites</label>
@@ -2033,6 +2034,24 @@ async function updateInit(){
   box.style.display = "";
 }
 
+// checkNow asks the server to look for a new release immediately and says in
+// the header (and as a toast) what it found.
+async function checkNow(){
+  const b = $("#updateCheck"), old = b.textContent;
+  b.disabled = true; b.textContent = "Checking…";
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 30000);
+  try {
+    const u = await (await fetch("/api/update?check=1", {signal: ctl.signal})).json();
+    await updateInit();
+    if (!u.enabled) toast("This copy is not an installed release build, so it cannot update itself.", 7000);
+    else if (u.error) toast("Could not check for updates: " + esc(u.error), 8000);
+    else if (u.available) toast(`Version ${esc(u.latest)} is available — the header has the button.`, 7000);
+    else toast(`You are on the latest version (${esc(u.current || "dev")}).`, 4000);
+  } catch (e) {
+    toast(e.name === "AbortError" ? "The update check timed out." : "Could not check for updates.", 6000);
+  } finally { clearTimeout(t); b.disabled = false; b.textContent = old; }
+}
+
 // md renders the small Markdown subset used in release notes: ## headings,
 // - lists, **bold**, [links](url), ~~struck~~, paragraphs.
 function md(text){
@@ -2341,6 +2360,7 @@ function bind(){
   $("#nr").onchange = e => { try { localStorage.setItem("fl.nr", e.target.value); } catch {} };
   $("#sppOpen").onclick = () => openInSPP(false);
   $("#folders").onclick = editFolders;
+  $("#updateCheck").onclick = checkNow;
   $("#quit").onclick = quitApp;
   $("#aiOpen").onclick = $("#aiOpen2").onclick = aiOpen;
   $("#aiClose").onclick = () => $("#aiPanel").classList.remove("on");
