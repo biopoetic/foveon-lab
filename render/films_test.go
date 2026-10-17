@@ -79,14 +79,15 @@ func TestFilmFormats(t *testing.T) {
 		}
 		// 35 mm is the reference the grain model is built on, so a film with
 		// verified sizes normally includes it. The exception is a stock that
-		// predates the 135 cassette and was roll film only.
+		// never came in 135: an early roll-film-only stock (Verichrome Pan)
+		// or a sheet-film-only one (Ektapan 100).
 		found := false
 		for _, s := range f.Formats {
 			if s == "135" {
 				found = true
 			}
 		}
-		if !found && f.Name != "Verichrome Pan" {
+		if !found && f.Name != "Verichrome Pan" && f.Name != "Ektapan 100" {
 			t.Errorf("%s %s: no 135 among %v", f.Maker, f.Name, f.Formats)
 		}
 	}

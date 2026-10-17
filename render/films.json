@@ -807,7 +807,12 @@
    "rms": 12,
    "src": "Kodak F-10 (1997)",
    "url": "https://125px.com/docs/film/kodak/f10-Ektapan-199710.pdf",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "4x5",
+    "8x10"
+   ],
+   "formats_src": "Kodak Ektapan 100 data sheet F-10, size table: 4x5, 5x7, 8x10, 11x14 and 2 1/4 x 3 1/4 in sheets, plus a 70 mm roll; no 135 size is listed"
   },
   {
    "maker": "Kodak",
@@ -1320,7 +1325,11 @@
    "rms": 11,
    "src": "Konica Chrome R-100 technical data",
    "url": "https://125px.com/docs/film/konica/R100.pdf",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135"
+   ],
+   "formats_src": "Konica Chrome R-100 data sheet, 'FILM SIZES AVAILABLE': 135 size, 24x36 exposures"
   },
   {
    "maker": "Ilford",
@@ -1329,7 +1338,12 @@
    "iso": 400,
    "rms": 0,
    "src": "Ilford publishes no RMS granularity",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Ilford technical information HP5 PLUS (Nov 2018): 35 mm and 120 roll film, and sheet film in standard sizes (the sheet does not enumerate the sheet sizes)"
   },
   {
    "maker": "Ilford",
@@ -1338,7 +1352,12 @@
    "iso": 125,
    "rms": 0,
    "src": "Ilford publishes no RMS granularity",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Ilford technical information FP4 PLUS (Nov 2018): 35 mm and 120 roll film, and sheet film in standard sizes (the sheet does not enumerate the sheet sizes)"
   },
   {
    "maker": "Ilford",
@@ -1356,7 +1375,12 @@
    "iso": 100,
    "rms": 0,
    "src": "Ilford publishes no RMS granularity",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Ilford technical information DELTA 100 (Nov 2018): 35 mm and 120 roll film, and sheet film in standard sizes (the sheet does not enumerate the sheet sizes)"
   },
   {
    "maker": "Ilford",
@@ -1365,7 +1389,12 @@
    "iso": 400,
    "rms": 0,
    "src": "Ilford publishes no RMS granularity",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Ilford technical information DELTA 400 (Nov 2018): 35 mm and 120 roll film, and sheet film in standard sizes (the sheet does not enumerate the sheet sizes)"
   },
   {
    "maker": "Ilford",
@@ -1374,7 +1403,12 @@
    "iso": 3200,
    "rms": 0,
    "src": "Ilford publishes no RMS granularity",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Ilford technical information DELTA 3200 (Nov 2018): 35 mm and 120 roll film (no sheet sizes listed)"
   },
   {
    "maker": "Ilford",

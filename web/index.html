@@ -1033,9 +1033,12 @@ function syncFormats(f){
   }
   const want = String(S.params?.filmWidth || 0);
   if (!opts.some(o => String(o[0]) === want) && S.params){
-    // The chosen size is not one this film came in: fall back to 35 mm.
-    S.params.filmWidth = 0;
-    sel.value = "0";
+    // The chosen size is not one this film came in: fall back to the
+    // smallest size it did come in. That is 35 mm (0) for almost every
+    // stock, but a sheet-only film has no 35 mm at all.
+    const first = opts.length ? String(opts[0][0]) : "0";
+    S.params.filmWidth = Number(first);
+    sel.value = first;
   } else {
     sel.value = want;
   }
