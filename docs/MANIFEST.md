@@ -47,8 +47,8 @@ photos the fit didn't see; under ~3 is invisible.
 |---|---|---|
 | B&W film & darkroom | The makers' curves, developers, push/pull, papers and grades | 9 films with developers and push, Ilford paper grades 00–5 |
 | Colour film | The makers' curves, sensitivities and dyes for slides and negatives, checked against real slides and prints | 7 films (5 slides, 2 negatives), 2 papers, colour darkroom (Y/M/C filtration, print exposure) — not yet checked against real slides or prints |
-| Grain & halation | Each film's own granularity and halation, per format | Grain from each film's RMS; halation modelled |
-| Lens filters | Physical filters through each sensor generation | Wratten list + filter pad, per generation |
+| Grain & halation | Each film's own granularity and halation, per format | Grain from each film's RMS (locked to the film, not a dial); halation modelled |
+| Lens filters | Physical filters through each sensor generation | Named real filters (Wratten, SCHOTT glass) per generation |
 | Other cameras' files | Raw files from other cameras into the same simulator | JPEG / TIFF / PNG only, no other raws yet |
 | Speed | Instant sliders | GPU preview, ~60 fps (film included) |
 
