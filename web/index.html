@@ -137,6 +137,22 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 #filmCmp .box{width:min(1500px,96vw);max-height:94vh;overflow:auto}
 #filmCmpGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}
 #filmCmpGrid .tile.cur{border-color:var(--accent)}
+#foldersDlg .box{width:min(780px,94vw);max-height:92vh}
+.fchips{display:flex;flex-wrap:wrap;gap:6px;min-height:26px}
+.fchip{display:inline-flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:2px 4px 2px 10px;font-size:12px;max-width:100%}
+.fchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fchip button{border:0;background:none;color:var(--dim);cursor:pointer;font-size:14px;line-height:1;padding:0 4px}
+.fchip button:hover{color:var(--fg)}
+.fpathrow{display:flex;gap:6px;align-items:center}
+.fpathrow input{flex:1;min-width:0}
+#folderRoots{display:flex;gap:4px;flex-wrap:wrap}
+#folderRoots button{font-size:12px;padding:2px 8px}
+#folderList{border:1px solid var(--line);border-radius:6px;max-height:44vh;overflow:auto;background:var(--bg)}
+.fdir{display:flex;gap:8px;align-items:baseline;padding:5px 10px;cursor:pointer;border-bottom:1px solid var(--line)}
+.fdir:last-child{border-bottom:0}
+.fdir:hover{background:var(--panel2)}
+.fdir .fn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fdir .fc{opacity:.55;font-size:12px;white-space:nowrap}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;width:min(440px,92vw);display:flex;flex-direction:column;gap:9px}
 #bProg{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
 #bProg div{height:100%;width:0;background:var(--accent);transition:width .2s}
@@ -398,6 +414,29 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
       </select>
     </div>
     <div id="filmCmpGrid"></div>
+  </div>
+</div>
+<div id="foldersDlg" class="modal">
+  <div class="box">
+    <div style="display:flex;align-items:center;gap:8px"><b style="flex:1">Photo folders</b><span class="dim">Click a folder to open it · Esc closes</span><button id="foldersClose">Close</button></div>
+    <div class="fchips" id="folderChips"></div>
+    <div class="src">X3F files are found up to 4 levels deep in each of these folders.</div>
+    <div class="fpathrow">
+      <button id="folderUp" title="Parent folder">↑</button>
+      <input id="folderPath" type="text" spellcheck="false" placeholder="Type a path and press Enter">
+      <button id="folderGo">Go</button>
+    </div>
+    <div id="folderRoots"></div>
+    <div id="folderList"></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button id="folderAddPhoto">Add this folder</button>
+      <button id="folderSetPresets" title="Use the folder shown above for your SPP preset XML files">Use for presets</button>
+      <span class="dim" id="folderPresets"></span>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="folderCancel">Cancel</button>
+      <button id="folderSave">Save</button>
+    </div>
   </div>
 </div>
 <div id="batch" class="modal">
@@ -1794,22 +1833,72 @@ async function exportImage(format){
 }
 
 // ---------- folders & quit ----------
+// The folder browser: navigate to a folder instead of typing a ; list.
+let FB = {path: "", parent: "", photos: [], presets: ""};
 async function editFolders(){
   const cur = await (await fetch("/api/folders")).json();
-  const photos = prompt("Photo folders (X3F files are found up to 4 levels deep). Separate several with ;\n\nCurrent: " + cur.photoCount + " photos", (cur.photos || []).join("; "));
-  if (photos === null) return;
-  const presets = prompt("Folder with your SPP preset XML files (empty = none):", cur.presets || "");
-  if (presets === null) return;
+  FB = {path: "", parent: "", photos: (cur.photos || []).slice(), presets: cur.presets || ""};
+  paintFolderChips();
+  $("#folderPresets").textContent = FB.presets ? "Presets: " + FB.presets : "No preset folder";
+  $("#foldersDlg").classList.add("on");
+  await browseTo((cur.photos && cur.photos[0]) || "");
+}
+function paintFolderChips(){
+  $("#folderChips").innerHTML = FB.photos.length
+    ? FB.photos.map((p, i) => `<span class="fchip"><span title="${esc(p)}">${esc(p)}</span><button data-i="${i}" title="Remove this folder">×</button></span>`).join("")
+    : '<span class="dim">No photo folders yet: navigate and press “Add this folder”.</span>';
+  $("#folderChips").querySelectorAll("button[data-i]").forEach(b => b.onclick = () => {
+    FB.photos.splice(+b.dataset.i, 1);
+    paintFolderChips();
+  });
+}
+async function browseTo(p){
+  const r = await fetch("/api/browse?path=" + encodeURIComponent(p || ""));
+  if (!r.ok){ $("#folderList").innerHTML = `<div class="fdir"><span class="fn">${esc(await r.text())}</span></div>`; return; }
+  const d = await r.json();
+  FB.path = d.path;
+  FB.parent = d.parent || "";
+  $("#folderPath").value = d.path;
+  $("#folderRoots").innerHTML = (d.roots || []).map(x => `<button data-p="${esc(x.path)}">${esc(x.name)}</button>`).join("");
+  $("#folderRoots").querySelectorAll("button").forEach(b => b.onclick = () => browseTo(b.dataset.p));
+  let rows = "";
+  if (d.x3f || d.images) {
+    const what = [];
+    if (d.x3f) what.push(d.x3f + " X3F");
+    if (d.images > d.x3f) what.push((d.images - d.x3f) + " other photos");
+    rows += `<div class="fdir" style="cursor:default"><span class="fn">This folder has ${what.join(" and ")}</span></div>`;
+  }
+  rows += d.dirs.map(x => `<div class="fdir" data-p="${esc(x.path)}"><span class="fn">${esc(x.name)}</span><span class="fc">${x.x3f ? x.x3f + " X3F" : ""}</span></div>`).join("");
+  if (!d.dirs.length) rows += '<div class="fdir" style="cursor:default"><span class="fn dim">No subfolders</span></div>';
+  $("#folderList").innerHTML = rows;
+  $("#folderList").querySelectorAll(".fdir[data-p]").forEach(el => el.onclick = () => browseTo(el.dataset.p));
+}
+async function saveFolders(){
+  if (!FB.photos.length){ toast("Add at least one photo folder", 4000); return; }
   toast("Scanning…", 30000);
   const res = await fetch("/api/folders", {method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({photos: photos.split(";").map(s => s.trim()).filter(Boolean), presets: presets.trim()})});
+    body: JSON.stringify({photos: FB.photos, presets: FB.presets})});
   if (!res.ok){ toast("Could not use those folders: " + esc(await res.text()), 8000); return; }
   const r = await res.json();
+  $("#foldersDlg").classList.remove("on");
   await Promise.all([loadPhotos(), loadPresets(false)]);
   refreshList();
   selectPhoto(S.photos[0]?.id);
   toast(`Found ${r.photoCount} photos and ${r.presetCount} presets. Saved for next time.`, 6000);
 }
+$("#foldersClose").onclick = $("#folderCancel").onclick = () => $("#foldersDlg").classList.remove("on");
+$("#foldersDlg").onclick = e => { if (e.target.id === "foldersDlg") $("#foldersDlg").classList.remove("on"); };
+$("#folderUp").onclick = () => browseTo(FB.parent || FB.path);
+$("#folderGo").onclick = () => browseTo($("#folderPath").value);
+$("#folderPath").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); browseTo($("#folderPath").value); } };
+$("#folderAddPhoto").onclick = () => {
+  if (FB.path && !FB.photos.includes(FB.path)){ FB.photos.push(FB.path); paintFolderChips(); }
+};
+$("#folderSetPresets").onclick = () => {
+  FB.presets = FB.path;
+  $("#folderPresets").textContent = "Presets: " + FB.presets;
+};
+$("#folderSave").onclick = saveFolders;
 
 // ---------- side panels and full screen ----------
 // The photo list and the settings panel can be hidden (remembered); full
@@ -2193,6 +2282,7 @@ function bind(){
   window.addEventListener("resize", () => { layoutSplit(); fitOver($("#clipCv")); });
   let origDown = false;
   document.addEventListener("keydown", e => {
+    if ($("#foldersDlg").classList.contains("on") && e.key === "Escape"){ e.preventDefault(); $("#foldersDlg").classList.remove("on"); return; }
     if (e.target.matches("input[type=text],input[type=password],input[type=search],select,textarea,input[type=range]")) return;
     const inDetail = $("#detail").classList.contains("on");
     if ($("#filmCmp").classList.contains("on")){ if (e.key === "Escape"){ e.preventDefault(); filmCompareClose(); } return; }

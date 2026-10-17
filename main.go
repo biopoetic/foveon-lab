@@ -1447,6 +1447,7 @@ func main() {
 	mux.HandleFunc("/api/photos", s.handlePhotos)
 	mux.HandleFunc("/api/favorite", s.handleFavorite)
 	mux.HandleFunc("/api/folders", s.handleFolders)
+	mux.HandleFunc("/api/browse", s.handleBrowse)
 	mux.HandleFunc("/api/allimages", s.handleAllImages)
 	mux.HandleFunc("/api/looks", s.handleLooks)
 	mux.HandleFunc("/api/export/batch", s.handleExportBatch)
