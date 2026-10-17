@@ -155,6 +155,96 @@
       "id": "kolari-1000", "brand": "Kolari Vision", "model": "1000", "name": "Infrared 1000", "kind": "ir", "look": "mono",
       "edge": 1000,
       "src": "Kolari Vision 1000 nm — product's 1000 nm cutoff"
+    },
+
+    {
+      "id": "nd-bw-09", "brand": "B+W", "model": "ND 0.9", "name": "ND 3 stops", "kind": "nd", "stops": 3,
+      "src": "B+W ND 0.9 — optical density 0.9, 3 stops (density / 0.3)"
+    },
+    {
+      "id": "nd-bw-18", "brand": "B+W", "model": "ND 1.8", "name": "ND 6 stops", "kind": "nd", "stops": 6,
+      "src": "B+W ND 1.8 — optical density 1.8, 6 stops"
+    },
+    {
+      "id": "nd-bw-30", "brand": "B+W", "model": "ND 3.0", "name": "ND 10 stops", "kind": "nd", "stops": 10,
+      "src": "B+W ND 3.0 — optical density 3.0, 10 stops"
+    },
+    {
+      "id": "nd-hoya-nd8", "brand": "Hoya", "model": "ND8", "name": "ND 3 stops", "kind": "nd", "stops": 3,
+      "src": "Hoya ND8 — 3-stop neutral density (its name is the factor, 2^3)"
+    },
+    {
+      "id": "nd-hoya-nd64", "brand": "Hoya", "model": "ND64", "name": "ND 6 stops", "kind": "nd", "stops": 6,
+      "src": "Hoya ND64 — 6-stop neutral density (2^6)"
+    },
+    {
+      "id": "nd-hoya-nd1000", "brand": "Hoya", "model": "ND1000", "name": "ND 10 stops", "kind": "nd", "stops": 10,
+      "src": "Hoya ND1000 — 10-stop neutral density (2^10)"
+    },
+    {
+      "id": "nd-lee-bigstopper", "brand": "LEE", "model": "Big Stopper", "name": "ND 10 stops", "kind": "nd", "stops": 10,
+      "src": "LEE Big Stopper — 10-stop neutral density"
+    },
+    {
+      "id": "nd-kf-nd8", "brand": "K&F Concept", "model": "ND8", "name": "ND 3 stops", "kind": "nd", "stops": 3,
+      "src": "K&F Concept ND8 — 3-stop neutral density"
+    },
+    {
+      "id": "nd-kf-nd64", "brand": "K&F Concept", "model": "ND64", "name": "ND 6 stops", "kind": "nd", "stops": 6,
+      "src": "K&F Concept ND64 — 6-stop neutral density"
+    },
+    {
+      "id": "nd-kf-nd1000", "brand": "K&F Concept", "model": "ND1000", "name": "ND 10 stops", "kind": "nd", "stops": 10,
+      "src": "K&F Concept ND1000 — 10-stop neutral density"
+    },
+    {
+      "id": "nd-fh-06", "brand": "Formatt-Hitech", "model": "Firecrest 0.6", "name": "ND 2 stops", "kind": "nd", "stops": 2,
+      "src": "Formatt-Hitech Firecrest ND 0.6 — density 0.6, 2 stops"
+    },
+    {
+      "id": "nd-fh-09", "brand": "Formatt-Hitech", "model": "Firecrest 0.9", "name": "ND 3 stops", "kind": "nd", "stops": 3,
+      "src": "Formatt-Hitech Firecrest ND 0.9 — density 0.9, 3 stops"
+    },
+    {
+      "id": "nd-fh-18", "brand": "Formatt-Hitech", "model": "Firecrest 1.8", "name": "ND 6 stops", "kind": "nd", "stops": 6,
+      "src": "Formatt-Hitech Firecrest ND 1.8 — density 1.8, 6 stops"
+    },
+    {
+      "id": "nd-fh-30", "brand": "Formatt-Hitech", "model": "Firecrest 3.0", "name": "ND 10 stops", "kind": "nd", "stops": 10,
+      "src": "Formatt-Hitech Firecrest ND 3.0 — density 3.0, 10 stops"
+    },
+
+    {
+      "id": "gnd-lee-03-soft", "brand": "LEE", "model": "0.3 Soft Grad", "name": "Grad ND 1 stop, soft", "kind": "gnd", "stops": 1, "hardness": "soft",
+      "src": "LEE 0.3 ND Grad Soft — density 0.3, 1 stop; soft transition (its width is not published, so the position and softness controls set it)"
+    },
+    {
+      "id": "gnd-lee-06-soft", "brand": "LEE", "model": "0.6 Soft Grad", "name": "Grad ND 2 stops, soft", "kind": "gnd", "stops": 2, "hardness": "soft",
+      "src": "LEE 0.6 ND Grad Soft — density 0.6, 2 stops; soft transition"
+    },
+    {
+      "id": "gnd-lee-09-soft", "brand": "LEE", "model": "0.9 Soft Grad", "name": "Grad ND 3 stops, soft", "kind": "gnd", "stops": 3, "hardness": "soft",
+      "src": "LEE 0.9 ND Grad Soft — density 0.9, 3 stops; soft transition"
+    },
+    {
+      "id": "gnd-lee-06-hard", "brand": "LEE", "model": "0.6 Hard Grad", "name": "Grad ND 2 stops, hard", "kind": "gnd", "stops": 2, "hardness": "hard",
+      "src": "LEE 0.6 ND Grad Hard — density 0.6, 2 stops; hard transition"
+    },
+    {
+      "id": "gnd-lee-09-hard", "brand": "LEE", "model": "0.9 Hard Grad", "name": "Grad ND 3 stops, hard", "kind": "gnd", "stops": 3, "hardness": "hard",
+      "src": "LEE 0.9 ND Grad Hard — density 0.9, 3 stops; hard transition"
+    },
+    {
+      "id": "gnd-fh-09-soft", "brand": "Formatt-Hitech", "model": "Firecrest 0.9 Soft Grad", "name": "Grad ND 3 stops, soft", "kind": "gnd", "stops": 3, "hardness": "soft",
+      "src": "Formatt-Hitech Firecrest 0.9 Soft Grad — density 0.9, 3 stops; soft transition"
+    },
+    {
+      "id": "gnd-fh-12-soft", "brand": "Formatt-Hitech", "model": "Firecrest 1.2 Soft Grad", "name": "Grad ND 4 stops, soft", "kind": "gnd", "stops": 4, "hardness": "soft",
+      "src": "Formatt-Hitech Firecrest 1.2 Soft Grad — density 1.2, 4 stops; soft transition"
+    },
+    {
+      "id": "gnd-kf-gnd8", "brand": "K&F Concept", "model": "GND8", "name": "Grad ND 3 stops", "kind": "gnd", "stops": 3, "hardness": "soft",
+      "src": "K&F Concept GND8 — 3-stop graduated neutral density"
     }
   ]
 }

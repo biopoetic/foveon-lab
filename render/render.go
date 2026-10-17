@@ -530,6 +530,7 @@ func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, bl float32)) {
 	w, h := b.W, b.H
 	op := newPixOp(p, c)
+	dens := densitySetupFor(p)
 	film := b.newFilm(p, op.mono || op.layerMono != nil)
 	fill := op.fill != 0 || op.fillM != nil
 	if fill {
@@ -551,6 +552,9 @@ func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, 
 				r, g, bl := film.addHalo(y*w+x, b.Pix[i], b.Pix[i+1], b.Pix[i+2])
 				r, g, bl = op.apply(r, g, bl, m, da, db)
 				r, g, bl = film.grain(y*w+x, r, g, bl)
+				if gain := dens.gain(x, y, w, h); gain != 1 {
+					r, g, bl = r*gain, g*gain, bl*gain
+				}
 				put(y*w+x, r, g, bl)
 			}
 		}

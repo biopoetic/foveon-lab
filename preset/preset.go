@@ -89,6 +89,25 @@ type Params struct {
 	CCM      float64 `json:"ccM,omitempty"`
 	CCC      float64 `json:"ccC,omitempty"`
 	PrintExp float64 `json:"printExp,omitempty"`
+	// Density filters (Foveon Lab only; not in SPP's XML). ND names a
+	// neutral-density filter from the library (render/brandfilters.json,
+	// class "nd"): its stops are the product's density. A neutral filter
+	// does not change colour — it costs exposure — so NDMetered chooses
+	// which to show: false = the photographer opened up by the filter
+	// factor (no pixel change), true = the same settings with the filter
+	// on (darker by exactly its stops).
+	ND        string `json:"nd,omitempty"`
+	NDMetered bool   `json:"ndMetered,omitempty"`
+	// GND names a graduated neutral-density filter (class "gnd"): the same
+	// density, but across a gradient in the frame. GNDAngle rotates the
+	// gradient (0° = dark at the top, the sky), GNDPos moves the transition
+	// across the frame (-0.5 = the bottom edge, 0 = centred, +0.5 = the top
+	// edge), GNDSoft is the transition's softness (0 = hard edge, 1 = the
+	// whole frame).
+	GND      string  `json:"gnd,omitempty"`
+	GNDAngle float64 `json:"gndAngle,omitempty"`
+	GNDPos   float64 `json:"gndPos,omitempty"`
+	GNDSoft  float64 `json:"gndSoft,omitempty"`
 }
 
 const (

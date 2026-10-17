@@ -29,16 +29,18 @@ var brandFiltersJSON []byte
 
 // BrandFilter is one catalogue entry, as served to the UI.
 type BrandFilter struct {
-	ID     string `json:"id"`
-	Brand  string `json:"brand"`
-	Model  string `json:"model"`
-	Name   string `json:"name"`
-	Kind   string `json:"kind"`   // "colour" or "ir"
-	Look   string `json:"look"`   // for IR: "colour" or "mono"
-	Glass  string `json:"glass"`  // SCHOTT glass, measured curve
-	Wratten string `json:"wratten"` // Wratten edge this filter equals
-	Edge   float64 `json:"edge"`  // published cutoff only
-	Src    string `json:"src"`
+	ID       string  `json:"id"`
+	Brand    string  `json:"brand"`
+	Model    string  `json:"model"`
+	Name     string  `json:"name"`
+	Kind     string  `json:"kind"`     // "colour", "ir", "nd" or "gnd"
+	Look     string  `json:"look"`     // for IR: "colour" or "mono"
+	Glass    string  `json:"glass"`    // SCHOTT glass, measured curve
+	Wratten  string  `json:"wratten"`  // Wratten spectrum this filter equals
+	Edge     float64 `json:"edge"`     // published cutoff only
+	Stops    float64 `json:"stops"`    // density filters: stops of light loss
+	Hardness string  `json:"hardness"` // graduated: "soft" or "hard"
+	Src      string  `json:"src"`
 }
 
 var brandFilters = sync.OnceValue(func() []BrandFilter {
@@ -51,8 +53,18 @@ var brandFilters = sync.OnceValue(func() []BrandFilter {
 	return d.Filters
 })
 
-// BrandFilters is the catalogue (colour and infrared entries).
+// BrandFilters is the catalogue (colour, infrared and density entries).
 func BrandFilters() []BrandFilter { return brandFilters() }
+
+// DensityFilter returns the entry with that id when it is a density filter
+// (neutral or graduated), and its stops of light loss.
+func DensityFilter(id string) (BrandFilter, bool) {
+	f, ok := brandFilter(id)
+	if !ok || (f.Kind != "nd" && f.Kind != "gnd") || f.Stops <= 0 {
+		return BrandFilter{}, false
+	}
+	return f, true
+}
 
 // brandFilter looks an entry up by id.
 func brandFilter(id string) (BrandFilter, bool) {
