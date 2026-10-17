@@ -10,11 +10,11 @@ goals (with where we are) are in the [manifest](docs/MANIFEST.md).
 
 - Scans your folders for `.X3F` files and shows each one at once from the **full-size JPEG embedded
   in it**, then from its **raw data** (native Go decoder for every generation, SD9 to Quattro).
-- **Presets from three places:** your own preset folder, a **built-in pack of ~290 SD1/SD15
-  presets** (base, negative/slide/portrait film looks, cine, B&W, white balance, scene), and the
-  presets you saved in SPP itself (Windows). Comma or dot decimals; identical duplicates folded.
-  Filter by camera, `[GROUP]` tag, file or name. Film-look presets are named after the film
-  they imitate with SPP settings; the physically simulated films are in Film stock.
+- **Presets from three places:** your own preset folder, a **built-in pack of 107 curated SD1/SD15
+  presets** (54 SD1, 53 SD15: base, negative/slide/portrait film looks, cine, B&W, white balance,
+  scene), and the presets you saved in SPP itself (Windows). Comma or dot decimals; identical
+  duplicates folded. Filter by camera, `[GROUP]` tag, file or name. Film-look presets are named
+  after the film they imitate with SPP settings; the physically simulated films are in Film stock.
 - **Grid view:** one photo through every preset at once. Click a tile for a large view with sliders;
   `←`/`→` steps through presets, hold `O` for the camera original.
 - **Distinct looks:** many presets are near-copies (V2/V3 of one idea, SD1/SD15 twins). This renders
@@ -272,9 +272,9 @@ of a product performs.
 
 Each catalogue entry states what it rests on, and the lens menu marks it:
 
-- **measured** - a measured spectral curve. The nine SCHOTT glasses (which include B+W's
-  filters, since B+W's numbers are glass numbers) render on the catalogue's internal
-  transmittance, interpolated on its 10 nm grid.
+- **measured** - a measured spectral curve. Seven entries — all B+W, since B+W's numbers are
+  glass numbers — render on the catalogue's internal SCHOTT transmittance, interpolated on its
+  10 nm grid.
 - **documented** - the maker publishes the filter's Wratten equivalent, cutoff wavelength or
   density, and the entry renders that documented property. That is a claim about a
   specification, not about a measured sample.
@@ -290,7 +290,3 @@ Each catalogue entry states what it rests on, and the lens menu marks it:
 **Sigma, Foveon, X3F and Sigma Photo Pro** are trademarks of SIGMA Corporation. This is an
 independent project, not affiliated with or endorsed by SIGMA Corporation. It reads the
 documented-by-the-community X3F container format and never modifies your original files.
-
-Sigma, Foveon, X3F and Sigma Photo Pro are trademarks of SIGMA Corporation. This is an independent
-project, not affiliated with or endorsed by SIGMA Corporation. It reads the documented-by-the-community
-X3F container format and never modifies your original files.
