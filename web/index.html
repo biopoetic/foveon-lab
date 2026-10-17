@@ -247,7 +247,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div class="src" id="pSrc"></div>
         <canvas id="histo" width="256" height="72" title="Histogram of the rendered image (R, G, B and luminance)"></canvas>
         <div class="src" id="clipInfo"></div>
-        <div class="pbar"><button id="reset" title="Undo every change to this preset">Reset to preset</button><button id="save" class="primary">Save as preset</button></div>
+        <div class="pbar"><button id="undoBtn" title="Undo the last change to this photo (Ctrl+Z)" disabled>↶ Undo</button><button id="redoBtn" title="Redo (Ctrl+Shift+Z or Ctrl+Y)" disabled>↷ Redo</button><button id="reset" title="Undo every change to this preset">Reset to preset</button><button id="save" class="primary">Save as preset</button></div>
         <div class="grp" data-g="tone"><div class="gh"><span class="chev">▾</span><span class="gt">Tone</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
           <div class="gb" id="g-tone">
           </div>
@@ -1313,6 +1313,73 @@ function closeDetail(){
   $("#gridView").style.display = "";
   drawGrid();
   const t = document.querySelector(`.tile[data-i="${S.idx}"]`); t?.scrollIntoView({block:"center"});
+}
+
+// ---------- undo ----------
+// A history of the editor's states for the photo being edited: the preset,
+// its sliders and its crop. A snapshot is taken once the state has been
+// still for half a second, so a slider drag is one step, not a hundred.
+// The history is per photo: changing photo starts it again.
+const HIST = {undo: [], redo: [], cur: null, applying: false};
+function snapState(){
+  if (!S.photo) return null;
+  return {photo: S.photo.id, idx: S.idx, preset: current()?.id || "",
+          params: {...S.params}, geo: {...(GEO[S.photo.id] || {})}};
+}
+function sameSnap(a, b){
+  return !!a && !!b && a.photo === b.photo && a.preset === b.preset &&
+    JSON.stringify(a.params) === JSON.stringify(b.params) &&
+    JSON.stringify(a.geo) === JSON.stringify(b.geo);
+}
+function histTick(){
+  if (HIST.applying) return;
+  const s = snapState();
+  if (!s) return;
+  if (!HIST.cur || HIST.cur.photo !== s.photo){ HIST.undo = []; HIST.redo = []; HIST.cur = s; paintUndo(); return; }
+  if (sameSnap(s, HIST.cur)) return;
+  HIST.undo.push(HIST.cur);
+  if (HIST.undo.length > 100) HIST.undo.shift();
+  HIST.cur = s;
+  HIST.redo = [];
+  paintUndo();
+}
+setInterval(histTick, 500);
+function paintUndo(){
+  const u = $("#undoBtn"), r = $("#redoBtn");
+  if (u) u.disabled = !HIST.undo.length;
+  if (r) r.disabled = !HIST.redo.length;
+}
+// applySnap puts a remembered state back: preset labels, sliders and crop.
+async function applySnap(s){
+  HIST.applying = true;
+  try {
+    if (JSON.stringify(GEO[s.photo] || {}) !== JSON.stringify(s.geo)) await saveGeometry({...s.geo});
+    if (s.preset && s.preset !== (current()?.id || "")){
+      const i = S.list.findIndex(p => p.id === s.preset);
+      if (i >= 0){
+        S.idx = i;
+        const p = current();
+        S.base = {...NEUTRAL, ...(p.params || {})};
+        $("#pName").textContent = p.name;
+        $("#pSrc").textContent = p.source || "";
+        $("#dName").textContent = `${i+1}/${S.list.length} · ${p.name}`;
+      }
+    }
+    S.params = {...s.params};
+    syncSliders(); renderBig();
+  } finally {
+    HIST.cur = s; HIST.applying = false; paintUndo();
+  }
+}
+async function undoStep(){
+  if (!HIST.undo.length){ toast("Nothing to undo", 2500); return; }
+  HIST.redo.push(HIST.cur);
+  await applySnap(HIST.undo.pop());
+}
+async function redoStep(){
+  if (!HIST.redo.length){ toast("Nothing to redo", 2500); return; }
+  HIST.undo.push(HIST.cur);
+  await applySnap(HIST.redo.pop());
 }
 
 function stepPreset(d){
@@ -2428,6 +2495,9 @@ function bind(){
   orig.onmousedown = () => renderBig(true);
   orig.onmouseup = orig.onmouseleave = () => renderBig();
   $("#reset").onclick = () => { S.params = {...S.base}; syncSliders(); renderBig(); };
+  $("#undoBtn").onclick = () => { undoStep(); $("#undoBtn").blur(); };
+  $("#redoBtn").onclick = () => { redoStep(); $("#redoBtn").blur(); };
+  paintUndo();
   $("#save").onclick = savePreset;
   $("#export").onclick = () => exportImage("jpeg");
   $("#exportTiff").onclick = () => exportImage("tiff");
@@ -2469,6 +2539,15 @@ function bind(){
   document.addEventListener("keydown", e => {
     if ($("#foldersDlg").classList.contains("on") && e.key === "Escape"){ e.preventDefault(); $("#foldersDlg").classList.remove("on"); return; }
     if (e.target.matches("input[type=text],input[type=password],input[type=search],select,textarea,input[type=range]")) return;
+    // Undo / redo of the editor's own state (not the browser's).
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "z" || e.key === "Z")){
+      e.preventDefault();
+      if (e.shiftKey) redoStep(); else undoStep();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "y" || e.key === "Y")){
+      e.preventDefault(); redoStep(); return;
+    }
     const inDetail = $("#detail").classList.contains("on");
     if ($("#filmCmp").classList.contains("on")){ if (e.key === "Escape"){ e.preventDefault(); filmCompareClose(); } return; }
     // In the crop editor: Enter saves, Esc cancels, arrows do nothing else.
