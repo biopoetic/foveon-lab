@@ -41,16 +41,22 @@ type BrandFilter struct {
 	// or density) or "approximate" (no measured curve; the project's logistic
 	// edge stands in). The UI shows it so the catalogue's confidence is
 	// visible instead of buried in prose.
-	Evidence string  `json:"evidence"`
-	Brand    string  `json:"brand"`
-	Model    string  `json:"model"`
-	Look     string  `json:"look"`     // for IR: "colour" or "mono"
-	Glass    string  `json:"glass"`    // SCHOTT glass, measured curve
-	Wratten  string  `json:"wratten"`  // Wratten spectrum this filter equals
-	Edge     float64 `json:"edge"`     // published cutoff only
-	Stops    float64 `json:"stops"`    // density filters: stops of light loss
-	Hardness string  `json:"hardness"` // graduated: "soft" or "hard"
-	Src      string  `json:"src"`
+	Evidence string `json:"evidence"`
+	// Products are the commercial filters sold as this physical filter,
+	// shown in brackets. Entries that differ only by maker are one entry:
+	// the render is the glass, spectrum, cutoff or density, and no maker
+	// publishes its own measured curve, so they cannot render differently.
+	Products []string `json:"products,omitempty"`
+	// Aliases are ids this entry absorbed, so presets saved before the merge
+	// still resolve.
+	Aliases  []string `json:"aliases,omitempty"`
+	Look     string   `json:"look"`     // for IR: "colour" or "mono"
+	Glass    string   `json:"glass"`    // SCHOTT glass, measured curve
+	Wratten  string   `json:"wratten"`  // Wratten spectrum this filter equals
+	Edge     float64  `json:"edge"`     // published cutoff only
+	Stops    float64  `json:"stops"`    // density filters: stops of light loss
+	Hardness string   `json:"hardness"` // graduated: "soft" or "hard"
+	Src      string   `json:"src"`
 }
 
 var brandFilters = sync.OnceValue(func() []BrandFilter {
@@ -81,6 +87,11 @@ func brandFilter(id string) (BrandFilter, bool) {
 	for _, f := range brandFilters() {
 		if f.ID == id {
 			return f, true
+		}
+		for _, a := range f.Aliases {
+			if a == id {
+				return f, true
+			}
 		}
 	}
 	return BrandFilter{}, false

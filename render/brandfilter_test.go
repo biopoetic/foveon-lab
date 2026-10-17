@@ -1,6 +1,7 @@
 package render
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -13,8 +14,11 @@ import (
 func TestBrandFiltersHaveBasis(t *testing.T) {
 	seen := map[string]bool{}
 	for _, f := range BrandFilters() {
-		if f.ID == "" || f.Brand == "" || f.Model == "" {
-			t.Errorf("entry without id/brand/model: %+v", f)
+		if f.ID == "" {
+			t.Errorf("entry without id: %+v", f)
+		}
+		if len(f.Products) == 0 {
+			t.Errorf("%s: no product named", f.ID)
 		}
 		if f.Physical == "" {
 			t.Errorf("%s: no physical name", f.ID)
@@ -41,8 +45,10 @@ func TestBrandFiltersHaveBasis(t *testing.T) {
 		// The physical name is what we model, so it must stand on its own and
 		// not borrow the maker's mark for its identity; the brand is a
 		// separate compatibility note.
-		if f.Brand != "" && strings.Contains(f.Physical, f.Brand) {
-			t.Errorf("%s: physical name %q repeats the brand", f.ID, f.Physical)
+		for _, prod := range f.Products {
+			if strings.Contains(f.Physical, prod) {
+				t.Errorf("%s: physical name %q repeats the product %q", f.ID, f.Physical, prod)
+			}
 		}
 		if seen[f.ID] {
 			t.Errorf("duplicate id %q", f.ID)
@@ -161,6 +167,26 @@ func TestNeutralDensityIsAchromatic(t *testing.T) {
 			if math.Abs(v/density-want) > 1e-6 {
 				t.Errorf("density %.2f: normalised matrix %v is not the identity", density, *m)
 				break
+			}
+		}
+	}
+}
+
+// Duplicate entries are one filter: nothing that determines the render may
+// appear twice, and every absorbed id still resolves to its entry.
+func TestNoDuplicateFilters(t *testing.T) {
+	seen := map[string]string{}
+	for _, f := range BrandFilters() {
+		key := f.Kind + "|" + f.Physical + "|" + f.Glass + "|" + f.Wratten +
+			"|" + fmt.Sprint(f.Edge, f.Stops, f.Hardness)
+		if prev, ok := seen[key]; ok {
+			t.Errorf("%s and %s are the same filter (%s)", prev, f.ID, f.Physical)
+		}
+		seen[key] = f.ID
+		for _, a := range f.Aliases {
+			got, ok := brandFilter(a)
+			if !ok || got.ID != f.ID {
+				t.Errorf("alias %q does not resolve to %s", a, f.ID)
 			}
 		}
 	}

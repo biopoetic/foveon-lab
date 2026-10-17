@@ -888,18 +888,20 @@ async function filtersInit(){
 // glass, the Wratten spectrum or the density — not a maker's process — so the
 // maker's name is only where you can buy one.
 function filterLabel(f){
-  const made = f.brand ? ` <span class="dim">· ${esc(f.brand)} ${esc(f.model)}</span>` : "";
-  // Mark the evidence class where it is not a measured curve, so a reader can
-  // see which entries rest on published documentation rather than measurement.
-  const ev = f.evidence === "measured" ? "" : ` <span class="dim">(${f.evidence === "documented" ? "documented" : "approximate"})</span>`;
-  return esc(f.physical) + made + ev;
+  // The physical filter is the name; the commercial filters sold as it go in
+  // brackets. Several makers sell the same filter and none publishes a curve
+  // of its own, so they are one entry, not several that would render alike.
+  const prods = f.products && f.products.length
+    ? ` <span class="dim">(${f.products.map(esc).join(", ")})</span>` : "";
+  const ev = f.evidence === "measured" ? "" : ` <span class="dim">[${f.evidence}]</span>`;
+  return esc(f.physical) + prods + ev;
 }
 // filterMatches reports whether a catalogue entry matches a search: its
 // physical name, glass or Wratten number, wavelength, maker/model, or
 // evidence class.
 function filterMatches(f, q){
   if (!q) return true;
-  const hay = [f.physical, f.brand, f.model, f.glass, f.wratten,
+  const hay = [f.physical, (f.products || []).join(" "), f.glass, f.wratten,
                f.edge ? f.edge + " nm" : "", f.stops ? f.stops + " stops" : "",
                f.evidence, f.kind].join(" ").toLowerCase();
   return q.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));

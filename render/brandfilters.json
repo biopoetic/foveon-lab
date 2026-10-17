@@ -6,542 +6,429 @@
       "physical": "Yellow · GG495",
       "kind": "colour",
       "evidence": "measured",
-      "brand": "B+W",
-      "model": "022",
       "glass": "GG495",
-      "src": "B+W 495/022 — Schott GG495 glass; measured curve (schottglass.json)"
+      "src": "B+W 495/022 — Schott GG495 glass; measured curve (schottglass.json)",
+      "products": [
+        "B+W 022"
+      ]
     },
     {
       "id": "bw040",
       "physical": "Orange · OG550",
       "kind": "colour",
       "evidence": "measured",
-      "brand": "B+W",
-      "model": "040",
       "glass": "OG550",
-      "src": "B+W 550/040 — Schott OG550 glass; measured curve (schottglass.json)"
+      "src": "B+W 550/040 — Schott OG550 glass; measured curve (schottglass.json)",
+      "products": [
+        "B+W 040"
+      ]
     },
     {
       "id": "bw090",
       "physical": "Red · OG590",
       "kind": "colour",
       "evidence": "measured",
-      "brand": "B+W",
-      "model": "090",
       "glass": "OG590",
-      "src": "B+W 590/090 — Schott OG590 glass; measured curve (schottglass.json)"
+      "src": "B+W 590/090 — Schott OG590 glass; measured curve (schottglass.json)",
+      "products": [
+        "B+W 090"
+      ]
     },
     {
       "id": "hoya-y2",
       "physical": "Yellow · Wratten 8",
       "kind": "colour",
       "evidence": "documented",
-      "brand": "Hoya",
-      "model": "Y2 Pro",
       "wratten": "yellow",
-      "src": "Hoya Y2 Pro — documented as a K2 (Wratten 8) contrast filter; rendered on the Wratten 8 curve"
+      "src": "Hoya Y2 Pro — documented as a K2 (Wratten 8) contrast filter; rendered on the Wratten 8 curve",
+      "products": [
+        "Hoya Y2 Pro",
+        "Cokin 001",
+        "Tiffen 8"
+      ],
+      "aliases": [
+        "cokin-001",
+        "tiffen-8"
+      ]
     },
     {
       "id": "hoya-ya3",
       "physical": "Orange · Wratten 21",
       "kind": "colour",
       "evidence": "documented",
-      "brand": "Hoya",
-      "model": "YA3 Pro",
       "wratten": "orange",
-      "src": "Hoya YA3 Pro — documented as a Wratten 21 equivalent; rendered on the Wratten 21 curve"
+      "src": "Hoya YA3 Pro — documented as a Wratten 21 equivalent; rendered on the Wratten 21 curve",
+      "products": [
+        "Hoya YA3 Pro",
+        "Cokin 002",
+        "Tiffen 21"
+      ],
+      "aliases": [
+        "cokin-002",
+        "tiffen-21"
+      ]
     },
     {
       "id": "hoya-r1",
       "physical": "Red · Wratten 25",
       "kind": "colour",
       "evidence": "documented",
-      "brand": "Hoya",
-      "model": "R1 Pro",
       "wratten": "red",
-      "src": "Hoya R1 Pro — documented as a 25A (Wratten 25) contrast filter; rendered on the Wratten 25 curve"
-    },
-    {
-      "id": "cokin-001",
-      "physical": "Yellow · Wratten 8",
-      "kind": "colour",
-      "evidence": "documented",
-      "brand": "Cokin",
-      "model": "001",
-      "wratten": "yellow",
-      "src": "Cokin 001 Yellow — documented as a Wratten 8 contrast filter; rendered on the Wratten 8 curve"
-    },
-    {
-      "id": "cokin-002",
-      "physical": "Orange · Wratten 21",
-      "kind": "colour",
-      "evidence": "documented",
-      "brand": "Cokin",
-      "model": "002",
-      "wratten": "orange",
-      "src": "Cokin 002 Orange — documented as a Wratten 21 contrast filter; rendered on the Wratten 21 curve"
-    },
-    {
-      "id": "cokin-003",
-      "physical": "Red · Wratten 25",
-      "kind": "colour",
-      "evidence": "documented",
-      "brand": "Cokin",
-      "model": "003",
-      "wratten": "red",
-      "src": "Cokin 003 Red — documented as a Wratten 25 contrast filter; rendered on the Wratten 25 curve"
+      "src": "Hoya R1 Pro — documented as a 25A (Wratten 25) contrast filter; rendered on the Wratten 25 curve",
+      "products": [
+        "Hoya R1 Pro",
+        "Cokin 003",
+        "Tiffen 25"
+      ],
+      "aliases": [
+        "cokin-003",
+        "tiffen-25"
+      ]
     },
     {
       "id": "cokin-004",
-      "physical": "Green · Wratten 58",
+      "physical": "Yellow-green · Wratten 11",
       "kind": "colour",
       "evidence": "documented",
-      "brand": "Cokin",
-      "model": "004",
       "wratten": "yellowgreen",
-      "src": "Cokin 004 Green — documented as a Wratten 11 (yellow-green) contrast filter; rendered on the Wratten 11 curve"
-    },
-    {
-      "id": "tiffen-8",
-      "physical": "Yellow · Wratten 8",
-      "kind": "colour",
-      "evidence": "documented",
-      "brand": "Tiffen",
-      "model": "8",
-      "wratten": "yellow",
-      "src": "Tiffen 8 Yellow — Tiffen's number is the Wratten number; rendered on the Wratten 8 curve"
+      "src": "Cokin 004 Green — documented as a Wratten 11 (yellow-green) contrast filter; rendered on the Wratten 11 curve",
+      "products": [
+        "Cokin 004"
+      ]
     },
     {
       "id": "tiffen-15",
       "physical": "Deep yellow · Wratten 15",
       "kind": "colour",
       "evidence": "documented",
-      "brand": "Tiffen",
-      "model": "15",
       "wratten": "deepyellow",
-      "src": "Tiffen 15 Deep Yellow — Tiffen's number is the Wratten number; rendered on the Wratten 15 curve"
-    },
-    {
-      "id": "tiffen-21",
-      "physical": "Orange · Wratten 21",
-      "kind": "colour",
-      "evidence": "documented",
-      "brand": "Tiffen",
-      "model": "21",
-      "wratten": "orange",
-      "src": "Tiffen 21 Orange — Tiffen's number is the Wratten number; rendered on the Wratten 21 curve"
-    },
-    {
-      "id": "tiffen-25",
-      "physical": "Red · Wratten 25",
-      "kind": "colour",
-      "evidence": "documented",
-      "brand": "Tiffen",
-      "model": "25",
-      "wratten": "red",
-      "src": "Tiffen 25 Red — Tiffen's number is the Wratten number; rendered on the Wratten 25 curve"
+      "src": "Tiffen 15 Deep Yellow — Tiffen's number is the Wratten number; rendered on the Wratten 15 curve",
+      "products": [
+        "Tiffen 15"
+      ]
     },
     {
       "id": "tiffen-29",
       "physical": "Deep red · Wratten 29",
       "kind": "colour",
       "evidence": "documented",
-      "brand": "Tiffen",
-      "model": "29",
       "wratten": "deepred",
-      "src": "Tiffen 29 Dark Red — Tiffen's number is the Wratten number; rendered on the Wratten 29 curve"
+      "src": "Tiffen 29 Dark Red — Tiffen's number is the Wratten number; rendered on the Wratten 29 curve",
+      "products": [
+        "Tiffen 29"
+      ]
     },
     {
       "id": "tiffen-58",
       "physical": "Green · Wratten 58",
       "kind": "colour",
       "evidence": "documented",
-      "brand": "Tiffen",
-      "model": "58",
       "wratten": "green",
-      "src": "Tiffen 58 Green — Tiffen's number is the Wratten number; rendered on the Wratten 58 curve"
+      "src": "Tiffen 58 Green — Tiffen's number is the Wratten number; rendered on the Wratten 58 curve",
+      "products": [
+        "Tiffen 58"
+      ]
     },
     {
       "id": "bw091",
       "physical": "Infrared · RG610",
       "kind": "ir",
       "evidence": "measured",
-      "brand": "B+W",
-      "model": "091",
       "glass": "RG610",
-      "src": "B+W 610/091 — Schott RG610 glass; measured curve (schottglass.json)"
+      "src": "B+W 610/091 — Schott RG610 glass; measured curve (schottglass.json)",
+      "products": [
+        "B+W 091"
+      ]
     },
     {
       "id": "bw092",
       "physical": "Infrared · RG695",
       "kind": "ir",
       "evidence": "measured",
-      "brand": "B+W",
-      "model": "092",
       "glass": "RG695",
-      "src": "B+W 695/092 — Schott RG695 glass; measured curve (schottglass.json)"
+      "src": "B+W 695/092 — Schott RG695 glass; measured curve (schottglass.json)",
+      "products": [
+        "B+W 092"
+      ]
     },
     {
       "id": "bw093",
       "physical": "Infrared · RG830",
       "kind": "ir",
       "evidence": "measured",
-      "brand": "B+W",
-      "model": "093",
       "glass": "RG830",
-      "src": "B+W 830/093 — Schott RG830 glass; measured curve (schottglass.json)"
+      "src": "B+W 830/093 — Schott RG830 glass; measured curve (schottglass.json)",
+      "products": [
+        "B+W 093"
+      ]
     },
     {
       "id": "bw099",
       "physical": "Infrared · RG850",
       "kind": "ir",
       "evidence": "measured",
-      "brand": "B+W",
-      "model": "099",
       "glass": "RG850",
-      "src": "B+W 850/099 — Schott RG850 glass; measured curve (schottglass.json)"
+      "src": "B+W 850/099 — Schott RG850 glass; measured curve (schottglass.json)",
+      "products": [
+        "B+W 099",
+        "K&F Concept IR850",
+        "Kolari Vision 850"
+      ],
+      "aliases": [
+        "kf-ir850",
+        "kolari-850"
+      ]
     },
     {
       "id": "hoya-r72",
       "physical": "Infrared · 720 nm",
       "kind": "ir",
       "evidence": "documented",
-      "brand": "Hoya",
-      "model": "R72",
       "edge": 720,
-      "src": "Hoya R72 — maker's spec: blocks below 740 nm, 95% transmission 760–860 nm; 50% at the 720 nm the name gives"
-    },
-    {
-      "id": "cokin-007",
-      "physical": "Infrared · 720 nm",
-      "kind": "ir",
-      "evidence": "documented",
-      "brand": "Cokin",
-      "model": "007",
-      "edge": 720,
-      "src": "Cokin 007 — documented as the Wratten 89B (720 nm) infrared filter; rendered at its 720 nm cutoff"
-    },
-    {
-      "id": "kf-ir720",
-      "physical": "Infrared · 720 nm",
-      "kind": "ir",
-      "evidence": "documented",
-      "brand": "K&F Concept",
-      "model": "IR720",
-      "edge": 720,
-      "src": "K&F Concept IR720 — product's 720 nm cutoff"
-    },
-    {
-      "id": "kf-ir850",
-      "physical": "Infrared · 850 nm",
-      "kind": "ir",
-      "evidence": "measured",
-      "brand": "K&F Concept",
-      "model": "IR850",
-      "glass": "RG850",
-      "src": "K&F Concept IR850 — 850 nm cutoff, rendered on Schott RG850's measured curve (the glass a 850 nm longpass is)"
+      "src": "Hoya R72 — maker's spec: blocks below 740 nm, 95% transmission 760–860 nm; 50% at the 720 nm the name gives",
+      "products": [
+        "Hoya R72",
+        "Cokin 007",
+        "K&F Concept IR720",
+        "Kolari Vision 720"
+      ],
+      "aliases": [
+        "cokin-007",
+        "kf-ir720",
+        "kolari-720"
+      ]
     },
     {
       "id": "kolari-590",
       "physical": "Infrared · 590 nm",
       "kind": "ir",
       "evidence": "documented",
-      "brand": "Kolari Vision",
-      "model": "590",
       "edge": 590,
-      "src": "Kolari Vision 590 nm — product's 590 nm cutoff"
+      "src": "Kolari Vision 590 nm — product's 590 nm cutoff",
+      "products": [
+        "Kolari Vision 590"
+      ]
     },
     {
       "id": "kolari-665",
       "physical": "Infrared · 665 nm",
       "kind": "ir",
       "evidence": "documented",
-      "brand": "Kolari Vision",
-      "model": "665",
       "edge": 665,
-      "src": "Kolari Vision 665 nm — product's 665 nm cutoff"
-    },
-    {
-      "id": "kolari-720",
-      "physical": "Infrared · 720 nm",
-      "kind": "ir",
-      "evidence": "documented",
-      "brand": "Kolari Vision",
-      "model": "720",
-      "edge": 720,
-      "src": "Kolari Vision 720 nm — product's 720 nm cutoff"
+      "src": "Kolari Vision 665 nm — product's 665 nm cutoff",
+      "products": [
+        "Kolari Vision 665"
+      ]
     },
     {
       "id": "kolari-780",
       "physical": "Infrared · 780 nm",
       "kind": "ir",
       "evidence": "documented",
-      "brand": "Kolari Vision",
-      "model": "780",
       "edge": 780,
-      "src": "Kolari Vision 780 nm — product's 780 nm cutoff"
-    },
-    {
-      "id": "kolari-850",
-      "physical": "Infrared · 850 nm",
-      "kind": "ir",
-      "evidence": "measured",
-      "brand": "Kolari Vision",
-      "model": "850",
-      "glass": "RG850",
-      "src": "Kolari Vision 850 nm — 850 nm cutoff, rendered on Schott RG850's measured curve (the glass a 850 nm longpass is)"
+      "src": "Kolari Vision 780 nm — product's 780 nm cutoff",
+      "products": [
+        "Kolari Vision 780"
+      ]
     },
     {
       "id": "kolari-930",
       "physical": "Infrared · 930 nm",
       "kind": "ir",
       "evidence": "documented",
-      "brand": "Kolari Vision",
-      "model": "930",
       "edge": 930,
-      "src": "Kolari Vision 930 nm — product's 930 nm cutoff"
+      "src": "Kolari Vision 930 nm — product's 930 nm cutoff",
+      "products": [
+        "Kolari Vision 930"
+      ]
     },
     {
       "id": "kolari-1000",
       "physical": "Infrared · 1000 nm",
       "kind": "ir",
       "evidence": "documented",
-      "brand": "Kolari Vision",
-      "model": "1000",
       "edge": 1000,
-      "src": "Kolari Vision 1000 nm — product's 1000 nm cutoff"
+      "src": "Kolari Vision 1000 nm — product's 1000 nm cutoff",
+      "products": [
+        "Kolari Vision 1000"
+      ]
     },
     {
       "id": "nd-bw-09",
       "physical": "Neutral density · 3 stops",
       "kind": "nd",
       "evidence": "documented",
-      "brand": "B+W",
-      "model": "ND 0.9",
       "stops": 3,
-      "src": "B+W ND 0.9 — optical density 0.9, 3 stops (density / 0.3)"
+      "src": "B+W ND 0.9 — optical density 0.9, 3 stops (density / 0.3)",
+      "products": [
+        "B+W ND 0.9",
+        "Hoya ND8",
+        "K&F Concept ND8",
+        "Formatt-Hitech Firecrest 0.9"
+      ],
+      "aliases": [
+        "nd-hoya-nd8",
+        "nd-kf-nd8",
+        "nd-fh-09"
+      ]
     },
     {
       "id": "nd-bw-18",
       "physical": "Neutral density · 6 stops",
       "kind": "nd",
       "evidence": "documented",
-      "brand": "B+W",
-      "model": "ND 1.8",
       "stops": 6,
-      "src": "B+W ND 1.8 — optical density 1.8, 6 stops"
+      "src": "B+W ND 1.8 — optical density 1.8, 6 stops",
+      "products": [
+        "B+W ND 1.8",
+        "Hoya ND64",
+        "K&F Concept ND64",
+        "Formatt-Hitech Firecrest 1.8"
+      ],
+      "aliases": [
+        "nd-hoya-nd64",
+        "nd-kf-nd64",
+        "nd-fh-18"
+      ]
     },
     {
       "id": "nd-bw-30",
       "physical": "Neutral density · 10 stops",
       "kind": "nd",
       "evidence": "documented",
-      "brand": "B+W",
-      "model": "ND 3.0",
       "stops": 10,
-      "src": "B+W ND 3.0 — optical density 3.0, 10 stops"
-    },
-    {
-      "id": "nd-hoya-nd8",
-      "physical": "Neutral density · 3 stops",
-      "kind": "nd",
-      "evidence": "documented",
-      "brand": "Hoya",
-      "model": "ND8",
-      "stops": 3,
-      "src": "Hoya ND8 — 3-stop neutral density (its name is the factor, 2^3)"
-    },
-    {
-      "id": "nd-hoya-nd64",
-      "physical": "Neutral density · 6 stops",
-      "kind": "nd",
-      "evidence": "documented",
-      "brand": "Hoya",
-      "model": "ND64",
-      "stops": 6,
-      "src": "Hoya ND64 — 6-stop neutral density (2^6)"
-    },
-    {
-      "id": "nd-hoya-nd1000",
-      "physical": "Neutral density · 10 stops",
-      "kind": "nd",
-      "evidence": "documented",
-      "brand": "Hoya",
-      "model": "ND1000",
-      "stops": 10,
-      "src": "Hoya ND1000 — 10-stop neutral density (2^10)"
-    },
-    {
-      "id": "nd-lee-bigstopper",
-      "physical": "Neutral density · 10 stops",
-      "kind": "nd",
-      "evidence": "documented",
-      "brand": "LEE",
-      "model": "Big Stopper",
-      "stops": 10,
-      "src": "LEE Big Stopper — 10-stop neutral density"
-    },
-    {
-      "id": "nd-kf-nd8",
-      "physical": "Neutral density · 3 stops",
-      "kind": "nd",
-      "evidence": "documented",
-      "brand": "K&F Concept",
-      "model": "ND8",
-      "stops": 3,
-      "src": "K&F Concept ND8 — 3-stop neutral density"
-    },
-    {
-      "id": "nd-kf-nd64",
-      "physical": "Neutral density · 6 stops",
-      "kind": "nd",
-      "evidence": "documented",
-      "brand": "K&F Concept",
-      "model": "ND64",
-      "stops": 6,
-      "src": "K&F Concept ND64 — 6-stop neutral density"
-    },
-    {
-      "id": "nd-kf-nd1000",
-      "physical": "Neutral density · 10 stops",
-      "kind": "nd",
-      "evidence": "documented",
-      "brand": "K&F Concept",
-      "model": "ND1000",
-      "stops": 10,
-      "src": "K&F Concept ND1000 — 10-stop neutral density"
+      "src": "B+W ND 3.0 — optical density 3.0, 10 stops",
+      "products": [
+        "B+W ND 3.0",
+        "Hoya ND1000",
+        "LEE Big Stopper",
+        "K&F Concept ND1000",
+        "Formatt-Hitech Firecrest 3.0"
+      ],
+      "aliases": [
+        "nd-hoya-nd1000",
+        "nd-lee-bigstopper",
+        "nd-kf-nd1000",
+        "nd-fh-30"
+      ]
     },
     {
       "id": "nd-fh-06",
       "physical": "Neutral density · 2 stops",
       "kind": "nd",
       "evidence": "documented",
-      "brand": "Formatt-Hitech",
-      "model": "Firecrest 0.6",
       "stops": 2,
-      "src": "Formatt-Hitech Firecrest ND 0.6 — density 0.6, 2 stops"
-    },
-    {
-      "id": "nd-fh-09",
-      "physical": "Neutral density · 3 stops",
-      "kind": "nd",
-      "evidence": "documented",
-      "brand": "Formatt-Hitech",
-      "model": "Firecrest 0.9",
-      "stops": 3,
-      "src": "Formatt-Hitech Firecrest ND 0.9 — density 0.9, 3 stops"
-    },
-    {
-      "id": "nd-fh-18",
-      "physical": "Neutral density · 6 stops",
-      "kind": "nd",
-      "evidence": "documented",
-      "brand": "Formatt-Hitech",
-      "model": "Firecrest 1.8",
-      "stops": 6,
-      "src": "Formatt-Hitech Firecrest ND 1.8 — density 1.8, 6 stops"
-    },
-    {
-      "id": "nd-fh-30",
-      "physical": "Neutral density · 10 stops",
-      "kind": "nd",
-      "evidence": "documented",
-      "brand": "Formatt-Hitech",
-      "model": "Firecrest 3.0",
-      "stops": 10,
-      "src": "Formatt-Hitech Firecrest ND 3.0 — density 3.0, 10 stops"
+      "src": "Formatt-Hitech Firecrest ND 0.6 — density 0.6, 2 stops",
+      "products": [
+        "Formatt-Hitech Firecrest 0.6"
+      ]
     },
     {
       "id": "gnd-lee-03-soft",
       "physical": "Graduated ND · 1 stop, soft",
       "kind": "gnd",
       "evidence": "documented",
-      "brand": "LEE",
-      "model": "0.3 Soft Grad",
       "stops": 1,
       "hardness": "soft",
-      "src": "LEE 0.3 ND Grad Soft — density 0.3, 1 stop; soft transition (its width is not published, so the position and softness controls set it)"
+      "src": "LEE 0.3 ND Grad Soft — density 0.3, 1 stop; soft transition (its width is not published, so the position and softness controls set it)",
+      "products": [
+        "LEE 0.3 Soft Grad"
+      ]
     },
     {
       "id": "gnd-lee-06-soft",
       "physical": "Graduated ND · 2 stops, soft",
       "kind": "gnd",
       "evidence": "documented",
-      "brand": "LEE",
-      "model": "0.6 Soft Grad",
       "stops": 2,
       "hardness": "soft",
-      "src": "LEE 0.6 ND Grad Soft — density 0.6, 2 stops; soft transition"
+      "src": "LEE 0.6 ND Grad Soft — density 0.6, 2 stops; soft transition",
+      "products": [
+        "LEE 0.6 Soft Grad"
+      ]
     },
     {
       "id": "gnd-lee-09-soft",
       "physical": "Graduated ND · 3 stops, soft",
       "kind": "gnd",
       "evidence": "documented",
-      "brand": "LEE",
-      "model": "0.9 Soft Grad",
       "stops": 3,
       "hardness": "soft",
-      "src": "LEE 0.9 ND Grad Soft — density 0.9, 3 stops; soft transition"
+      "src": "LEE 0.9 ND Grad Soft — density 0.9, 3 stops; soft transition",
+      "products": [
+        "LEE 0.9 Soft Grad",
+        "Formatt-Hitech Firecrest 0.9 Soft Grad",
+        "K&F Concept GND8"
+      ],
+      "aliases": [
+        "gnd-fh-09-soft",
+        "gnd-kf-gnd8"
+      ]
     },
     {
       "id": "gnd-lee-06-hard",
       "physical": "Graduated ND · 2 stops, hard",
       "kind": "gnd",
       "evidence": "documented",
-      "brand": "LEE",
-      "model": "0.6 Hard Grad",
       "stops": 2,
       "hardness": "hard",
-      "src": "LEE 0.6 ND Grad Hard — density 0.6, 2 stops; hard transition"
+      "src": "LEE 0.6 ND Grad Hard — density 0.6, 2 stops; hard transition",
+      "products": [
+        "LEE 0.6 Hard Grad"
+      ]
     },
     {
       "id": "gnd-lee-09-hard",
       "physical": "Graduated ND · 3 stops, hard",
       "kind": "gnd",
       "evidence": "documented",
-      "brand": "LEE",
-      "model": "0.9 Hard Grad",
       "stops": 3,
       "hardness": "hard",
-      "src": "LEE 0.9 ND Grad Hard — density 0.9, 3 stops; hard transition"
-    },
-    {
-      "id": "gnd-fh-09-soft",
-      "physical": "Graduated ND · 3 stops, soft",
-      "kind": "gnd",
-      "evidence": "documented",
-      "brand": "Formatt-Hitech",
-      "model": "Firecrest 0.9 Soft Grad",
-      "stops": 3,
-      "hardness": "soft",
-      "src": "Formatt-Hitech Firecrest 0.9 Soft Grad — density 0.9, 3 stops; soft transition"
+      "src": "LEE 0.9 ND Grad Hard — density 0.9, 3 stops; hard transition",
+      "products": [
+        "LEE 0.9 Hard Grad"
+      ]
     },
     {
       "id": "gnd-fh-12-soft",
       "physical": "Graduated ND · 4 stops, soft",
       "kind": "gnd",
       "evidence": "documented",
-      "brand": "Formatt-Hitech",
-      "model": "Firecrest 1.2 Soft Grad",
       "stops": 4,
       "hardness": "soft",
-      "src": "Formatt-Hitech Firecrest 1.2 Soft Grad — density 1.2, 4 stops; soft transition"
-    },
-    {
-      "id": "gnd-kf-gnd8",
-      "physical": "Graduated ND · 3 stops",
-      "kind": "gnd",
-      "evidence": "documented",
-      "brand": "K&F Concept",
-      "model": "GND8",
-      "stops": 3,
-      "hardness": "soft",
-      "src": "K&F Concept GND8 — 3-stop graduated neutral density"
+      "src": "Formatt-Hitech Firecrest 1.2 Soft Grad — density 1.2, 4 stops; soft transition",
+      "products": [
+        "Formatt-Hitech Firecrest 1.2 Soft Grad"
+      ]
     }
   ],
   "_wratten": {
     "basis": "approximate",
     "note": "The ten built-in Wratten filters are rendered on a logistic edge through each filter's documented 50% cut, not on measured transmittance. The measured tables (Kodak's compilation, as reprinted in the CRC Handbook) exist only as scanned images; digital sources checked in October 2026 (SVO Filter Profile Service, Kodak's own PDFs, astro filter services) hold no usable data. Replacing these curves is the next accuracy step for this file, and no numbers should be entered here that were not read from a table and checked against each filter's printed luminous transmittance."
+  },
+  "_aliases": {
+    "cokin-001": "hoya-y2",
+    "tiffen-8": "hoya-y2",
+    "cokin-002": "hoya-ya3",
+    "tiffen-21": "hoya-ya3",
+    "cokin-003": "hoya-r1",
+    "tiffen-25": "hoya-r1",
+    "kf-ir850": "bw099",
+    "kolari-850": "bw099",
+    "cokin-007": "hoya-r72",
+    "kf-ir720": "hoya-r72",
+    "kolari-720": "hoya-r72",
+    "nd-hoya-nd8": "nd-bw-09",
+    "nd-kf-nd8": "nd-bw-09",
+    "nd-fh-09": "nd-bw-09",
+    "nd-hoya-nd64": "nd-bw-18",
+    "nd-kf-nd64": "nd-bw-18",
+    "nd-fh-18": "nd-bw-18",
+    "nd-hoya-nd1000": "nd-bw-30",
+    "nd-lee-bigstopper": "nd-bw-30",
+    "nd-kf-nd1000": "nd-bw-30",
+    "nd-fh-30": "nd-bw-30",
+    "gnd-fh-09-soft": "gnd-lee-09-soft",
+    "gnd-kf-gnd8": "gnd-lee-09-soft"
   }
 }
