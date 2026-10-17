@@ -1715,7 +1715,13 @@
    "rms": 8,
    "src": "Rollei RPX 25 data sheet (2022)",
    "url": "https://downloads.rollei.com/en/download/rpx-black-and-white-negative-film-35-mm-roll-film-iso-25-100-400/",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120",
+    "4x5"
+   ],
+   "formats_src": "Rollei data sheet RPX 25 (R190801), 'Erhaeltliche Formate': 35 mm (DX), 120 roll film, bulk 35 mm, 4x5 sheet film (25 sheets)"
   },
   {
    "maker": "Rollei",
@@ -1725,7 +1731,12 @@
    "rms": 7,
    "src": "Rollei RPX 100 data sheet (R210701)",
    "url": "https://downloads.rollei.com/en/download/rpx-black-and-white-negative-film-35-mm-roll-film-iso-25-100-400/",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Rollei data sheet RPX 100 (R210701), 'Erhaeltliche Formate': 35 mm (DX), 120 roll film and bulk 35 mm; no sheet format"
   },
   {
    "maker": "Rollei",
@@ -1735,7 +1746,12 @@
    "rms": 14,
    "src": "Rollei RPX 400 data sheet (R210701)",
    "url": "https://downloads.rollei.com/en/download/rpx-black-and-white-negative-film-35-mm-roll-film-iso-25-100-400/",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Rollei data sheet RPX 400 (R210701), 'Erhaeltliche Formate': 35 mm (DX), 120 roll film and bulk 35 mm; no sheet format"
   },
   {
    "maker": "Rollei",
@@ -1762,7 +1778,12 @@
    "rms": 11,
    "src": "Rollei Retro 400S data sheet (R210701)",
    "url": "https://downloads.rollei.com/en/download/retro-black-and-white-negative-film-35-mm-roll-film-iso-80-400/",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Rollei data sheet Retro 400S (R210701), 'Available as': 35 mm (DX), 120 roll film and bulk ware; no sheet format"
   },
   {
    "maker": "Rollei",
@@ -1772,7 +1793,12 @@
    "rms": 14,
    "src": "Rollei Superpan 200 data sheet (R210701)",
    "url": "https://downloads.rollei.com/en/download/superpan-black-and-white-negative-film-35-mm-roll-film-iso-200/",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Rollei data sheet Superpan 200 (R210701), 'Erhaeltliche Formate': 35 mm (DX), 120 roll film and bulk 35 mm; no sheet format"
   },
   {
    "maker": "Rollei",
