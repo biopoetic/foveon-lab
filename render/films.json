@@ -1683,12 +1683,17 @@
   },
   {
    "maker": "ORWO",
-   "name": "N74",
+   "name": "N75",
    "kind": "neg",
    "iso": 400,
    "rms": 0,
    "src": "No RMS in ORWO's published data",
-   "bw": true
+   "bw": true,
+   "url": "https://filmotec.de/wp-content/uploads/2022/07/Technische-Info-N75.pdf",
+   "formats": [
+    "135"
+   ],
+   "formats_src": "ORWO technical information N75 (TI-N75-VIII/2019): the standard assortment is 35 mm and 16 mm cine stock; the still-camera film is 35 mm, repackaged in 135 cassettes"
   },
   {
    "maker": "Svema",
