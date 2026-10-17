@@ -2317,13 +2317,35 @@ async function aiCritique(){
       + (note ? "&note=" + encodeURIComponent(note) : "");
     const res = await fetch(u);
     if (!res.ok) throw new Error(await res.text());
-    const {text} = await res.json();
+    const {text, settings} = await res.json();
     box.remove();
-    aiLog(`<div class="critique">${mdLite(text)}</div>`, "say");
+    const keys = settings ? Object.keys(settings).filter(k => RANGES[k]) : [];
+    const list = keys.map(k => `${k} ${(+settings[k]).toFixed(2)}`).join(" · ");
+    const d = aiLog(`<div class="critique">${mdLite(text)}${keys.length
+      ? `<div class="adj">${esc(list)}</div><button class="primary" data-apply>Apply these settings</button>`
+      : ""}</div>`, "say");
+    const btn = d.querySelector("[data-apply]");
+    if (btn) btn.onclick = () => applyCritique(settings, btn);
   } catch (e) {
     box.remove();
     aiLog("Could not rate the photo: " + esc(e.message), "error");
   }
+}
+// RANGES is each slider's allowed range, for what the AI may set.
+const RANGES = Object.fromEntries(SLIDERS.map(([k,, min, max]) => [k, [min, max]]));
+// applyCritique puts the model's settings on the sliders, within their ranges.
+function applyCritique(settings, btn){
+  let n = 0;
+  for (const [k, v] of Object.entries(settings)){
+    const r = RANGES[k];
+    if (!r || !isFinite(v)) continue;
+    S.params[k] = Math.max(r[0], Math.min(r[1], v));
+    n++;
+  }
+  if (!n){ toast("The critique suggested nothing this app can set.", 5000); return; }
+  syncSliders(); scheduleRender();
+  if (btn) btn.textContent = "Applied";
+  toast(`Applied ${n} setting${n > 1 ? "s" : ""} from the critique.`, 5000);
 }
 // mdLite renders the model's Markdown: headings and paragraphs, escaped.
 function mdLite(s){

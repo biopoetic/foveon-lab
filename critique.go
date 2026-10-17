@@ -10,8 +10,8 @@ import (
 )
 
 // handleCritique renders the photo the request names and asks the AI to rate
-// it and say where it could be better. The render parameters are the same as
-// /api/render, so it judges the photo as edited.
+// it and say where it could be better. It returns the critique and the global
+// settings the model would apply, so the editor can offer them as one click.
 func (s *server) handleCritique(w http.ResponseWriter, r *http.Request) {
 	cfg := s.ai.get()
 	if cfg.BaseURL == "" || cfg.APIKey == "" {
@@ -23,10 +23,15 @@ func (s *server) handleCritique(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := render.Render(b, p, comp)
-	text, err := agent.Critique(r.Context(), cfg, out, strings.TrimSpace(r.URL.Query().Get("note")))
+	current := map[string]float64{
+		"exposure": p.Exposure, "contrast": p.Contrast, "blackness": p.Blackness,
+		"highlight": p.Highlight, "fillLight": p.FillLight, "saturation": p.Saturation,
+		"r": p.R, "g": p.G, "b": p.B,
+	}
+	text, settings, err := agent.Critique(r.Context(), cfg, out, strings.TrimSpace(r.URL.Query().Get("note")), current)
 	if err != nil {
 		httpErr(w, 502, err)
 		return
 	}
-	writeJSON(w, map[string]string{"text": text})
+	writeJSON(w, map[string]any{"text": text, "settings": settings})
 }
