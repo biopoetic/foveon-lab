@@ -1,0 +1,14 @@
+# Normalise line endings: the repository stores LF and checks out LF on every
+# platform. Without this, core.autocrlf=true on Windows gives a CRLF working
+# tree, which gofmt reports as 32 unformatted files and every diff looks
+# rewritten.
+* text=auto eol=lf
+
+# Never touch these; "binary" also stops diff and merge from treating them as
+# text.
+*.syso binary
+*.exe binary
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.zip binary
