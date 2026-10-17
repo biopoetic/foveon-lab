@@ -29,6 +29,13 @@ type Film struct {
 	// that the index "has a different scale which cannot be compared to rms
 	// granularity", so it cannot feed the grain model, which is RMS-based.
 	PGI int `json:"pgi,omitempty"`
+	// Formats are the film sizes the maker sold this stock in: "135"
+	// (35 mm), "120"/"220" (medium-format rolls), "4x5"/"8x10" (sheets),
+	// read from the film's own data sheet. Empty means unverified: the model
+	// then offers 35 mm only rather than guessing a format the film may never
+	// have been made in, since the format sets the grain's physical size.
+	Formats    []string `json:"formats,omitempty"`
+	FormatsSrc string   `json:"formats_src,omitempty"`
 	Src   string  `json:"src"`
 	URL   string  `json:"url,omitempty"`
 	// Grain is the RMS on the positive, the value the Film grain slider

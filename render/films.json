@@ -238,7 +238,14 @@
    "rms": 8,
    "src": "Fujifilm Velvia 100 data sheet",
    "url": "https://125px.com/docs/film/fuji/velvia_100_datasheet.pdf",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135",
+    "120",
+    "220",
+    "4x5"
+   ],
+   "formats_src": "Sizes listed in the film's own data sheet"
   },
   {
    "maker": "Fujifilm",
@@ -268,7 +275,12 @@
    "rms": 13,
    "src": "Fujifilm AF3-066E",
    "url": "https://125px.com/docs/film/fuji/PROVIA400FAF3-066E_1.pdf",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Sizes listed in the film's own data sheet"
   },
   {
    "maker": "Fujifilm",
@@ -278,7 +290,12 @@
    "rms": 11,
    "src": "Fujifilm Provia 400X PIB (2007)",
    "url": "https://125px.com/docs/film/fuji/Provia_400X_PIB_1007.pdf",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Sizes listed in the film's own data sheet"
   },
   {
    "maker": "Fujifilm",
@@ -288,7 +305,14 @@
    "rms": 7,
    "src": "Fujifilm Astia 100F data sheet",
    "url": "https://125px.com/docs/film/fuji/astia_100f_datasheet.pdf",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135",
+    "120",
+    "220",
+    "4x5"
+   ],
+   "formats_src": "Sizes listed in the film's own data sheet"
   },
   {
    "maker": "Fujifilm",
@@ -338,7 +362,14 @@
    "rms": 7,
    "src": "Fujifilm AF3-178E",
    "url": "https://125px.com/docs/film/fuji/t64_datasheet.pdf",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135",
+    "120",
+    "4x5",
+    "8x10"
+   ],
+   "formats_src": "Sizes listed in the film's own data sheet"
   },
   {
    "maker": "Fujifilm",
@@ -378,7 +409,11 @@
    "rms": 4,
    "src": "Fujifilm Superia X-TRA 400 data sheet",
    "url": "https://125px.com/docs/film/fuji/superia_xtra400_datasheet.pdf",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135"
+   ],
+   "formats_src": "Sizes listed in the film's own data sheet"
   },
   {
    "maker": "Fujifilm",
@@ -1006,7 +1041,13 @@
    "pgi": 37,
    "src": "Kodak E-4050 (2016): Kodak publishes a Print Grain Index, not RMS; PGI is a perceptual print scale that cannot be compared to RMS; PGI 37 at 135 size, 4x6 print",
    "url": "https://125px.com/docs/film/kodak/e4050_portra_400-2016.pdf",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135",
+    "120",
+    "4x5"
+   ],
+   "formats_src": "Size/format table in Kodak E-4050 (135, 120, sheets)"
   },
   {
    "maker": "Kodak",

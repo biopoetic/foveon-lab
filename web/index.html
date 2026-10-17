@@ -288,10 +288,9 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
             <input type="range" id="gndSoft" min="0" max="1" step="0.01" value="0.5">
           </div>
         </div>
-        <div class="row"><div class="lab">Film format <span class="dim" title="Foveon Lab only. The film frame the grain and halation are sized on: a larger format shows the same film finer.">(grain, halation)</span></div>
-          <select id="filmWidth" style="width:100%">
-            <option value="0">35 mm (36 × 24)</option><option value="56">Medium format 6 × 6 / 6 × 4.5</option><option value="70">Medium format 6 × 7</option><option value="127">Large format 4 × 5 in</option>
-          </select>
+        <div class="row"><div class="lab">Film format <span class="dim" title="The film frame the grain and halation are sized on: the same emulsion on a larger frame shows finer grain at the same print size. Only the sizes the selected film was sold in are offered — the format is a physical fact about the stock, not a free choice.">(grain, halation)</span></div>
+          <select id="filmWidth" style="width:100%"></select>
+          <div class="src" id="filmFormatNote"></div>
         </div>
         <div id="filmDev" style="display:none">
           <div class="subh" title="Foveon Lab only. The film's characteristic curve and its developers, from the makers' data sheets.">Darkroom</div>
@@ -997,6 +996,44 @@ function filmCompare(){
   $("#filmCmp").classList.add("on");
 }
 function filmCompareClose(){ $("#filmCmp").classList.remove("on"); $("#filmCmpGrid").innerHTML = ""; }
+// FILM_FORMATS maps a film's documented sizes to the frame widths the grain
+// model uses (long side, mm). A 120 or 220 roll takes any of the medium-format
+// backs, so both are offered; the sheets map to their inch size.
+const FILM_FORMATS = {
+  "135": [[0, "35 mm (36 × 24)"]],
+  "120": [[56, "Medium format 6 × 6 / 6 × 4.5"], [70, "Medium format 6 × 7"]],
+  "220": [[56, "Medium format 6 × 6 / 6 × 4.5"], [70, "Medium format 6 × 7"]],
+  "4x5": [[127, "Large format 4 × 5 in"]],
+  "8x10": [[254, "Large format 8 × 10 in"]],
+};
+// syncFormats offers only the sizes the selected film was sold in. A film
+// whose data sheet has not been read offers 35 mm alone and says so, rather
+// than letting a format the stock was never made in choose its grain.
+function syncFormats(f){
+  const sel = $("#filmWidth"), note = $("#filmFormatNote");
+  const sizes = f && f.formats && f.formats.length ? f.formats : ["135"];
+  const opts = [];
+  for (const s of sizes) for (const o of (FILM_FORMATS[s] || [])) if (!opts.some(x => x[0] === o[0])) opts.push(o);
+  opts.sort((a, b) => a[0] - b[0]);
+  const sig = opts.map(o => o[0]).join(",");
+  if (sel.dataset.sig !== sig){
+    sel.innerHTML = opts.map(([v, n]) => `<option value="${v}">${esc(n)}</option>`).join("");
+    sel.dataset.sig = sig;
+  }
+  const want = String(S.params?.filmWidth || 0);
+  if (!opts.some(o => String(o[0]) === want) && S.params){
+    // The chosen size is not one this film came in: fall back to 35 mm.
+    S.params.filmWidth = 0;
+    sel.value = "0";
+  } else {
+    sel.value = want;
+  }
+  note.textContent = f
+    ? (f.formats && f.formats.length
+        ? `${sizes.join(", ")} — from the film's data sheet`
+        : "sizes not verified for this film; 35 mm shown")
+    : "";
+}
 function syncFilm(){
   const i = FILMS.findIndex(f => f.maker + " " + f.name === S.params?.film);
   $("#filmStock").value = i >= 0 ? String(i) : "";
@@ -1013,6 +1050,7 @@ function syncFilm(){
     $("#useLinked").onclick = () => useFilm(link);
     box.style.display = "";
   } else box.style.display = "none";
+  syncFormats(f);
   syncDev(f);
 }
 // pushTime: the sheet's time for pushing push stops (render.PushTime).
@@ -1119,7 +1157,6 @@ function syncSliders(){
   const isIR = (S.params.filter || "").startsWith("ir-"), colour = COLOUR_FILTERS.has(S.params.filter) || (S.params.filter || "").startsWith("br-");
   $("#lensSel").value = colour || isIR ? S.params.filter : "";
   $("#layerPreset").value = zero && (!S.params.filter || colour) ? "" : S.params.filter && !colour && zero ? "lens:" + S.params.filter : !S.params.filter && mix ? "mix:" + mix : "custom";
-  $("#filmWidth").value = String(S.params.filmWidth || 0);
   // Density filters: their own rows, and the transition's geometry.
   $("#ndSel").value = S.params.nd || "";
   $("#ndMetered").checked = !!S.params.ndMetered;

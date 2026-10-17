@@ -56,3 +56,41 @@ func TestNoGroupedFilms(t *testing.T) {
 		}
 	}
 }
+
+// A film's formats are the sizes its maker sold it in, and each is one the
+// grain model can size. A film without verified formats is not an error — it
+// is offered as 35 mm only — but a format entry must be one of the known
+// sizes and must name the document it came from.
+func TestFilmFormats(t *testing.T) {
+	known := map[string]bool{"135": true, "120": true, "220": true, "4x5": true, "8x10": true}
+	withFormats := 0
+	for _, f := range Films() {
+		if len(f.Formats) == 0 {
+			continue
+		}
+		withFormats++
+		if f.FormatsSrc == "" {
+			t.Errorf("%s %s: formats with no source", f.Maker, f.Name)
+		}
+		for _, s := range f.Formats {
+			if !known[s] {
+				t.Errorf("%s %s: unknown format %q", f.Maker, f.Name, s)
+			}
+		}
+		// 35 mm is the reference the grain model is built on, so a film with
+		// any verified sizes should include it (every stock here is a
+		// still-camera film that was made in 135).
+		found := false
+		for _, s := range f.Formats {
+			if s == "135" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s %s: no 135 among %v", f.Maker, f.Name, f.Formats)
+		}
+	}
+	if withFormats == 0 {
+		t.Error("no film has verified formats")
+	}
+}
