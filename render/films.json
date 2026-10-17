@@ -1553,7 +1553,12 @@
    "iso": 800,
    "rms": 0,
    "src": "Kodak Vision3 stock; Kodak gives granularity only as curves, which read inconsistently (200T = 500T, 250D coarser than 500T)",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "CineStill's own product listings: 800Tungsten in 35 mm and 120"
   },
   {
    "maker": "CineStill",
@@ -1562,7 +1567,13 @@
    "iso": 400,
    "rms": 0,
    "src": "Kodak Vision3 stock; Kodak gives granularity only as curves, which read inconsistently (200T = 500T, 250D coarser than 500T)",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135",
+    "120",
+    "4x5"
+   ],
+   "formats_src": "CineStill's own product listings: 400Dynamic in 35 mm, 120 and 4x5 (25 sheets)"
   },
   {
    "maker": "CineStill",
@@ -1571,7 +1582,12 @@
    "iso": 50,
    "rms": 0,
    "src": "Kodak Vision3 stock; Kodak gives granularity only as curves, which read inconsistently (200T = 500T, 250D coarser than 500T)",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "CineStill's own product listings: 50Daylight in 35 mm and 120"
   },
   {
    "maker": "Fotokemika (Efke)",
@@ -1670,7 +1686,12 @@
    "iso": 100,
    "rms": 0,
    "src": "No RMS in Kentmere's data sheets",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Harman data sheet KENTMERE PAN 100 (Jan 2019): 35 mm cassettes (24/36 exp.) and bulk lengths; Ilford's announcement adds the 120 format"
   },
   {
    "maker": "Kentmere",
@@ -1679,7 +1700,12 @@
    "iso": 400,
    "rms": 0,
    "src": "No RMS in Kentmere's data sheets",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Harman data sheet KENTMERE PAN 400 (Jan 2019): 35 mm cassettes (24/36 exp.) and bulk lengths; Ilford's announcement adds the 120 format"
   },
   {
    "maker": "Rollei",
