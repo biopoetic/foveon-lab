@@ -407,7 +407,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 </div>
 <div id="filmCmp" class="modal">
   <div class="box">
-    <div style="display:flex;align-items:center;gap:8px"><b style="flex:1">Films on this photo</b><span class="dim">Click one to use it · Esc closes</span><button id="filmCmpClose">Close</button></div>
+    <div style="display:flex;align-items:center;gap:8px"><b style="flex:1">Films on this photo</b><span class="dim">Exposures matched · click one to use it · Esc closes</span><button id="filmCmpClose">Close</button></div>
     <div style="display:flex;gap:8px;margin:10px 0">
       <select id="filmCmpKind" title="Which films to compare">
         <option value="colour">Colour films</option>
@@ -520,6 +520,7 @@ function renderURL(opts){
   // The big view: uncompressed (encoding a JPEG took longer than rendering).
   if (opts.big) u.set("fmt", "bmp");
   if (opts.fast) u.set("fast", "1");
+  if (opts.norm) u.set("norm", "1");
   return "/api/render?" + u;
 }
 
@@ -1057,7 +1058,7 @@ function filmCompare(){
   // A black-and-white paper is used for the black-and-white tiles when one is
   // chosen; otherwise they are scans of the negative.
   const bwPaper = PAPERS.some(p => p.kind === "bw" && p.paper === S.params.paper) ? S.params.paper : "";
-  const tiles = [{label: "No film", sub: "your settings as they are", film: "", paper: "", mono: S.params.mono}];
+  const tiles = [{label: "No film", sub: "your settings, exposure matched", film: "", paper: "", mono: S.params.mono}];
   if (want("colour")) {
     for (const f of FILMS.filter(f => f.color && f.kind === "slide" && isoOK(f)))
       tiles.push({label: f.name, sub: "slide · ISO " + f.iso, film: f.maker + " " + f.name, paper: "", mono: false});
@@ -1076,7 +1077,7 @@ function filmCompare(){
   $("#filmCmpGrid").innerHTML = tiles.map((t, i) => {
     const on = t.film === cur && (t.paper === curPaper || (!curPaper && t.paper === (t.mono ? bwPaper : papers[0]?.paper)));
     const params = {...base, film: t.film, paper: t.paper, mono: t.film ? !!t.mono : S.params.mono};
-    return `<div class="tile${on ? " cur" : ""}" data-i="${i}"><div class="img"><img src="${renderURL({w, params})}"></div><div class="cap">${esc(t.label)}<small>${esc(t.sub)}</small></div></div>`;
+    return `<div class="tile${on ? " cur" : ""}" data-i="${i}"><div class="img"><img src="${renderURL({w, params, norm: true})}"></div><div class="cap">${esc(t.label)}<small>${esc(t.sub)}</small></div></div>`;
   }).join("");
   $("#filmCmpGrid").querySelectorAll(".tile").forEach(el => el.onclick = () => {
     const t = tiles[+el.dataset.i], f = FILMS.find(x => x.maker + " " + x.name === t.film);

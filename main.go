@@ -683,6 +683,12 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	}
 	t1 := time.Now()
 	out := render.RenderOpt(b, p, comp, q.Get("fast") != "1")
+	// norm=1: match the average brightness to mid-grey, for the film
+	// comparison, where different films (and the un-filmed render) land at
+	// different densities and the point is colour and tone, not exposure.
+	if q.Get("norm") == "1" {
+		normalizeMean(out, 128)
+	}
 	t2 := time.Now()
 	var buf bytes.Buffer
 	ctype := "image/jpeg"
