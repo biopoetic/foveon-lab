@@ -24,6 +24,11 @@ type Film struct {
 	Kind  string  `json:"kind"` // slide, neg (B&W), cn (colour negative), chromo (chromogenic B&W)
 	ISO   int     `json:"iso"`
 	RMS   float64 `json:"rms"` // 0 = the maker publishes none
+	// PGI is Kodak's Print Grain Index where that is what the maker publishes
+	// (0 = none). It is recorded, never converted: Kodak's data sheets state
+	// that the index "has a different scale which cannot be compared to rms
+	// granularity", so it cannot feed the grain model, which is RMS-based.
+	PGI int `json:"pgi,omitempty"`
 	Src   string  `json:"src"`
 	URL   string  `json:"url,omitempty"`
 	// Grain is the RMS on the positive, the value the Film grain slider

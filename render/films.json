@@ -625,7 +625,17 @@
   },
   {
    "maker": "Kodak",
-   "name": "Ektachrome E100G / E100GX",
+   "name": "Ektachrome E100G",
+   "kind": "slide",
+   "iso": 100,
+   "rms": 8,
+   "src": "Kodak E-4024 (2009)",
+   "url": "https://125px.com/docs/film/kodak/e4024-2009.pdf",
+   "bw": false
+  },
+  {
+   "maker": "Kodak",
+   "name": "Ektachrome E100GX",
    "kind": "slide",
    "iso": 100,
    "rms": 8,
@@ -978,11 +988,35 @@
   },
   {
    "maker": "Kodak",
-   "name": "Portra 160 / 400 / 800",
+   "name": "Portra 160",
+   "kind": "cn",
+   "iso": 160,
+   "rms": 0,
+   "pgi": 28,
+   "src": "Kodak E-4051 (2016): Kodak publishes a Print Grain Index, not RMS; PGI is a perceptual print scale that cannot be compared to RMS; PGI 28 at 135 size, 4x6 print",
+   "url": "https://125px.com/docs/film/kodak/e4051_Portra_160-2016.pdf",
+   "bw": false
+  },
+  {
+   "maker": "Kodak",
+   "name": "Portra 400",
    "kind": "cn",
    "iso": 400,
    "rms": 0,
-   "src": "Kodak publishes a Print Grain Index for these, not RMS",
+   "pgi": 37,
+   "src": "Kodak E-4050 (2016): Kodak publishes a Print Grain Index, not RMS; PGI is a perceptual print scale that cannot be compared to RMS; PGI 37 at 135 size, 4x6 print",
+   "url": "https://125px.com/docs/film/kodak/e4050_portra_400-2016.pdf",
+   "bw": false
+  },
+  {
+   "maker": "Kodak",
+   "name": "Portra 800",
+   "kind": "cn",
+   "iso": 800,
+   "rms": 0,
+   "pgi": 48,
+   "src": "Kodak E-4040 (2016): Kodak publishes a Print Grain Index, not RMS; PGI is a perceptual print scale that cannot be compared to RMS; PGI 48 at 135 size, 4x6 print",
+   "url": "https://125px.com/docs/film/kodak/e4040_portra_800-2016.pdf",
    "bw": false
   },
   {
@@ -996,16 +1030,38 @@
   },
   {
    "maker": "Kodak",
-   "name": "Gold / Ultramax / ColorPlus",
+   "name": "Gold 200",
    "kind": "cn",
    "iso": 200,
    "rms": 0,
-   "src": "Kodak publishes a Print Grain Index for these, not RMS",
+   "pgi": 44,
+   "src": "Kodak E-7022 (2016): Kodak publishes a Print Grain Index, not RMS; PGI is a perceptual print scale that cannot be compared to RMS; PGI 44 at 135 size, 4x6 print",
+   "url": "https://125px.com/docs/film/kodak/E7022_Gold_200-2016.pdf",
+   "bw": false
+  },
+  {
+   "maker": "Kodak",
+   "name": "Ultramax 400",
+   "kind": "cn",
+   "iso": 400,
+   "rms": 0,
+   "pgi": 46,
+   "src": "Kodak E-7023 (2016): Kodak publishes a Print Grain Index, not RMS; PGI is a perceptual print scale that cannot be compared to RMS; PGI 46 at 135 size, 4x6 print",
+   "url": "https://125px.com/docs/film/kodak/E7023_max_400-2016.pdf",
+   "bw": false
+  },
+  {
+   "maker": "Kodak",
+   "name": "ColorPlus 200",
+   "kind": "cn",
+   "iso": 200,
+   "rms": 0,
+   "src": "No Print Grain Index found in Kodak's published data for this film",
    "bw": false
   },
   {
    "maker": "CineStill",
-   "name": "800T / 400D / 50D",
+   "name": "800T",
    "kind": "cn",
    "iso": 800,
    "rms": 0,
@@ -1013,10 +1069,46 @@
    "bw": false
   },
   {
+   "maker": "CineStill",
+   "name": "400D",
+   "kind": "cn",
+   "iso": 400,
+   "rms": 0,
+   "src": "Kodak Vision3 stock; Kodak gives granularity only as curves, which read inconsistently (200T = 500T, 250D coarser than 500T)",
+   "bw": false
+  },
+  {
+   "maker": "CineStill",
+   "name": "50D",
+   "kind": "cn",
+   "iso": 50,
+   "rms": 0,
+   "src": "Kodak Vision3 stock; Kodak gives granularity only as curves, which read inconsistently (200T = 500T, 250D coarser than 500T)",
+   "bw": false
+  },
+  {
    "maker": "Fotokemika (Efke)",
-   "name": "Efke KB25 / KB50 / KB100",
+   "name": "KB25",
    "kind": "neg",
    "iso": 25,
+   "rms": 0,
+   "src": "No RMS found in Fotokemika's published data (resolving power only)",
+   "bw": true
+  },
+  {
+   "maker": "Fotokemika (Efke)",
+   "name": "KB50",
+   "kind": "neg",
+   "iso": 50,
+   "rms": 0,
+   "src": "No RMS found in Fotokemika's published data (resolving power only)",
+   "bw": true
+  },
+  {
+   "maker": "Fotokemika (Efke)",
+   "name": "KB100",
+   "kind": "neg",
+   "iso": 100,
    "rms": 0,
    "src": "No RMS found in Fotokemika's published data (resolving power only)",
    "bw": true
@@ -1032,7 +1124,7 @@
   },
   {
    "maker": "ORWO",
-   "name": "UN54 / N74",
+   "name": "UN54",
    "kind": "neg",
    "iso": 100,
    "rms": 0,
@@ -1040,8 +1132,26 @@
    "bw": true
   },
   {
+   "maker": "ORWO",
+   "name": "N74",
+   "kind": "neg",
+   "iso": 400,
+   "rms": 0,
+   "src": "No RMS in ORWO's published data",
+   "bw": true
+  },
+  {
    "maker": "Svema",
-   "name": "Foto 64 / 100 / 200 / 400",
+   "name": "Foto 64",
+   "kind": "neg",
+   "iso": 64,
+   "rms": 0,
+   "src": "No published RMS found",
+   "bw": true
+  },
+  {
+   "maker": "Svema",
+   "name": "Foto 100",
    "kind": "neg",
    "iso": 100,
    "rms": 0,
@@ -1049,8 +1159,35 @@
    "bw": true
   },
   {
+   "maker": "Svema",
+   "name": "Foto 200",
+   "kind": "neg",
+   "iso": 200,
+   "rms": 0,
+   "src": "No published RMS found",
+   "bw": true
+  },
+  {
+   "maker": "Svema",
+   "name": "Foto 400",
+   "kind": "neg",
+   "iso": 400,
+   "rms": 0,
+   "src": "No published RMS found",
+   "bw": true
+  },
+  {
    "maker": "Kentmere",
-   "name": "Kentmere 100 / 400",
+   "name": "100",
+   "kind": "neg",
+   "iso": 100,
+   "rms": 0,
+   "src": "No RMS in Kentmere's data sheets",
+   "bw": true
+  },
+  {
+   "maker": "Kentmere",
+   "name": "400",
    "kind": "neg",
    "iso": 400,
    "rms": 0,

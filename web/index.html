@@ -854,7 +854,7 @@ async function filmsInit(){
   FILMS.forEach((f, i) => (byMaker[f.maker] ||= []).push([f, i]));
   $("#filmStock").insertAdjacentHTML("beforeend", Object.keys(byMaker).sort().map(m =>
     `<optgroup label="${esc(m)}">` + byMaker[m].map(([f, i]) =>
-      `<option value="${i}"${f.rms || f.curve || f.color ? "" : " disabled"} title="${esc(f.src)}">${esc(f.name)}${f.iso ? " · ISO " + f.iso : ""} · ${kinds[f.kind] || f.kind}${f.rms ? " · RMS " + f.rms : " · no published RMS"}${f.curve ? " · darkroom" : ""}${f.color ? " · colour from data" : ""}</option>`).join("") + "</optgroup>").join(""));
+      `<option value="${i}"${f.rms || f.curve || f.color ? "" : " disabled"} title="${esc(f.src)}">${esc(f.name)}${f.iso ? " · ISO " + f.iso : ""} · ${kinds[f.kind] || f.kind}${f.rms ? " · RMS " + f.rms : f.pgi ? " · PGI " + f.pgi : " · no published RMS"}${f.curve ? " · darkroom" : ""}${f.color ? " · colour from data" : ""}</option>`).join("") + "</optgroup>").join(""));
   syncFilm();
 }
 // The printing papers (/api/papers).

@@ -92,7 +92,7 @@ func TestColorNegatives(t *testing.T) {
 // takes that colour out of the print, more exposure prints darker; no
 // filtration is the neutral print.
 func TestColorPrintFiltration(t *testing.T) {
-	const neg = "Kodak Portra 160 / 400 / 800"
+	const neg = "Kodak Portra 400"
 	g := float32(0.128)
 	grey := func(cp ColorPrint) [3]float64 {
 		f := colorFilmOn(neg, "", "Merrill", cp)

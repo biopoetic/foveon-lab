@@ -60,7 +60,7 @@ func TestLayerMapReds(t *testing.T) {
 		return
 	}
 	w := srgb(white)
-	for _, key := range []string{"Fujifilm Fujichrome Velvia 100", "Fujifilm Fujichrome Provia 400F", "Kodak Portra 160 / 400 / 800"} {
+	for _, key := range []string{"Fujifilm Fujichrome Velvia 100", "Fujifilm Fujichrome Provia 400F", "Kodak Portra 400"} {
 		f := colorFilmFor(key, "Merrill")
 		var sens map[string][][2]float64
 		if d := colorFilmData_()[key]; d != nil {
