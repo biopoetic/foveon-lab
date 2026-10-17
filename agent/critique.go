@@ -7,6 +7,7 @@ import (
 	"errors"
 	"image"
 	"image/jpeg"
+	"log"
 	"strings"
 )
 
@@ -50,7 +51,9 @@ highlights, shadows, saturation, white balance), not a preset name.`
 				{Type: "image_url", ImageURL: &ImageURL{URL: data}},
 			}},
 		},
-		MaxTokens: 900,
+		// Reasoning models think before they answer; a tight limit (900) was
+		// spent on the thinking, leaving content empty (finish "length").
+		MaxTokens: 4000,
 	})
 	if err != nil {
 		return "", err
@@ -58,9 +61,44 @@ highlights, shadows, saturation, white balance), not a preset name.`
 	if len(resp.Choices) == 0 {
 		return "", errors.New("the model returned no answer")
 	}
-	text, ok := resp.Choices[0].Message.Content.(string)
-	if !ok || strings.TrimSpace(text) == "" {
+	choice := resp.Choices[0]
+	text := messageText(choice.Message)
+	if text == "" {
+		log.Printf("critique: empty content (finish %q, reasoning %d chars)", choice.FinishReason, len(choice.Message.ReasoningContent))
+		if choice.FinishReason == "length" {
+			return "", errors.New("the model ran out of tokens before answering")
+		}
 		return "", errors.New("the model returned no text")
 	}
-	return strings.TrimSpace(text), nil
+	return text, nil
+}
+
+// messageText reads the reply whether the provider sends it as a string or as
+// a list of content parts (both are seen in the wild).
+func messageText(m Message) string {
+	switch c := m.Content.(type) {
+	case string:
+		return strings.TrimSpace(c)
+	case []Part:
+		var b strings.Builder
+		for _, p := range c {
+			if p.Type == "text" && p.Text != "" {
+				b.WriteString(p.Text)
+				b.WriteString("\n")
+			}
+		}
+		return strings.TrimSpace(b.String())
+	case []any:
+		var b strings.Builder
+		for _, it := range c {
+			if mm, ok := it.(map[string]any); ok {
+				if s, ok := mm["text"].(string); ok && s != "" {
+					b.WriteString(s)
+					b.WriteString("\n")
+				}
+			}
+		}
+		return strings.TrimSpace(b.String())
+	}
+	return ""
 }

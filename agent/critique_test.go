@@ -50,3 +50,23 @@ func TestCritiqueNoText(t *testing.T) {
 		t.Error("want an error for an empty answer")
 	}
 }
+
+// The reply arrives as a string, as parts, or as JSON-decoded parts; all
+// three must read as text.
+func TestMessageText(t *testing.T) {
+	cases := []struct {
+		name string
+		in   any
+		want string
+	}{
+		{"string", "hello", "hello"},
+		{"parts", []Part{{Type: "text", Text: "a"}, {Type: "image_url"}, {Type: "text", Text: "b"}}, "a\nb"},
+		{"json", []any{map[string]any{"type": "text", "text": "x"}}, "x"},
+		{"empty", nil, ""},
+	}
+	for _, c := range cases {
+		if got := messageText(Message{Content: c.in}); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}
