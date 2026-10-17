@@ -609,11 +609,19 @@ func bakeTone(f func(x float64) (float64, float64)) *toneLUT {
 	return t
 }
 
-func (t *toneLUT) at(x float64) (float64, float64) {
-	f := math.Max(0, math.Min(1, x)) * toneLUTN
-	i := min(int(f), toneLUTN-1)
-	fr := float32(f - float64(i))
-	return float64(t.x[i] + fr*(t.x[i+1]-t.x[i])), float64(t.c[i] + fr*(t.c[i+1]-t.c[i]))
+func (t *toneLUT) at(x float32) (float32, float32) {
+	if x < 0 {
+		x = 0
+	} else if x > 1 {
+		x = 1
+	}
+	f := x * toneLUTN
+	i := int(f)
+	if i >= toneLUTN {
+		i = toneLUTN - 1
+	}
+	fr := f - float32(i)
+	return t.x[i] + fr*(t.x[i+1]-t.x[i]), t.c[i] + fr*(t.c[i+1]-t.c[i])
 }
 
 func newPixOp(p preset.Params, c Compensation) pixOp {
@@ -907,22 +915,21 @@ func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, f
 	r, g, bl = r*op.tint[0], g*op.tint[1], bl*op.tint[2]
 	Y := 0.2126*r + 0.7152*g + 0.0722*bl
 	cr, cg, cb := r-Y, g-Y, bl-Y
-	x, chroma := op.preL.at(float64(enc(Y)))
-	var k float64
+	x, chroma := op.preL.at(enc(Y))
 	if op.fillL != nil {
-		x, k = op.fillL.apply(x, float64(da), float64(db))
-		chroma *= k
+		xd, k := op.fillL.apply(float64(x), float64(da), float64(db))
+		x, chroma = float32(xd), chroma*float32(k)
 	} else if op.fillM != nil {
-		x, k = op.fillM.apply(x, float64(m), float64(da), float64(db))
-		chroma *= k
+		xd, k := op.fillM.apply(float64(x), float64(m), float64(da), float64(db))
+		x, chroma = float32(xd), chroma*float32(k)
 	}
-	x, k = op.postL.at(x)
+	x, k := op.postL.at(x)
 	chroma *= k
-	Y2 := dec(float32(x))
+	Y2 := dec(x)
 	if op.mono {
 		return Y2, Y2, Y2
 	}
-	f := float32(chroma * op.satMeasure)
+	f := chroma * float32(op.satMeasure)
 	return Y2 + cr*f, Y2 + cg*f, Y2 + cb*f
 }
 
