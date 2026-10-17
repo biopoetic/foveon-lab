@@ -6,13 +6,16 @@ import (
 	"testing"
 )
 
-// The pad at a Wratten's position reproduces that Wratten's matrix (same
-// model, same edges): the live computation is the offline one.
+// The pad is the approximate path: it builds a filter from logistic band
+// edges, not from a measured curve. It therefore reproduces the catalogue's
+// matrix only for the one lens filter still rendered that way (Wratten 47);
+// the other nine are measured curves now, and the pad is not expected to
+// match them. Clear glass still has to come out as the identity.
 func TestPadMatchesWratten(t *testing.T) {
 	for _, c := range []struct {
 		name    string
 		a, b, s float64
-	}{{"yellow", 380, 720, 0}, {"yellow", 495, 720, 1}, {"red", 595, 720, 1}, {"green", 490, 585, 1}, {"blue", 380, 505, 1}} {
+	}{{"yellow", 380, 720, 0}, {"blue", 380, 505, 1}} {
 		for _, gen := range []string{"Merrill", "TRUEII", "Quattro"} {
 			pad := padFilter(gen, fmtPad(c.a, c.b, c.s))
 			if pad == nil {

@@ -403,8 +403,8 @@
     }
   ],
   "_wratten": {
-    "basis": "approximate",
-    "note": "The ten built-in Wratten filters are rendered on a logistic edge through each filter's documented 50% cut, not on measured transmittance. The measured tables (Kodak's compilation, as reprinted in the CRC Handbook) exist only as scanned images; digital sources checked in October 2026 (SVO Filter Profile Service, Kodak's own PDFs, astro filter services) hold no usable data. Replacing these curves is the next accuracy step for this file, and no numbers should be entered here that were not read from a table and checked against each filter's printed luminous transmittance."
+    "basis": "measured (all but Wratten 47)",
+    "note": "Nine of the ten lens-menu Wratten filters render on Kodak's measured transmittance (render/wratten.json): the compilation 'Transmission of Wratten Filters' (A. C. Peed Jr., Eastman Kodak; the tables reprinted in the CRC Handbook), percent transmittance at 10 nm from 400 to 700 nm, checked against each filter's printed luminous transmittance under illuminant C by render/wratten_test.go. Wratten 47 is not entered: the compilation's printed spectrum integrates to 2.04 percent against the 2.8 percent it prints for that same filter (its neighbours 46, 47B and 48 do reproduce their printed values), so that one keeps the logistic edge. Brand filters that a maker documents as a Wratten equivalent render on that Wratten's measured curve where one exists."
   },
   "_aliases": {
     "cokin-001": "hoya-y2",

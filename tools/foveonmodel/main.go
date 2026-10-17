@@ -331,23 +331,33 @@ func inv3(a [3][3]float64) [3][3]float64 {
 	return o
 }
 
-// Filters: transmission spectra. Long-pass glass (Wratten yellow, orange,
-// red) is modelled by its documented 50% edge with a logistic slope;
-// conversion filters (81A warming, 82A cooling) are, by definition, the
-// ratio of two black-body spectra (±18 mired from 5500 K).
+// Filters: transmission spectra. Nine of the ten are Kodak's measured Wratten
+// curves (render/wratten.json, checked against the compiled luminous
+// transmittance by render/wratten_test.go). Wratten 47 keeps the logistic
+// edge: the compilation's printed spectrum and its printed luminous
+// transmittance disagree for that one filter, so no numbers are entered.
 func longpass(l, edge float64) float64 { return 1 / (1 + math.Exp(-(l-edge)/10)) }
 
+// wratten is the measured curve where the catalogue has one, else the
+// documented approximation.
+func wratten(name string, fallback func(float64) float64) func(float64) float64 {
+	if T := render.WrattenTransmission(name); T != nil {
+		return T
+	}
+	return fallback
+}
+
 var filters = map[string]func(l float64) float64{
-	"yellow":      func(l float64) float64 { return longpass(l, 495) },                              // Wratten 8 (K2)
-	"deepyellow":  func(l float64) float64 { return longpass(l, 530) },                              // Wratten 15 (G)
-	"orange":      func(l float64) float64 { return longpass(l, 555) },                              // Wratten 21
-	"red":         func(l float64) float64 { return longpass(l, 595) },                              // Wratten 25 (A)
-	"deepred":     func(l float64) float64 { return longpass(l, 615) },                              // Wratten 29
-	"yellowgreen": func(l float64) float64 { return longpass(l, 480) * (1 - 0.6*longpass(l, 590)) }, // Wratten 11 (X1)
-	"green":       func(l float64) float64 { return longpass(l, 490) * (1 - longpass(l, 585)) },     // Wratten 58
-	"blue":        func(l float64) float64 { return 1 - longpass(l, 505) },                          // Wratten 47
-	"warm":        mired(18),                                                                        // 81A
-	"cool":        mired(-18),                                                                       // 82A
+	"yellow":      wratten("yellow", func(l float64) float64 { return longpass(l, 495) }),                                   // Wratten 8 (K2)
+	"deepyellow":  wratten("deepyellow", func(l float64) float64 { return longpass(l, 530) }),                               // Wratten 15 (G)
+	"orange":      wratten("orange", func(l float64) float64 { return longpass(l, 555) }),                                   // Wratten 21
+	"red":         wratten("red", func(l float64) float64 { return longpass(l, 595) }),                                      // Wratten 25 (A)
+	"deepred":     wratten("deepred", func(l float64) float64 { return longpass(l, 615) }),                                  // Wratten 29
+	"yellowgreen": wratten("yellowgreen", func(l float64) float64 { return longpass(l, 480) * (1 - 0.6*longpass(l, 590)) }), // Wratten 11 (X1)
+	"green":       wratten("green", func(l float64) float64 { return longpass(l, 490) * (1 - longpass(l, 585)) }),           // Wratten 58
+	"blue":        func(l float64) float64 { return 1 - longpass(l, 505) },                                                  // Wratten 47, approximate (see above)
+	"warm":        wratten("warm", mired(18)),                                                                               // 81A
+	"cool":        wratten("cool", mired(-18)),                                                                              // 82A
 }
 
 // mired is a conversion filter shifting 5500 K light by m mired.
@@ -493,7 +503,73 @@ func wbReport(m model, c *x3f.CAMF, wb string) {
 		bestT, bestR[0], bestR[2], 100*(want[0]/bestR[0]-1), 100*(want[2]/bestR[2]-1))
 }
 
+// wrattenRegen rewrites the lens-filter matrices of a layerfilters.json from
+// the sensor model already stored in that file. Changing a filter's spectrum
+// therefore does not re-fit (and perturb) the model: the depths and IR cut,
+// which are properties of the sensor, stay exactly as fitted.
+//
+//	WRATTENREGEN=render/layerfilters.json go run ./tools/foveonmodel
+func wrattenRegen(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var all map[string]struct {
+		Filters  map[string][9]float64 `json:"filters"`
+		FittedOn string                `json:"fittedOn"`
+		Model    []float64             `json:"model"`
+	}
+	if err := json.Unmarshal(data, &all); err != nil {
+		log.Fatal(err)
+	}
+	sc := newScene(5500, 400, 1)
+	gens := make([]string, 0, len(all))
+	for gen := range all {
+		gens = append(gens, gen)
+	}
+	sort.Strings(gens)
+	for _, gen := range gens {
+		g := all[gen]
+		if len(g.Model) != 6 {
+			log.Fatalf("%s: model has %d values, want 6", gen, len(g.Model))
+		}
+		// loadSens keeps the stored depths and, where the generation has
+		// measured sensitivities (Merrill, SD9), uses those instead — the
+		// same model the stored matrices were built on.
+		m := loadSens(gen)
+		names := make([]string, 0, len(g.Filters))
+		for name := range g.Filters {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if _, ok := filters[name]; !ok {
+				log.Fatalf("%s: the file has filter %q, which the model does not define", gen, name)
+			}
+			F, e := sc.filterMatrix(m, filters[name])
+			fmt.Printf("%-8s %-11s matrix fit RMS %.5f\n", gen, name, e)
+			for k := range F {
+				F[k] = math.Round(F[k]*1e5) / 1e5 // the file's 5-decimal precision
+			}
+			g.Filters[name] = F
+		}
+		all[gen] = g
+	}
+	out, err := json.MarshalIndent(all, "", " ")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("rewrote %d generation(s) in %s\n", len(all), path)
+}
+
 func main() {
+	if p := os.Getenv("WRATTENREGEN"); p != "" {
+		wrattenRegen(p)
+		return
+	}
 	if in := os.Getenv("FILMBW"); in != "" {
 		filmBW(in, os.Getenv("OUT"))
 		return

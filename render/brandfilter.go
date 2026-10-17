@@ -98,17 +98,27 @@ func brandFilter(id string) (BrandFilter, bool) {
 }
 
 // wrattenT are the Wratten filter spectra a brand filter can be documented
-// as equalling, matching tools/foveonmodel's definitions (logistic edges at
-// the documented 50% points; Wratten 11 is a band).
+// as equalling: Kodak's measured curve where the catalogue has one
+// (wratten.go), the documented logistic edge otherwise.
 var wrattenT = map[string]func(float64) float64{
-	"yellow":      func(l float64) float64 { return longpassEdge(l, 495) },
-	"deepyellow":  func(l float64) float64 { return longpassEdge(l, 530) },
-	"orange":      func(l float64) float64 { return longpassEdge(l, 555) },
-	"red":         func(l float64) float64 { return longpassEdge(l, 595) },
-	"deepred":     func(l float64) float64 { return longpassEdge(l, 615) },
-	"yellowgreen": func(l float64) float64 { return longpassEdge(l, 480) * (1 - 0.6*longpassEdge(l, 590)) },
-	"green":       func(l float64) float64 { return longpassEdge(l, 490) * (1 - longpassEdge(l, 585)) },
-	"blue":        func(l float64) float64 { return 1 - longpassEdge(l, 505) },
+	"yellow":      wrattenSpectrum("yellow", func(l float64) float64 { return longpassEdge(l, 495) }),
+	"deepyellow":  wrattenSpectrum("deepyellow", func(l float64) float64 { return longpassEdge(l, 530) }),
+	"orange":      wrattenSpectrum("orange", func(l float64) float64 { return longpassEdge(l, 555) }),
+	"red":         wrattenSpectrum("red", func(l float64) float64 { return longpassEdge(l, 595) }),
+	"deepred":     wrattenSpectrum("deepred", func(l float64) float64 { return longpassEdge(l, 615) }),
+	"yellowgreen": wrattenSpectrum("yellowgreen", func(l float64) float64 { return longpassEdge(l, 480) * (1 - 0.6*longpassEdge(l, 590)) }),
+	"green":       wrattenSpectrum("green", func(l float64) float64 { return longpassEdge(l, 490) * (1 - longpassEdge(l, 585)) }),
+	// Wratten 47 has no measured curve (see wratten.json).
+	"blue": func(l float64) float64 { return 1 - longpassEdge(l, 505) },
+}
+
+// wrattenSpectrum is the measured curve where the catalogue has one, else the
+// documented approximation.
+func wrattenSpectrum(name string, fallback func(float64) float64) func(float64) float64 {
+	if T := WrattenTransmission(name); T != nil {
+		return T
+	}
+	return fallback
 }
 
 // longpassEdge is the Wratten edges' logistic (10 nm) slope at edge.

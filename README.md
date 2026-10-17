@@ -276,16 +276,20 @@ Each catalogue entry states what it rests on, and the lens menu marks it:
   glass numbers — render on the catalogue's internal SCHOTT transmittance, interpolated on its
   10 nm grid.
 - **documented** - the maker publishes the filter's Wratten equivalent, cutoff wavelength or
-  density, and the entry renders that documented property. That is a claim about a
-  specification, not about a measured sample.
+  density, and the entry renders that documented property — on that Wratten's measured curve
+  where the catalogue has one. That is a claim about a specification, not about a measured
+  sample.
 - **approximate** - no measured curve is available, so the project's logistic edge stands in.
-  This applies to the ten built-in Wratten filters: each is rendered on a logistic edge
-  through its documented 50% cut. Kodak's tabulated transmittances exist (the compilation
-  reprinted in the CRC Handbook), but only as scanned images; the digital sources checked in
-  October 2026 held no usable data. Replacing those ten curves is the next accuracy step, and
-  the bar for it is written into `render/brandfilters.json`: a number may only be entered if
-  it was read from a table and checks out against that filter's printed luminous
-  transmittance.
+  One of the ten lens-menu Wratten filters is still here: Wratten 47. The other nine render on
+  Kodak's measured transmittance. The compilation "Transmission of Wratten Filters" (Allie C.
+  Peed Jr. for Eastman Kodak, the tables reprinted in the CRC Handbook) gives each filter's
+  percent transmittance at 10 nm from 400 to 700 nm; each entered curve reproduces the
+  compilation's printed luminous transmittance under illuminant C, and a test fails the build
+  if it does not (`render/wratten_test.go`; all nine agree within 0.06 points). Wratten 47 is
+  not entered because the compilation disagrees with itself about it: its printed spectrum
+  integrates to 2.04% where the same table prints 2.8%, while its neighbours 46, 47B and 48
+  reproduce their printed values exactly. The bar for any further curve is unchanged: read
+  from the table and checked against the printed luminous transmittance.
 
 **Sigma, Foveon, X3F and Sigma Photo Pro** are trademarks of SIGMA Corporation. This is an
 independent project, not affiliated with or endorsed by SIGMA Corporation. It reads the

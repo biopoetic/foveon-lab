@@ -872,6 +872,10 @@ const WRATTEN_FILTERS = [
   ["yellowgreen","Yellow-green (Wratten 11)"], ["green","Green (Wratten 58)"], ["blue","Blue (Wratten 47)"],
   ["warm","Warming (81A)"], ["cool","Cooling (82A)"]
 ];
+// The entries rendered on Kodak's measured transmittance. Wratten 47 is not
+// among them: the compilation's printed curve and printed luminous
+// transmittance disagree for it, so it keeps the logistic approximation.
+const WRATTEN_MEASURED = new Set(["yellow","deepyellow","orange","red","deepred","yellowgreen","green","warm","cool"]);
 const IR_LOOKS = [
   ["ir-fs-aerochrome","False colour, no lens filter"], ["ir-aerochrome","Aerochrome (Wratten 12)"],
   ["ir-ir590","Colour infrared (OG590)"], ["ir-ir720","Infrared B&W (RG715)"]
@@ -915,14 +919,21 @@ function buildLensSel(){
     `<option value="${value}" title="${esc(title || "")}"${active ? " selected" : ""}>${label}</option>`;
   const keep = f => !q || filterMatches(f, q);
 
-  // The Wratten edges are logistic approximations of each filter's documented
-  // 50% cut: the measured tables are not in a usable digital form yet, so the
-  // list says so rather than implying a measurement.
+  // Nine of the ten render on Kodak's measured transmittance; Wratten 47
+  // keeps a logistic edge through its documented 50% cut, because the
+  // compilation disagrees with itself about it. The list says which is which
+  // rather than implying a measurement where there is none.
   const wrat = WRATTEN_FILTERS.filter(([v, n]) => !q || n.toLowerCase().includes(q.toLowerCase()) || v === cur);
+  const wratMeas = wrat.filter(([v]) => WRATTEN_MEASURED.has(v));
+  const wratApprox = wrat.filter(([v]) => !WRATTEN_MEASURED.has(v));
   let html = `<option value=""${cur === "" ? " selected" : ""}>None</option>`;
-  if (wrat.length)
+  if (wratMeas.length)
+    html += `<optgroup label="Wratten (measured)">` +
+      wratMeas.map(([v, n]) => opt(v, esc(n), "Kodak's measured transmittance, checked against the compilation's printed luminous transmittance", v === cur)).join("") +
+      `</optgroup>`;
+  if (wratApprox.length)
     html += `<optgroup label="Wratten (approximate curve)">` +
-      wrat.map(([v, n]) => opt(v, esc(n), "Rendered on a logistic edge through the filter's documented 50% cut, not on measured transmittance", v === cur)).join("") +
+      wratApprox.map(([v, n]) => opt(v, esc(n), "Rendered on a logistic edge through the filter's documented 50% cut, not on measured transmittance", v === cur)).join("") +
       `</optgroup>`;
 
   // Grouped by the kind of filter, not by maker: a set of physical filters
