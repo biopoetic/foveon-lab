@@ -52,6 +52,36 @@
       "src": "Cokin 004 Green — documented as a Wratten 11 (yellow-green) contrast filter; rendered on the Wratten 11 curve"
     },
     {
+      "id": "tiffen-8", "brand": "Tiffen", "model": "8", "name": "Yellow", "kind": "colour",
+      "wratten": "yellow",
+      "src": "Tiffen 8 Yellow — Tiffen's number is the Wratten number; rendered on the Wratten 8 curve"
+    },
+    {
+      "id": "tiffen-15", "brand": "Tiffen", "model": "15", "name": "Deep Yellow", "kind": "colour",
+      "wratten": "deepyellow",
+      "src": "Tiffen 15 Deep Yellow — Tiffen's number is the Wratten number; rendered on the Wratten 15 curve"
+    },
+    {
+      "id": "tiffen-21", "brand": "Tiffen", "model": "21", "name": "Orange", "kind": "colour",
+      "wratten": "orange",
+      "src": "Tiffen 21 Orange — Tiffen's number is the Wratten number; rendered on the Wratten 21 curve"
+    },
+    {
+      "id": "tiffen-25", "brand": "Tiffen", "model": "25", "name": "Red", "kind": "colour",
+      "wratten": "red",
+      "src": "Tiffen 25 Red — Tiffen's number is the Wratten number; rendered on the Wratten 25 curve"
+    },
+    {
+      "id": "tiffen-29", "brand": "Tiffen", "model": "29", "name": "Dark Red", "kind": "colour",
+      "wratten": "deepred",
+      "src": "Tiffen 29 Dark Red — Tiffen's number is the Wratten number; rendered on the Wratten 29 curve"
+    },
+    {
+      "id": "tiffen-58", "brand": "Tiffen", "model": "58", "name": "Green", "kind": "colour",
+      "wratten": "green",
+      "src": "Tiffen 58 Green — Tiffen's number is the Wratten number; rendered on the Wratten 58 curve"
+    },
+    {
       "id": "bw091", "brand": "B+W", "model": "091", "name": "IR light red (610/091)", "kind": "ir", "look": "colour",
       "glass": "RG610",
       "src": "B+W 610/091 — Schott RG610 glass; measured curve (schottglass.json)"
@@ -90,6 +120,41 @@
       "id": "kf-ir850", "brand": "K&F Concept", "model": "IR850", "name": "Infrared 850", "kind": "ir", "look": "mono",
       "glass": "RG850",
       "src": "K&F Concept IR850 — 850 nm cutoff, rendered on Schott RG850's measured curve (the glass a 850 nm longpass is)"
+    },
+    {
+      "id": "kolari-590", "brand": "Kolari Vision", "model": "590", "name": "Infrared 590", "kind": "ir", "look": "colour",
+      "edge": 590,
+      "src": "Kolari Vision 590 nm — product's 590 nm cutoff"
+    },
+    {
+      "id": "kolari-665", "brand": "Kolari Vision", "model": "665", "name": "Infrared 665", "kind": "ir", "look": "colour",
+      "edge": 665,
+      "src": "Kolari Vision 665 nm — product's 665 nm cutoff"
+    },
+    {
+      "id": "kolari-720", "brand": "Kolari Vision", "model": "720", "name": "Infrared 720", "kind": "ir", "look": "mono",
+      "edge": 720,
+      "src": "Kolari Vision 720 nm — product's 720 nm cutoff"
+    },
+    {
+      "id": "kolari-780", "brand": "Kolari Vision", "model": "780", "name": "Infrared 780", "kind": "ir", "look": "mono",
+      "edge": 780,
+      "src": "Kolari Vision 780 nm — product's 780 nm cutoff"
+    },
+    {
+      "id": "kolari-850", "brand": "Kolari Vision", "model": "850", "name": "Infrared 850", "kind": "ir", "look": "mono",
+      "glass": "RG850",
+      "src": "Kolari Vision 850 nm — 850 nm cutoff, rendered on Schott RG850's measured curve (the glass a 850 nm longpass is)"
+    },
+    {
+      "id": "kolari-930", "brand": "Kolari Vision", "model": "930", "name": "Infrared 930", "kind": "ir", "look": "mono",
+      "edge": 930,
+      "src": "Kolari Vision 930 nm — product's 930 nm cutoff"
+    },
+    {
+      "id": "kolari-1000", "brand": "Kolari Vision", "model": "1000", "name": "Infrared 1000", "kind": "ir", "look": "mono",
+      "edge": 1000,
+      "src": "Kolari Vision 1000 nm — product's 1000 nm cutoff"
     }
   ]
 }
