@@ -1862,6 +1862,7 @@ async function browseTo(p){
   $("#folderRoots").innerHTML = (d.roots || []).map(x => `<button data-p="${esc(x.path)}">${esc(x.name)}</button>`).join("");
   $("#folderRoots").querySelectorAll("button").forEach(b => b.onclick = () => browseTo(b.dataset.p));
   let rows = "";
+  if (d.note) rows += `<div class="fdir" style="cursor:default"><span class="fn" style="color:#d9a441">${esc(d.note)}</span></div>`;
   if (d.x3f || d.images) {
     const what = [];
     if (d.x3f) what.push(d.x3f + " X3F");

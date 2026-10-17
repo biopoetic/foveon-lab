@@ -49,7 +49,8 @@ func TestBrowse(t *testing.T) {
 	}
 }
 
-// A path that is not a folder is refused, not listed.
+// A path that is not a folder is not an error: the dialog shows the folder
+// that contains it, with a note, so it stays usable.
 func TestBrowseNotAFolder(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "f.txt")
@@ -59,7 +60,36 @@ func TestBrowseNotAFolder(t *testing.T) {
 	var s server
 	rec := httptest.NewRecorder()
 	s.handleBrowse(rec, httptest.NewRequest("GET", "/api/browse?path="+url.QueryEscape(file), nil))
-	if rec.Code != 400 {
-		t.Errorf("status %d, want 400", rec.Code)
+	if rec.Code != 200 {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+	}
+	var resp browseResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	want, _ := filepath.Abs(dir)
+	if resp.Path != want || resp.Note == "" {
+		t.Errorf("path %q note %q, want %q and a note", resp.Path, resp.Note, want)
+	}
+}
+
+// A folder on a drive that is not connected falls back to one that exists.
+func TestBrowseMissingPath(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "no-such-folder", "deeper")
+	var s server
+	rec := httptest.NewRecorder()
+	s.handleBrowse(rec, httptest.NewRequest("GET", "/api/browse?path="+url.QueryEscape(missing), nil))
+	if rec.Code != 200 {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+	}
+	var resp browseResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Path == "" || resp.Note == "" {
+		t.Errorf("path %q note %q, want an existing folder and a note", resp.Path, resp.Note)
+	}
+	if st, err := os.Stat(resp.Path); err != nil || !st.IsDir() {
+		t.Errorf("fallback %q is not a folder", resp.Path)
 	}
 }
