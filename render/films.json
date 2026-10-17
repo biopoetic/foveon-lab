@@ -296,7 +296,12 @@
    "rms": 7,
    "src": "Fujifilm AF3-083E",
    "url": "https://125px.com/docs/film/fuji/NeopanAcros100.pdf",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Fujifilm data sheet AF3-095E, section 2 'Film sizes': 135 (36 exp.) and 120 (12 exp., 6x6 cm)"
   },
   {
    "maker": "Fujifilm",
@@ -638,7 +643,13 @@
    "rms": 5,
    "src": "Fujifilm NPZ data sheet",
    "url": "https://125px.com/docs/film/fuji/NPZ.pdf",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135",
+    "120",
+    "220"
+   ],
+   "formats_src": "Fujifilm data sheet AF3-100E, section 2 'Sizes': 135-36, 120 and 220"
   },
   {
    "maker": "Fujifilm",
@@ -1366,7 +1377,12 @@
    "iso": 50,
    "rms": 0,
    "src": "Ilford publishes no RMS granularity",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Ilford technical information PAN F PLUS (Dec 2018): 35 mm film and roll film"
   },
   {
    "maker": "Ilford",
@@ -1417,7 +1433,12 @@
    "iso": 400,
    "rms": 0,
    "src": "Ilford publishes no RMS granularity",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Ilford technical information XP2 SUPER (Nov 2018): 35 mm film, and roll film 'available in 120 lengths'"
   },
   {
    "maker": "Kodak",
@@ -1477,7 +1498,14 @@
    "iso": 100,
    "rms": 0,
    "src": "Kodak publishes a Print Grain Index for this, not RMS",
-   "bw": false
+   "bw": false,
+   "formats": [
+    "135",
+    "120",
+    "4x5",
+    "8x10"
+   ],
+   "formats_src": "Kodak E-4046 (2010): 135 and 120 roll film, and sheet film; the sheet processing table covers 4x5 and 8x10"
   },
   {
    "maker": "Kodak",
