@@ -1449,6 +1449,7 @@ func main() {
 	mux.HandleFunc("/api/folders", s.handleFolders)
 	mux.HandleFunc("/api/browse", s.handleBrowse)
 	mux.HandleFunc("/api/pickfolder", s.handlePickFolder)
+	mux.HandleFunc("/api/critique", s.handleCritique)
 	mux.HandleFunc("/api/allimages", s.handleAllImages)
 	mux.HandleFunc("/api/looks", s.handleLooks)
 	mux.HandleFunc("/api/export/batch", s.handleExportBatch)

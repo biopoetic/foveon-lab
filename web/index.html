@@ -72,6 +72,8 @@ body.full #app{grid-template-rows:1fr}
 #stage.gpu #big{display:none}
 #stage.gpu #bigGL{display:block}
 #stage.zoomed #big{max-width:none;max-height:none;cursor:grab}
+#zoomPct{position:absolute;top:8px;right:8px;background:#000a;padding:3px 8px;border-radius:4px;font-size:12px;display:none;pointer-events:none}
+#stage.zoomed #zoomPct{display:block}
 #stage.zoomed #big.drag{cursor:grabbing}
 #bigOrig,#clipCv{position:absolute;display:none;pointer-events:none}
 #splitLine{position:absolute;display:none;width:2px;background:#fffc;pointer-events:none;box-shadow:0 0 4px #000}
@@ -167,6 +169,8 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 #aiConf a,#aiSetup a{color:var(--accent2);cursor:pointer}
 #aiPanel textarea{width:100%;min-height:52px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--text);font:inherit;padding:6px 8px;resize:vertical}
 #aiPanel .priv{color:var(--dim);font-size:11px;margin:6px 0}
+.critique h4{margin:9px 0 2px;font-size:13px;color:var(--accent)}
+.critique p{margin:3px 0}
 #aiLog{flex:1;overflow:auto;padding:8px 12px 20px}
 .ev{margin:8px 0}
 .ev.status{color:var(--dim);font-size:12px}
@@ -220,7 +224,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     </section>
     <section id="detail">
       <div id="view">
-        <div id="stage"><img id="big" alt=""><canvas id="bigGL"></canvas><img id="bigOrig" alt=""><canvas id="clipCv"></canvas><div id="splitLine"></div><div id="stageTag"></div><div id="busy">rendering…</div><div id="cropBox"><i class="nw"></i><i class="ne"></i><i class="sw"></i><i class="se"></i></div><div id="cropBar">Straighten <input type="range" id="cropAng" min="-45" max="45" step="0.1" value="0"><input type="number" id="cropAngN" min="-45" max="45" step="0.1" value="0">° Aspect <select id="cropAsp"><option value="0">Free</option><option value="orig">Original</option><option value="1.5">3:2</option><option value="1.3333">4:3</option><option value="1">1:1</option><option value="1.7778">16:9</option><option value="0.8">4:5</option><option value="0.6667">2:3</option></select><button id="cropReset">Reset</button><button id="cropCancel">Cancel</button><button id="cropDone" class="primary">Done</button></div></div>
+        <div id="stage"><img id="big" alt=""><canvas id="bigGL"></canvas><img id="bigOrig" alt=""><canvas id="clipCv"></canvas><div id="splitLine"></div><div id="stageTag"></div><div id="zoomPct"></div><div id="busy">rendering…</div><div id="cropBox"><i class="nw"></i><i class="ne"></i><i class="sw"></i><i class="se"></i></div><div id="cropBar">Straighten <input type="range" id="cropAng" min="-45" max="45" step="0.1" value="0"><input type="number" id="cropAngN" min="-45" max="45" step="0.1" value="0">° Aspect <select id="cropAsp"><option value="0">Free</option><option value="orig">Original</option><option value="1.5">3:2</option><option value="1.3333">4:3</option><option value="1">1:1</option><option value="1.7778">16:9</option><option value="0.8">4:5</option><option value="0.6667">2:3</option></select><button id="cropReset">Reset</button><button id="cropCancel">Cancel</button><button id="cropDone" class="primary">Done</button></div></div>
         <div id="nav">
           <button id="back" title="Esc">← Grid</button>
           <button id="prev" title="←">‹</button>
@@ -394,6 +398,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <label class="chk" title="The AI judges a contact sheet of up to 6 photos from this folder and picks one look that suits them all — for a consistent set"><input type="checkbox" id="aiSeries"> Whole folder — one look for the series</label>
     <div class="priv" id="aiPriv"></div>
     <button class="primary" id="aiStart">Pick &amp; tune for this photo</button>
+    <button id="aiRate" title="Ask the AI to rate this photo as edited and say where it could be better">✦ Rate &amp; critique</button>
     <button id="aiStop" style="display:none">Stop</button>
     <span id="aiUsage" style="color:var(--dim);font-size:11px;margin-left:6px"></span>
   </div>
@@ -1341,10 +1346,45 @@ function renderFast(){
 // ---------- 100% view ----------
 // ZOOM: the window's centre (cx, cy) as fractions of the full-resolution,
 // geometry-applied frame; full = [W, H, x0, y0] from the last response.
-const ZOOM = {on: false, cx: .5, cy: .5, full: null, drag: null};
+const ZOOM = {on: false, cx: .5, cy: .5, full: null, drag: null, scale: 1};
 function zoomQuery(){
-  const st = $("#stage"), d = window.devicePixelRatio || 1;
-  return `&z=1&zx=${ZOOM.cx.toFixed(4)}&zy=${ZOOM.cy.toFixed(4)}&zw=${Math.round(st.clientWidth * d)}&zh=${Math.round(st.clientHeight * d)}`;
+  const st = $("#stage"), d = window.devicePixelRatio || 1, s = ZOOM.scale || 1;
+  return `&z=1&zx=${ZOOM.cx.toFixed(4)}&zy=${ZOOM.cy.toFixed(4)}&zw=${Math.round(st.clientWidth * d / s)}&zh=${Math.round(st.clientHeight * d / s)}`;
+}
+// zoomBadge shows the magnification in the corner of the view.
+function zoomBadge(){
+  const b = $("#zoomPct");
+  if (!ZOOM.on){ b.textContent = ""; return; }
+  b.textContent = Math.round(ZOOM.scale * 100) + "%";
+}
+// zoomAt changes the magnification by factor, keeping the point under the
+// cursor where it is. From the fit view it starts the 100% view there.
+function zoomAt(e, factor){
+  if (CROP.on) return;
+  const st = $("#stage"), r = st.getBoundingClientRect();
+  const u = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+  const v = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+  if (!ZOOM.on){
+    if (factor <= 1) return; // fit view: nothing to zoom out of
+    ZOOM.on = true; ZOOM.scale = 1;
+    ZOOM.cx = u; ZOOM.cy = v;
+    $("#stage").classList.add("zoomed");
+    $("#zoomBtn")?.classList.add("on");
+    renderBig(); zoomBadge();
+    return;
+  }
+  const s1 = Math.max(1, Math.min(8, ZOOM.scale * factor));
+  if (s1 === 1 && factor < 1){ setZoom(false); return; }
+  if (s1 === ZOOM.scale) return;
+  // The window covers stage/scale of the frame; keep the cursor's point still.
+  const d = window.devicePixelRatio || 1, f = ZOOM.full;
+  const fw = f ? f[0] : st.clientWidth * d, fh = f ? f[1] : st.clientHeight * d;
+  const px = ZOOM.cx + (u - 0.5) * (st.clientWidth * d / ZOOM.scale) / fw;
+  const py = ZOOM.cy + (v - 0.5) * (st.clientHeight * d / ZOOM.scale) / fh;
+  ZOOM.scale = s1;
+  ZOOM.cx = Math.max(0, Math.min(1, px - (u - 0.5) * (st.clientWidth * d / s1) / fw));
+  ZOOM.cy = Math.max(0, Math.min(1, py - (v - 0.5) * (st.clientHeight * d / s1) / fh));
+  renderBig(); zoomBadge();
 }
 async function renderZoom(url, seq){
   const busy = setTimeout(() => $("#busy").style.display = "block", 150);
@@ -1356,7 +1396,7 @@ async function renderZoom(url, seq){
     if (seq !== renderSeq) return;
     if (f.length === 4) ZOOM.full = f;
     const big = $("#big"), old = big.src;
-    big.onload = () => { big.style.width = (big.naturalWidth / (window.devicePixelRatio || 1)) + "px"; big.style.transform = ""; afterBig(); };
+    big.onload = () => { big.style.width = $("#stage").clientWidth + "px"; big.style.transform = ""; zoomBadge(); afterBig(); };
     big.src = URL.createObjectURL(blob);
     if (old.startsWith("blob:")) URL.revokeObjectURL(old);
   } catch (e) { toast("Render failed: " + esc(e.message)); }
@@ -1366,15 +1406,23 @@ async function renderZoom(url, seq){
 function setZoom(on, cx, cy){
   if (on && CROP.on) return;
   ZOOM.on = on;
-  if (on){ ZOOM.cx = cx ?? ZOOM.cx; ZOOM.cy = cy ?? ZOOM.cy; }
+  if (on){ ZOOM.cx = cx ?? ZOOM.cx; ZOOM.cy = cy ?? ZOOM.cy; ZOOM.scale = 1; }
   $("#stage").classList.toggle("zoomed", on);
   $("#zoomBtn")?.classList.toggle("on", on);
   if (!on){ $("#big").style.width = ""; $("#big").style.transform = ""; }
+  zoomBadge();
   renderBig();
 }
 function zoomInit(){
   const big = $("#big");
   $("#zoomBtn").onclick = () => setZoom(!ZOOM.on, .5, .5);
+  // The wheel zooms the picture itself: 100% up to 800%, centred on the
+  // cursor, and back out to the fit view.
+  $("#stage").addEventListener("wheel", e => {
+    if (!S.photo || CROP.on || e.target.closest("#cropBar")) return;
+    e.preventDefault();
+    zoomAt(e, Math.exp(-e.deltaY * 0.0015));
+  }, {passive: false});
   big.addEventListener("dblclick", e => {
     if (ZOOM.on){ setZoom(false); return; }
     const r = big.getBoundingClientRect();
@@ -1393,7 +1441,7 @@ function zoomInit(){
   window.addEventListener("mouseup", e => {
     if (!ZOOM.drag) return;
     const d = window.devicePixelRatio || 1, f = ZOOM.full;
-    const dx = (e.clientX - ZOOM.drag.x) * d, dy = (e.clientY - ZOOM.drag.y) * d;
+    const dx = (e.clientX - ZOOM.drag.x) * d / (ZOOM.scale || 1), dy = (e.clientY - ZOOM.drag.y) * d / (ZOOM.scale || 1);
     ZOOM.drag = null;
     big.classList.remove("drag");
     if (f && (Math.abs(dx) > 1 || Math.abs(dy) > 1)){
@@ -2237,6 +2285,31 @@ function startAgent(){
   // EventSource reconnects on its own; never let it silently start a second run.
   es.onerror = () => { if (AI.es === es){ aiLog("Connection closed.", "status"); stopAgent(); } };
 }
+// aiCritique asks the AI to rate the photo as edited and say what to improve.
+// It sends the finished render, not a contact sheet of presets.
+async function aiCritique(){
+  if (!S.photo) return;
+  $("#aiPanel").classList.add("on");
+  const box = aiLog("Looking at the photo…", "status");
+  try {
+    const note = $("#aiDir").value.trim();
+    const u = renderURL({w: 1024, params: S.params}).replace("/api/render?", "/api/critique?")
+      + (note ? "&note=" + encodeURIComponent(note) : "");
+    const res = await fetch(u);
+    if (!res.ok) throw new Error(await res.text());
+    const {text} = await res.json();
+    box.remove();
+    aiLog(`<div class="critique">${mdLite(text)}</div>`, "say");
+  } catch (e) {
+    box.remove();
+    aiLog("Could not rate the photo: " + esc(e.message), "error");
+  }
+}
+// mdLite renders the model's Markdown: headings and paragraphs, escaped.
+function mdLite(s){
+  return esc(s).split(/\n{2,}/).map(p =>
+    p.replace(/^#{1,3}\s+(.+)$/gm, "<h4>$1</h4>").replace(/\n/g, "<br>")).join("");
+}
 
 // ---------- wiring ----------
 function bind(){
@@ -2272,6 +2345,7 @@ function bind(){
   $("#aiOpen").onclick = $("#aiOpen2").onclick = aiOpen;
   $("#aiClose").onclick = () => $("#aiPanel").classList.remove("on");
   $("#aiStart").onclick = startAgent;
+  $("#aiRate").onclick = aiCritique;
   $("#aiSave").onclick = aiSave;
   $("#aiCancel").onclick = () => aiSetup(false);
   $("#aiKey").onkeydown = e => { if (e.key === "Enter") aiSave(); };
