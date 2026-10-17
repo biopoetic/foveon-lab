@@ -269,7 +269,8 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <div class="src" id="filmLink" style="display:none"></div>
           <button id="filmCmpBtn" title="This photo, with your settings, in every colour film side by side (colour and tone only, without grain). Click one to use it. Needs a raw-decodable X3F." style="margin-top:6px">Compare colour films…</button>
         </div>
-        <div class="row" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky. The full-spectrum infrared looks are for converted cameras (the IR-cut protector removed)."><div class="lab">Filter on the lens <span class="dim">(Wratten + IR)</span></div>
+        <div class="row" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky. The full-spectrum infrared looks are for converted cameras (the IR-cut protector removed)."><div class="lab">Filter on the lens <span class="dim">(search below)</span></div>
+          <input id="lensSearch" type="search" placeholder="Search filters — name, glass, brand, nm" style="width:100%;margin-bottom:4px" title="Filters the list below. Matches the physical name, the glass or Wratten number, a wavelength, the brand, and measured/documented.">
           <select id="lensSel" style="width:100%"></select>
         </div>
         <div class="row" title="A neutral-density filter costs exposure, not colour: a density of d attenuates every wavelength by 10^-d. &quot;As metered&quot; shows the frame at the same settings with the filter on (darker by exactly its stops); with it off the photographer has opened up by the filter factor, so the frame is unchanged and only the exposure time grew."><div class="lab">Neutral density <span class="dim" id="ndNote"></span></div>
@@ -827,6 +828,8 @@ function buildSliders(){
   $("#rotL").onclick = () => setRot(rotOf(S.photo.id) + 90);
   $("#rotR").onclick = () => setRot(rotOf(S.photo.id) - 90);
   $("#rot0").onclick = () => setRot(0);
+  $("#lensSearch").oninput = () => { buildLensSel(); $("#lensSearch").focus(); };
+  $("#lensSearch").onsearch = () => buildLensSel();
   $("#lensSel").onchange = () => {
     S.params.filter = $("#lensSel").value;
     [S.params.layerBottom, S.params.layerMiddle, S.params.layerTop] = [0, 0, 0];
@@ -891,33 +894,63 @@ function filterLabel(f){
   const ev = f.evidence === "measured" ? "" : ` <span class="dim">(${f.evidence === "documented" ? "documented" : "approximate"})</span>`;
   return esc(f.physical) + made + ev;
 }
+// filterMatches reports whether a catalogue entry matches a search: its
+// physical name, glass or Wratten number, wavelength, maker/model, or
+// evidence class.
+function filterMatches(f, q){
+  if (!q) return true;
+  const hay = [f.physical, f.brand, f.model, f.glass, f.wratten,
+               f.edge ? f.edge + " nm" : "", f.stops ? f.stops + " stops" : "",
+               f.evidence, f.kind].join(" ").toLowerCase();
+  return q.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));
+}
 function buildLensSel(){
+  const q = ($("#lensSearch")?.value || "").trim();
   const sel = $("#lensSel");
+  const cur = S.params?.filter || "";
+  // One entry, as an option. The active filter is always included, even when
+  // it does not match the search, so the menu never misrepresents the photo.
+  const opt = (value, label, title, active) =>
+    `<option value="${value}" title="${esc(title || "")}"${active ? " selected" : ""}>${label}</option>`;
+  const keep = f => !q || filterMatches(f, q);
+
   // The Wratten edges are logistic approximations of each filter's documented
   // 50% cut: the measured tables are not in a usable digital form yet, so the
   // list says so rather than implying a measurement.
-  sel.innerHTML = `<option value="">None</option><optgroup label="Wratten (approximate curve)">` +
-    WRATTEN_FILTERS.map(([v, n]) => `<option value="${v}" title="Rendered on a logistic edge through the filter's documented 50% cut, not on measured transmittance">${esc(n)}</option>`).join("") + `</optgroup>`;
+  const wrat = WRATTEN_FILTERS.filter(([v, n]) => !q || n.toLowerCase().includes(q.toLowerCase()) || v === cur);
+  let html = `<option value=""${cur === "" ? " selected" : ""}>None</option>`;
+  if (wrat.length)
+    html += `<optgroup label="Wratten (approximate curve)">` +
+      wrat.map(([v, n]) => opt(v, esc(n), "Rendered on a logistic edge through the filter's documented 50% cut, not on measured transmittance", v === cur)).join("") +
+      `</optgroup>`;
+
   // Grouped by the kind of filter, not by maker: a set of physical filters
   // first, a shopping guide second.
-  const colour = BRAND_FILTERS.filter(f => f.kind === "colour");
+  const colour = BRAND_FILTERS.filter(f => f.kind === "colour" && (keep(f) || "br-" + f.id === cur));
   const groups = [...new Set(colour.map(f => f.physical.split(" · ")[0]))];
   for (const g of groups)
-    sel.insertAdjacentHTML("beforeend", `<optgroup label="${esc(g)}">` + colour.filter(f => f.physical.split(" · ")[0] === g)
-      .map(f => `<option value="br-${esc(f.id)}" title="${esc(f.src)}">${filterLabel(f)}</option>`).join("") + `</optgroup>`);
-  const ir = BRAND_FILTERS.filter(f => f.kind === "ir");
-  sel.insertAdjacentHTML("beforeend", `<optgroup label="Full spectrum (IR filter removed)">` +
-    IR_LOOKS.map(([v, n]) => `<option value="${v}">${esc(n)}</option>`).join("") +
-    ir.map(f => `<option value="ir-${esc(f.id)}" title="${esc(f.src)}">${filterLabel(f)}</option>`).join("") +
-    `</optgroup>`);
+    html += `<optgroup label="${esc(g)}">` + colour.filter(f => f.physical.split(" · ")[0] === g)
+      .map(f => opt("br-" + f.id, filterLabel(f), f.src, "br-" + f.id === cur)).join("") + `</optgroup>`;
+
+  const ir = BRAND_FILTERS.filter(f => f.kind === "ir" && (keep(f) || "ir-" + f.id === cur));
+  const irLooks = IR_LOOKS.filter(([v, n]) => !q || n.toLowerCase().includes(q.toLowerCase()) || v === cur);
+  if (ir.length || irLooks.length)
+    html += `<optgroup label="Full spectrum (IR filter removed)">` +
+      irLooks.map(([v, n]) => opt(v, esc(n), "", v === cur)).join("") +
+      ir.map(f => opt("ir-" + f.id, filterLabel(f), f.src, "ir-" + f.id === cur)).join("") +
+      `</optgroup>`;
+  sel.innerHTML = html;
+
   // Density filters live in their own rows: they cost exposure, not colour,
   // and can stack with any lens filter above.
+  const nd = f => f.kind === "nd" && (keep(f) || f.id === (S.params?.nd || ""));
   $("#ndSel").innerHTML = `<option value="">None</option>` +
-    BRAND_FILTERS.filter(f => f.kind === "nd").map(f =>
-      `<option value="${esc(f.id)}" title="${esc(f.src)}">${filterLabel(f)}</option>`).join("");
+    BRAND_FILTERS.filter(nd).map(f =>
+      opt(f.id, filterLabel(f), f.src, f.id === (S.params?.nd || ""))).join("");
+  const gnd = f => f.kind === "gnd" && (keep(f) || f.id === (S.params?.gnd || ""));
   $("#gndSel").innerHTML = `<option value="">None</option>` +
-    BRAND_FILTERS.filter(f => f.kind === "gnd").map(f =>
-      `<option value="${esc(f.id)}" title="${esc(f.src)}">${filterLabel(f)}</option>`).join("");
+    BRAND_FILTERS.filter(gnd).map(f =>
+      opt(f.id, filterLabel(f), f.src, f.id === (S.params?.gnd || ""))).join("");
   syncSliders();
 }
 
