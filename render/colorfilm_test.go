@@ -29,6 +29,14 @@ func TestColorFilmSlides(t *testing.T) {
 			if d := math.Abs(float64(r-b)) / math.Max(1e-3, float64(gg)); g >= 0.05 && g <= 1 && d > 0.15 {
 				t.Errorf("%s: grey %.2f not neutral: %.4f %.4f %.4f", key, g, r, gg, b)
 			}
+			if g == 0.128 {
+				// The scene's mid-grey must print as mid-grey: the slide's
+				// viewing exposure (the eye adapted to the light box).
+				y := 0.2126*float64(r) + 0.7152*float64(gg) + 0.0722*float64(b)
+				if y < 0.15 || y > 0.21 {
+					t.Errorf("%s: mid-grey %.3f, want ~0.18", key, y)
+				}
+			}
 		}
 		// Saturated layer colours (white-balanced layer space).
 		for _, c := range [][3]float32{{0.3, 0.1, 0.05}, {0.05, 0.25, 0.08}, {0.04, 0.08, 0.3}, {0.3, 0.25, 0.05}} {

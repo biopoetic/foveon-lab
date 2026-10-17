@@ -25,6 +25,12 @@ package render
 //
 // Step 4 is baked into a 3-D table over the three densities (log output,
 // interpolated trilinearly).
+//
+// 5. A slide is viewed on a light box, and the eye adapts to its overall
+//    density: the film's absolute densities are not what is seen. The render
+//    is scaled so the scene's mid-grey (the model's 0.128 layer value) prints
+//    as 18%, the same convention the printed negatives already use. Without
+//    it every slide came out about a stop dark.
 
 import (
 	_ "embed"
@@ -136,13 +142,17 @@ type colorFilm struct {
 	// root-polynomial (fitLayerMap): rows 0-8 times (r, g, b), rows 9-17
 	// times (√rg, √gb, √rb).
 	rp     [18]float32
-	hWhite float64    // lux·s at the sensor's saturation (layer value 1)
+	hWhite float64 // lux·s at the sensor's saturation (layer value 1)
 	curve  [3][][2]float64
 	lut    []float32 // cfLutN^3 × 3: -log10 of linear sRGB, over (D_R, D_G, D_B)
 	// readLam: the channels' reading wavelengths (R, G, B) the grey balance
 	// gives; greyRMS its remaining error (natural log of R/G and B/G).
 	readLam [3]float64
 	greyRMS float64
+	// gain: the viewing exposure of a slide, so the scene's mid-grey prints
+	// mid-grey (the eye adapted to the light box). 1 for a negative, whose
+	// print exposure is set by its own table.
+	gain float64
 	// filtration: a printed negative's enlarger filtration (log10 gain per
 	// paper layer, R G B).
 	filtration [3]float64
@@ -346,6 +356,15 @@ func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 			}
 		}
 	})
+	// Viewing exposure: a slide's absolute densities land dark on screen (a
+	// mid-grey comes out near 0.09, not 0.18), because the eye adapts to the
+	// light box. Normalise so the scene's mid-grey prints mid-grey.
+	f.gain = 1
+	if r, g, b := f.fromExposure([3]float64{midGreyLayer, midGreyLayer, midGreyLayer}); true {
+		if y := 0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b); y > 1e-6 {
+			f.gain = 0.18 / y
+		}
+	}
 	return f
 }
 
@@ -397,5 +416,17 @@ func (f *colorFilm) fromExposure(h [3]float64) (float32, float32, float32) {
 			out[k] += w * float64(f.lut[i+k])
 		}
 	}
-	return float32(math.Pow(10, -out[0])), float32(math.Pow(10, -out[1])), float32(math.Pow(10, -out[2]))
+	return float32(math.Pow(10, -out[0]) * f.viewGain()), float32(math.Pow(10, -out[1]) * f.viewGain()), float32(math.Pow(10, -out[2]) * f.viewGain())
 }
+
+// viewGain is the film's viewing exposure (1 when unset, e.g. for negatives).
+func (f *colorFilm) viewGain() float64 {
+	if f.gain <= 0 {
+		return 1
+	}
+	return f.gain
+}
+
+// midGreyLayer is the layer value the model treats as the scene's mid-grey:
+// the sensor's 18% grey is 10/78 of its saturation (ISO 12232).
+const midGreyLayer = 0.128
