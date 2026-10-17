@@ -851,8 +851,11 @@ function buildSliders(){
   $("#devSel").onchange = () => { S.params.developer = $("#devSel").value; S.params.devTime = 0; $("#devSel").blur(); syncSliders(); scheduleRender(); };
   $("#filmCmpBtn").onclick = () => { $("#filmCmpBtn").blur(); filmCompare(); };
   $("#filmCmpClose").onclick = filmCompareClose;
-  $("#filmCmpKind").onchange = filmCompare;
-  $("#filmCmpIso").onchange = filmCompare;
+  $("#filmCmpKind").onchange = () => { store.set("cmpKind", $("#filmCmpKind").value); filmCompare(); };
+  $("#filmCmpIso").onchange = () => { store.set("cmpIso", $("#filmCmpIso").value); filmCompare(); };
+  // The choice of films and speed survives closing the dialog.
+  $("#filmCmpKind").value = store.get("cmpKind", "colour");
+  $("#filmCmpIso").value = store.get("cmpIso", "any");
   $("#filmCmp").onclick = e => { if (e.target.id === "filmCmp") filmCompareClose(); };
   $("#paperSel").onchange = () => { S.params.paper = $("#paperSel").value; $("#paperSel").blur(); syncSliders(); scheduleRender(); };
   $("#gradeSel").onchange = () => { S.params.grade = $("#gradeSel").value; $("#gradeSel").blur(); syncSliders(); scheduleRender(); };
@@ -2315,13 +2318,21 @@ async function aiCritique(){
     const note = $("#aiDir").value.trim();
     const u = renderURL({w: 1024, params: S.params}).replace("/api/render?", "/api/critique?")
       + (note ? "&note=" + encodeURIComponent(note) : "");
-    const res = await fetch(u);
-    if (!res.ok) throw new Error(await res.text());
-    const {text, settings} = await res.json();
+    // The same photo with the same settings and note is the same question:
+    // answer it from the last reply instead of paying for it twice.
+    let data = CRIT_CACHE.get(u), cached = !!data;
+    if (!data){
+      const res = await fetch(u);
+      if (!res.ok) throw new Error(await res.text());
+      data = await res.json();
+      CRIT_CACHE.set(u, data);
+      if (CRIT_CACHE.size > 12) CRIT_CACHE.delete(CRIT_CACHE.keys().next().value);
+    }
     box.remove();
+    const {text, settings} = data;
     const keys = settings ? Object.keys(settings).filter(k => RANGES[k]) : [];
     const list = keys.map(k => `${k} ${(+settings[k]).toFixed(2)}`).join(" · ");
-    const d = aiLog(`<div class="critique">${mdLite(text)}${keys.length
+    const d = aiLog(`<div class="critique">${cached ? '<div class="src">Same settings as the last critique — not sent again.</div>' : ""}${mdLite(text)}${keys.length
       ? `<div class="adj">${esc(list)}</div><button class="primary" data-apply>Apply these settings</button>`
       : ""}</div>`, "say");
     const btn = d.querySelector("[data-apply]");
@@ -2331,10 +2342,15 @@ async function aiCritique(){
     aiLog("Could not rate the photo: " + esc(e.message), "error");
   }
 }
+// CRIT_CACHE remembers critiques by their request (photo, settings, note).
+const CRIT_CACHE = new Map();
 // RANGES is each slider's allowed range, for what the AI may set.
 const RANGES = Object.fromEntries(SLIDERS.map(([k,, min, max]) => [k, [min, max]]));
-// applyCritique puts the model's settings on the sliders, within their ranges.
+// applyCritique puts the model's settings on the sliders, within their ranges,
+// and offers to undo them: an AI edit is a guess, and a click should not cost
+// the edit that was there before.
 function applyCritique(settings, btn){
+  const before = {...S.params};
   let n = 0;
   for (const [k, v] of Object.entries(settings)){
     const r = RANGES[k];
@@ -2344,8 +2360,16 @@ function applyCritique(settings, btn){
   }
   if (!n){ toast("The critique suggested nothing this app can set.", 5000); return; }
   syncSliders(); scheduleRender();
-  if (btn) btn.textContent = "Applied";
   toast(`Applied ${n} setting${n > 1 ? "s" : ""} from the critique.`, 5000);
+  if (!btn) return;
+  btn.textContent = "Undo";
+  btn.onclick = () => {
+    S.params = {...before};
+    syncSliders(); scheduleRender();
+    btn.textContent = "Applied";
+    btn.disabled = true;
+    toast("Settings restored.", 4000);
+  };
 }
 // mdLite renders the model's Markdown: headings and paragraphs, escaped.
 function mdLite(s){
