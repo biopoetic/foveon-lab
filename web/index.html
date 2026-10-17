@@ -1244,11 +1244,6 @@ async function renderGPU(url, seq){
   // The Base depends on everything but the settings — except an IR look,
   // which develops other layers.
   const p = new URLSearchParams(query), f = JSON.parse(p.get("p") || "{}").filter || "";
-  // Density filters are spatial (a gradient across the frame) or an
-  // exposure change; the GPU recipe has neither, so those render on the
-  // server instead of showing a preview that disagrees with the export.
-  const pp = JSON.parse(p.get("p") || "{}");
-  if (pp.nd || pp.gnd) return false;
   const key = ["id", "w", "comp", "m", "g", "src"].map(k => k + "=" + (p.get(k) || "")).join("&") + (f.startsWith("ir-") ? "&ir=" + f : "");
   try {
     const resp = await fetch("/api/gpu/recipe?" + query), src = resp.headers.get("X-Base-Source") || "";

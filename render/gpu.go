@@ -57,6 +57,15 @@ func gpuCorr(c *RawCorrection) *GPUCorr {
 	return g
 }
 
+// GPUDensity is a graduated density filter's geometry for the GPU.
+type GPUDensity struct {
+	Stops  float32 `json:"stops"`
+	Cos    float32 `json:"cos"`
+	Sin    float32 `json:"sin"`
+	Centre float32 `json:"centre"`
+	Soft   float32 `json:"soft"`
+}
+
 // GPURecipe is a render's settings for the GPU (see web/gpu.js for the
 // order of the steps, which follows renderInto / pixOp.apply).
 type GPURecipe struct {
@@ -93,6 +102,10 @@ type GPURecipe struct {
 	// Film grain (output-linear) and sharpening (on the encoded image).
 	GrainSigma float32 `json:"grainSigma"`
 	GrainMono  bool    `json:"grainMono"`
+	// Density filters (render/density.go): NDGain is the neutral filter's
+	// per-channel gain (1 = none); GND is a graduated filter's geometry.
+	NDGain float32      `json:"ndGain,omitempty"`
+	GND    *GPUDensity `json:"gnd,omitempty"`
 	SppSharpen float32 `json:"sppSharpen"`
 	Sharpen    float32 `json:"sharpen"`
 
@@ -166,6 +179,15 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 	}
 	if p.Halation > 0 {
 		r.CPU = "halation"
+	}
+	// Density filters: a constant gain and/or a gradient, applied after the
+	// grain exactly as renderInto does.
+	dens := densitySetupFor(p)
+	if dens.nd != 1 {
+		r.NDGain = dens.nd
+	}
+	if dens.gnd {
+		r.GND = &GPUDensity{Stops: float32(dens.stops), Cos: float32(dens.cos), Sin: float32(dens.sin), Centre: float32(dens.centre), Soft: float32(dens.soft)}
 	}
 	if f := op.cfilm; f != nil {
 		key := fmt.Sprintf("%s|%s|%s|%s", p.Film, p.Paper, c.Sensor, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}.key())

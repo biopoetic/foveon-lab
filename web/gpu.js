@@ -37,6 +37,9 @@ uniform bool uUndo, uUndoGamma, uMeasured, uMono, uFilmTone, uWB, uWBTaste, uMM,
 uniform int uLayerMode;   // 0 none, 1 matrix, 2 mono weights
 uniform vec3 uUndoM[3], uLayerM[3], uLayerMono, uWBM[3], uMMM[3], uGain, uTint;
 uniform float uMaskScale, uFill, uHL, uBlk, uCT, uSatF, uSatMeasure, uWBSat, uMMSat, uFilmScale, uGrain;
+uniform float uNDGain;
+uniform int uGND;
+uniform float uGNDStops, uGNDCos, uGNDSin, uGNDCentre, uGNDSoft;
 uniform int uMode;
 uniform float uLocal[64];
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -171,6 +174,14 @@ void main(){
     uint i = uint(q.y * uW + q.x);
     if (uGrainMono){ float n = gauss(i, 0u); c = vec3(grain1(c.r, n), grain1(c.g, n), grain1(c.b, n)); }
     else c = vec3(grain1(c.r, gauss(i, 0u)), grain1(c.g, gauss(i, 1u)), grain1(c.b, gauss(i, 2u)));
+  }
+  // Density filters, after the grain, exactly as renderInto applies them.
+  if (uNDGain != 1.) c *= uNDGain;
+  if (uGND == 1){
+    float u = (0.5 - (float(q.y) + 0.5) / float(uH)) * uGNDCos + ((float(q.x) + 0.5) / float(uW) - 0.5) * uGNDSin;
+    float t = clamp((u - uGNDCentre) / uGNDSoft + 0.5, 0., 1.);
+    t = t * t * (3. - 2. * t);
+    c *= exp2(-uGNDStops * t);
   }
   // uint8(enc(v)*255 + 0.5)
   o = vec4(floor(vec3(enc(c.r), enc(c.g), enc(c.b)) * 255. + 0.5), 255.);
@@ -322,6 +333,11 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     gl.uniform1i(u.uFillABCK, r.fillABCK ? 1 : 0); gl.uniform1i(u.uFillLocal, r.fillLocal ? 1 : 0);
     gl.uniform1fv(u.uLocal, r.fillLocal ? r.fillLocal.slice(0, 64) : new Float32Array(64));
     gl.uniform1f(u.uGrain, r.grainSigma || 0); gl.uniform1i(u.uGrainMono, r.grainMono ? 1 : 0);
+    gl.uniform1f(u.uNDGain, r.ndGain || 1);
+    gl.uniform1i(u.uGND, r.gnd ? 1 : 0);
+    const gnd = r.gnd || {stops: 0, cos: 1, sin: 0, centre: 0, soft: 0.5};
+    gl.uniform1f(u.uGNDStops, gnd.stops); gl.uniform1f(u.uGNDCos, gnd.cos); gl.uniform1f(u.uGNDSin, gnd.sin);
+    gl.uniform1f(u.uGNDCentre, gnd.centre); gl.uniform1f(u.uGNDSoft, gnd.soft);
     const cf = r.colorFilm && cfCache.get(r.colorFilm.key);
     gl.uniform1i(u.uCF, cf ? 1 : 0);
     if (cf){
