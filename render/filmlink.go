@@ -52,20 +52,13 @@ var filmLinks = []struct {
 	{regexp.MustCompile(`(?i)\bportra\s*160`), "Kodak Portra 160"},
 	{regexp.MustCompile(`(?i)\bportra\s*800`), "Kodak Portra 800"},
 	{regexp.MustCompile(`(?i)\bportra(\s*\d|\b)`), "Kodak Portra 400"},
-	{regexp.MustCompile(`(?i)ektar`), "Kodak Ektar 100"},
 	{regexp.MustCompile(`(?i)ultra\s*max|\bmax\s*400`), "Kodak Ultramax 400"},
-	{regexp.MustCompile(`(?i)colorplus`), "Kodak ColorPlus 200"},
 	{regexp.MustCompile(`(?i)\bgold\s*\d|\bgold\s+(soft|punch)`), "Kodak Gold 200"},
 	{regexp.MustCompile(`(?i)\bhp\s*5`), "Ilford HP5 Plus"},
 	{regexp.MustCompile(`(?i)\bfp\s*4`), "Ilford FP4 Plus"},
 	{regexp.MustCompile(`(?i)pan\s*f\b`), "Ilford Pan F Plus"},
 	{regexp.MustCompile(`(?i)delta\s*3200`), "Ilford Delta 3200"},
 	{regexp.MustCompile(`(?i)delta\s*400`), "Ilford Delta 400"},
-	{regexp.MustCompile(`(?i)delta\s*100`), "Ilford Delta 100"},
-	{regexp.MustCompile(`(?i)\bxp\s*2`), "Ilford XP2 Super"},
-	{regexp.MustCompile(`(?i)cinestill.*400\s*d|\b400\s*d\b`), "CineStill 400D"},
-	{regexp.MustCompile(`(?i)cinestill.*50\s*d|\b50\s*d\b`), "CineStill 50D"},
-	{regexp.MustCompile(`(?i)cinestill`), "CineStill 800T"},
 }
 
 var filmKeys = sync.OnceValue(func() map[string]bool {

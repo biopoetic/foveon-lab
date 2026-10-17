@@ -12,14 +12,10 @@ func TestFilmFor(t *testing.T) {
 		"SD15 Portra 400":              "Kodak Portra 400",
 		"SD15 Portra 160":              "Kodak Portra 160",
 		"SD15 Portra 800":              "Kodak Portra 800",
-		"[KODAK] SD1 ColorPlus 200":    "Kodak ColorPlus 200",
 		"[FUJI] SD15 Superia 400 V4":   "Fujifilm Fujicolor Superia X-TRA 400",
 		"SD1 Provia100F Shade Clean":   "Fujifilm Fujichrome Provia 100F",
 		"SD1 Ektachrome GoldenGlow":    "Kodak Ektachrome E100G",
 		"Ektachrome E100GX Warm":       "Kodak Ektachrome E100GX",
-		"CineStill 800T":               "CineStill 800T",
-		"CineStill 400D":               "CineStill 400D",
-		"CineStill 50D":                "CineStill 50D",
 		"[BW] Tri-X Push":              "Kodak Tri-X Pan 400 (TX)",
 	} {
 		if got := FilmFor(name); got != want {
