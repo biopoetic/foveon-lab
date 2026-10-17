@@ -3,3 +3,8 @@
 dist/
 
 testdata/
+
+# Session handoffs: working notes for the maintainer, not project content.
+# They name local paths (signing-key backups, tool locations), so they stay
+# out of the public repository.
+HANDOFF-*.md
