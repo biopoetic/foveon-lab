@@ -268,6 +268,25 @@ compatibility note. Foveon Lab simulates a filter's transmission, not any maker'
 process, coating or quality control, and a simulation is not a claim about how a particular sample
 of a product performs.
 
+### How much to trust a filter entry
+
+Each catalogue entry states what it rests on, and the lens menu marks it:
+
+- **measured** - a measured spectral curve. The nine SCHOTT glasses (which include B+W's
+  filters, since B+W's numbers are glass numbers) render on the catalogue's internal
+  transmittance, interpolated on its 10 nm grid.
+- **documented** - the maker publishes the filter's Wratten equivalent, cutoff wavelength or
+  density, and the entry renders that documented property. That is a claim about a
+  specification, not about a measured sample.
+- **approximate** - no measured curve is available, so the project's logistic edge stands in.
+  This applies to the ten built-in Wratten filters: each is rendered on a logistic edge
+  through its documented 50% cut. Kodak's tabulated transmittances exist (the compilation
+  reprinted in the CRC Handbook), but only as scanned images; the digital sources checked in
+  October 2026 held no usable data. Replacing those ten curves is the next accuracy step, and
+  the bar for it is written into `render/brandfilters.json`: a number may only be entered if
+  it was read from a table and checks out against that filter's printed luminous
+  transmittance.
+
 **Sigma, Foveon, X3F and Sigma Photo Pro** are trademarks of SIGMA Corporation. This is an
 independent project, not affiliated with or endorsed by SIGMA Corporation. It reads the
 documented-by-the-community X3F container format and never modifies your original files.

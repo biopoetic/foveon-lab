@@ -886,12 +886,18 @@ async function filtersInit(){
 // maker's name is only where you can buy one.
 function filterLabel(f){
   const made = f.brand ? ` <span class="dim">· ${esc(f.brand)} ${esc(f.model)}</span>` : "";
-  return esc(f.physical) + made;
+  // Mark the evidence class where it is not a measured curve, so a reader can
+  // see which entries rest on published documentation rather than measurement.
+  const ev = f.evidence === "measured" ? "" : ` <span class="dim">(${f.evidence === "documented" ? "documented" : "approximate"})</span>`;
+  return esc(f.physical) + made + ev;
 }
 function buildLensSel(){
   const sel = $("#lensSel");
-  sel.innerHTML = `<option value="">None</option><optgroup label="Wratten">` +
-    WRATTEN_FILTERS.map(([v, n]) => `<option value="${v}">${esc(n)}</option>`).join("") + `</optgroup>`;
+  // The Wratten edges are logistic approximations of each filter's documented
+  // 50% cut: the measured tables are not in a usable digital form yet, so the
+  // list says so rather than implying a measurement.
+  sel.innerHTML = `<option value="">None</option><optgroup label="Wratten (approximate curve)">` +
+    WRATTEN_FILTERS.map(([v, n]) => `<option value="${v}" title="Rendered on a logistic edge through the filter's documented 50% cut, not on measured transmittance">${esc(n)}</option>`).join("") + `</optgroup>`;
   // Grouped by the kind of filter, not by maker: a set of physical filters
   // first, a shopping guide second.
   const colour = BRAND_FILTERS.filter(f => f.kind === "colour");

@@ -19,6 +19,25 @@ func TestBrandFiltersHaveBasis(t *testing.T) {
 		if f.Physical == "" {
 			t.Errorf("%s: no physical name", f.ID)
 		}
+		// The evidence class must match the basis: a measured curve for
+		// "measured", a documented property for "documented", and no
+		// measured curve for "approximate".
+		switch f.Evidence {
+		case "measured":
+			if f.Glass == "" {
+				t.Errorf("%s: claims measured evidence without a measured curve", f.ID)
+			}
+		case "documented":
+			if f.Glass != "" || (f.Wratten == "" && f.Edge == 0 && f.Stops == 0) {
+				t.Errorf("%s: documented evidence does not match its basis", f.ID)
+			}
+		case "approximate":
+			if f.Glass != "" {
+				t.Errorf("%s: approximate entry has a measured curve", f.ID)
+			}
+		default:
+			t.Errorf("%s: evidence %q not one of measured/documented/approximate", f.ID, f.Evidence)
+		}
 		// The physical name is what we model, so it must stand on its own and
 		// not borrow the maker's mark for its identity; the brand is a
 		// separate compatibility note.
@@ -47,14 +66,14 @@ func TestBrandFiltersHaveBasis(t *testing.T) {
 			}
 		default:
 			switch {
-		case f.Glass != "":
-			if !SchottGlass(f.Glass) {
-				t.Errorf("%s: glass %q is not in schottglass.json", f.ID, f.Glass)
-			}
-		case f.Wratten != "":
-			if _, ok := wrattenT[f.Wratten]; !ok {
-				t.Errorf("%s: Wratten %q has no spectrum", f.ID, f.Wratten)
-			}
+			case f.Glass != "":
+				if !SchottGlass(f.Glass) {
+					t.Errorf("%s: glass %q is not in schottglass.json", f.ID, f.Glass)
+				}
+			case f.Wratten != "":
+				if _, ok := wrattenT[f.Wratten]; !ok {
+					t.Errorf("%s: Wratten %q has no spectrum", f.ID, f.Wratten)
+				}
 			case f.Edge > 0:
 				if f.Edge < 380 || f.Edge > 1100 {
 					t.Errorf("%s: cutoff %g nm outside the spectrum", f.ID, f.Edge)

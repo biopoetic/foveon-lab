@@ -33,9 +33,15 @@ var brandFiltersJSON []byte
 // physical filter, so the UI can present the specification as the primary
 // name and the product only as a compatibility note.
 type BrandFilter struct {
-	ID       string  `json:"id"`
-	Physical string  `json:"physical"`
-	Kind     string  `json:"kind"`     // "colour", "ir", "nd" or "gnd"
+	ID       string `json:"id"`
+	Physical string `json:"physical"`
+	Kind     string `json:"kind"` // "colour", "ir", "nd" or "gnd"
+	// Evidence is what the entry rests on: "measured" (a measured spectral
+	// curve), "documented" (a maker's documented Wratten equivalence, cutoff
+	// or density) or "approximate" (no measured curve; the project's logistic
+	// edge stands in). The UI shows it so the catalogue's confidence is
+	// visible instead of buried in prose.
+	Evidence string  `json:"evidence"`
 	Brand    string  `json:"brand"`
 	Model    string  `json:"model"`
 	Look     string  `json:"look"`     // for IR: "colour" or "mono"
