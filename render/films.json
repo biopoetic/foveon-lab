@@ -1627,7 +1627,12 @@
    "iso": 80,
    "rms": 0,
    "src": "Ferrania publishes no RMS granularity",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Wikipedia's list of photographic films (third-party list; no maker data sheet is available online): 135-36 and 120"
   },
   {
    "maker": "ORWO",
@@ -1636,7 +1641,11 @@
    "iso": 100,
    "rms": 0,
    "src": "No RMS in ORWO's published data",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135"
+   ],
+   "formats_src": "Wikipedia's list of photographic films (third-party list; no maker data sheet is available online): 135-36 (the film is a cine stock, respooled for still cameras)"
   },
   {
    "maker": "ORWO",
@@ -1654,7 +1663,12 @@
    "iso": 64,
    "rms": 0,
    "src": "No published RMS found",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Wikipedia's list of photographic films (third-party list; no maker data sheet is available online): 135, 120 and sheet film"
   },
   {
    "maker": "Svema",
@@ -1663,7 +1677,12 @@
    "iso": 100,
    "rms": 0,
    "src": "No published RMS found",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "formats_src": "Wikipedia's list of photographic films (third-party list; no maker data sheet is available online): 135, 120 and sheet film"
   },
   {
    "maker": "Svema",
@@ -1672,7 +1691,11 @@
    "iso": 200,
    "rms": 0,
    "src": "No published RMS found",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135"
+   ],
+   "formats_src": "Wikipedia's list of photographic films (third-party list; no maker data sheet is available online): 135"
   },
   {
    "maker": "Svema",
@@ -1681,7 +1704,11 @@
    "iso": 400,
    "rms": 0,
    "src": "No published RMS found",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135"
+   ],
+   "formats_src": "Wikipedia's list of photographic films (third-party list; no maker data sheet is available online): 135"
   },
   {
    "maker": "Kentmere",
@@ -1811,7 +1838,13 @@
    "iso": 400,
    "rms": 0,
    "src": "No RMS in Rollei's published data",
-   "bw": true
+   "bw": true,
+   "formats": [
+    "135",
+    "120",
+    "4x5"
+   ],
+   "formats_src": "Wikipedia's list of photographic films (third-party list; no maker data sheet is available online): 135-36, 120 and 4x5"
   },
   {
    "maker": "3M / Imation (made by Ferrania)",
