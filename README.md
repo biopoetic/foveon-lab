@@ -227,8 +227,12 @@ notices in `third_party/x3fuse-core/` apply to these files and ship with every r
 
 **Data.** The infrared looks' lens filters are real SCHOTT filter glasses (OG590, RG715);
 their transmission curves are SCHOTT's published internal transmittance and reflection factor
-(shop.schott.com, fetched October 2026), kept in `render/schottglass.json`. SCHOTT is a
-trademark of SCHOTT AG; Foveon Lab is not affiliated with it.
+(shop.schott.com, fetched October 2026), kept in `render/schottglass.json`. The brand filters in
+`render/brandfilters.json` name the filter you buy (B+W 022/090/092/093, Hoya R72, Cokin 007,
+K&F Concept IR720/IR850) and each states its basis: B+W's numbers are SCHOTT glass numbers, so
+those filters render on the measured curves; the rest render on their published cutoff or the
+Wratten number their maker documents them as. SCHOTT, B+W, Hoya, Cokin and K&F Concept are
+trademarks of their owners; Foveon Lab is not affiliated with them.
 
 **Foveon Lab's own work** — everything done with the image once it is read:
 - the Foveon noise reduction (`denoise.go`), built on the three layers' different noise and a
