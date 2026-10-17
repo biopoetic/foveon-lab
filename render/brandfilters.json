@@ -1,0 +1,75 @@
+{
+  "_comment": "Real photographic filters by brand and model. Every entry states its basis: 'glass' means a SCHOTT filter glass whose measured internal transmittance is in schottglass.json (B+W's filter numbers ARE Schott glass numbers, e.g. 495/022, 695/092, 830/093); 'wratten' means the maker documents the filter as the equivalent of that Wratten number, rendered on the Wratten edge already used for the Wratten set; 'edge' means the maker publishes the cutoff and that is all that is published. No curve here is invented: an entry without a published or measured basis is not listed.",
+  "filters": [
+    {
+      "id": "bw022", "brand": "B+W", "model": "022", "name": "Yellow (495/022)", "kind": "colour",
+      "glass": "GG495",
+      "src": "B+W 495/022 — Schott GG495 glass; measured curve (schottglass.json)"
+    },
+    {
+      "id": "bw040", "brand": "B+W", "model": "040", "name": "Orange (550/040)", "kind": "colour",
+      "glass": "OG550",
+      "src": "B+W 550/040 — Schott OG550 glass; measured curve (schottglass.json)"
+    },
+    {
+      "id": "bw090", "brand": "B+W", "model": "090", "name": "Red light (590/090)", "kind": "colour",
+      "glass": "OG590",
+      "src": "B+W 590/090 — Schott OG590 glass; measured curve (schottglass.json)"
+    },
+    {
+      "id": "hoya-y2", "brand": "Hoya", "model": "Y2 Pro", "name": "Yellow", "kind": "colour",
+      "wratten": "yellow",
+      "src": "Hoya Y2 Pro — documented as a K2 (Wratten 8) contrast filter; rendered on the Wratten 8 curve"
+    },
+    {
+      "id": "hoya-ya3", "brand": "Hoya", "model": "YA3 Pro", "name": "Orange", "kind": "colour",
+      "wratten": "orange",
+      "src": "Hoya YA3 Pro — documented as a Wratten 21 equivalent; rendered on the Wratten 21 curve"
+    },
+    {
+      "id": "hoya-r1", "brand": "Hoya", "model": "R1 Pro", "name": "Red", "kind": "colour",
+      "wratten": "red",
+      "src": "Hoya R1 Pro — documented as a 25A (Wratten 25) contrast filter; rendered on the Wratten 25 curve"
+    },
+    {
+      "id": "bw091", "brand": "B+W", "model": "091", "name": "IR light red (610/091)", "kind": "ir", "look": "colour",
+      "glass": "RG610",
+      "src": "B+W 610/091 — Schott RG610 glass; measured curve (schottglass.json)"
+    },
+    {
+      "id": "bw092", "brand": "B+W", "model": "092", "name": "IR dark red (695/092)", "kind": "ir", "look": "colour",
+      "glass": "RG695",
+      "src": "B+W 695/092 — Schott RG695 glass; measured curve (schottglass.json)"
+    },
+    {
+      "id": "bw093", "brand": "B+W", "model": "093", "name": "IR 830 (830/093)", "kind": "ir", "look": "mono",
+      "glass": "RG830",
+      "src": "B+W 830/093 — Schott RG830 glass; measured curve (schottglass.json)"
+    },
+    {
+      "id": "bw099", "brand": "B+W", "model": "099", "name": "IR 850 (850/099)", "kind": "ir", "look": "mono",
+      "glass": "RG850",
+      "src": "B+W 850/099 — Schott RG850 glass; measured curve (schottglass.json)"
+    },
+    {
+      "id": "hoya-r72", "brand": "Hoya", "model": "R72", "name": "Infrared 720", "kind": "ir", "look": "mono",
+      "edge": 720,
+      "src": "Hoya R72 — maker's spec: blocks below 740 nm, 95% transmission 760–860 nm; 50% at the 720 nm the name gives"
+    },
+    {
+      "id": "cokin-007", "brand": "Cokin", "model": "007", "name": "Infrared", "kind": "ir", "look": "mono",
+      "edge": 720,
+      "src": "Cokin 007 — documented as the Wratten 89B (720 nm) infrared filter; rendered at its 720 nm cutoff"
+    },
+    {
+      "id": "kf-ir720", "brand": "K&F Concept", "model": "IR720", "name": "Infrared 720", "kind": "ir", "look": "mono",
+      "edge": 720,
+      "src": "K&F Concept IR720 — product's 720 nm cutoff"
+    },
+    {
+      "id": "kf-ir850", "brand": "K&F Concept", "model": "IR850", "name": "Infrared 850", "kind": "ir", "look": "mono",
+      "glass": "RG850",
+      "src": "K&F Concept IR850 — 850 nm cutoff, rendered on Schott RG850's measured curve (the glass a 850 nm longpass is)"
+    }
+  ]
+}

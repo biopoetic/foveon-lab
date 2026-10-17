@@ -270,7 +270,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="filmCmpBtn" title="This photo, with your settings, in every colour film side by side (colour and tone only, without grain). Click one to use it. Needs a raw-decodable X3F." style="margin-top:6px">Compare colour films…</button>
         </div>
         <div class="row" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky. The full-spectrum infrared looks are for converted cameras (the IR-cut protector removed)."><div class="lab">Filter on the lens <span class="dim">(Wratten + IR)</span></div>
-          <select id="lensSel" style="width:100%"><option value="">None</option><option value="yellow">Yellow (Wratten 8)</option><option value="deepyellow">Deep yellow (Wratten 15)</option><option value="orange">Orange (Wratten 21)</option><option value="red">Red (Wratten 25)</option><option value="deepred">Deep red (Wratten 29)</option><option value="yellowgreen">Yellow-green (Wratten 11)</option><option value="green">Green (Wratten 58)</option><option value="blue">Blue (Wratten 47)</option><option value="warm">Warming (81A)</option><option value="cool">Cooling (82A)</option><optgroup label="Full spectrum (IR filter removed)"><option value="ir-fs-aerochrome">False colour, no lens filter</option><option value="ir-aerochrome">Aerochrome (Wratten 12)</option><option value="ir-ir590">Colour infrared (OG590)</option><option value="ir-ir720">Infrared B&amp;W (RG715)</option></optgroup></select>
+          <select id="lensSel" style="width:100%"></select>
         </div>
         <div class="row"><div class="lab">Film format <span class="dim" title="Foveon Lab only. The film frame the grain and halation are sized on: a larger format shows the same film finer.">(grain, halation)</span></div>
           <select id="filmWidth" style="width:100%">
@@ -809,7 +809,7 @@ function buildSliders(){
     const v = $("#layerPreset").value;
     // "None" keeps a lens filter set in Film & Darkroom: colour, pad or infrared.
     const keep = S.params.filter || "";
-    S.params.filter = v.startsWith("lens:") ? v.slice(5) : v === "" && (COLOUR_FILTERS.has(keep) || keep.startsWith("pad:") || keep.startsWith("ir-")) ? keep : "";
+    S.params.filter = v.startsWith("lens:") ? v.slice(5) : v === "" && (COLOUR_FILTERS.has(keep) || keep.startsWith("pad:") || keep.startsWith("ir-") || keep.startsWith("br-")) ? keep : "";
     [S.params.layerBottom, S.params.layerMiddle, S.params.layerTop] = v.startsWith("mix:") ? LAYER_MIX[v.slice(4)] : [0, 0, 0];
     $("#layerPreset").blur(); syncSliders(); scheduleRender();
   };
@@ -832,6 +832,41 @@ let PAPERS = [];
 async function papersInit(){
   try { PAPERS = await (await fetch("/api/papers")).json(); } catch { return; }
   syncFilm();
+}
+// The lens filters (/api/filters): the Wratten set, then real filters by
+// brand and model (B+W 022/090/093, Hoya R72, Cokin 007, K&F IR720 …).
+// Each catalogue entry states its basis: a measured SCHOTT glass curve, a
+// documented Wratten equivalent, or the maker's published cutoff.
+const WRATTEN_FILTERS = [
+  ["yellow","Yellow (Wratten 8)"], ["deepyellow","Deep yellow (Wratten 15)"],
+  ["orange","Orange (Wratten 21)"], ["red","Red (Wratten 25)"], ["deepred","Deep red (Wratten 29)"],
+  ["yellowgreen","Yellow-green (Wratten 11)"], ["green","Green (Wratten 58)"], ["blue","Blue (Wratten 47)"],
+  ["warm","Warming (81A)"], ["cool","Cooling (82A)"]
+];
+const IR_LOOKS = [
+  ["ir-fs-aerochrome","False colour, no lens filter"], ["ir-aerochrome","Aerochrome (Wratten 12)"],
+  ["ir-ir590","Colour infrared (OG590)"], ["ir-ir720","Infrared B&W (RG715)"]
+];
+let BRAND_FILTERS = [];
+async function filtersInit(){
+  try { BRAND_FILTERS = await (await fetch("/api/filters")).json(); } catch { return; }
+  buildLensSel();
+  syncSliders();
+}
+function buildLensSel(){
+  const sel = $("#lensSel");
+  sel.innerHTML = `<option value="">None</option><optgroup label="Wratten">` +
+    WRATTEN_FILTERS.map(([v, n]) => `<option value="${v}">${esc(n)}</option>`).join("") + `</optgroup>`;
+  const colour = BRAND_FILTERS.filter(f => f.kind === "colour");
+  const brands = [...new Set(colour.map(f => f.brand))];
+  for (const b of brands)
+    sel.insertAdjacentHTML("beforeend", `<optgroup label="${esc(b)}">` + colour.filter(f => f.brand === b)
+      .map(f => `<option value="br-${esc(f.id)}" title="${esc(f.src)}">${esc(f.model)} — ${esc(f.name)}</option>`).join("") + `</optgroup>`);
+  const ir = BRAND_FILTERS.filter(f => f.kind === "ir");
+  sel.insertAdjacentHTML("beforeend", `<optgroup label="Full spectrum (IR filter removed)">` +
+    IR_LOOKS.map(([v, n]) => `<option value="${v}">${esc(n)}</option>`).join("") +
+    ir.map(f => `<option value="ir-${esc(f.id)}" title="${esc(f.src)}">${esc(f.brand)} ${esc(f.model)} — ${esc(f.name)}</option>`).join("") +
+    `</optgroup>`);
 }
 // useFilm makes the photo use a library film: its grain (from its data
 // sheet), black and white for a black-and-white film (the grey from its
@@ -993,7 +1028,7 @@ function syncSliders(){
   const lf = [S.params.layerBottom || 0, S.params.layerMiddle || 0, S.params.layerTop || 0];
   const zero = lf.every(x => Math.abs(x) < 1e-9);
   const mix = Object.keys(LAYER_MIX).find(k => LAYER_MIX[k].every((x, i) => Math.abs(x - lf[i]) < 1e-9));
-  const isIR = (S.params.filter || "").startsWith("ir-"), colour = COLOUR_FILTERS.has(S.params.filter);
+  const isIR = (S.params.filter || "").startsWith("ir-"), colour = COLOUR_FILTERS.has(S.params.filter) || (S.params.filter || "").startsWith("br-");
   $("#lensSel").value = colour || isIR ? S.params.filter : "";
   $("#layerPreset").value = zero && (!S.params.filter || colour) ? "" : S.params.filter && !colour && zero ? "lens:" + S.params.filter : !S.params.filter && mix ? "mix:" + mix : "custom";
   $("#filmWidth").value = String(S.params.filmWidth || 0);
@@ -2009,7 +2044,7 @@ function bind(){
   $("#favOnly").onchange = e => { store.set("favOnly", e.target.checked); applyFavFilter(); };
   applyFavFilter();
   sidesInit();
-  filmsInit(); papersInit();
+  filmsInit(); papersInit(); filtersInit();
   updateInit();
   setInterval(updateInit, 6 * 3600 * 1000);
   // Deep link: ?photo=<id or file name>&groups=SLIDE,BW&q=velvia&tile=400

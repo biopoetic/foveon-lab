@@ -39,6 +39,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/biopoetic/foveon-lab/render"
 )
 
 const irMin, irMax, irStep = 380.0, 1100.0, 5.0
@@ -187,19 +189,84 @@ var irLooks = []irLook{
 			func(l float64) float64 { return sig(l, 500, 10) * (1 - sig(l, 600, 10)) },
 		}},
 	{name: "aerochrome", filter: func(l float64) float64 { return sig(l, 515, 8) },
-		bands: []func(float64) float64{
-			func(l float64) float64 { return sig(l, 700, 10) * (1 - sig(l, 900, 20)) }, // IR layer -> red
-			func(l float64) float64 { return sig(l, 600, 10) * (1 - sig(l, 700, 10)) }, // red layer -> green
-			func(l float64) float64 { return sig(l, 500, 10) * (1 - sig(l, 600, 10)) }, // green layer -> blue
-		}},
+		bands: aerochromeBands()},
 	{name: "ir590", filter: schottT("OG590"),
-		bands: []func(float64) float64{
-			func(l float64) float64 { return sig(l, 700, 10) },                        // infrared -> red
-			func(l float64) float64 { return sig(l, 700, 10) },                        // infrared -> green
-			func(l float64) float64 { return sig(l, 590, 8) * (1 - sig(l, 700, 10)) }, // visible red -> blue
-		}},
+		bands: colourIRBands(590, 8)},
 	{name: "ir720", filter: schottT("RG715"), mono: true,
-		bands: []func(float64) float64{func(l float64) float64 { return sig(l, 720, 8) }}},
+		bands: monoIRBands(720, 8)},
+}
+
+// aerochromeBands: Kodak Aerochrome EIR's own three-band split (its infrared
+// layer prints red, its red layer green, its green layer blue) — not the
+// channel swap the colour-infrared looks use.
+func aerochromeBands() []func(float64) float64 {
+	return []func(float64) float64{
+		func(l float64) float64 { return sig(l, 700, 10) * (1 - sig(l, 900, 20)) },
+		func(l float64) float64 { return sig(l, 600, 10) * (1 - sig(l, 700, 10)) },
+		func(l float64) float64 { return sig(l, 500, 10) * (1 - sig(l, 600, 10)) },
+	}
+}
+
+// colourIRBands: infrared -> red and green, visible red -> blue (the classic
+// channel-swapped colour infrared). edge is the filter's own visible cutoff.
+func colourIRBands(edge, width float64) []func(float64) float64 {
+	return []func(float64) float64{
+		func(l float64) float64 { return sig(l, 700, 10) },                              // infrared -> red
+		func(l float64) float64 { return sig(l, 700, 10) },                              // infrared -> green
+		func(l float64) float64 { return sig(l, edge, width) * (1 - sig(l, 700, 10)) },  // visible red -> blue
+	}
+}
+
+// monoIRBands: one band at the filter's own cutoff. Black and white infrared.
+func monoIRBands(edge, width float64) []func(float64) float64 {
+	return []func(float64) float64{func(l float64) float64 { return sig(l, edge, width) }}
+}
+
+// brandCutoff is the wavelength a catalogue entry's name/cutoff implies:
+// the glass's number (RG610 -> 610) or the published edge.
+func brandCutoff(f render.BrandFilter) float64 {
+	if f.Edge > 0 {
+		return f.Edge
+	}
+	i := len(f.Glass)
+	for i > 0 && f.Glass[i-1] >= '0' && f.Glass[i-1] <= '9' {
+		i--
+	}
+	var v float64
+	fmt.Sscan(f.Glass[i:], &v)
+	return v
+}
+
+// brandIRLooks appends the catalogue's infrared filters (render
+// brandfilters.json): B+W 091/092/093/099 (their numbers are Schott glass
+// numbers, so they render on the measured curve), Hoya R72, Cokin 007 and
+// K&F Concept's, each on its published basis.
+func brandIRLooks() []irLook {
+	var out []irLook
+	for _, f := range render.BrandFilters() {
+		if f.Kind != "ir" {
+			continue
+		}
+		var T func(float64) float64
+		if f.Glass != "" {
+			T = render.SchottTransmission(f.Glass)
+		}
+		if T == nil && f.Edge > 0 {
+			e := f.Edge
+			T = func(l float64) float64 { return sig(l, e, 8) }
+		}
+		if T == nil {
+			continue
+		}
+		lk := irLook{name: f.ID, filter: T, mono: f.Look == "mono"}
+		if lk.mono {
+			lk.bands = monoIRBands(brandCutoff(f), 8)
+		} else {
+			lk.bands = colourIRBands(brandCutoff(f), 8)
+		}
+		out = append(out, lk)
+	}
+	return out
 }
 
 // irFit returns the look's 3×3 (rows: output red, green, blue; a mono look
@@ -347,7 +414,8 @@ func irMain(path string) {
 			b.WriteString(", ")
 		}
 		fmt.Fprintf(&b, "%q: {", gen)
-		for li, lk := range irLooks {
+		looks := append(append([]irLook{}, irLooks...), brandIRLooks()...)
+		for li, lk := range looks {
 			M, e := irFit(m, lk, refl)
 			r := sunToLook(m, lk)
 			fmt.Printf("  %-13s white per layer vs Sunlight: %.2f %.2f %.2f (x %.2f %.2f %.2f)\n", lk.name, 1/r[0], 1/r[1], 1/r[2], r[0], r[1], r[2])

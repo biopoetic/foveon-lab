@@ -37,6 +37,9 @@ func lensFilter(sensor, name string) *[9]float64 {
 	if strings.HasPrefix(name, "pad:") {
 		return padFilter(sensor, name)
 	}
+	if strings.HasPrefix(name, "br-") {
+		return brandFilterMatrix(sensor, strings.TrimPrefix(name, "br-"))
+	}
 	g, ok := layerFilters[sensor]
 	if !ok {
 		return nil
