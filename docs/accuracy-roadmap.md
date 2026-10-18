@@ -22,6 +22,27 @@ All numbers held out (the photo was not used to fit what is tested on it).
 Visibility: under ~3 is invisible, 5–10 shows only side by side, 25+ is obvious. Before the
 calibration work the end-to-end error was ~28–40.
 
+### Tone and colour: three photos, every slider (18 October 2026)
+
+Three SD1 photos (SDIM0031, SDIM0046, SDIM0067) were exported from SPP with the whole A ladder
+(A00–A22: exposure ±1, contrast ±0.5/1, highlight ±0.5/1, shadow ±0.5, saturation ±0.5/1, colour
+modes 6/7, colour adjust R/B). Current model, brightness error (0–255); 0046 and 0067 were never
+used for any fit:
+
+| photo | error, all sliders but fill | worst step |
+|---|---|---|
+| SDIM0031 | 0.4–4.0, mean 1.3 | Exposure −1: 4.0 |
+| SDIM0046 | 0.3–1.8, mean 0.85 | ColorAdjustR: 1.8 |
+| SDIM0067 | 0.3–2.4, mean 0.95 | Exposure +1: 2.4 |
+
+**Tone and colour are at or inside the 3/255 target on unseen photos.** The old "SD1 ~4" figure is
+dominated by Fill Light, whose error here is 3.1–21.5 (see step 3 below).
+
+Fill Light does not improve by refitting or simplifying: refitting the coefficients across the three
+photos drops the fitting-set mean 10.07 → 8.95 but leave-one-out on 0046 scores 21.5 / 32.8 against
+19.8 / 31.5 (no generalisation), and zeroing the two local terms makes it much worse (A17 8.3 → 21.2,
+B15 16.3 → 38.5). The two-scale terms are load-bearing; the scene dependence is the problem.
+
 **Exports are automatic now:** `foveon-lab calibrate -auto -photo <name> -steps A,B,C,V,W` drives SPP
 itself (~40 s per export, unattended), so every step below that "needs exports" costs only time.
 

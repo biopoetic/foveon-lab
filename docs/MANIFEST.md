@@ -34,7 +34,7 @@ photos the fit didn't see; under ~3 is invisible.
 | Goal | Done when | Now (October 2026) |
 |---|---|---|
 | Raw decoding | Every X3F generation, native, bit-identical to reference | ~90% — native Go, value-identical to x3f_extract on 60+ files |
-| Colour & tone vs SPP | ≤ 3/255 held out, every family | SD1 ~4, DP Merrill ~4, SD15 ~6 |
+| Colour & tone vs SPP | ≤ 3/255 held out, every family | SD1 ~4, DP Merrill ~4, SD15 ~6 including Fill Light; without it, every slider measures 0.3–4.0 on three SD1 photos (mean 1.1, two never used for a fit) |
 | Older cameras | SD9 / SD10 / SD14 / Quattro measured against SPP | Decoded, not yet measured |
 | Sharpening & detail | Matches SPP's default per ISO and generation | Done for SD1 Merrill and SD15 |
 | Noise reduction | Beats SPP side by side at ISO 1600+ | SPP still wins |
