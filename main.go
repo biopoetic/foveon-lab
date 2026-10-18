@@ -1264,7 +1264,7 @@ func calibCommand(desk string) bool {
 	intoSPP := fsFlags.Bool("spp", false, "also add the [CAL] presets straight into Sigma Photo Pro's preset list (SPP must be closed; its settings are backed up first)")
 	auto := fsFlags.Bool("auto", false, "export the steps from SPP automatically: open -photo in SPP first, then don't touch mouse or keyboard")
 	autoPhoto := fsFlags.String("photo", "", "with -auto: the photo open in SPP, e.g. SDIM0260, or the path of an X3F to open in SPP first")
-	autoSteps := fsFlags.String("steps", "A", "with -auto: step groups (A, B, C, V, W) and/or codes, comma-separated, e.g. A or A,W or A00,A16")
+	autoSteps := fsFlags.String("steps", "A", "with -auto: step groups (A, B, C, V, W, X) and/or codes, comma-separated, e.g. A or A,W or A00,A16")
 	fsFlags.Parse(os.Args[2:])
 
 	if os.Args[1] == "calibrate" && *auto {

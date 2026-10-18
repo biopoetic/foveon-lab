@@ -149,6 +149,25 @@ func Steps() []Step {
 		}
 		out = append(out, Step{Code: w.code, Param: "WhiteBalance", Value: float64(w.wb), Label: label, Params: p})
 	}
+	// X: Colour adjust combined with a colour mode or a white balance. The
+	// single-parameter ladder cannot tell where SPP applies R/G/B (before or
+	// after its colour matrix) because neither op is in play there; these
+	// steps put both in play. Param stays "Combo", so the fitting ignores
+	// them — they are measured, not fitted.
+	x := []struct {
+		label string
+		set   func(*preset.Params)
+	}{
+		{"Combo ModePortrait R 1.10", func(p *preset.Params) { p.ColorMode = preset.ModePortrait; p.R = 1.1 }},
+		{"Combo ModeLandscape R 1.10", func(p *preset.Params) { p.ColorMode = preset.ModeLandscape; p.R = 1.1 }},
+		{"Combo WB2 R 1.10", func(p *preset.Params) { p.WhiteBalance = 2; p.R = 1.1 }},
+		{"Combo WB6 R 1.10", func(p *preset.Params) { p.WhiteBalance = 6; p.R = 1.1 }},
+	}
+	for i, s := range x {
+		p := neutral()
+		s.set(&p)
+		out = append(out, Step{Code: fmt.Sprintf("X%02d", i+1), Param: "Combo", Label: s.label, Params: p})
+	}
 	return out
 }
 

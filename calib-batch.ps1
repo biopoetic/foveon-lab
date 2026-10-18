@@ -20,10 +20,12 @@ if (-not (Test-Path $dir)) { throw "calibration folder not found: $dir" }
 
 # The three SD1 fill photos still need their neutral reference; the cameras
 # need a full A ladder so each family can be measured against SPP, and then
-# their own Fill Light ladder (the fill model is sensor-specific).
+# their own Fill Light ladder (the fill model is sensor-specific). The X
+# steps combine the colour adjust with a colour mode / white balance, which
+# is the only way to see where SPP applies R/G/B.
 $fill = 'B14,A16,A17,B15,B16'
+$combo = 'X01,X02,X03,X04'
 $jobs = @(
-	@{ p = 'C:\Users\Korisnik\Desktop\SD1\SDIM0137.X3F';                    s = 'A00' },
 	@{ p = (Join-Path $PSScriptRoot 'testdata\SD9\RAW_SIGMA_SD9_SRGB.X3F'); s = 'A' },
 	@{ p = (Join-Path $PSScriptRoot 'testdata\SD10\RAW_SIGMA_SD10.X3F');    s = 'A' },
 	@{ p = (Join-Path $PSScriptRoot 'testdata\SD14\20120818-SDIM4579.X3F'); s = 'A' },
@@ -32,8 +34,18 @@ $jobs = @(
 	@{ p = (Join-Path $PSScriptRoot 'testdata\SD9\RAW_SIGMA_SD9_SRGB.X3F'); s = $fill },
 	@{ p = (Join-Path $PSScriptRoot 'testdata\SD10\RAW_SIGMA_SD10.X3F');    s = $fill },
 	@{ p = (Join-Path $PSScriptRoot 'testdata\SD14\20120818-SDIM4579.X3F'); s = $fill },
-	@{ p = (Join-Path $PSScriptRoot 'testdata\dp2-Quattro\SDIM4388.X3F');   s = $fill }
+	@{ p = (Join-Path $PSScriptRoot 'testdata\dp2-Quattro\SDIM4388.X3F');   s = $fill },
+	@{ p = 'C:\Users\Korisnik\Desktop\SD1\SDIM0031.X3F';                    s = $combo },
+	@{ p = 'C:\Users\Korisnik\Desktop\SD1\SDIM0138.X3F';                    s = $combo },
+	@{ p = 'C:\Users\Korisnik\Desktop\SD15\SDIM1021.X3F';                   s = $combo },
+	@{ p = (Join-Path $PSScriptRoot 'testdata\SD14\20120818-SDIM4579.X3F'); s = $combo }
 )
+
+# The X presets must be in SPP's list before they can be exported (SPP closed).
+Write-Host "Adding the [CAL] presets to SPP (this closes it; its settings are backed up) ..." -ForegroundColor Cyan
+Get-Process SIGMA_PhotoPro6 -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Seconds 3
+& $exe calibrate -dir $dir -spp
 
 $start = Get-Date
 foreach ($j in $jobs) {
