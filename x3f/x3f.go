@@ -422,11 +422,16 @@ func (f *File) readJPEG(im Image) ([]byte, error) {
 
 // Camera returns a short camera tag ("SD1", "SD15", ...) from the metadata.
 func (f *File) Camera() string {
-	m := f.Props["CAMMODEL"]
-	if m == "" {
-		m = f.Props["CAMNAME"]
+	return PresetFamily(f.Model())
+}
+
+// Model is the camera's own model name ("SIGMA SD14"), empty when the file
+// does not name one.
+func (f *File) Model() string {
+	if m := f.Props["CAMMODEL"]; m != "" {
+		return m
 	}
-	return PresetFamily(m)
+	return f.Props["CAMNAME"]
 }
 
 // PresetFamily maps a camera model to the preset family that suits its
@@ -480,4 +485,17 @@ func ShortModel(model string) string {
 		}
 	}
 	return ""
+}
+
+// HasColourModes reports whether the camera model has the in-camera colour
+// modes the presets name. The SD1 (F20) and TRUE II bodies do; the SOLID
+// generation SD9, SD10 and SD14 do not — SPP ignores the setting on them, and
+// its export with Colour mode 6 or 7 is identical to the neutral (measured
+// 2026-10-18 on one body of each).
+func HasColourModes(model string) bool {
+	switch ShortModel(model) {
+	case "SD9", "SD10", "SD14":
+		return false
+	}
+	return true
 }

@@ -267,8 +267,12 @@ func inverse3(a [3][3]float64) ([3][3]float64, bool) {
 // default model.
 var FamilyOf func(name string) string
 
-func emuError(ref, out *render.Linear, s Step, family string) float64 {
-	em := render.Render(render.NewBase(ref), s.Params, render.Compensation{SatFactor: 1, Family: family})
+// NoModesOf reports that the photo's camera has no in-camera colour modes
+// (SD9, SD10, SD14), which SPP ignores; nil = every camera has them.
+var NoModesOf func(name string) bool
+
+func emuError(ref, out *render.Linear, s Step, family string, noModes bool) float64 {
+	em := render.Render(render.NewBase(ref), s.Params, render.Compensation{SatFactor: 1, Family: family, NoModes: noModes})
 	var e float64
 	for i := 0; i < ref.W*ref.H; i++ {
 		for c := 0; c < 3; c++ {
@@ -369,7 +373,8 @@ func Analyze(dir string, progress io.Writer) (*Result, error) {
 			if FamilyOf != nil {
 				fam = FamilyOf(name)
 			}
-			m.EmuError = emuError(ref, out, s, fam)
+			noModes := NoModesOf != nil && NoModesOf(name)
+			m.EmuError = emuError(ref, out, s, fam, noModes)
 			res.Measurements = append(res.Measurements, m)
 		}
 	}

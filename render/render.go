@@ -424,6 +424,10 @@ type Compensation struct {
 	// Sensor is the Foveon generation for the physical lens filters
 	// ("Merrill", "TRUEII", "SD9", "Quattro"); "" = no lens filters.
 	Sensor string
+	// NoModes says the camera has no in-camera colour modes (SD9, SD10,
+	// SD14): SPP ignores the setting on those bodies, so the emulation must
+	// too — its export with Colour mode 6/7 is identical to the neutral.
+	NoModes bool
 }
 
 // CompensationFor derives the compensation from X3F PROP metadata:
@@ -692,7 +696,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 		}{{"Highlight", p.Highlight}, {"Blackness", p.Blackness}, {"Contrast", p.Contrast + c.Contrast}} {
 			op.post = append(op.post, md.newToneOp(t.param, t.v)...)
 		}
-		if p.ColorMode != preset.ModeStandard {
+		if p.ColorMode != preset.ModeStandard && !c.NoModes {
 			if m := md.modeFor(p.ColorMode); m != nil {
 				op.modeMap = m
 			} else {
