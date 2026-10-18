@@ -14,7 +14,7 @@ public static class W3 {
 [W3]::SetProcessDPIAware() | Out-Null
 $A = [System.Windows.Automation.AutomationElement]; $TS = [System.Windows.Automation.TreeScope]
 $dlg = $null
-for ($i = 0; $i -lt 50 -and -not $dlg; $i++) {
+for ($i = 0; $i -lt 200 -and -not $dlg; $i++) {
   $dlg = $A::RootElement.FindAll($TS::Children, [System.Windows.Automation.Condition]::TrueCondition) | ? { $_.Current.Name -eq 'Save Images As' } | Select -First 1
   if (-not $dlg) { $dlg = $A::RootElement.FindAll($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($A::NameProperty, 'Save Images As'))) | Select -First 1 }
   if (-not $dlg) { Start-Sleep -Milliseconds 200 }
@@ -35,7 +35,7 @@ function DialogOpen { [bool]($A::RootElement.FindAll($TS::Descendants, (New-Obje
 # OK only works once SPP has finished applying the setting: wait until it
 # has been enabled for a moment.
 $stable = 0
-for ($i = 0; $i -lt 100 -and $stable -lt 3; $i++) {
+for ($i = 0; $i -lt 200 -and $stable -lt 3; $i++) {
   if ($ok.Current.IsEnabled) { $stable++ } else { $stable = 0 }
   Start-Sleep -Milliseconds 300
 }

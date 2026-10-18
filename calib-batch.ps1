@@ -31,19 +31,22 @@ Write-Host ("Log: " + $log) -ForegroundColor DarkGray
 $fill = 'B14,A16,A17,B15,B16'
 $combo = 'X01,X02,X03,X04'
 $jobs = @(
+	# The combo steps first: they are quick, and they are what the next
+	# measurement needs. The sd-Quattro sample is left out: SPP needs minutes
+	# per setting on it and it hung the previous run; the dp2-Quattro covers
+	# that family.
+	@{ p = 'C:\Users\Korisnik\Desktop\SD1\SDIM0031.X3F';                    s = $combo },
+	@{ p = 'C:\Users\Korisnik\Desktop\SD1\SDIM0138.X3F';                    s = $combo },
+	@{ p = 'C:\Users\Korisnik\Desktop\SD15\SDIM1021.X3F';                   s = $combo },
+	@{ p = (Join-Path $PSScriptRoot 'testdata\SD14\20120818-SDIM4579.X3F'); s = $combo },
 	@{ p = (Join-Path $PSScriptRoot 'testdata\SD9\RAW_SIGMA_SD9_SRGB.X3F'); s = 'A' },
 	@{ p = (Join-Path $PSScriptRoot 'testdata\SD10\RAW_SIGMA_SD10.X3F');    s = 'A' },
 	@{ p = (Join-Path $PSScriptRoot 'testdata\SD14\20120818-SDIM4579.X3F'); s = 'A' },
-	@{ p = (Join-Path $PSScriptRoot 'testdata\sd-Quattro\sample3.X3F');     s = 'A' },
 	@{ p = (Join-Path $PSScriptRoot 'testdata\dp2-Quattro\SDIM4388.X3F');   s = 'A' },
 	@{ p = (Join-Path $PSScriptRoot 'testdata\SD9\RAW_SIGMA_SD9_SRGB.X3F'); s = $fill },
 	@{ p = (Join-Path $PSScriptRoot 'testdata\SD10\RAW_SIGMA_SD10.X3F');    s = $fill },
 	@{ p = (Join-Path $PSScriptRoot 'testdata\SD14\20120818-SDIM4579.X3F'); s = $fill },
-	@{ p = (Join-Path $PSScriptRoot 'testdata\dp2-Quattro\SDIM4388.X3F');   s = $fill },
-	@{ p = 'C:\Users\Korisnik\Desktop\SD1\SDIM0031.X3F';                    s = $combo },
-	@{ p = 'C:\Users\Korisnik\Desktop\SD1\SDIM0138.X3F';                    s = $combo },
-	@{ p = 'C:\Users\Korisnik\Desktop\SD15\SDIM1021.X3F';                   s = $combo },
-	@{ p = (Join-Path $PSScriptRoot 'testdata\SD14\20120818-SDIM4579.X3F'); s = $combo }
+	@{ p = (Join-Path $PSScriptRoot 'testdata\dp2-Quattro\SDIM4388.X3F');   s = $fill }
 )
 
 # The X presets must be in SPP's list before they can be exported (SPP closed).
