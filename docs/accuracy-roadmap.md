@@ -46,6 +46,13 @@ The colour-adjust normalisation is right: dropping the brightness-preserving nor
 might apply R/G/B without it) makes A20 worse on every photo (1.2 → 1.5, 4.3 → 4.7), so it stays.
 The residual ~4 on ColorAdjustR is a model-space difference, not the normalisation.
 
+The colour adjust's *stage* was also tested: applying the tint at the output (after the tone curve)
+instead of the input gives byte-identical output, because the normalisation keeps luminance equal in
+both cases — so the residual is a colour-space difference (SPP may apply R/G/B before its colour
+matrix), which the A ladder cannot resolve: it has no white-balance or colour-mode step, so the
+analysis renders with neither op in play. Measuring it needs a ladder that combines ColorAdjust with
+a colour mode or a non-neutral white balance.
+
 ### Older cameras measured (18 October 2026)
 
 One body per family, full A ladder exported from SPP (the files in `testdata`), measured with the
