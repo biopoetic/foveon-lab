@@ -51,6 +51,21 @@ photos drops the fitting-set mean 10.07 → 8.95 but leave-one-out on 0046 score
 19.8 / 31.5 (no generalisation), and zeroing the two local terms makes it much worse (A17 8.3 → 21.2,
 B15 16.3 → 38.5). The two-scale terms are load-bearing; the scene dependence is the problem.
 
+Two more variants were measured on five photos (SDIM0031/0046/0067/0092/0138, full fill ladder,
+mean error over 25 measurements):
+
+| variant | mean |
+|---|---|
+| current two-scale model | **9.12** |
+| merged coefficients (average of the five) | 9.9 (fitting set; worse held out) |
+| the measured Local[8][8] table instead of Coef | 9.88 — fixes the worst photo (0046 +1: 19.8 → 12.3) but costs on the others |
+| no local terms (x only) | 21+ at +1 |
+
+So four approaches have been tried against the same exports (refit, no-local, measured table, mask
+shape) and none beats the current model. The next real attempt has to be a different operator — a
+Retinex with an edge-stopping surround and its own two scales — not another coefficient set.
+
+
 **Exports are automatic now:** `foveon-lab calibrate -auto -photo <name> -steps A,B,C,V,W` drives SPP
 itself (~40 s per export, unattended), so every step below that "needs exports" costs only time.
 
