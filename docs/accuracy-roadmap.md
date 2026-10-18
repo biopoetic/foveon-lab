@@ -31,12 +31,20 @@ used for any fit:
 
 | photo | error, all sliders but fill | worst step |
 |---|---|---|
-| SDIM0031 | 0.4–4.0, mean 1.3 | Exposure −1: 4.0 |
-| SDIM0046 | 0.3–1.8, mean 0.85 | ColorAdjustR: 1.8 |
-| SDIM0067 | 0.3–2.4, mean 0.95 | Exposure +1: 2.4 |
+| SDIM0031 (SD1) | 0.4–4.0, mean 1.3 | Exposure −1: 4.0 |
+| SDIM0046 (SD1, held out) | 0.3–1.8, mean 0.85 | ColorAdjustR: 1.8 |
+| SDIM0067 (SD1, held out) | 0.3–2.4, mean 0.95 | Exposure +1: 2.4 |
+| SDIM1021 (SD15, in the fit) | 0.2–3.4, mean 1.5 | Saturation +1: 3.4 |
+| SDIM1151 (SD15, in the fit) | 0.3–4.7, mean 1.5 | Saturation +1: 4.7 |
+| SDIM1200 (SD15, **held out**) | 0.5–4.3, mean 1.5 | ColorAdjustR: 4.3 |
 
-**Tone and colour are at or inside the 3/255 target on unseen photos.** The old "SD1 ~4" figure is
-dominated by Fill Light, whose error here is 3.1–21.5 (see step 3 below).
+**Tone and colour are at or inside the 3/255 target on unseen photos** (typical 1–2; the worst
+single steps are 4.0–4.3). The old "SD1 ~4, SD15 ~6" figures are dominated by Fill Light, whose
+error here is 3.1–21.5 (SD1) and 2.7–12.6 (SD15).
+
+The colour-adjust normalisation is right: dropping the brightness-preserving normalisation (SPP
+might apply R/G/B without it) makes A20 worse on every photo (1.2 → 1.5, 4.3 → 4.7), so it stays.
+The residual ~4 on ColorAdjustR is a model-space difference, not the normalisation.
 
 Fill Light does not improve by refitting or simplifying: refitting the coefficients across the three
 photos drops the fitting-set mean 10.07 → 8.95 but leave-one-out on 0046 scores 21.5 / 32.8 against
