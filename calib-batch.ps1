@@ -18,6 +18,11 @@ $dir = Join-Path ([Environment]::GetFolderPath('Desktop')) 'foveon-calibration'
 if (-not (Test-Path $exe)) { throw "build it first: go build -o foveon-lab.exe ." }
 if (-not (Test-Path $dir)) { throw "calibration folder not found: $dir" }
 
+# Keep a transcript: when an export fails the message must survive the window.
+$log = Join-Path $dir ("calib-batch-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".log")
+Start-Transcript -Path $log | Out-Null
+Write-Host ("Log: " + $log) -ForegroundColor DarkGray
+
 # The three SD1 fill photos still need their neutral reference; the cameras
 # need a full A ladder so each family can be measured against SPP, and then
 # their own Fill Light ladder (the fill model is sensor-specific). The X
@@ -57,3 +62,5 @@ foreach ($j in $jobs) {
 
 Write-Host ("All done in " + [int]((Get-Date) - $start).TotalMinutes + " min.") -ForegroundColor Green
 Write-Host ("Exports: " + $dir + "\exports")
+Write-Host ("Log: " + $log)
+Stop-Transcript | Out-Null
