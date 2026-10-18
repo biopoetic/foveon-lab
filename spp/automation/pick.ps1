@@ -1,4 +1,4 @@
-﻿param([string]$name)
+param([string]$name)
 # Picks preset $name in SPP's settings dropdown: opens it, scrolls the popup
 # grid with the mouse wheel until the row is visible, clicks it.
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
