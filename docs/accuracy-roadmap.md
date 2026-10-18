@@ -90,8 +90,18 @@ mean error over 25 measurements):
 | no local terms (x only) | 21+ at +1 |
 
 So four approaches have been tried against the same exports (refit, no-local, measured table, mask
-shape) and none beats the current model. The next real attempt has to be a different operator — a
-Retinex with an edge-stopping surround and its own two scales — not another coefficient set.
+shape) and none beats the current model.
+
+**Corrected ordering, six photos (SDIM0031/0046/0067/0092/0137/0138).** With more photos the
+fill-research ranking settles, and the three-photo result was small-sample noise: the app's guided
+surround is best (mean 9.34), the gauss at the same scales 9.38, FIR 9.69, a plain global curve
+12.08. A Retinex-style compressive term (d·|d| in addition to d) changes nothing on SD1 (9.36) and
+only ~3% on SD15 (10.04 → 9.74), so it does not justify a model-format change. The remaining fill
+error is the limit of this model class, not of its tuning.
+
+The next real attempt has to be a different operator — a Retinex with an edge-stopping surround and
+its own two scales — or per-family fill data for the older bodies, whose fill is far worse than the
+families the model was fitted on.
 
 
 **Exports are automatic now:** `foveon-lab calibrate -auto -photo <name> -steps A,B,C,V,W` drives SPP

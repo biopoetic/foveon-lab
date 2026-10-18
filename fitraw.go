@@ -348,6 +348,12 @@ func fillResearchCommand(desk string) {
 		{Name: "gauss 1/80 + 1/20", Fracs: render.SurroundFracs[:], Blur: "gauss"},
 		{Name: "FIR: gauss .0019 + .019", Fracs: []float64{0.0019, 0.019}, Blur: "gauss"},
 		{Name: "guided .08 1/80 + 1/20", Fracs: render.SurroundFracs[:], Blur: "guided0.08"},
+		// A compressive response to the surround difference (d·|d| as well as
+		// d) is the Retinex-style non-linearity: edges lift less than flat
+		// shadows of the same brightness.
+		{Name: "app + square", Fracs: render.SurroundFracs[:], Blur: "box", Square: true},
+		{Name: "FIR + square", Fracs: []float64{0.0019, 0.019}, Blur: "gauss", Square: true},
+		{Name: "guided .08 + square", Fracs: render.SurroundFracs[:], Blur: "guided0.08", Square: true},
 	}
 	if os.Getenv("FILL_GAINS") != "" {
 		for _, v := range []float64{0.5, 1} {
