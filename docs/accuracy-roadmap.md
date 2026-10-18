@@ -48,11 +48,42 @@ SPP's neutral for SD15 seems to vary per photo.
 - Effort: research first; maybe a few more A00 exports.
 
 ### 3. X3F Fill Light (gain: ~2–4 on presets that use it, i.e. most of the pack)
-SPP's Fill Light is local and edge-preserving; ours lifts by a blurred surround (8×8 table).
-- Measure at more settings (B14 0.25, B15 2) and on a second photo.
-- Replace the box-blur mask with an edge-aware one (guided filter / bilateral) and fit its radius
-  and edge strength to the exports.
-- Effort: 2–4 exports + an evening of fitting.
+SPP's Fill Light is local and edge-preserving; ours lifts by a guided-filter surround (two scales)
+through a 16-bin two-scale model.
+
+**Measured 18 October 2026, and the refit does not generalise.** Three SD1 photos
+(SDIM0031/0046/0067) were exported with the full fill ladder (B14 0.25, A16 0.5, A17 1, B15 2,
+B16 −1). Current model, held-out brightness error (0–255):
+
+| photo | +0.25 | +0.5 | +1 | +2 | −1 |
+|---|---|---|---|---|---|
+| SDIM0031 | 1.8 | 4.3 | 8.9 | 16.3 | 5.3 |
+| SDIM0046 | 5.4 | 11.5 | **19.8** | **31.5** | 19.1 |
+| SDIM0067 | 1.4 | 3.3 | 6.4 | 11.4 | 4.6 |
+
+Refitting the fill coefficients from all three (merge the per-photo models, splice the fill
+section) lowers the mean from 10.07 to 8.95 — but that is fitting-set: with 0046 left out, it scores
+**21.5 / 32.8** on 0046, worse than the current model (19.8 / 31.5). The improvement was the model
+memorising 0046.
+
+`fill-research` over the same three photos, held out (mean error):
+
+| candidate | mean |
+|---|---|
+| global curve only (no surround) | 10.47 |
+| app: guided-filter surround | 11.13 |
+| FIR: gauss 0.0019 + 0.019 | **10.27** |
+| gauss 1/80 + 1/20 | 11.05 |
+
+So the mask shape is not the lever either: every candidate is within ~8%, and the best is barely
+better than no local term at all. The problem is that the local coefficients are **scene-dependent**
+— the two local terms of the +1 model vary from −0.08 to −0.30 across the three photos while the
+x-term stays at ~0.21. A fixed two-scale model cannot capture that.
+
+Next step is therefore not a mask or a coefficient refit but a **scene-adaptive fill**: fit the two
+scales per image (or blend by its histogram) from the same measured FIR local means SPP uses. Until
+that exists, Fill Light stays at 3–13 on unseen photos, and it is the last large SPP gap: every
+other A slider measured 0.4–4.3 on SDIM0031.
 
 ### 4. More pairs for the SD1 raw mapping (gain: ~7 → ~5)
 Seven A00 pairs today. 15–20 photos (varied light, WB, ISO, medium-res files) would steady the
