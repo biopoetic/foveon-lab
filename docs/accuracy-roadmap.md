@@ -64,9 +64,11 @@ What the numbers say:
 - **Fill Light is far worse than on the families it was fitted on** (SD14 31.9, Quattro 28.7 against
   SD1's 4–21): the fill model is sensor-specific, so those bodies need their own fill data;
 - **SPP ignores Colour modes 6/7 on SD9, SD10 and SD14** — its export is identical to the neutral —
-  while we apply them, which costs 3.2–6.4 of the error on those bodies. The fix is to make the
-  mode a no-op on cameras that have no such mode; SD14 shares the SD15 preset family, so the rule
-  needs the camera model, not the family.
+  while we applied them, which cost 3.2–6.4 of the error on those bodies. **Fixed in v0.4.40**: the
+  renderer asks the camera's own model name (`CAMMODEL`), not the preset family, because the SD14 and
+  the SD15 share a family but only the SD15 has modes; the mode is now a no-op on cameras that lack
+  it. Measured after: 5.2/1.0 → 0.2/0.2 (SD9), 6.4/0.6 → 0.2/0.2 (SD10), 3.6/3.2 → 0.2/0.2 (SD14);
+  SD1, SD15 and Quattro unchanged.
 
 Next for this row: per-family fill data (A16/A17/B14/B15/B16 on three bodies each) and the
 colour-mode rule.
