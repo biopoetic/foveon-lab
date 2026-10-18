@@ -409,6 +409,10 @@ type Compensation struct {
 	// Family picks the measured model for this camera ("SD1", "SD15"; ""
 	// = the default one).
 	Family string
+	// Model is the camera's short model name ("SD14", "SD9"): when a model
+	// was measured on that body it wins over the family's (the SD14 and the
+	// SD15 share a family but not their fill).
+	Model string
 	// Undo is the inverse of the camera's colour-mode matrix (from its
 	// CAMF calibration), applied to each pixel first; nil = none.
 	// UndoGamma applies it to gamma-encoded values instead of linear.
@@ -679,7 +683,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 		}
 	}
 	// A colour film is the look: SPP's measured rendering doesn't apply.
-	if md := modelFor(c.Family); md != nil && op.cfilm == nil {
+	if md := modelFor(c.Family, c.Model); md != nil && op.cfilm == nil {
 		op.measured = true
 		if !c.WBDeveloped {
 			op.wb = md.wbFor(p.WhiteBalance)

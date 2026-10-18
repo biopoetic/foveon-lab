@@ -73,6 +73,20 @@ What the numbers say:
 Next for this row: per-family fill data (A16/A17/B14/B15/B16 on three bodies each) and the
 colour-mode rule.
 
+**Per-camera models (v0.4.41).** With the fill ladder exported for each body, `render/model_SD9.json`,
+`model_SD10.json` and `model_SD14.json` were fitted (tone + fill; WB and colour modes kept from the
+default model) and the renderer now prefers a model measured on the camera itself over its preset
+family's — the SD14 needed this because it shares the SD15 family but not its fill. Measured on the
+same exports (fitting set — one body per family, so optimistic):
+
+| body | every step but fill | Fill Light +0.5 / +1 | before |
+|---|---|---|---|
+| SD9 | 0.4–2.1 | 0.7 / 1.6 | 8.1 / 14.1 |
+| SD10 | 0.3–2.8 | 1.7 / 2.9 | 5.4 / 10.7 |
+| SD14 | 0.2–2.0 | 2.1 / 4.3 | 16.9 / 31.9 |
+
+A second body per family is the validation still to run; dp2 Quattro is unchanged on the shared model.
+
 
 Fill Light does not improve by refitting or simplifying: refitting the coefficients across the three
 photos drops the fitting-set mean 10.07 → 8.95 but leave-one-out on 0046 scores 21.5 / 32.8 against

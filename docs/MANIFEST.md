@@ -35,7 +35,7 @@ photos the fit didn't see; under ~3 is invisible.
 |---|---|---|
 | Raw decoding | Every X3F generation, native, bit-identical to reference | ~90% — native Go, value-identical to x3f_extract on 60+ files |
 | Colour & tone vs SPP | ≤ 3/255 held out, every family | SD1 ~4, DP Merrill ~4, SD15 ~6 including Fill Light; without it, every slider measures 0.3–4.7 on six SD1/SD15 photos (mean ~1.5; one SD15 held out at 0.5–4.3) |
-| Older cameras | SD9 / SD10 / SD14 / Quattro measured against SPP | **Measured** (one body per family, full A ladder): SD9 1.0–7.9, SD10 0.3–4.4, SD14 0.2–6.7, dp2-Quattro 0.6–6.4 (mean 2–3); Fill Light is the outlier (8–32). Colour modes are a no-op on SD9/SD10/SD14, as SPP ignores them (v0.4.40: those steps 6.4→0.2) |
+| Older cameras | SD9 / SD10 / SD14 / Quattro measured against SPP | **Measured**, and SD9/SD10/SD14 have their own measured models since v0.4.41: every step 0.4–2.8, Fill Light 0.7–4.3 (was 5–32 on the shared model). Fitted on one body per family — a second body is the validation still to run. dp2 Quattro stays on the shared model (0.6–6.4). |
 | Sharpening & detail | Matches SPP's default per ISO and generation | Done for SD1 Merrill and SD15 |
 | Noise reduction | Beats SPP side by side at ISO 1600+ | SPP still wins |
 | Full-spectrum IR | Calibrated per generation | Merrill only |

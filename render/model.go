@@ -104,8 +104,15 @@ func init() {
 	model = models[""]
 }
 
-// modelFor is the measured model for a camera family.
-func modelFor(family string) *Model {
+// modelFor is the measured model for a camera: the camera's own model when
+// there is one ("SD14", measured on that body), else its preset family
+// ("SD1", "SD15"), else the default.
+func modelFor(family, camera string) *Model {
+	if camera != "" {
+		if m := models[camera]; m != nil {
+			return m
+		}
+	}
 	if m := models[family]; m != nil {
 		return m
 	}

@@ -271,8 +271,13 @@ var FamilyOf func(name string) string
 // (SD9, SD10, SD14), which SPP ignores; nil = every camera has them.
 var NoModesOf func(name string) bool
 
-func emuError(ref, out *render.Linear, s Step, family string, noModes bool) float64 {
-	em := render.Render(render.NewBase(ref), s.Params, render.Compensation{SatFactor: 1, Family: family, NoModes: noModes})
+// ModelOf maps a photo name to the camera's short model name ("SD14"), so a
+// model measured on that body is used instead of its preset family's; nil = ""
+// (the family's model).
+var ModelOf func(name string) string
+
+func emuError(ref, out *render.Linear, s Step, family string, noModes bool, camera string) float64 {
+	em := render.Render(render.NewBase(ref), s.Params, render.Compensation{SatFactor: 1, Family: family, NoModes: noModes, Model: camera})
 	var e float64
 	for i := 0; i < ref.W*ref.H; i++ {
 		for c := 0; c < 3; c++ {
@@ -374,7 +379,11 @@ func Analyze(dir string, progress io.Writer) (*Result, error) {
 				fam = FamilyOf(name)
 			}
 			noModes := NoModesOf != nil && NoModesOf(name)
-			m.EmuError = emuError(ref, out, s, fam, noModes)
+			var camera string
+			if ModelOf != nil {
+				camera = ModelOf(name)
+			}
+			m.EmuError = emuError(ref, out, s, fam, noModes, camera)
 			res.Measurements = append(res.Measurements, m)
 		}
 	}

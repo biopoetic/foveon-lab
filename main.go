@@ -540,14 +540,16 @@ func (s *server) compensation(ph *Photo, on bool) render.Compensation {
 	// A raw decode carries no in-camera styling, so there is nothing to undo.
 	fam := x3f.PresetFamily(ph.Camera)
 	modes := !x3f.HasColourModes(modelOf(ph))
+	camera := x3f.ShortModel(modelOf(ph))
 	if !on || ph.props == nil || (ph.RawDecoded && !ph.rawFailed.Load()) || s.useRaw(ph) || ph.jpegBroken.Load() {
-		return render.Compensation{SatFactor: 1, Family: fam, CC: layerCC(ph), Sensor: render.SensorGeneration(calibGroup(ph)), NoModes: modes}
+		return render.Compensation{SatFactor: 1, Family: fam, CC: layerCC(ph), Sensor: render.SensorGeneration(calibGroup(ph)), NoModes: modes, Model: camera}
 	}
 	c := render.CompensationWith(ph.props, fam, photoCC(ph))
 	c.Family = fam
 	c.CC = layerCC(ph)
 	c.Sensor = render.SensorGeneration(calibGroup(ph))
 	c.NoModes = modes
+	c.Model = camera
 	return c
 }
 
@@ -1329,15 +1331,18 @@ func calibCommand(desk string) bool {
 	fmt.Printf("Analyzing %s …\n", exportDir)
 	fams := map[string]string{}
 	modes := map[string]bool{}
+	camModels := map[string]string{}
 	for _, p := range scanPhotos(strings.Split(*photos, ";"), false) {
 		if p.Kind == "x3f" {
 			key := strings.ToUpper(strings.TrimSuffix(p.Name, filepath.Ext(p.Name)))
 			fams[key] = x3f.PresetFamily(p.Camera)
 			modes[key] = x3f.HasColourModes(modelOf(p))
+			camModels[key] = x3f.ShortModel(modelOf(p))
 		}
 	}
 	calib.FamilyOf = func(n string) string { return fams[strings.ToUpper(n)] }
 	calib.NoModesOf = func(n string) bool { has, ok := modes[strings.ToUpper(n)]; return ok && !has }
+	calib.ModelOf = func(n string) string { return camModels[strings.ToUpper(n)] }
 	res, err := calib.Analyze(exportDir, os.Stdout)
 	if err != nil {
 		log.Fatal(err)
