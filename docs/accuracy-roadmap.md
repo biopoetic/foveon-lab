@@ -46,6 +46,32 @@ The colour-adjust normalisation is right: dropping the brightness-preserving nor
 might apply R/G/B without it) makes A20 worse on every photo (1.2 → 1.5, 4.3 → 4.7), so it stays.
 The residual ~4 on ColorAdjustR is a model-space difference, not the normalisation.
 
+### Older cameras measured (18 October 2026)
+
+One body per family, full A ladder exported from SPP (the files in `testdata`), measured with the
+current emulation — they fall back to the SD1 or SD15 model, there are no per-family models yet:
+
+| body | all steps but fill | Fill Light +0.5 / +1 |
+|---|---|---|
+| SD9 | 1.0–7.9, mean 3.4 | 8.1 / 14.1 |
+| SD10 | 0.3–6.4, mean 2.2 | 5.4 / 10.7 |
+| SD14 | 0.2–6.7, mean 2.0 | **16.9 / 31.9** |
+| dp2 Quattro | 0.6–6.4, mean 2.2 | **15.2 / 28.7** |
+
+What the numbers say:
+
+- the SD1/SD15 fallback works reasonably on all four bodies (mean 2–3), so they are usable today;
+- **Fill Light is far worse than on the families it was fitted on** (SD14 31.9, Quattro 28.7 against
+  SD1's 4–21): the fill model is sensor-specific, so those bodies need their own fill data;
+- **SPP ignores Colour modes 6/7 on SD9, SD10 and SD14** — its export is identical to the neutral —
+  while we apply them, which costs 3.2–6.4 of the error on those bodies. The fix is to make the
+  mode a no-op on cameras that have no such mode; SD14 shares the SD15 preset family, so the rule
+  needs the camera model, not the family.
+
+Next for this row: per-family fill data (A16/A17/B14/B15/B16 on three bodies each) and the
+colour-mode rule.
+
+
 Fill Light does not improve by refitting or simplifying: refitting the coefficients across the three
 photos drops the fitting-set mean 10.07 → 8.95 but leave-one-out on 0046 scores 21.5 / 32.8 against
 19.8 / 31.5 (no generalisation), and zeroing the two local terms makes it much worse (A17 8.3 → 21.2,
