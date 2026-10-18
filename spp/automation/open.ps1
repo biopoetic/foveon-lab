@@ -1,6 +1,6 @@
 param([string]$path)
 # Opens $path in Sigma Photo Pro: if SPP runs, asks every window of it to
-# close (like clicking X — never a forced kill), waits, then starts SPP with
+# close (like clicking X â€” never a forced kill), waits, then starts SPP with
 # the file and waits for its review window.
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @"
@@ -29,7 +29,7 @@ $name = Split-Path -Leaf $path
 for ($attempt = 1; $attempt -le 2; $attempt++) {
   if (-not (closeSPP)) { "ERROR SPP did not close (a dialog may be asking something)"; exit 1 }
   Start-Sleep 4
-  Start-Process -FilePath $exe -ArgumentList ('"' + $path + '"')
+  Start-Process -FilePath $exe -ArgumentList ('"' + $path + '"') -WorkingDirectory (Split-Path -Parent $exe)
   for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep 1
     $p = Get-Process SIGMA_PhotoPro6 -ErrorAction SilentlyContinue | Select -First 1
