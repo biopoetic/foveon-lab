@@ -4,7 +4,8 @@ For Sigma Foveon **X3F** files of every generation: **match Sigma Photo Pro (SPP
 it**, and a **complete film simulator** — films, developers and papers from the makers' own data,
 on the sensor that comes closest to film. General editing is left to other tools through the DNG
 export. Everything is measured against SPP and from first principles; the mission, principles and
-goals (with where we are) are in the [manifest](docs/MANIFEST.md).
+goals (with where we are) are in the [manifest](docs/MANIFEST.md). What we have learned about how SPP
+renders an X3F — for anyone building X3F tools — is in [How SPP works](docs/HOW_SPP_WORKS.md).
 
 ![Foveon Lab: one SD1 Merrill photo rendered through ten SPP presets side by side](docs/screenshot.jpg)
 
