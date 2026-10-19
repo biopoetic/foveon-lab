@@ -58,9 +58,17 @@ name. Developing the raw with that CAMF balance reproduces SPP's export of each 
 
 Evidence: **observed on two SD1 photos**, no fitting involved (the camera's own numbers).
 
-What does *not* work: a fixed per-camera colour mapping fitted for each code. It reproduces the
-photo it was fitted on and fails on others (20–50 held out). A per-family correction refitted on one
-photo per body (v0.4.42) is **in-sample**; the one held-out SD1 photo got worse with it (7.9 → 9.8).
+**Held out (19 October 2026).** On four photos no fit had seen (SD1 SDIM0064, SDIM0048; SD15
+SDIM1008, SDIM1101), the WB step isolated on SPP's own neutral export (Sunlight and Fluorescent):
+
+| | camera's own balance | per-family correction refitted in v0.4.42 |
+|---|---|---|
+| 4 unseen photos | **1.3 – 4.7** | 7.1 – 18.2 |
+| the 2 photos it was fitted on | 2.4 – 6.0 | **1.2 – 3.0** |
+
+So the camera's balance is the rule, and a fitted correction is memorisation: it wins only on the
+photos it was fitted to. An earlier fixed per-code colour mapping failed the same way (20–50 held
+out).
 
 ## 3. Colour modes are matrices in the camera
 
@@ -78,7 +86,9 @@ Applying those reproduces the modes (observed).
 ## 4. Sliders
 
 - **Tone and colour sliders** (exposure, contrast, highlight, shadow, saturation): emulated to
-  0.3–2.4 on held-out SD1 photos and 0.5–4.3 on a held-out SD15 photo — **held out**. They differ by
+  0.3–2.4 on held-out SD1 photos and 0.5–4.3 on a held-out SD15 photo — **held out**, and confirmed
+  on five more unseen photos on 19 October (mean 0.6–1.45 per photo, worst single step 1.4–4.1,
+  including a dp0 Quattro on the dp2 Quattro's model). They differ by
   camera family: the SD1 model is off by up to 8 on an SD15, so each family needs its own model.
 - **Colour adjust R/G/B** is brightness-preserving (luminance kept): removing that normalisation
   makes every photo worse (held out). Whether SPP applies it before or after its colour matrix is not
@@ -107,13 +117,25 @@ The hardest slider. Fill Light lifts shadows by a local, edge-preserving operato
 - **Synthetic charts are a poor training set:** SPP is strongly non-linear on flat patches in the
   shadows, so charts drawn inside the gamut made the held-out starting image worse (6.87 → 7.58 dE).
 
-## 7. Colour space tag — reported, being tested
+## 7. Colour space: SPP reads the preview's EXIF, not the X3F property
 
 H Dot (dpreview, October 2026) reports that SPP takes a different gain branch when the camera's
 colour space is set to AdobeRGB, and that without it blues turn magenta. SPP 6.0.5's release note
-mentions fixing AdobeRGB processing for SD1/Merrill files. All 183 of our SD1 test files are sRGB,
-so we have not measured it yet. The test: the same raw with only `COLORSPACE` changed
-(`go run ./tools/setprop in.X3F out.X3F COLORSPACE AdobeRGB`), both exported from SPP.
+mentions fixing AdobeRGB processing for SD1/Merrill files. Tested on one SD1 photo (SDIM0031), same
+raw data, only the colour space marks changed:
+
+- **X3F property `COLORSPACE` = AdobeRGB alone: no effect** — SPP's export is byte-identical
+  (`tools/setprop`).
+- **Also marking the embedded preview's EXIF as AdobeRGB** (ColorSpace 0xFFFF, interop index
+  "R03", exactly as a camera set to AdobeRGB writes them — checked on an SD14 file; `tools/exifcs`):
+  **the rendering changes** — the red channel drops by 15–28 in greens, cyans and blues and rises
+  by ~7 in reds, green untouched (output still tagged sRGB). Lower red in blues and cyans is H Dot's
+  "more teal, less magenta".
+
+Evidence: **observed, one photo, with a confound**: SPP saved that one export as a JPEG instead of a
+TIFF, so a JPEG export of the unmarked original is still needed as a control. A red-only shift of
+this size is not something JPEG compression produces, but until the control is in, treat it as
+preliminary. Foveon Lab does not model this branch yet.
 
 ## 8. Open questions
 
@@ -121,7 +143,7 @@ so we have not measured it yet. The test: the same raw with only `COLORSPACE` ch
 - The colour adjust's stage relative to SPP's colour matrix.
 - A scene-adaptive Fill Light.
 - The fine WB grid offsets some presets rely on (SPP keeps them outside the XML).
-- The AdobeRGB branch (section 7).
+- The AdobeRGB branch (section 7): the JPEG control, then a model of the red shift.
 
 The full measurement record, with every table, is in [accuracy-roadmap.md](accuracy-roadmap.md).
 Corrections and new measurements are welcome — open an issue with the exports.

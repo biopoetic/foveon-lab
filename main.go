@@ -1337,7 +1337,9 @@ func calibCommand(desk string) bool {
 	camModels := map[string]string{}
 	for _, p := range scanPhotos(strings.Split(*photos, ";"), false) {
 		if p.Kind == "x3f" {
-			key := strings.ToUpper(strings.TrimSuffix(p.Name, filepath.Ext(p.Name)))
+			// The analyser names a photo by its export stem without leading
+			// underscores (_SDI0263_A01.tif -> SDI0263), so key it the same way.
+			key := strings.TrimLeft(strings.ToUpper(strings.TrimSuffix(p.Name, filepath.Ext(p.Name))), "_")
 			fams[key] = x3f.PresetFamily(p.Camera)
 			modes[key] = x3f.HasColourModes(modelOf(p))
 			cam := x3f.ShortModel(modelOf(p))
@@ -1347,9 +1349,9 @@ func calibCommand(desk string) bool {
 			camModels[key] = cam
 		}
 	}
-	calib.FamilyOf = func(n string) string { return fams[strings.ToUpper(n)] }
-	calib.NoModesOf = func(n string) bool { has, ok := modes[strings.ToUpper(n)]; return ok && !has }
-	calib.ModelOf = func(n string) string { return camModels[strings.ToUpper(n)] }
+	calib.FamilyOf = func(n string) string { return fams[strings.TrimLeft(strings.ToUpper(n), "_")] }
+	calib.NoModesOf = func(n string) bool { has, ok := modes[strings.TrimLeft(strings.ToUpper(n), "_")]; return ok && !has }
+	calib.ModelOf = func(n string) string { return camModels[strings.TrimLeft(strings.ToUpper(n), "_")] }
 	res, err := calib.Analyze(exportDir, os.Stdout)
 	if err != nil {
 		log.Fatal(err)
