@@ -154,7 +154,17 @@ func GPUColorFilmData(key string) ([]byte, bool) {
 	for buf.Len()%4 != 0 {
 		buf.WriteByte(' ')
 	}
-	binary.Write(&buf, binary.LittleEndian, f.lut)
+	// The table holds -log10 of the output; a slide's viewing gain
+	// (fromExposure) is folded in, so the preview matches the export.
+	lut := f.lut
+	if g := f.viewGain(); g != 1 {
+		lg := float32(math.Log10(g))
+		lut = make([]float32, len(f.lut))
+		for i, v := range f.lut {
+			lut[i] = v - lg
+		}
+	}
+	binary.Write(&buf, binary.LittleEndian, lut)
 	cv := make([]float32, 3*gpuCFCurveN)
 	for k := 0; k < 3; k++ {
 		for i := 0; i < gpuCFCurveN; i++ {
