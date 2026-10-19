@@ -155,10 +155,19 @@ Adobe RGB or ColorMatch export lies outside sRGB** — including the 0.29% of pi
 pins at its gamut edge, where a wider rendering would show more colour. So choosing a wide space in
 SPP does not keep Foveon colours that sRGB cannot hold; it re-encodes an sRGB-limited rendering.
 
-Confirmed on two strongly saturated photos (19 October 2026): SDIM0367, where **94%** of the sRGB
-export's pixels are pinned at the gamut edge, and SDIM0260. Their ProPhoto exports still hold **no**
-colour outside sRGB (0.00%) and match the sRGB export to 0.0001 in XYZ. Evidence: **observed on
-three photos, conclusive** — SPP clips to sRGB, then re-encodes into the space you choose.
+Confirmed on two extreme photos (19 October 2026): SDIM0367 and SDIM0260, **infrared frames**
+from a full-spectrum camera (red and yellow false colour), where 94% of the sRGB export's pixels are
+pinned at the gamut edge. Their ProPhoto exports still hold **no** colour outside sRGB (0.00%) and
+match the sRGB export to 0.0001 in XYZ. Evidence: **observed on three photos, conclusive** — SPP
+clips to sRGB, then re-encodes into the space you choose.
+
+**How much that clip costs on ordinary photos — little.** Measured on our own raw development with
+SPP's colour transform applied, before its clamp (20 October 2026): the share of pixels outside
+sRGB is 0.0% (SDIM0031), 0.0% (SDIM0098, saturated green leaves), 0.2% (SDIM0446, deep blue sky and
+red roof) and 1.0% (SDIM0450, a red flower; 0.6% clearly outside). With SPP's look, ordinary Foveon
+photos sit almost entirely inside sRGB; only infrared frames go far outside (96%). A wider export
+that keeps SPP's look would therefore change very little, so Foveon Lab does not offer one. Wide
+gamut data is what the raw DNG export is for.
 
 ## 9. Open questions
 
