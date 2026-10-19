@@ -35,6 +35,17 @@
       ]
     },
     {
+      "id": "bw091",
+      "physical": "Dark red · RG630",
+      "kind": "colour",
+      "evidence": "measured",
+      "glass": "RG630",
+      "src": "B+W 630/091 (Red dark 630) — Schott RG630 glass; measured curve (schottglass.json)",
+      "products": [
+        "B+W 091"
+      ]
+    },
+    {
       "id": "hoya-y2",
       "physical": "Yellow · Wratten 8",
       "kind": "colour",
@@ -127,17 +138,6 @@
       "src": "Tiffen 58 Green — Tiffen's number is the Wratten number; rendered on the Wratten 58 curve",
       "products": [
         "Tiffen 58"
-      ]
-    },
-    {
-      "id": "bw091",
-      "physical": "Infrared · RG610",
-      "kind": "ir",
-      "evidence": "measured",
-      "glass": "RG610",
-      "src": "B+W 610/091 — Schott RG610 glass; measured curve (schottglass.json)",
-      "products": [
-        "B+W 091"
       ]
     },
     {
