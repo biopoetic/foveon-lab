@@ -117,7 +117,7 @@ The hardest slider. Fill Light lifts shadows by a local, edge-preserving operato
 - **Synthetic charts are a poor training set:** SPP is strongly non-linear on flat patches in the
   shadows, so charts drawn inside the gamut made the held-out starting image worse (6.87 → 7.58 dE).
 
-## 7. Colour space: SPP reads the preview's EXIF, not the X3F property
+## 7. Colour space: SPP reads the preview's EXIF, not the X3F property — held out
 
 H Dot (dpreview, October 2026) reports that SPP takes a different gain branch when the camera's
 colour space is set to AdobeRGB, and that without it blues turn magenta. SPP 6.0.5's release note
@@ -132,10 +132,19 @@ raw data, only the colour space marks changed:
   by ~7 in reds, green untouched (output still tagged sRGB). Lower red in blues and cyans is H Dot's
   "more teal, less magenta".
 
-Evidence: **observed, one photo, with a confound**: SPP saved that one export as a JPEG instead of a
-TIFF, so a JPEG export of the unmarked original is still needed as a control. A red-only shift of
-this size is not something JPEG compression produces, but until the control is in, treat it as
-preliminary. Foveon Lab does not model this branch yet.
+**Confirmed with controls (19 October 2026).** Exported both ways in both formats: the shift is the
+same as TIFF and as JPEG, and the format alone makes 0.67 with no bias. One linear-sRGB matrix (rows
+sum to 1, so neutrals are unchanged) takes the unmarked export to the marked one:
+
+```
+R' = 1.398 R - 0.398 G
+G' = G
+B' = 1.043 B - 0.043 G
+```
+
+4.46 -> 0.28 on SDIM0031 where it was fitted, **2.78 -> 0.24 on SDIM0064, held out**. Foveon Lab
+applies it to Merrill-generation files (SD1, DP Merrill) whose preview EXIF is marked AdobeRGB
+(`render/adobergb.go`). Older bodies are untested: SPP 6.0.5's note names the SD1 and Merrill series.
 
 ## 8. Open questions
 
@@ -143,7 +152,7 @@ preliminary. Foveon Lab does not model this branch yet.
 - The colour adjust's stage relative to SPP's colour matrix.
 - A scene-adaptive Fill Light.
 - The fine WB grid offsets some presets rely on (SPP keeps them outside the XML).
-- The AdobeRGB branch (section 7): the JPEG control, then a model of the red shift.
+- Whether the AdobeRGB branch (section 7) also exists for the SD14/SD15 and the Quattro.
 
 The full measurement record, with every table, is in [accuracy-roadmap.md](accuracy-roadmap.md).
 Corrections and new measurements are welcome — open an issue with the exports.
