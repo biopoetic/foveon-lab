@@ -11,7 +11,11 @@ import (
 // WriteTIFF16 writes img as a baseline 16-bit-per-channel RGB TIFF (no alpha
 // channel), Deflate-compressed in strips — the format Photoshop, Lightroom,
 // Affinity and GIMP open as plain 16-bit RGB.
-func WriteTIFF16(w io.Writer, img *image.RGBA64) error {
+func WriteTIFF16(w io.Writer, img *image.RGBA64) error { return WriteTIFF16ICC(w, img, nil) }
+
+// WriteTIFF16ICC is WriteTIFF16 with an embedded ICC profile (TIFF tag
+// 34675); nil = none.
+func WriteTIFF16ICC(w io.Writer, img *image.RGBA64, icc []byte) error {
 	const rowsPerStrip = 32
 	width, height := img.Rect.Dx(), img.Rect.Dy()
 	le := binary.LittleEndian
@@ -81,6 +85,9 @@ func WriteTIFF16(w io.Writer, img *image.RGBA64) error {
 		{279, tLong, n, nil}, // StripByteCounts, filled below
 		{284, tShort, 1, u16(1)},
 		{305, tASCII, uint32(len(software)), software},
+	}
+	if len(icc) > 0 {
+		entries = append(entries, entry{34675, 7, uint32(len(icc)), icc}) // ICC profile (UNDEFINED)
 	}
 
 	// Layout: header(8) | IFD | out-of-line values | strips.

@@ -266,6 +266,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div class="grp" data-g="detail"><div class="gh"><span class="chev">▾</span><span class="gt">Detail &amp; noise</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
           <div class="gb" id="g-detail">
           <div class="row" id="nrRow"><label class="chk" id="nrLab" title="Foveon noise reduction for previews and exports made from the raw data (Accurate mode, high-ISO files, raw DNG). Low is the default (it calms colour noise and keeps the grain and fine detail); Full smooths more.">Noise reduction <select id="nr"><option value="10">Full</option><option value="6">Medium</option><option value="3" selected>Low</option><option value="0">Off</option></select></label></div>
+          <div class="row" id="csRow"><label class="chk" title="The colour space of JPEG and TIFF exports, as Sigma Photo Pro offers them. Like SPP, the image is rendered in sRGB and re-encoded into the space you pick, with its colour profile embedded — a wider space here does not add colours (checked against SPP's own exports). DNG keeps its own colour data.">Colour space <select id="cspace"><option value="srgb" selected>sRGB</option><option value="apple">Apple RGB</option><option value="adobe">Adobe RGB (1998)</option><option value="colormatch">ColorMatch RGB</option><option value="prophoto">ProPhoto RGB</option></select></label></div>
           </div>
         </div>
         <div class="grp" data-g="layer"><div class="gh"><span class="chev">▾</span><span class="gt">Layer filter</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
@@ -1793,7 +1794,7 @@ async function batchStart(){
   const p = current();
   const scope = document.querySelector('input[name=bScope]:checked').value;
   const ids = S.photos.filter(x => !x.unsupported && (scope === "all" || x.folder === S.photo.folder)).map(x => x.id);
-  const body = {ids, format: $("#bFormat").value, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2, denoise: +$("#nr").value};
+  const body = {ids, format: $("#bFormat").value, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2, denoise: +$("#nr").value, space: $("#cspace").value};
   $("#bStart").disabled = true;
   BATCH.ctl = new AbortController();
   let res;
@@ -1945,7 +1946,7 @@ async function exportImage(format){
   const p = current();
   toast(format === "rawdng" ? "Converting the raw data to DNG (can take up to ~30 s on Merrill/Quattro files)…"
                          : `Exporting full-resolution ${format === "tiff" ? "16-bit TIFF" : format === "dng" ? "16-bit DNG" : "JPEG"}…`, 60000);
-  const body = {format, id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2, denoise: +$("#nr").value};
+  const body = {format, id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2, denoise: +$("#nr").value, space: $("#cspace").value};
   const res = await fetch("/api/export", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
   if (!res.ok){ toast("Export failed: " + esc(await res.text())); return; }
   const {path, lut} = await res.json();

@@ -827,9 +827,16 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		// Denoise: x3f_extract's noise reduction for raw-based exports, 0-10
 		// (nil = 10, its default and what the SPP calibration used).
 		Denoise *int `json:"denoise"`
+		// Space: the export colour space (render.ColourSpaces; "" = sRGB),
+		// for JPEG and TIFF.
+		Space string `json:"space"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpErr(w, 400, err)
+		return
+	}
+	if _, ok := render.ColourSpaceByID(req.Space); !ok {
+		httpErr(w, 400, errors.New("unknown colour space "+req.Space))
 		return
 	}
 	ph := s.lookup(req.ID)
@@ -856,7 +863,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		s.exportDNG(w, ph, dir, stem, p, label, req.Denoise)
 		return
 	}
-	path, err := s.exportImage(ph, p, label, req.Comp, req.Format, req.Denoise)
+	path, err := s.exportImage(ph, p, label, req.Comp, req.Format, req.Denoise, req.Space)
 	if err != nil {
 		httpErr(w, 500, err)
 		return
@@ -877,7 +884,14 @@ func rawExportColor(dn *int) string {
 	return "sRGB-dn" + strconv.Itoa(*dn)
 }
 
-func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool, format string, denoise *int) (string, error) {
+func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool, format string, denoise *int, space string) (string, error) {
+	cs, ok := render.ColourSpaceByID(space)
+	if !ok {
+		return "", errors.New("unknown colour space " + space)
+	}
+	if cs.ID != "srgb" && format != "dng" {
+		label += "_" + cs.ID // e.g. _prophoto: the file says what it is
+	}
 	dir := filepath.Join(filepath.Dir(ph.path), "foveon-lab")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
@@ -939,7 +953,9 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	}
 	switch format {
 	case "tiff":
-		err = render.WriteTIFF16(f, render.Render16(base, p, c))
+		img := render.Render16(base, p, c)
+		render.ConvertFromSRGB(img, cs)
+		err = render.WriteTIFF16ICC(f, img, cs.ICC())
 	case "dng":
 		make_, model := "SIGMA", ph.Camera
 		if ph.props != nil {
@@ -947,7 +963,21 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 		}
 		err = render.WriteRenderedDNG(f, render.Render16(base, p, c), make_, model, "Foveon Lab "+version)
 	default:
-		err = jpeg.Encode(f, render.Render(base, p, c), &jpeg.Options{Quality: 95})
+		// sRGB straight from the 8-bit render; another space from the
+		// 16-bit one, converted before rounding. Either way the profile is
+		// embedded, so every viewer reads the colours right.
+		var img image.Image
+		if cs.ID == "srgb" {
+			img = render.Render(base, p, c)
+		} else {
+			img16 := render.Render16(base, p, c)
+			render.ConvertFromSRGB(img16, cs)
+			img = render.To8(img16)
+		}
+		var buf bytes.Buffer
+		if err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}); err == nil {
+			_, err = f.Write(render.JPEGWithICC(buf.Bytes(), cs.ICC()))
+		}
 	}
 	if cerr := f.Close(); err == nil {
 		err = cerr

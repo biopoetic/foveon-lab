@@ -32,6 +32,7 @@ func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 		Comp    bool            `json:"comp"`
 		Format  string          `json:"format"`  // "jpeg", "tiff" or "dng" (rendered)
 		Denoise *int            `json:"denoise"` // raw-based exports: 0-10, nil = 10
+		Space   string          `json:"space"`   // export colour space, "" = sRGB
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpErr(w, 400, err)
@@ -39,6 +40,10 @@ func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Format != "jpeg" && req.Format != "tiff" && req.Format != "dng" {
 		httpErr(w, 400, errors.New("batch export makes JPEG, TIFF or DNG"))
+		return
+	}
+	if _, ok := render.ColourSpaceByID(req.Space); !ok {
+		httpErr(w, 400, errors.New("unknown colour space "+req.Space))
 		return
 	}
 	pj := ""
@@ -74,7 +79,7 @@ func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 			line["name"], line["error"] = ph.Name, ph.Unsupported
 		default:
 			line["name"] = ph.Name
-			if path, err := s.exportImage(ph, p, label, req.Comp, req.Format, req.Denoise); err != nil {
+			if path, err := s.exportImage(ph, p, label, req.Comp, req.Format, req.Denoise, req.Space); err != nil {
 				line["error"] = err.Error()
 			} else {
 				line["path"] = path

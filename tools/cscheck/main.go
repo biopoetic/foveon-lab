@@ -187,7 +187,55 @@ func (ph photo) xyz(x, y int) [3]float64 {
 	return mul(ph.p.m, v)
 }
 
+// convertCheck: our conversion of SPP's sRGB export into a space, against
+// SPP's own export in that space (16-bit code values).
+func convertCheck(space, srgbPath, sppPath string) {
+	cs, ok := render.ColourSpaceByID(space)
+	if !ok {
+		log.Fatalf("unknown space %s", space)
+	}
+	read := func(p string) *image.RGBA64 {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			log.Fatal(err)
+		}
+		img, _, err := render.DecodeImage(b)
+		if err != nil {
+			log.Fatal(err)
+		}
+		out := image.NewRGBA64(img.Bounds())
+		for y := img.Bounds().Min.Y; y < img.Bounds().Max.Y; y++ {
+			for x := img.Bounds().Min.X; x < img.Bounds().Max.X; x++ {
+				out.Set(x, y, img.At(x, y))
+			}
+		}
+		return out
+	}
+	ours, spp := read(srgbPath), read(sppPath)
+	render.ConvertFromSRGB(ours, cs)
+	var sum, n float64
+	var worst int
+	for i := 0; i+7 < len(ours.Pix); i += 8 {
+		for k := 0; k < 3; k++ {
+			a := int(ours.Pix[i+2*k])<<8 | int(ours.Pix[i+2*k+1])
+			b := int(spp.Pix[i+2*k])<<8 | int(spp.Pix[i+2*k+1])
+			d := a - b
+			if d < 0 {
+				d = -d
+			}
+			sum += float64(d)
+			n++
+			worst = max(worst, d)
+		}
+	}
+	fmt.Printf("%-10s ours vs SPP: mean |diff| %.2f / 65535 (%.4f on 0-255), max %d / 65535\n", space, sum/n, sum/n*255/65535, worst)
+}
+
 func main() {
+	if len(os.Args) == 5 && os.Args[1] == "-convert" {
+		convertCheck(os.Args[2], os.Args[3], os.Args[4])
+		return
+	}
 	if len(os.Args) < 3 {
 		log.Fatal("usage: cscheck <reference sRGB.tif> <other.tif>...")
 	}
