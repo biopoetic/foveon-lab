@@ -144,6 +144,23 @@ surround is best (mean 9.34), the gauss at the same scales 9.38, FIR 9.69, a pla
 only ~3% on SD15 (10.04 → 9.74), so it does not justify a model-format change. The remaining fill
 error is the limit of this model class, not of its tuning.
 
+**Refit on all photos (20 October 2026), shipped for Fill +0.5 and +1.** A black-box study
+(`tools/fillstudy`) found the earlier "floor" was partly an artefact of step-wise bins; with the
+model's own smooth interpolation a per-photo fit reaches ~3 at +1, so the model class is right and
+the shared coefficients were the weak part — fitted on 2–3 photos. Pooled over all photos and
+scored leave-one-out, in the same metric as the shipped coefficients (which had seen most of them):
+
+| | SD1 +0.5 | SD1 +1 | SD15 +0.5 | SD15 +1 |
+|---|---|---|---|---|
+| shipped | 5.62 | 10.37 | 3.88 | 7.43 |
+| refit, held out | **5.01** | **9.18** | **3.07** | **5.86** |
+
+The Go analyser on the app's real code agrees (in-sample now): +0.5 5.95 → 4.47 (SD1), 5.28 → 4.00
+(SD15); +1 11.04 → 8.44, 9.64 → 7.44; SDIM0046 +1 19.8 → 9.3, SDIM0048 16.8 → 8.2; two photos a
+little worse (SDIM0092 11.1 → 12.5, SDIM0031 8.9 → 9.4). The +0.25/+2/−1 steps were **not**
+changed: they have no unseen photos, and there the shipped (in-sample) coefficients beat a held-out
+refit, so a gain cannot be shown. A Gaussian surround did no better than the guided one.
+
 The next real attempt has to be a different operator — a Retinex with an edge-stopping surround and
 its own two scales — or per-family fill data for the older bodies, whose fill is far worse than the
 families the model was fitted on.

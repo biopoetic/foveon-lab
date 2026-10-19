@@ -107,6 +107,14 @@ The hardest slider. Fill Light lifts shadows by a local, edge-preserving operato
   all tried, and none beat the current model held out.
 - It is **sensor-specific**: on bodies it wasn't fitted to, +1 Fill reached 28–32 (SD14, dp2
   Quattro) until those bodies got their own data (in-sample after: 2–11).
+- **The model class is right; the data was thin (20 October 2026).** The lift at each brightness is
+  linear in the pixel's two surroundings (an edge-aware mean at 1/80 and 1/20 of the width) with
+  coefficients that vary smoothly with brightness: fitted to one photo, that reaches ~3 at Fill +1.
+  Coefficients shared across a camera's photos do worse on a photo they never saw, but refitting
+  them on all 8 SD1 / 5 SD15 photos instead of 2–3 helps: held out (leave-one-out), Fill +0.5 / +1
+  go from 5.62 / 10.37 to **5.01 / 9.18** (SD1) and 3.88 / 7.43 to **3.07 / 5.86** (SD15), and the
+  worst photos halve (SDIM0046 +1: 19.8 → 9.3). The rest is how SPP's local response differs from
+  scene to scene, still open (`tools/fillstudy`).
 
 ## 6. The starting image
 
