@@ -175,3 +175,20 @@ func TestRealFiles(t *testing.T) {
 		t.Logf("%s v%s rot=%d preview=%dx%d props=%v", filepath.Base(m[0]), f.Version, f.Rotation, cfg.Width, cfg.Height, f.Props)
 	}
 }
+
+// The EXIF colour space is read for every body: the SD14 test file was shot
+// in AdobeRGB, the DP1 Merrill in sRGB.
+func TestExifColourSpace(t *testing.T) {
+	for path, want := range map[string]string{
+		"../testdata/SD14/20120818-SDIM4579.X3F": "AdobeRGB",
+		"../testdata/DP1-Merrill/SDIM0555.X3F":   "sRGB",
+	} {
+		f, err := Open(path)
+		if err != nil {
+			t.Skip(err)
+		}
+		if got := f.Props["EXIF_COLORSPACE"]; got != want {
+			t.Errorf("%s: EXIF_COLORSPACE %q, want %q", path, got, want)
+		}
+	}
+}

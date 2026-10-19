@@ -130,10 +130,11 @@ func parse(r io.ReaderAt, size int64, path string) (*File, error) {
 			f.Props = parseProps(buf)
 		}
 	}
-	if f.Props["CAMMODEL"] == "" {
-		// Quattro files carry no property list: model, ISO, shutter and
-		// aperture come from the embedded JPEG's EXIF.
-		for k, v := range f.exifProps() {
+	// Quattro files carry no property list: model, ISO, shutter and
+	// aperture come from the embedded JPEG's EXIF. Every file also takes
+	// the EXIF colour space (EXIF_COLORSPACE), which SPP renders by.
+	for k, v := range f.exifProps() {
+		if f.Props[k] == "" {
 			f.Props[k] = v
 		}
 	}
@@ -142,7 +143,9 @@ func parse(r io.ReaderAt, size int64, path string) (*File, error) {
 
 // exifProps reads, from the largest embedded JPEG's EXIF (only the start of
 // the section), the Model, ISO, ExposureTime and FNumber as the X3F
-// property names CAMMODEL, ISO, SH_DESC and AP_DESC.
+// property names CAMMODEL, ISO, SH_DESC and AP_DESC, and its colour space
+// as EXIF_COLORSPACE ("sRGB", or "AdobeRGB" for 0xFFFF, which is how a
+// camera set to AdobeRGB marks it).
 func (f *File) exifProps() map[string]string {
 	out := map[string]string{}
 	js := f.jpegImages()
@@ -215,6 +218,13 @@ func (f *File) exifProps() map[string]string {
 				} else {
 					out["SH_DESC"] = strconv.FormatFloat(v, 'f', -1, 64)
 				}
+			}
+		case 0xA001: // ColorSpace
+			switch bo.Uint16(t[off:]) {
+			case 1:
+				out["EXIF_COLORSPACE"] = "sRGB"
+			case 0xFFFF:
+				out["EXIF_COLORSPACE"] = "AdobeRGB"
 			}
 		case 0x829D: // FNumber
 			if v, ok := rational(off); ok && v > 0 {

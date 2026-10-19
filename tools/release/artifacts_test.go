@@ -31,8 +31,9 @@ func TestRealArtifacts(t *testing.T) {
 		t.Errorf("%s should pass the signature/stable check: %v", filepath.Base(dmg), err)
 	}
 
-	// The app bundles beside it predate the identifier fix.
-	apps, _ := filepath.Glob(filepath.Join(root, "v*", "macos-app", "*.app"))
+	// The v0.4.24 app bundle predates the identifier fix (later builds pass
+	// the identifier check, so only that one can show the gate refusing).
+	apps, _ := filepath.Glob(filepath.Join(root, "v0.4.24", "macos-app", "*.app"))
 	if len(apps) == 0 {
 		return
 	}

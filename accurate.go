@@ -298,6 +298,11 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 	}
 	if c := rawCorrectionFor(ph); c != nil && !layers {
 		c.Apply(l)
+		// SPP renders a Merrill file marked AdobeRGB differently even in
+		// sRGB (render/adobergb.go).
+		if ph.props["EXIF_COLORSPACE"] == "AdobeRGB" && render.SensorGeneration(calibGroup(ph)) == "Merrill" {
+			render.ApplySPPAdobeRGB(l)
+		}
 	}
 	return l, nil
 }
