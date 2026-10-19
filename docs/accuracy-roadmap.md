@@ -53,6 +53,17 @@ matrix), which the A ladder cannot resolve: it has no white-balance or colour-mo
 analysis renders with neither op in play. Measuring it needs a ladder that combines ColorAdjust with
 a colour mode or a non-neutral white balance.
 
+**Colour adjust in context (18–19 October 2026).** The X steps do that: R 1.10 combined with a
+colour mode (Portrait, Landscape) or a white balance (Sunlight, Fluorescent). With a colour mode the
+emulation is fine — X01/X02 read 1.0–3.8 — but with a white balance it is not: X03/X04 read 5.0–25.5.
+Switching the WB correction off shows the cause: it *helps* SD1 (X03 5.0 against 15.7 without) and
+*harms* SD15 (24.2 against 7.4) and SD14. The per-family WhiteBalance correction in the models is not
+trustworthy; it needs refitting from W-step exports, which have never been exported. Until then the
+white-balance path cannot claim parity.
+
+(The analyzer's export scanner only accepted the codes A, B, C, V and W, so the X exports were
+invisible to it at first; it now accepts X too.)
+
 ### Older cameras measured (18 October 2026)
 
 One body per family, full A ladder exported from SPP (the files in `testdata`), measured with the
