@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -170,6 +171,14 @@ func (s *server) handleAISettings(w http.ResponseWriter, r *http.Request) {
 // AI endpoint and receive your photos).
 func sameOrigin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The server listens on 127.0.0.1 only, but a web page can still
+		// reach it under its own name by pointing that name at 127.0.0.1
+		// (DNS rebinding); its requests then look same-origin. Only a
+		// loopback Host is this app.
+		if !loopbackHost(r.Host) {
+			http.Error(w, "unknown host", http.StatusForbidden)
+			return
+		}
 		// Browsers label every request with where it came from.
 		if sf := r.Header.Get("Sec-Fetch-Site"); sf != "" && sf != "same-origin" && sf != "none" && strings.HasPrefix(r.URL.Path, "/api/") {
 			http.Error(w, "cross-site request refused", http.StatusForbidden)
@@ -189,4 +198,14 @@ func sameOrigin(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// loopbackHost reports whether a request's Host names this machine's
+// loopback address (with or without the port).
+func loopbackHost(host string) bool {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	return host == "127.0.0.1" || host == "localhost" || host == "::1"
 }

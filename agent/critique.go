@@ -151,7 +151,7 @@ func (c *Crop) normalized() *Crop {
 	return &n
 }
 
-// jsonBlock matches a fenced JSON block; the last one in the reply wins.
+// jsonBlock matches a fenced JSON block; the first one in the reply is used.
 var jsonBlock = regexp.MustCompile("(?s)```json\\s*(.*?)```")
 
 // settingsLine formats the current values for the prompt, in a stable order.

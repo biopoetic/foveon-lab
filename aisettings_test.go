@@ -24,7 +24,7 @@ func TestAISettingsSaveAndRemove(t *testing.T) {
 	s := &server{}
 	h := sameOrigin(http.HandlerFunc(s.handleAISettings))
 	post := func(body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("POST", "/api/agent/status", strings.NewReader(body))
+		r := httptest.NewRequest("POST", "http://127.0.0.1:8777/api/agent/status", strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
