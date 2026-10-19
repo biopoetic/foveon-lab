@@ -55,11 +55,24 @@ a colour mode or a non-neutral white balance.
 
 **Colour adjust in context (18–19 October 2026).** The X steps do that: R 1.10 combined with a
 colour mode (Portrait, Landscape) or a white balance (Sunlight, Fluorescent). With a colour mode the
-emulation is fine — X01/X02 read 1.0–3.8 — but with a white balance it is not: X03/X04 read 5.0–25.5.
-Switching the WB correction off shows the cause: it *helps* SD1 (X03 5.0 against 15.7 without) and
-*harms* SD15 (24.2 against 7.4) and SD14. The per-family WhiteBalance correction in the models is not
-trustworthy; it needs refitting from W-step exports, which have never been exported. Until then the
-white-balance path cannot claim parity.
+emulation is fine — X01/X02 read 1.0–3.8 — but with a white balance it was not: X03/X04 read 5.0–25.5.
+Switching the WB correction off showed the cause: it *helped* SD1 (X03 5.0 against 15.7 without) and
+*harmed* SD15 (24.2 against 7.4) and SD14 — the per-family WhiteBalance correction was wrong.
+
+**Fixed, 19 October 2026.** W00/W02/W06 were exported for SD1, SD15, SD14 and the dp2-Quattro and the
+WB corrections refitted:
+
+| | W02 | W06 | X03 | X04 |
+|---|---|---|---|---|
+| SD1 (SDIM0031) | 5.1 → **2.5** | 5.3 → **1.7** | 5.0 → **2.7** | 5.0 → **2.0** |
+| SD15 (SDIM1021) | 22.1 → **1.2** | 22.7 → **3.0** | 24.2 → **3.3** | 25.5 → **5.2** |
+| SD14 | 21.3 → **0.7** | 25.8 → **2.5** | 19.2 → **2.4** | 23.3 → **4.2** |
+| Quattro (dp2) | 16.3 → **1.0** | 20.2 → **2.5** | — | — |
+
+The dp2-Quattro also got its own model (`model_Quattro.json`, keyed by CalibGroup because the body
+has no SD number): its fill went 15.2 / 28.7 → **5.4 / 11.2** and colour mode 6 5.8 → 2.3. The one
+held-out SD1 photo (SDIM0138) reads 7.9 → 9.8 at X03, so the WB fit does not transfer perfectly
+between scenes; a second photo per family is needed to confirm it.
 
 (The analyzer's export scanner only accepted the codes A, B, C, V and W, so the X exports were
 invisible to it at first; it now accepts X too.)

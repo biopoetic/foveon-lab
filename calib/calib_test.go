@@ -29,8 +29,9 @@ func TestStepsAreSingleChange(t *testing.T) {
 			t.Errorf("code %s not matched by file-name pattern", s.Code)
 		}
 		// A/B/C steps: exactly one field may differ from the neutral base
-		// (V steps are whole presets, W steps set WB mode + temperature).
-		if s.Code[0] == 'V' || s.Code[0] == 'W' {
+		// (V steps are whole presets, W steps set WB mode + temperature, and
+		// X steps deliberately combine the colour adjust with a mode or WB).
+		if s.Code[0] == 'V' || s.Code[0] == 'W' || s.Code[0] == 'X' {
 			continue
 		}
 		diff := 0

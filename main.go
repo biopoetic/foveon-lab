@@ -541,6 +541,9 @@ func (s *server) compensation(ph *Photo, on bool) render.Compensation {
 	fam := x3f.PresetFamily(ph.Camera)
 	modes := !x3f.HasColourModes(modelOf(ph))
 	camera := x3f.ShortModel(modelOf(ph))
+	if camera == "" {
+		camera = calibGroup(ph) // Quattro and the DP bodies have no SD number
+	}
 	if !on || ph.props == nil || (ph.RawDecoded && !ph.rawFailed.Load()) || s.useRaw(ph) || ph.jpegBroken.Load() {
 		return render.Compensation{SatFactor: 1, Family: fam, CC: layerCC(ph), Sensor: render.SensorGeneration(calibGroup(ph)), NoModes: modes, Model: camera}
 	}
@@ -1337,7 +1340,11 @@ func calibCommand(desk string) bool {
 			key := strings.ToUpper(strings.TrimSuffix(p.Name, filepath.Ext(p.Name)))
 			fams[key] = x3f.PresetFamily(p.Camera)
 			modes[key] = x3f.HasColourModes(modelOf(p))
-			camModels[key] = x3f.ShortModel(modelOf(p))
+			cam := x3f.ShortModel(modelOf(p))
+			if cam == "" {
+				cam = calibGroup(p)
+			}
+			camModels[key] = cam
 		}
 	}
 	calib.FamilyOf = func(n string) string { return fams[strings.ToUpper(n)] }
