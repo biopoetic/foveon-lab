@@ -146,7 +146,7 @@ B' = 1.043 B - 0.043 G
 applies it to Merrill-generation files (SD1, DP Merrill) whose preview EXIF is marked AdobeRGB
 (`render/adobergb.go`). Older bodies are untested: SPP 6.0.5's note names the SD1 and Merrill series.
 
-## 8. Export colour spaces: SPP renders in sRGB and re-encodes
+## 8. Export colour spaces: SPP clips to sRGB, then re-encodes
 
 SPP's save dialog offers sRGB, Apple RGB, Adobe RGB, ColorMatch RGB and ProPhoto RGB. The same
 photo (SDIM0031) exported as 16-bit TIFF in all five and compared through each file's own embedded
@@ -155,8 +155,10 @@ Adobe RGB or ColorMatch export lies outside sRGB** — including the 0.29% of pi
 pins at its gamut edge, where a wider rendering would show more colour. So choosing a wide space in
 SPP does not keep Foveon colours that sRGB cannot hold; it re-encodes an sRGB-limited rendering.
 
-Evidence: **observed, one photo with few saturated colours**. A strongly saturated scene would make
-it conclusive.
+Confirmed on two strongly saturated photos (19 October 2026): SDIM0367, where **94%** of the sRGB
+export's pixels are pinned at the gamut edge, and SDIM0260. Their ProPhoto exports still hold **no**
+colour outside sRGB (0.00%) and match the sRGB export to 0.0001 in XYZ. Evidence: **observed on
+three photos, conclusive** — SPP clips to sRGB, then re-encodes into the space you choose.
 
 ## 9. Open questions
 
@@ -165,7 +167,6 @@ it conclusive.
 - A scene-adaptive Fill Light.
 - The fine WB grid offsets some presets rely on (SPP keeps them outside the XML).
 - Whether the AdobeRGB branch (section 7) also exists for the SD14/SD15 and the Quattro.
-- Section 8 on a strongly saturated photo.
 
 The full measurement record, with every table, is in [accuracy-roadmap.md](accuracy-roadmap.md).
 Corrections and new measurements are welcome — open an issue with the exports.
