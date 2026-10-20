@@ -122,6 +122,7 @@ func fitRawCommand(desk string) {
 	tasteOut := fsFlags.String("tasteout", "", "print the taste (tone + saturation) learnt on all of this group's photos, as JSON for render/rawbase.json")
 	onlyGroups := fsFlags.String("groups", "", "decode only these groups (comma separated), to save time")
 	dngProfile := fsFlags.Bool("dngprofile", false, "research: held-out dE of the raw base as a DNG camera profile (ForwardMatrix + one Adobe tone curve) vs the full per-channel raw base")
+	onlyRes := fsFlags.String("res", "", "research: only photos of this RESOLUTION (HI, MED), e.g. to test a separate SD1 MED base")
 	nr := fsFlags.Float64("nr", defaultNR, "with -go: noise reduction of the training decodes (the app's own by default; 0 until v0.4.56)")
 	charts := fsFlags.Bool("charts", false, "research: also train on synthetic charts (…/charts/*.X3F). Off by default: on 2026-10-13 two in-gamut SD1 charts (166/192 clean patches) made the held-out SD1 starting image worse, 6.87 -> 7.58 dE (SPP's response on them is strongly non-linear in the shadows)")
 	fsFlags.Parse(os.Args[2:])
@@ -193,6 +194,9 @@ func fitRawCommand(desk string) {
 		}
 		// The raw base only: these photos' camera JPEG still trains the
 		// JPEG balance above (the app shows them from it).
+		if *onlyRes != "" && strings.TrimSpace(ph.props["RESOLUTION"]) != *onlyRes {
+			continue
+		}
 		if !rawDecodable(ph.props) {
 			fmt.Printf("  %s: %s resolution, which x3f_extract decodes wrongly, raw skipped\n", name, ph.props["RESOLUTION"])
 			continue
