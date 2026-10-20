@@ -214,6 +214,12 @@ func fitRawCommand(desk string) {
 				fmt.Printf("    go raw: %v\n", err)
 				continue
 			}
+			// Turned as the app shows it (rawLinearFor): unturned, a portrait
+			// photo's landscape data was stretched onto SPP's portrait export
+			// (SDIM0412, 0418: errors 92 and 59), poisoning the whole fit.
+			if ph.rotation != 0 {
+				l = l.Rotate(ph.rotation)
+			}
 			raw = fitAspect(l.Downscale(spp.W), spp.W, spp.H)
 		} else if *camfRaw {
 			rimg, err := decodeRawAs(ph, "none")
