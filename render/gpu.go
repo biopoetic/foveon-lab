@@ -180,6 +180,7 @@ func GPUColorFilmData(key string) ([]byte, bool) {
 // geometry and metadata are used, not its pixels).
 func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 	op := newPixOp(p, c)
+	op.forBase(b)
 	r := &GPURecipe{
 		Undo: op.undo, UndoGamma: op.undoGamma, Layer: op.layer, LayerMono: op.layerMono,
 		Mono: op.mono, Measured: op.measured,

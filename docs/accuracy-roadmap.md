@@ -161,6 +161,14 @@ little worse (SDIM0092 11.1 → 12.5, SDIM0031 8.9 → 9.4). The +0.25/+2/−1 s
 changed: they have no unseen photos, and there the shipped (in-sample) coefficients beat a held-out
 refit, so a gain cannot be shown. A Gaussian surround did no better than the guided one.
 
+**Frame mean, SD1 (20 October 2026), shipped.** The per-photo strengths of the local terms track
+the image's mean brightness (`fillstudy9.py`); adding a (frame mean − pixel) term per brightness
+bin, refitted per step and kept only where the held-out refit beats the shipped coefficients
+(`fillrefit2.py`): Fill +0.5 4.04 → 3.17, +1 7.50 → 6.09, +2 16.40 → 14.79 held out (+0.25 and −1
+unchanged). Go analyser on the real code, all eight SD1 photos (now in-sample): +0.5 4.47 → 3.21,
++1 8.44 → 6.29, +2 17.68 → 11.78 (SDIM0046 +2: 31.5 → 7.2). The SD15 is unchanged: the term did
+not help its five photos.
+
 The next real attempt has to be a different operator — a Retinex with an edge-stopping surround and
 its own two scales — or per-family fill data for the older bodies, whose fill is far worse than the
 families the model was fitted on.

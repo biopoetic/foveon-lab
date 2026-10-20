@@ -38,6 +38,12 @@ type FillStep struct {
 	// SurroundFracs[0] − pixel) + c2·(surround at [1] − pixel). Replaces Local.
 	Multi bool                 `json:"multi,omitempty"`
 	Coef  [FillBins][3]float64 `json:"coef,omitempty"`
+	// CoefMean (optional, per brightness bin): + c·(frame mean − pixel), the
+	// whole frame's mean brightness. SPP's local fill strength follows it;
+	// held out (tools/fillstudy, fillstudy10) it took SD1 Fill +0.5 / +1
+	// from 5.01 / 9.18 to 3.17 / 6.09. Empty = no such term (the SD15, where
+	// it did not help on five photos).
+	CoefMean []float64 `json:"coefMean,omitempty"`
 }
 
 // Model is a full measured emulation.
@@ -195,6 +201,25 @@ func (op *toneOp) apply(x float64) (float64, float64) {
 	return math.Max(0, math.Min(1, x+d)), math.Max(0, c)
 }
 
+// fillBin interpolates a per-bin coefficient between bin centres, as
+// fillCoef does.
+func fillBin(c []float64, x float64) float64 {
+	f := math.Max(0, math.Min(FillBins-1, x*FillBins-0.5))
+	b0 := min(int(f), FillBins-2)
+	t := f - float64(b0)
+	return c[b0]*(1-t) + c[b0+1]*t
+}
+
+// usesMean reports whether any step has a frame-mean term.
+func (f *fillOp) usesMean() bool {
+	for _, s := range f.steps {
+		if len(s.CoefMean) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // fillOp is Fill Light at a value: a weighted blend of measured settings.
 type fillOp struct {
 	steps   []*FillStep
@@ -259,7 +284,7 @@ func (f *fillOp) multi() bool { return len(f.steps) > 0 && f.steps[0].Multi }
 // C(x)·db, with a chroma factor of x alone. Baked once per render.
 type fillLUT struct{ a, b, c, k [toneLUTN + 1]float32 }
 
-func (f *fillOp) bake() *fillLUT {
+func (f *fillOp) bake(mean float64) *fillLUT {
 	if !f.multi() {
 		return nil
 	}
@@ -272,6 +297,9 @@ func (f *fillOp) bake() *fillLUT {
 			w := f.weights[j]
 			a0 := fillCoef(&s.Coef, x, 0, 0)
 			a += a0 * w
+			if len(s.CoefMean) == FillBins && mean > 0 {
+				a += fillBin(s.CoefMean, x) * (mean - x) * w
+			}
 			b += (fillCoef(&s.Coef, x, 1, 0) - a0) * w
 			c += (fillCoef(&s.Coef, x, 0, 1) - a0) * w
 			k += (knot(&s.Chroma, x) - 1) * math.Abs(w)

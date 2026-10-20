@@ -113,8 +113,12 @@ The hardest slider. Fill Light lifts shadows by a local, edge-preserving operato
   Coefficients shared across a camera's photos do worse on a photo they never saw, but refitting
   them on all 8 SD1 / 5 SD15 photos instead of 2–3 helps: held out (leave-one-out), Fill +0.5 / +1
   go from 5.62 / 10.37 to **5.01 / 9.18** (SD1) and 3.88 / 7.43 to **3.07 / 5.86** (SD15), and the
-  worst photos halve (SDIM0046 +1: 19.8 → 9.3). The rest is how SPP's local response differs from
-  scene to scene, still open (`tools/fillstudy`).
+  worst photos halve (SDIM0046 +1: 19.8 → 9.3).
+- **On the SD1, Fill Light's strength follows the whole frame's mean brightness** (20 October
+  2026): bright, low-contrast frames get a stronger local lift, dark contrasty ones a weaker one. A
+  term in (frame mean − pixel) brightness, held out over 8 photos: Fill +0.5 4.04 → **3.17**, +1
+  7.50 → **6.09**, +2 16.40 → **14.79**; +0.25 and −1 did not improve and are unchanged. On the
+  SD15 (5 photos) it did not help. The mean is the full frame's, so a crop does not change the fill.
 
 ## 6. The starting image
 

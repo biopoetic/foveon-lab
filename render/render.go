@@ -41,6 +41,50 @@ type Linear struct {
 	// Sensor is the Foveon generation (SensorGeneration): SPP sharpens
 	// each differently.
 	Sensor string
+	// FillMean is the whole frame's mean brightness (FrameMean), kept
+	// through crops, zoom windows and rotations: SPP's Fill Light depends on
+	// it, and SPP sees the whole frame. 0 = not measured yet.
+	FillMean float32
+}
+
+// frameMean is the whole frame's mean brightness: FillMean when known, else
+// measured on l.
+func (l *Linear) frameMean() float32 {
+	if l.FillMean > 0 {
+		return l.FillMean
+	}
+	return FrameMean(l)
+}
+
+// FrameMean is the mean encoded brightness of l averaged down to the Fill
+// Light grid (at most surroundMaxW wide, linear block means, then encoded)
+// — the quantity the Fill Light study fitted on (tools/fillstudy).
+func FrameMean(l *Linear) float32 {
+	gw := min(l.W, surroundMaxW)
+	gh := max(1, int(math.Round(float64(l.H)*float64(gw)/float64(l.W))))
+	sum := make([]float64, gw*gh)
+	n := make([]float64, gw*gh)
+	for y := 0; y < l.H; y++ {
+		gy := min(gh-1, y*gh/l.H)
+		for x := 0; x < l.W; x++ {
+			i := (y*l.W + x) * 3
+			k := gy*gw + min(gw-1, x*gw/l.W)
+			sum[k] += float64(0.2126*l.Pix[i] + 0.7152*l.Pix[i+1] + 0.0722*l.Pix[i+2])
+			n[k]++
+		}
+	}
+	var m float64
+	cnt := 0
+	for k := range sum {
+		if n[k] > 0 {
+			m += float64(enc(float32(max(0, sum[k]/n[k]))))
+			cnt++
+		}
+	}
+	if cnt == 0 {
+		return 0
+	}
+	return float32(m / float64(cnt))
 }
 
 // frame is the whole frame's long side in full-resolution pixels.
@@ -225,7 +269,7 @@ func pixelGetter(img image.Image) func(x, y int) (uint8, uint8, uint8) {
 func (l *Linear) Window(x0, y0, w, h int) *Linear {
 	x0, y0 = max(0, min(x0, l.W-1)), max(0, min(y0, l.H-1))
 	w, h = max(1, min(w, l.W-x0)), max(1, min(h, l.H-y0))
-	o := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, Frame: int(math.Round(l.frame())), Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor}
+	o := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, Frame: int(math.Round(l.frame())), Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.frameMean()}
 	for y := 0; y < h; y++ {
 		copy(o.Pix[y*w*3:(y+1)*w*3], l.Pix[((y+y0)*l.W+x0)*3:])
 	}
@@ -237,7 +281,7 @@ func (l *Linear) Rotate(deg int) *Linear {
 		return l
 	}
 	w, h := l.W, l.H
-	o := &Linear{W: w, H: h, Pix: make([]float32, len(l.Pix)), Scale: l.Scale, Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor}
+	o := &Linear{W: w, H: h, Pix: make([]float32, len(l.Pix)), Scale: l.Scale, Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean}
 	if deg != 180 {
 		o.W, o.H = h, w
 	}
@@ -265,7 +309,7 @@ func (l *Linear) Downscale(maxW int) *Linear {
 	}
 	dw := maxW
 	dh := max(1, int(math.Round(float64(l.H)*float64(dw)/float64(l.W))))
-	o := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor}
+	o := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean}
 	parallelRows(dh, func(y0, y1 int) {
 		for dy := y0; dy < y1; dy++ {
 			sy0, sy1 := dy*l.H/dh, (dy+1)*l.H/dh
@@ -374,6 +418,8 @@ type Base struct {
 	// not interpolated from their grids on every render).
 	fieldsOnce   sync.Once
 	mPix, da, db []float32
+	// fillMean is the whole frame's mean brightness (Linear.FillMean).
+	fillMean float32
 }
 
 // fields computes the per-pixel Fill Light inputs once.
@@ -397,7 +443,7 @@ func (b *Base) fields() {
 
 // NewBase prepares a linear image for repeated rendering.
 func NewBase(l *Linear) *Base {
-	return &Base{Linear: l, m: newMask(l), sa: NewSurround(l, SurroundFracs[0]), sb: NewSurround(l, SurroundFracs[1])}
+	return &Base{Linear: l, m: newMask(l), sa: NewSurround(l, SurroundFracs[0]), sb: NewSurround(l, SurroundFracs[1]), fillMean: l.frameMean()}
 }
 
 // Compensation undoes the camera's own JPEG styling before a preset is
@@ -538,6 +584,7 @@ func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, bl float32)) {
 	w, h := b.W, b.H
 	op := newPixOp(p, c)
+	op.forBase(b)
 	dens := densitySetupFor(p)
 	film := b.newFilm(p, op.mono || op.layerMono != nil)
 	fill := op.fill != 0 || op.fillM != nil
@@ -692,7 +739,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 		op.pre = md.newToneOp("Exposure", p.Exposure)
 		op.fillM = md.newFillOp(p.FillLight)
 		if op.fillM != nil {
-			op.fillL = op.fillM.bake()
+			op.fillL = op.fillM.bake(0) // the frame mean comes with the Base (forBase)
 		}
 		for _, t := range []struct {
 			param string
@@ -1061,4 +1108,19 @@ func sharpen(img *image.RGBA, amount float32) {
 			}
 		}
 	})
+}
+
+// forBase finishes the parts of a render that depend on the image itself:
+// Fill Light's frame-mean term.
+func (op *pixOp) forBase(b *Base) {
+	if op.fillM != nil && op.fillL != nil && op.fillM.usesMean() && b.fillMean > 0 {
+		// In the space Fill Light sees a pixel's brightness: after the
+		// exposure step (applyMeasured's preL), so a flat frame's mean is
+		// exactly its pixels' brightness.
+		m := b.fillMean
+		if op.preL != nil {
+			m, _ = op.preL.at(m)
+		}
+		op.fillL = op.fillM.bake(float64(m))
+	}
 }
