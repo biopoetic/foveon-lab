@@ -31,8 +31,10 @@ import (
 const (
 	shadowChromaLo = 0.01 // linear luminance: full smoothing below
 	shadowChromaHi = 0.06 // none above
-	// shadowChromaSigma is the filter's scale at full sensor resolution, px.
-	shadowChromaSigma = 16
+	// shadowChromaSigma is the filter's scale at full sensor resolution, px
+	// (16 until v0.4.49: it spread neighbours' colour into small dark
+	// greens such as moss on rocks).
+	shadowChromaSigma = 4
 	shadowChromaEps   = 1e-3 // guide variance (encoded luminance) kept as edges
 )
 
@@ -40,6 +42,12 @@ const (
 // render vs SPP, 13 SD1/SD15 photos: SDIM0432 red share 10.7% -> 3.7% (SPP
 // 2.7%), mean 8.24 -> 8.14, shadows 6.17 -> 6.01, no photo worse by more
 // than 0.11. Clean photos (noise below shadowNoiseLo) are no longer touched.
+//
+// Magenta-side muting and the tighter filter (v0.4.50), with the denoiser's
+// tighter colour radius at low ISO (x3f colourRadius): SDIM0432's moss, as
+// area colour against SPP's, greenness (G above the mean of R and B, 8-bit)
+// 0 -> 4.9 (SPP 11.7, no NR 6.9), magenta share 0.3% -> 1.2% (SPP 2.7%);
+// 13 photos 7.56 -> 7.37, none worse.
 //
 // Noise-adaptive (20 October 2026): SPP mutes shadow colour in proportion to
 // how noisy the shadows are (SPP/our shadow chroma against ShadowChromaNoise
@@ -105,13 +113,18 @@ func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 			}
 			t = min(t, 1) * a
 			yy := Y[i] + 1e-4
-			// SPP also mutes noisy shadows (their colour is mostly noise):
-			// down to shadowMute of the colour at full strength.
-			keep := 1 - shadowMute*t
+			var v [3]float32
 			for k := 0; k < 3; k++ {
-				v := l.Pix[i*3+k]
-				v = v*(1-t) + ratio[k][i]*yy*t
-				l.Pix[i*3+k] = Y[i] + (v-Y[i])*keep
+				v[k] = l.Pix[i*3+k]*(1-t) + ratio[k][i]*yy*t
+			}
+			// SPP also mutes noisy shadows, but only their magenta side
+			// (green below the luminance): dark greens stay green.
+			keep := float32(1)
+			if v[1] < Y[i] {
+				keep = 1 - shadowMute*t
+			}
+			for k := 0; k < 3; k++ {
+				l.Pix[i*3+k] = Y[i] + (v[k]-Y[i])*keep
 			}
 		}
 	})
@@ -221,3 +234,4 @@ func ShadowChromaNoise(l *Linear) float64 {
 	sort.Float64s(v)
 	return v[len(v)/2]
 }
+

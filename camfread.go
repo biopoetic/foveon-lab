@@ -165,7 +165,7 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 		if b > 1 {
 			img = binCam(img, b)
 		}
-		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(b)})
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(b), ISO: photoISO(ph)})
 	}
 	l := render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t)
 	// The low-frequency shadow colour noise the layer denoiser misses
@@ -240,7 +240,7 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 		nr = float64(max(0, min(10, *denoise))) / 10
 	}
 	if nr > 0 {
-		x3f.Denoise(img, x3f.DenoiseOptions{Strength: nr, Scale: 1})
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: nr, Scale: 1, ISO: photoISO(ph)})
 	}
 	path := filepath.Join(dir, stem+".dng")
 	f, err := os.Create(path)
@@ -334,4 +334,10 @@ var wbCamera = os.Getenv("FOVEON_WB") == "camera"
 // code to about the as-shot error (exports\wb-codes, two SD1 photos).
 func cameraWBName(code int) string {
 	return map[int]string{2: "Sunlight", 3: "Shade", 4: "Overcast", 5: "Incandescent", 6: "Fluorescent", 7: "Flash"}[code]
+}
+
+// photoISO is ph's ISO (0 if unknown).
+func photoISO(ph *Photo) float64 {
+	iso, _ := strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
+	return iso
 }

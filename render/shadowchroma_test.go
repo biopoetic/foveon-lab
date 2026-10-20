@@ -76,3 +76,24 @@ func TestShadowChromaFixLayersRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// Noisy-shadow muting removes the magenta side only: a dark green keeps
+// its colour, a dark magenta is muted (SDIM0432's moss went grey).
+func TestShadowChromaKeepsGreen(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		r, g, b float32
+		muted   bool
+	}{{"green", 0.008, 0.02, 0.008, false}, {"magenta", 0.03, 0.008, 0.03, true}} {
+		l := &Linear{W: 32, H: 32, Pix: make([]float32, 32*32*3)}
+		for i := 0; i < 32*32; i++ {
+			l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2] = c.r, c.g, c.b
+		}
+		SmoothShadowChroma(l, 32, 1)
+		y := 0.2126*c.r + 0.7152*c.g + 0.0722*c.b
+		before, after := c.g-y, l.Pix[16*32*3+1]-y
+		if muted := after/before < 0.9; muted != c.muted {
+			t.Errorf("%s: colour %.5f -> %.5f, muted %v want %v", c.name, before, after, muted, c.muted)
+		}
+	}
+}

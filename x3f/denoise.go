@@ -46,6 +46,30 @@ type DenoiseOptions struct {
 	// preview downscaled 4x is 0.25; 0 = 1), so the smoothing covers the
 	// same scene features at every size.
 	Scale float64
+	// ISO, when known, sets the colour filter's radius (colourRadius).
+	ISO float64
+}
+
+// colourRadius is the colour filter's radius at full sensor resolution for
+// a shot's ISO. Wide (32 px) colour smoothing pulled dark greens toward
+// their surroundings: on SDIM0432 (SD1, ISO 200) the denoiser shifted the
+// moss's layer means by 4-8%, which the colour matrix turned from green
+// (R/G 0.73, SPP 0.66) to red-brown (1.31). Up to ISO 200 the colour noise
+// is small and real colour detail dominates, so the filter stays tight.
+// Neutral render vs SPP, 13 SD1/SD15 photos (all ISO 100-200), 32 -> 8 px:
+// mean 7.56 -> 7.40, every photo better. The SD1 ISO series (noisebench,
+// colour error vs the ISO 200 frame, 32 / 16 / 8 px): ISO 200 itself 0.80 /
+// 0.62 / 0.45, ISO 400 4.85 / 4.88 / 4.94, ISO 800 4.73 / 4.77 / 4.88,
+// ISO 1600 5.64 / 5.74 / 5.96 - so wide from ISO 800, as before.
+func colourRadius(iso float64) float64 {
+	switch {
+	case iso <= 0 || iso >= 800:
+		return 32
+	case iso <= 200:
+		return 8
+	default:
+		return 16
+	}
 }
 
 // additive forces the purely additive luminance recombination (research
@@ -135,7 +159,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	if scale <= 0 {
 		scale = 1
 	}
-	r := max(2, int(math.Round(32*scale)))
+	r := max(2, int(math.Round(colourRadius(o.ISO)*scale)))
 	var out [3][]float32
 	var wg sync.WaitGroup
 	for k := 0; k < 3; k++ {
