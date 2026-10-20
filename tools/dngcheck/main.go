@@ -174,6 +174,12 @@ func develop(b []byte, w int) (*render.Linear, error) {
 				} else {
 					vs = append(vs, float64(le.Uint32(p))/float64(le.Uint32(p[4:])))
 				}
+			case 4: // long
+				if cnt == 1 {
+					vs = append(vs, float64(val))
+				} else {
+					vs = append(vs, float64(le.Uint32(b[int(val)+4*k:])))
+				}
 			case 11: // float
 				o := int(val) + 4*k
 				if cnt == 1 {
@@ -217,6 +223,10 @@ func develop(b []byte, w int) (*render.Linear, error) {
 	copy(fm9[:], fm)
 	camToPro := mul(xyzToPro, fm9)
 	ex := math.Exp2(be[0])
+	var hsm *hueSatMap
+	if d, data := tags[50937], tags[50938]; len(d) == 3 && len(data) > 0 && os.Getenv("DNGCHECK_NOHSM") == "" {
+		hsm = &hueSatMap{hue: int(d[0]), sat: int(d[1]), val: int(d[2]), data: data}
+	}
 	out := &render.Linear{W: ow, H: oh, Pix: make([]float32, ow*oh*3)}
 	for j := 0; j < ow*oh; j++ {
 		if cnt[j] == 0 {
@@ -227,6 +237,9 @@ func develop(b []byte, w int) (*render.Linear, error) {
 			cam[k] = sum[j*3+k] / cnt[j] / neutral[k]
 		}
 		p := apply(camToPro, cam)
+		if hsm != nil {
+			p = hsm.apply(p)
+		}
 		for k := range p {
 			p[k] = math.Max(0, math.Min(1, p[k]*ex))
 		}
@@ -323,5 +336,84 @@ func saveJPEG(l *render.Linear, path string) {
 	if o, err := os.Create(path); err == nil {
 		jpeg.Encode(o, img, &jpeg.Options{Quality: 88})
 		o.Close()
+	}
+}
+
+// hueSatMap is a ProfileHueSatMap, applied as the DNG SDK's reference
+// code does (dng_reference.cpp RefBaselineHueSatMap; one value division).
+// DNGCHECK_NOHSM=1 develops without it.
+type hueSatMap struct {
+	hue, sat, val int
+	data          []float64 // hue shift °, sat scale, val scale; hue-major, sat inner
+}
+
+func (m *hueSatMap) apply(p [3]float64) [3]float64 {
+	h, s, v := rgbToHSV(p)
+	hScaled, sScaled := h*float64(m.hue)/6, s*float64(m.sat-1)
+	h0, s0 := int(hScaled), min(int(sScaled), m.sat-2)
+	h1 := h0 + 1
+	if h0 >= m.hue-1 {
+		h0, h1 = m.hue-1, 0
+	}
+	hf1, sf1 := hScaled-float64(h0), sScaled-float64(s0)
+	hf0, sf0 := 1-hf1, 1-sf1
+	at := func(hi, si, k int) float64 { return m.data[(hi*m.sat+si)*3+k] }
+	var r [3]float64
+	for k := 0; k < 3; k++ {
+		a := hf0*at(h0, s0, k) + hf1*at(h1, s0, k)
+		b := hf0*at(h0, s0+1, k) + hf1*at(h1, s0+1, k)
+		r[k] = sf0*a + sf1*b
+	}
+	h += r[0] * 6 / 360
+	s = math.Min(s*r[1], 1)
+	v = v * r[2]
+	return hsvToRGB(h, s, v)
+}
+
+func rgbToHSV(p [3]float64) (h, s, v float64) {
+	r, g, b := p[0], p[1], p[2]
+	v = math.Max(r, math.Max(g, b))
+	gap := v - math.Min(r, math.Min(g, b))
+	if gap <= 0 || v <= 0 {
+		return 0, 0, v
+	}
+	switch v {
+	case r:
+		h = (g - b) / gap
+		if h < 0 {
+			h += 6
+		}
+	case g:
+		h = 2 + (b-r)/gap
+	default:
+		h = 4 + (r-g)/gap
+	}
+	return h, gap / v, v
+}
+
+func hsvToRGB(h, s, v float64) [3]float64 {
+	if s <= 0 {
+		return [3]float64{v, v, v}
+	}
+	h = math.Mod(h, 6)
+	if h < 0 {
+		h += 6
+	}
+	i := int(h)
+	f := h - float64(i)
+	p, q, t := v*(1-s), v*(1-s*f), v*(1-s*(1-f))
+	switch i {
+	case 0:
+		return [3]float64{v, t, p}
+	case 1:
+		return [3]float64{q, v, p}
+	case 2:
+		return [3]float64{p, v, t}
+	case 3:
+		return [3]float64{p, q, v}
+	case 4:
+		return [3]float64{t, p, v}
+	default:
+		return [3]float64{v, p, q}
 	}
 }

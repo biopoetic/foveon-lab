@@ -135,6 +135,8 @@ type dngMeta struct {
 	profile                       string
 	linearCurve                   bool      // ProfileToneCurve: linear (show the data as is)
 	tone                          []float32 // ProfileToneCurve pairs (camera profile)
+	hueSatDims                    [3]uint32 // ProfileHueSatMapDims, with hueSatData
+	hueSatData                    []float32 // ProfileHueSatMapData1 (nil: none)
 }
 
 // writeDNG writes a 3-channel 16-bit LinearRaw DNG from prepared strips.
@@ -178,6 +180,11 @@ func writeDNG(w io.Writer, width, height, rowsPerStrip int, strips [][]byte, m d
 		entries = append(entries,
 			dngEntry{50940, tFloat, uint32(len(m.tone)), dngFloats(m.tone...)}, // ProfileToneCurve
 			dngEntry{51110, tLong, 1, dngLongs(1)})                             // DefaultBlackRender: none
+	}
+	if len(m.hueSatData) > 0 {
+		entries = append(entries,
+			dngEntry{50937, tLong, 3, dngLongs(m.hueSatDims[:]...)},                        // ProfileHueSatMapDims
+			dngEntry{50938, tFloat, uint32(len(m.hueSatData)), dngFloats(m.hueSatData...)}) // ProfileHueSatMapData1
 	}
 	for i := range entries {
 		if entries[i].typ == tASCII {
@@ -266,6 +273,10 @@ type DNGProfile struct {
 	Name   string
 	Matrix [9]float64
 	Tone   []float64 // x0, y0, x1, y1, …; (0,0) first, (1,1) last
+	// HueSatDims/HueSat: the base's hue correction as a ProfileHueSatMap
+	// (dnghuesat.go); HueSat nil when it has none.
+	HueSatDims [3]uint32
+	HueSat     []float32
 }
 
 // DNGProfile is the raw base as a DNG camera profile: its matrix, and its
@@ -296,7 +307,9 @@ func (c *RawCorrection) DNGProfile(name string) *DNGProfile {
 	if len(c.Tone) > 0 { // a taste base: the camera's own colour, no matrix
 		m = id.Matrix
 	}
-	return &DNGProfile{Name: name, Matrix: m, Tone: tone}
+	p := &DNGProfile{Name: name, Matrix: m, Tone: tone}
+	p.HueSatDims, p.HueSat = c.hueSatMap()
+	return p
 }
 
 // WriteCameraDNG writes linear camera RGB (0 = black, 1 = white per layer;
@@ -391,6 +404,7 @@ func WriteCameraDNG(out io.Writer, pix []float32, w, h int, gain [3]float64, cc 
 			meta.tone = append(meta.tone, float32(v))
 		}
 		meta.baselineExposure = 0
+		meta.hueSatDims, meta.hueSatData = prof.HueSatDims, prof.HueSat
 	}
 	return writeDNG(out, w, h, rowsPerStrip, strips, meta)
 }
