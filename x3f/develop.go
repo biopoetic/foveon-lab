@@ -163,19 +163,21 @@ func ClipHighlightsTo(img *CamImage, gain, white [3]float64) {
 		gain[k] /= white[k]
 	}
 	g := [3]float32{float32(gain[0]), float32(gain[1]), float32(gain[2])}
-	for i := 0; i+2 < len(img.Pix); i += 3 {
-		p := img.Pix[i : i+3]
-		m := max(p[0], p[1], p[2])
-		if m <= lo {
-			continue
+	parallel(len(img.Pix)/3, func(i0, i1 int) {
+		for i := i0 * 3; i < i1*3; i += 3 {
+			p := img.Pix[i : i+3]
+			m := max(p[0], p[1], p[2])
+			if m <= lo {
+				continue
+			}
+			h := min(1, (m-lo)/(hi-lo))
+			h = h * h * (3 - 2*h)
+			l := max(p[0]*g[0], p[1]*g[1], p[2]*g[2])
+			for k := 0; k < 3; k++ {
+				p[k] += h * (l/g[k] - p[k])
+			}
 		}
-		h := min(1, (m-lo)/(hi-lo))
-		h = h * h * (3 - 2*h)
-		l := max(p[0]*g[0], p[1]*g[1], p[2]*g[2])
-		for k := 0; k < 3; k++ {
-			p[k] += h * (l/g[k] - p[k])
-		}
-	}
+	})
 }
 
 // blackLevel is the black of each layer, from the sensor's masked areas: the

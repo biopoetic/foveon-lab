@@ -214,21 +214,23 @@ func binCam2(c *x3f.CamImage, bx, by int) *x3f.CamImage {
 	w, h := c.W/bx, c.H/by
 	out := &x3f.CamImage{W: w, H: h, Pix: make([]float32, w*h*3)}
 	inv := 1 / float32(bx*by)
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			var s [3]float32
-			for yy := y * by; yy < y*by+by; yy++ {
-				row := c.Pix[(yy*c.W+x*bx)*3:]
-				for xx := 0; xx < bx; xx++ {
-					s[0] += row[xx*3]
-					s[1] += row[xx*3+1]
-					s[2] += row[xx*3+2]
+	render.ParallelRows(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			for x := 0; x < w; x++ {
+				var s [3]float32
+				for yy := y * by; yy < y*by+by; yy++ {
+					row := c.Pix[(yy*c.W+x*bx)*3:]
+					for xx := 0; xx < bx; xx++ {
+						s[0] += row[xx*3]
+						s[1] += row[xx*3+1]
+						s[2] += row[xx*3+2]
+					}
 				}
+				o := (y*w + x) * 3
+				out.Pix[o], out.Pix[o+1], out.Pix[o+2] = s[0]*inv, s[1]*inv, s[2]*inv
 			}
-			o := (y*w + x) * 3
-			out.Pix[o], out.Pix[o+1], out.Pix[o+2] = s[0]*inv, s[1]*inv, s[2]*inv
 		}
-	}
+	})
 	return out
 }
 

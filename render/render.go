@@ -156,6 +156,9 @@ func ToSRGB(x float32) float32 { return enc(x) }
 // ToLinear decodes an sRGB value in [0,1] to linear light.
 func ToLinear(x float32) float32 { return dec(x) }
 
+// ParallelRows is parallelRows, for other packages.
+func ParallelRows(h int, fn func(y0, y1 int)) { parallelRows(h, fn) }
+
 // parallelRows runs fn over row ranges on all CPUs.
 func parallelRows(h int, fn func(y0, y1 int)) {
 	n := runtime.GOMAXPROCS(0)
