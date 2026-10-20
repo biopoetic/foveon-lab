@@ -209,7 +209,15 @@ func fitRawCommand(desk string) {
 			// binning, denoised at that scale) the training image was another
 			// one: the shipped SD1 base scored 5.05 on it against 3.73 on the
 			// app's (16 photos; SDIM0064 14.3 vs 8.7).
-			l, err := goLinear(ph, sourceW, *nr)
+			// A portrait photo's working width is its long side, so at
+			// sourceW it came out 1067 wide, narrower than SPP's 1200 and
+			// stretched (nearest neighbour) to fit: blurred, misaligned
+			// detail (SDIM0418 15.3, area colour alone 2.7).
+			maxW := sourceW
+			if ph.rotation == 90 || ph.rotation == 270 {
+				maxW = max(sourceW, spp.H)
+			}
+			l, err := goLinear(ph, maxW, *nr)
 			if err != nil {
 				fmt.Printf("    go raw: %v\n", err)
 				continue
