@@ -124,9 +124,11 @@ func usmPlanes(v []float32, w, h, n int, a float32, k [7]float32) []float32 {
 	copy(out, v)
 	for c := 0; c < 3; c++ {
 		pl := make([]float32, w*h)
-		for i := range pl {
-			pl[i] = v[i*n+c]
-		}
+		parallelRows(w*h, func(i0, i1 int) {
+			for i := i0; i < i1; i++ {
+				pl[i] = v[i*n+c]
+			}
+		})
 		tmp := make([]float32, w*h)
 		parallelRows(h, func(y0, y1 int) {
 			for y := y0; y < y1; y++ {
@@ -174,15 +176,19 @@ func sppSharpen8(img *image.RGBA, s, iso float64, sensor string) {
 	}
 	w, h := img.Rect.Dx(), img.Rect.Dy()
 	v := make([]float32, len(img.Pix))
-	for i, b := range img.Pix {
-		v[i] = float32(b)
-	}
-	o := usmPlanes(v, w, h, 4, a, k)
-	for i := range img.Pix {
-		if i%4 != 3 {
-			img.Pix[i] = uint8(max(0, min(255, o[i])) + 0.5)
+	parallelRows(len(v), func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			v[i] = float32(img.Pix[i])
 		}
-	}
+	})
+	o := usmPlanes(v, w, h, 4, a, k)
+	parallelRows(len(v), func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			if i%4 != 3 {
+				img.Pix[i] = uint8(max(0, min(255, o[i])) + 0.5)
+			}
+		}
+	})
 }
 
 // sppSharpen16 is sppSharpen8 for 16-bit images (big-endian samples).
@@ -193,14 +199,18 @@ func sppSharpen16(img *image.RGBA64, s, iso float64, sensor string) {
 	}
 	w, h := img.Rect.Dx(), img.Rect.Dy()
 	v := make([]float32, w*h*4)
-	for i := range v {
-		v[i] = float32(uint16(img.Pix[2*i])<<8 | uint16(img.Pix[2*i+1]))
-	}
-	o := usmPlanes(v, w, h, 4, a, k)
-	for i := range v {
-		if i%4 != 3 {
-			u := uint16(max(0, min(65535, o[i])) + 0.5)
-			img.Pix[2*i], img.Pix[2*i+1] = uint8(u>>8), uint8(u)
+	parallelRows(len(v), func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			v[i] = float32(uint16(img.Pix[2*i])<<8 | uint16(img.Pix[2*i+1]))
 		}
-	}
+	})
+	o := usmPlanes(v, w, h, 4, a, k)
+	parallelRows(len(v), func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			if i%4 != 3 {
+				u := uint16(max(0, min(65535, o[i])) + 0.5)
+				img.Pix[2*i], img.Pix[2*i+1] = uint8(u>>8), uint8(u)
+			}
+		}
+	})
 }
