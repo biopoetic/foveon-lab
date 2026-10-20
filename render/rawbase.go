@@ -287,3 +287,10 @@ func (c *RawCorrection) hueChangesOnlyANeg() bool {
 	}
 	return true
 }
+
+// SetHue sets HueGain/HueRot (nil clears them), keeping hueSat's shortcut
+// consistent.
+func (c *RawCorrection) SetHue(gain, rot []float64) {
+	c.HueGain, c.HueRot = gain, rot
+	c.hueANeg = c.hueChangesOnlyANeg()
+}

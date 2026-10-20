@@ -23,6 +23,36 @@ type RawPair struct {
 	// teaches the fit colours real photos rarely contain, but is never
 	// held out or counted in the scores, which stay about real photos.
 	TrainOnly bool
+	// Neutral renders a mapped raw decode as the app's neutral preview
+	// (tone model, sharpening); nil compares the mapping itself. Scores
+	// taken without it judged a different image than the app shows: on
+	// 2026-10-20 a refit scoring 4.0 against the shipped base's 4.7 made
+	// the app worse (13 photos 4.31 -> 4.47).
+	Neutral func(l *render.Linear) *render.Linear
+}
+
+// view is what pair p's error is measured on: the app's rendering of l when
+// the pair has one.
+func (p *RawPair) view(l *render.Linear) *render.Linear {
+	if p.Neutral != nil {
+		return p.Neutral(l)
+	}
+	return l
+}
+
+// ScoreRawBase is c's mean error over the real (not TrainOnly) pairs, each
+// through its view; NaN when there are none.
+func ScoreRawBase(pairs []RawPair, c *render.RawCorrection) float64 {
+	var sum float64
+	n := 0
+	for i := range pairs {
+		if pairs[i].TrainOnly {
+			continue
+		}
+		sum += MeanError(pairs[i].view(applied(c, pairs[i].Raw)), pairs[i].SPP)
+		n++
+	}
+	return sum / float64(n)
 }
 
 // MeanError is the mean abs difference (8-bit sRGB) between two images.
@@ -93,17 +123,26 @@ func fitRaw(pairs []RawPair) render.RawCorrection {
 }
 
 func applied(c *render.RawCorrection, l *render.Linear) *render.Linear {
-	o := &render.Linear{W: l.W, H: l.H, Pix: append([]float32(nil), l.Pix...)}
-	c.Apply(o)
-	return o
+	o := *l // keep scale, ISO, sensor: the app's rendering needs them
+	o.Pix = append([]float32(nil), l.Pix...)
+	c.Apply(&o)
+	return &o
 }
 
 // FitRawBase fits the raw → SPP-neutral mapping for one camera family on
 // all its pairs, and judges it honestly: each photo is predicted by a fit
 // on the OTHER photos. The raw base is only switched on when that held-out
 // error clearly beats the camera JPEG (and there are enough photos).
+//
+// The shipped base's hue correction (HueGain/HueRot, which fitRaw does not
+// fit) is carried into the refit and every held-out fold.
 func FitRawBase(family string, pairs []RawPair) render.RawCorrection {
+	var hg, hr []float64
+	if s := render.RawBaseFitted(family); s != nil {
+		hg, hr = s.HueGain, s.HueRot
+	}
 	c := fitRaw(pairs)
+	c.SetHue(hg, hr)
 	real := 0
 	for _, p := range pairs {
 		if !p.TrainOnly {
@@ -126,7 +165,8 @@ func FitRawBase(family string, pairs []RawPair) render.RawCorrection {
 			}
 		}
 		fc := fitRaw(train)
-		raw += MeanError(applied(&fc, pairs[h].Raw), pairs[h].SPP)
+		fc.SetHue(hg, hr)
+		raw += MeanError(pairs[h].view(applied(&fc, pairs[h].Raw)), pairs[h].SPP)
 		jpg += pairs[h].JPEGErr
 	}
 	c.HeldOutRaw, c.HeldOutJPEG = raw/float64(real), jpg/float64(real)

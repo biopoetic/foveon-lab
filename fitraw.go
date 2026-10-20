@@ -122,6 +122,7 @@ func fitRawCommand(desk string) {
 	tasteOut := fsFlags.String("tasteout", "", "print the taste (tone + saturation) learnt on all of this group's photos, as JSON for render/rawbase.json")
 	onlyGroups := fsFlags.String("groups", "", "decode only these groups (comma separated), to save time")
 	dngProfile := fsFlags.Bool("dngprofile", false, "research: held-out dE of the raw base as a DNG camera profile (ForwardMatrix + one Adobe tone curve) vs the full per-channel raw base")
+	nr := fsFlags.Float64("nr", defaultNR, "with -go: noise reduction of the training decodes (the app's own by default; 0 until v0.4.56)")
 	charts := fsFlags.Bool("charts", false, "research: also train on synthetic charts (…/charts/*.X3F). Off by default: on 2026-10-13 two in-gamut SD1 charts (166/192 clean patches) made the held-out SD1 starting image worse, 6.87 -> 7.58 dE (SPP's response on them is strongly non-linear in the shadows)")
 	fsFlags.Parse(os.Args[2:])
 	if rawTool == "" && !*goRaw {
@@ -199,12 +200,17 @@ func fitRawCommand(desk string) {
 		fmt.Printf("  %s (%s): decoding raw…\n", name, ph.Camera)
 		var raw *render.Linear
 		if *goRaw {
-			l, err := goLinear(ph, calib.AnalysisW, 0)
+			// As the app makes a preview: developed at its working width,
+			// then reduced. Developed straight at the analysis width (3×3
+			// binning, denoised at that scale) the training image was another
+			// one: the shipped SD1 base scored 5.05 on it against 3.73 on the
+			// app's (16 photos; SDIM0064 14.3 vs 8.7).
+			l, err := goLinear(ph, sourceW, *nr)
 			if err != nil {
 				fmt.Printf("    go raw: %v\n", err)
 				continue
 			}
-			raw = fitAspect(l, spp.W, spp.H)
+			raw = fitAspect(l.Downscale(spp.W), spp.W, spp.H)
 		} else if *camfRaw {
 			rimg, err := decodeRawAs(ph, "none")
 			if err != nil {
@@ -248,7 +254,15 @@ func fitRawCommand(desk string) {
 			}
 		}
 		chart := strings.Contains(strings.ToLower(filepath.ToSlash(ph.path)), "/charts/")
-		groups[group] = append(groups[group], calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info, JPEG: jpegNeutral, TrainOnly: chart})
+		rp := calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info, JPEG: jpegNeutral, TrainOnly: chart}
+		if *goRaw {
+			// Score bases on the app's own neutral rendering of them.
+			comp := rawCompensation(ph)
+			rp.Neutral = func(l *render.Linear) *render.Linear {
+				return rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), comp))
+			}
+		}
+		groups[group] = append(groups[group], rp)
 	}
 	var fams []string
 	for f := range jgroups {
@@ -305,7 +319,10 @@ func fitRawCommand(desk string) {
 		if c.UseRaw {
 			verdict = "RAW BASE ON"
 		}
-		fmt.Printf("%s: %d photos, held-out error raw %.1f vs camera JPEG %.1f → %s\n", f, c.Photos, c.HeldOutRaw, c.HeldOutJPEG, verdict)
+		fmt.Printf("%s: %d photos, held-out error raw %.2f vs camera JPEG %.2f → %s\n", f, c.Photos, c.HeldOutRaw, c.HeldOutJPEG, verdict)
+		if s := render.RawBaseFitted(f); s != nil {
+			fmt.Printf("%s: the shipped base on the same photos (not held out): %.2f\n", f, calib.ScoreRawBase(groups[f], s))
+		}
 	}
 	js, _ := json.MarshalIndent(out, "", " ")
 	p := filepath.Join(*dir, "rawbase.json")

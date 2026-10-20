@@ -195,36 +195,27 @@ func FromImage(img image.Image, maxW, rot int) *Linear {
 	}
 	dw, dh := max(1, int(math.Round(float64(sw)*s))), max(1, int(math.Round(float64(sh)*s)))
 
-	colMap := make([]int, sw)
-	for x := range colMap {
-		colMap[x] = x * dw / sw
-	}
+	// Linear at full size, then an exact area reduction (areaResample): the
+	// integer-edge box averaged one source pixel here and two there,
+	// aliasing and shifting the image by a fraction of a pixel (SPP's
+	// exports, the reference every calibration is fitted and scored on,
+	// and the camera-JPEG previews).
 	get := pixelGetter(img)
-	l := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: float64(dw) / float64(sw)}
-	parallelRows(dh, func(y0, y1 int) {
-		sum := make([]float32, dw*3)
-		cnt := make([]float32, dw)
-		for dy := y0; dy < y1; dy++ {
-			clear(sum)
-			clear(cnt)
-			for sy := dy * sh / dh; sy < (dy+1)*sh/dh; sy++ {
-				for sx := 0; sx < sw; sx++ {
-					r, g, bb := get(b.Min.X+sx, b.Min.Y+sy)
-					d := colMap[sx]
-					sum[d*3] += dec8[r]
-					sum[d*3+1] += dec8[g]
-					sum[d*3+2] += dec8[bb]
-					cnt[d]++
-				}
-			}
-			row := l.Pix[dy*dw*3:]
-			for x := 0; x < dw; x++ {
-				if c := cnt[x]; c > 0 {
-					row[x*3], row[x*3+1], row[x*3+2] = sum[x*3]/c, sum[x*3+1]/c, sum[x*3+2]/c
-				}
+	full := make([]float32, sw*sh*3)
+	parallelRows(sh, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			row := full[y*sw*3:]
+			for x := 0; x < sw; x++ {
+				r, g, bb := get(b.Min.X+x, b.Min.Y+y)
+				row[x*3], row[x*3+1], row[x*3+2] = dec8[r], dec8[g], dec8[bb]
 			}
 		}
 	})
+	pix := full
+	if dw != sw || dh != sh {
+		pix = areaResample(full, sw, sh, dw, dh)
+	}
+	l := &Linear{W: dw, H: dh, Pix: pix, Scale: float64(dw) / float64(sw)}
 	return l.Rotate(rot)
 }
 

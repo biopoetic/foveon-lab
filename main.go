@@ -536,6 +536,17 @@ func modelOf(ph *Photo) string {
 	return ph.Camera
 }
 
+// rawCompensation is the compensation of a raw-based render: a raw decode
+// carries no in-camera styling, so there is nothing to undo (also used by
+// fit-raw to score raw bases as the app shows them).
+func rawCompensation(ph *Photo) render.Compensation {
+	camera := x3f.ShortModel(modelOf(ph))
+	if camera == "" {
+		camera = calibGroup(ph)
+	}
+	return render.Compensation{SatFactor: 1, Family: x3f.PresetFamily(ph.Camera), CC: layerCC(ph), Sensor: render.SensorGeneration(calibGroup(ph)), NoModes: !x3f.HasColourModes(modelOf(ph)), Model: camera}
+}
+
 func (s *server) compensation(ph *Photo, on bool) render.Compensation {
 	// A raw decode carries no in-camera styling, so there is nothing to undo.
 	fam := x3f.PresetFamily(ph.Camera)
@@ -545,7 +556,7 @@ func (s *server) compensation(ph *Photo, on bool) render.Compensation {
 		camera = calibGroup(ph) // Quattro and the DP bodies have no SD number
 	}
 	if !on || ph.props == nil || (ph.RawDecoded && !ph.rawFailed.Load()) || s.useRaw(ph) || ph.jpegBroken.Load() {
-		return render.Compensation{SatFactor: 1, Family: fam, CC: layerCC(ph), Sensor: render.SensorGeneration(calibGroup(ph)), NoModes: modes, Model: camera}
+		return rawCompensation(ph)
 	}
 	c := render.CompensationWith(ph.props, fam, photoCC(ph))
 	c.Family = fam
