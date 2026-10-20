@@ -156,6 +156,7 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 	} else {
 		x3f.ClipHighlights(img, t.Gain)
 	}
+	fullW := img.W
 	if strength > 0 {
 		b := 1
 		if maxW > 0 {
@@ -167,6 +168,11 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(b)})
 	}
 	l := render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t)
+	// The low-frequency shadow colour noise the layer denoiser misses
+	// (render/shadowchroma.go); the colour path only, with noise reduction on.
+	if strength > 0 && irWhite == nil {
+		render.SmoothShadowChroma(l, fullW, 1)
+	}
 	l.ISO, _ = strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
 	l.Sensor = render.SensorGeneration(calibGroup(ph))
 	return l, nil
