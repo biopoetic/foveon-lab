@@ -119,7 +119,10 @@ func (c *CAMF) WBTransform(wb string) (gain [3]float64, cc [9]float64, err error
 		}
 		cc = mul33(xyzToSRGB, mul33(rawToXYZ, diag))
 	}
-	for _, k := range []string{"SensorAdjustmentGainFact", "TempGainFact", "FNumberGainFact"} {
+	// The SD15 spells it "FnumberGainFact" (1.044 red at f/1.0, the
+	// aperture a lens without contacts reports): missed, its photos came
+	// out green.
+	for _, k := range []string{"SensorAdjustmentGainFact", "TempGainFact", "FNumberGainFact", "FnumberGainFact"} {
 		if v := c.Matrices[k]; len(v) == 3 {
 			for i := range gain {
 				gain[i] *= v[i]
