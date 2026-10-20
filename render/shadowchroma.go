@@ -1,5 +1,10 @@
 package render
 
+import (
+	"math"
+	"sort"
+)
+
 // Shadow colour noise. A Foveon sensor's colour noise in the shadows is
 // low-frequency: magenta and red blotches over dark greens and greys, the
 // bottom layer's noise lifted by the colour matrix. The per-layer denoiser
@@ -31,17 +36,44 @@ const (
 	shadowChromaEps   = 1e-3 // guide variance (encoded luminance) kept as edges
 )
 
+// Measured with the noise-adaptive strength and muting below, neutral
+// render vs SPP, 13 SD1/SD15 photos: SDIM0432 red share 10.7% -> 3.7% (SPP
+// 2.7%), mean 8.24 -> 8.14, shadows 6.17 -> 6.01, no photo worse by more
+// than 0.11. Clean photos (noise below shadowNoiseLo) are no longer touched.
+//
+// Noise-adaptive (20 October 2026): SPP mutes shadow colour in proportion to
+// how noisy the shadows are (SPP/our shadow chroma against ShadowChromaNoise
+// over ten SD1 photos: correlation -0.63), and keeps clean dark greens
+// colourful. So the strength follows the photo's measured shadow colour
+// noise: none up to shadowNoiseLo, full from shadowNoiseHi, reaching
+// brighter tones and a wider area as it grows.
+const (
+	shadowNoiseLo = 0.02
+	shadowNoiseHi = 0.10
+	// shadowMute is the share of shadow colour removed at full strength:
+	// SPP keeps ~0.5 of ours on the noisiest photo (SDIM0432, 0.53).
+	shadowMute = 0.5
+)
+
+// ShadowChromaAmount is the smoothing strength (0-1) for a measured shadow
+// colour noise (ShadowChromaNoise).
+func ShadowChromaAmount(noise float64) float64 {
+	return math.Max(0, math.Min(1, (noise-shadowNoiseLo)/(shadowNoiseHi-shadowNoiseLo)))
+}
+
 // SmoothShadowChroma removes low-frequency colour noise from the shadows of
 // a linear sRGB image, in place. fullW is the width of the full-resolution
 // frame l was made from (the filter covers the same scene area at every
-// size); amount (0-1) scales the effect.
+// size); amount (0-1, ShadowChromaAmount) scales the effect, its tonal
+// reach and its radius.
 func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 	if amount <= 0 || l.W < 8 || l.H < 8 {
 		return
 	}
 	w, h, n := l.W, l.H, l.W*l.H
-	sigma := shadowChromaSigma * float64(w) / float64(max(fullW, w))
+	sigma := shadowChromaSigma * (1 + 2*amount) * float64(w) / float64(max(fullW, w))
 	sigma = max(sigma, 1)
+	hi := float32(shadowChromaHi + 0.10*amount)
 	Y := make([]float32, n)
 	G := make([]float32, n) // the guide: encoded luminance
 	any := false
@@ -49,7 +81,7 @@ func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 		y := 0.2126*l.Pix[i*3] + 0.7152*l.Pix[i*3+1] + 0.0722*l.Pix[i*3+2]
 		Y[i] = y
 		G[i] = enc(max(0, y))
-		if y < shadowChromaHi {
+		if y < hi {
 			any = true
 		}
 	}
@@ -67,15 +99,19 @@ func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 	a := float32(amount)
 	parallelRows(h, func(y0, y1 int) {
 		for i := y0 * w; i < y1*w; i++ {
-			t := (shadowChromaHi - Y[i]) / (shadowChromaHi - shadowChromaLo)
+			t := (hi - Y[i]) / (hi - shadowChromaLo)
 			if t <= 0 {
 				continue
 			}
 			t = min(t, 1) * a
 			yy := Y[i] + 1e-4
+			// SPP also mutes noisy shadows (their colour is mostly noise):
+			// down to shadowMute of the colour at full strength.
+			keep := 1 - shadowMute*t
 			for k := 0; k < 3; k++ {
 				v := l.Pix[i*3+k]
-				l.Pix[i*3+k] = v*(1-t) + ratio[k][i]*yy*t
+				v = v*(1-t) + ratio[k][i]*yy*t
+				l.Pix[i*3+k] = Y[i] + (v-Y[i])*keep
 			}
 		}
 	})
@@ -103,4 +139,45 @@ func guidedGauss(I, p []float32, w, h int, sigma, eps float64) []float32 {
 		ma[i] = ma[i]*I[i] + mb[i]
 	}
 	return ma
+}
+
+// ShadowChromaNoise measures l's colour noise in the shadows: the median,
+// over pixels of linear luminance 0.005-0.04, of the fine-scale part (box
+// radius ~3 px at this size) of each pixel's chroma relative to its
+// luminance. Clean dark greens read ~0.02-0.03, a noisy ISO 200 forest
+// shadow ~0.18 (render scale, SDIM0432).
+func ShadowChromaNoise(l *Linear) float64 {
+	w, h, n := l.W, l.H, l.W*l.H
+	var rel [3][]float32
+	Y := make([]float32, n)
+	for i := 0; i < n; i++ {
+		Y[i] = 0.2126*l.Pix[i*3] + 0.7152*l.Pix[i*3+1] + 0.0722*l.Pix[i*3+2]
+	}
+	for k := 0; k < 3; k++ {
+		rel[k] = make([]float32, n)
+		for i := 0; i < n; i++ {
+			rel[k][i] = (l.Pix[i*3+k] - Y[i]) / (Y[i] + 1e-3)
+		}
+	}
+	var blur [3][]float32
+	for k := 0; k < 3; k++ {
+		blur[k] = GaussBlur(rel[k], w, h, 3)
+	}
+	var v []float64
+	for i := 0; i < n; i += 3 {
+		if Y[i] < 0.005 || Y[i] > 0.04 {
+			continue
+		}
+		var s float64
+		for k := 0; k < 3; k++ {
+			d := float64(rel[k][i] - blur[k][i])
+			s += d * d
+		}
+		v = append(v, math.Sqrt(s))
+	}
+	if len(v) < 500 {
+		return 0
+	}
+	sort.Float64s(v)
+	return v[len(v)/2]
 }
