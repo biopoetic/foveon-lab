@@ -117,6 +117,46 @@ func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 	})
 }
 
+// ShadowChromaFix measures l's shadow colour noise and removes it
+// (SmoothShadowChroma at ShadowChromaAmount), returning the noise. With
+// colour set, l holds the sensor's layers and colour is the photo's
+// colour matrix: the fix runs on the colour image it would make and maps
+// back, so a colour film (which develops the layers) gets exactly the
+// neutral render's fix — without it, SDIM0432's forest shadows came out
+// magenta again under every colour film.
+func ShadowChromaFix(l *Linear, fullW int, colour *[9]float64) float64 {
+	var inv [9]float64
+	if colour != nil {
+		var ok bool
+		if inv, ok = invert3(*colour); !ok {
+			return 0
+		}
+		mulPixels(l, *colour)
+	}
+	noise := ShadowChromaNoise(l)
+	SmoothShadowChroma(l, fullW, ShadowChromaAmount(noise))
+	if colour != nil {
+		mulPixels(l, inv)
+	}
+	return noise
+}
+
+// mulPixels applies the 3×3 matrix m to every pixel of l.
+func mulPixels(l *Linear, m [9]float64) {
+	var f [9]float32
+	for i, v := range m {
+		f[i] = float32(v)
+	}
+	parallelRows(l.H, func(y0, y1 int) {
+		for i := y0 * l.W; i < y1*l.W; i++ {
+			r, g, b := l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2]
+			l.Pix[i*3] = f[0]*r + f[1]*g + f[2]*b
+			l.Pix[i*3+1] = f[3]*r + f[4]*g + f[5]*b
+			l.Pix[i*3+2] = f[6]*r + f[7]*g + f[8]*b
+		}
+	})
+}
+
 // guidedGauss is a guided filter (He et al.) with Gaussian windows: p
 // smoothed where the guide I is flat, kept where I has edges.
 func guidedGauss(I, p []float32, w, h int, sigma, eps float64) []float32 {

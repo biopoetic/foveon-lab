@@ -127,7 +127,7 @@ func goDevelopFor(ph *Photo, layers, sceneWB bool, wbName string) (*x3f.CamImage
 	}
 	t.Gain, t.CC = gain, cc
 	if layers {
-		t.CC = identity33
+		t.Colour, t.CC = &cc, identity33
 	}
 	return img, t, nil
 }
@@ -169,13 +169,14 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 	}
 	l := render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t)
 	// The low-frequency shadow colour noise the layer denoiser misses
-	// (render/shadowchroma.go); the colour path only, with noise reduction on.
-	if strength > 0 && irWhite == nil {
-		noise := render.ShadowChromaNoise(l)
+	// (render/shadowchroma.go), with noise reduction on: the colour path
+	// and colour film (its layers, fixed through the colour they make);
+	// not the IR looks, which model the layers themselves.
+	if strength > 0 && (irWhite == nil || sceneWB) {
+		noise := render.ShadowChromaFix(l, fullW, t.Colour)
 		if os.Getenv("FOVEON_DN_DEBUG") != "" {
 			fmt.Fprintf(os.Stderr, "shadow chroma noise %s: %.4f\n", ph.Name, noise)
 		}
-		render.SmoothShadowChroma(l, fullW, render.ShadowChromaAmount(noise))
 	}
 	l.ISO, _ = strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
 	l.Sensor = render.SensorGeneration(calibGroup(ph))

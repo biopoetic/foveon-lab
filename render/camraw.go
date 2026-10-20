@@ -13,6 +13,9 @@ import (
 type CamTransform struct {
 	Gain [3]float64
 	CC   [9]float64
+	// Colour, for a development as the sensor's layers (CC = identity),
+	// is the colour matrix the normal path would use.
+	Colour *[9]float64
 }
 
 // Matrix is CC · diag(Gain).

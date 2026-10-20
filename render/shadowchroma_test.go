@@ -58,3 +58,21 @@ func TestSmoothShadowChroma(t *testing.T) {
 		}
 	}
 }
+
+// Through a colour matrix (a colour film's layers), the fix maps back to
+// the layers: a clean image comes back unchanged.
+func TestShadowChromaFixLayersRoundTrip(t *testing.T) {
+	l := &Linear{W: 64, H: 64, Pix: make([]float32, 64*64*3)}
+	for i := 0; i < 64*64; i++ {
+		v := 0.02 + 0.3*float32(i%64)/64
+		l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2] = v, v*0.9, v*1.1
+	}
+	want := append([]float32(nil), l.Pix...)
+	cc := [9]float64{3.5, -3.4, 0.9, -2.1, 4.5, -1.4, 1.1, -4.2, 4.1}
+	ShadowChromaFix(l, 64, &cc)
+	for i := range want {
+		if d := l.Pix[i] - want[i]; d > 1e-4 || d < -1e-4 {
+			t.Fatalf("pixel %d: %v, want %v", i/3, l.Pix[i], want[i])
+		}
+	}
+}
