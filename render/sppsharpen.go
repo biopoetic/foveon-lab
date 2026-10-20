@@ -45,7 +45,8 @@ func sppFullAmount(iso float64, sensor string) float64 {
 }
 
 // sppAmount is the amount of a sigma-1 mask at a view of scale s that
-// matches the full-size mask's gain at the view's Nyquist frequency.
+// matches the full-size mask's gain at the view's Nyquist frequency (the
+// model before v0.4.51; sppView replaced it).
 func sppAmount(s, iso float64, sensor string) float32 {
 	a := sppFullAmount(iso, sensor)
 	if s >= 1 {
@@ -55,29 +56,72 @@ func sppAmount(s, iso float64, sensor string) float32 {
 	return float32(a * hp(sppSharpSigma, 0.5*s) / hp(1, 0.5))
 }
 
-// gauss1 is a normalised Gaussian kernel of sigma 1 (radius 3).
-var gauss1 = func() [7]float32 {
+// sppView is the mask (amount and kernel) for a view of scale s whose
+// gain matches, at every frequency the view holds, SPP's full-size mask
+// seen through the reduction: a·(1-K(f·s)) for view frequency f. A
+// sigma-1 mask matched only at the view's Nyquist (sppAmount) boosted
+// the middle frequencies ~2.5x too much on a quarter-size preview: fine
+// detail 1.25-1.47x SPP's (1-2 px band ~1.35x) on ISO 200 SD1 photos,
+// once the previews were resampled exactly. Least squares over the
+// view's band for kernel sigmas 0.5-1.0 (smaller ones fit as a
+// near-identity blur with amounts of 30-100).
+func sppView(s, iso float64, sensor string) (float32, [7]float32) {
+	a := sppFullAmount(iso, sensor)
+	if a == 0 || s >= 1 {
+		return float32(a), gauss1
+	}
+	resp := func(k [7]float32, f float64) float64 { // 1 - the blur's gain
+		g := float64(k[3])
+		for j := 1; j <= 3; j++ {
+			g += 2 * float64(k[3+j]) * math.Cos(2*math.Pi*f*float64(j))
+		}
+		return 1 - g
+	}
+	bestE, bestA, bestK := math.Inf(1), 0.0, gauss1
+	for sg := 0.5; sg <= 1.0001; sg += 0.05 {
+		k := gaussKernel(sg)
+		var th, hh, tt float64
+		for i := 1; i <= 50; i++ {
+			f := 0.5 * float64(i) / 50
+			t, h := a*resp(gauss1, f*s), resp(k, f)
+			th, hh, tt = th+t*h, hh+h*h, tt+t*t
+		}
+		if hh <= 0 {
+			continue
+		}
+		av := th / hh
+		if e := tt - av*th; e < bestE {
+			bestE, bestA, bestK = e, av, k
+		}
+	}
+	return float32(bestA), bestK
+}
+
+// gaussKernel is a normalised Gaussian kernel of the given sigma (radius 3).
+func gaussKernel(sigma float64) [7]float32 {
 	var k [7]float32
 	var sum float32
 	for i := range k {
 		x := float64(i - 3)
-		k[i] = float32(math.Exp(-x * x / 2))
+		k[i] = float32(math.Exp(-x * x / (2 * sigma * sigma)))
 		sum += k[i]
 	}
 	for i := range k {
 		k[i] /= sum
 	}
 	return k
-}()
+}
+
+// gauss1 is a normalised Gaussian kernel of sigma 1 (radius 3).
+var gauss1 = gaussKernel(1)
 
 // usmPlanes sharpens interleaved channels (n per pixel, the first 3
 // sharpened) given as floats: v + a·(v − gauss(v)), edges clamped. Each
 // channel goes through its own plane: a horizontal pass (no clamping away
 // from the edges) and a vertical pass accumulated row by row.
-func usmPlanes(v []float32, w, h, n int, a float32) []float32 {
+func usmPlanes(v []float32, w, h, n int, a float32, k [7]float32) []float32 {
 	out := make([]float32, len(v))
 	copy(out, v)
-	k := gauss1
 	for c := 0; c < 3; c++ {
 		pl := make([]float32, w*h)
 		for i := range pl {
@@ -124,7 +168,7 @@ func usmPlanes(v []float32, w, h, n int, a float32) []float32 {
 
 // sppSharpen8 applies SPP's sharpening to an 8-bit image at view scale s.
 func sppSharpen8(img *image.RGBA, s, iso float64, sensor string) {
-	a := sppAmount(s, iso, sensor)
+	a, k := sppView(s, iso, sensor)
 	if a == 0 {
 		return
 	}
@@ -133,7 +177,7 @@ func sppSharpen8(img *image.RGBA, s, iso float64, sensor string) {
 	for i, b := range img.Pix {
 		v[i] = float32(b)
 	}
-	o := usmPlanes(v, w, h, 4, a)
+	o := usmPlanes(v, w, h, 4, a, k)
 	for i := range img.Pix {
 		if i%4 != 3 {
 			img.Pix[i] = uint8(max(0, min(255, o[i])) + 0.5)
@@ -143,7 +187,7 @@ func sppSharpen8(img *image.RGBA, s, iso float64, sensor string) {
 
 // sppSharpen16 is sppSharpen8 for 16-bit images (big-endian samples).
 func sppSharpen16(img *image.RGBA64, s, iso float64, sensor string) {
-	a := sppAmount(s, iso, sensor)
+	a, k := sppView(s, iso, sensor)
 	if a == 0 {
 		return
 	}
@@ -152,7 +196,7 @@ func sppSharpen16(img *image.RGBA64, s, iso float64, sensor string) {
 	for i := range v {
 		v[i] = float32(uint16(img.Pix[2*i])<<8 | uint16(img.Pix[2*i+1]))
 	}
-	o := usmPlanes(v, w, h, 4, a)
+	o := usmPlanes(v, w, h, 4, a, k)
 	for i := range v {
 		if i%4 != 3 {
 			u := uint16(max(0, min(65535, o[i])) + 0.5)

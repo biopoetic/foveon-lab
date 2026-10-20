@@ -66,4 +66,3 @@ func areaResample(src []float32, sw, sh, dw, dh int) []float32 {
 	})
 	return dst
 }
-

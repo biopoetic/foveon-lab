@@ -354,9 +354,9 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     pass(P, fbs[0]);
     let cur = fbs[0];
     if (r.sppSharpen){
-      const H = progs.blurh; gl.useProgram(H.p); bind(H, "uSrc", 0, cur.tex); gl.uniform1i(H.u.uW, base.w); gl.uniform1fv(H.u.uK, K7); pass(H, fbs[1]);
+      const H = progs.blurh; gl.useProgram(H.p); bind(H, "uSrc", 0, cur.tex); gl.uniform1i(H.u.uW, base.w); gl.uniform1fv(H.u.uK, r.sppKernel || K7); pass(H, fbs[1]);
       const U = progs.usm; gl.useProgram(U.p); bind(U, "uSrc", 0, cur.tex); bind(U, "uBlur", 1, fbs[1].tex);
-      gl.uniform1i(U.u.uH, base.h); gl.uniform1fv(U.u.uK, K7); gl.uniform1f(U.u.uA, r.sppSharpen); pass(U, fbs[2]);
+      gl.uniform1i(U.u.uH, base.h); gl.uniform1fv(U.u.uK, r.sppKernel || K7); gl.uniform1f(U.u.uA, r.sppSharpen); pass(U, fbs[2]);
       cur = fbs[2];
     }
     const O = progs.out; gl.useProgram(O.p); bind(O, "uSrc", 0, cur.tex);

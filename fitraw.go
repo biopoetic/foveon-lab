@@ -55,14 +55,17 @@ func stretchTo(l *render.Linear, w, h int) *render.Linear {
 	if l.W == w && l.H == h {
 		return l
 	}
-	o := &render.Linear{W: w, H: h, Pix: make([]float32, w*h*3)}
+	// Keep what the decode knows (scale, ISO, sensor, raw): a MED preview
+	// lost it, so it got no SPP sharpening and no ISO-based tuning.
+	o := *l
+	o.W, o.H, o.Pix = w, h, make([]float32, w*h*3)
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			s := ((y*l.H/h)*l.W + x*l.W/w) * 3
 			copy(o.Pix[(y*w+x)*3:], l.Pix[s:s+3])
 		}
 	}
-	return o
+	return &o
 }
 
 func rgbaToLinear(img *image.RGBA) *render.Linear {

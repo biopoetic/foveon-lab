@@ -104,10 +104,12 @@ type GPURecipe struct {
 	GrainMono  bool    `json:"grainMono"`
 	// Density filters (render/density.go): NDGain is the neutral filter's
 	// per-channel gain (1 = none); GND is a graduated filter's geometry.
-	NDGain float32      `json:"ndGain,omitempty"`
-	GND    *GPUDensity `json:"gnd,omitempty"`
-	SppSharpen float32 `json:"sppSharpen"`
-	Sharpen    float32 `json:"sharpen"`
+	NDGain     float32     `json:"ndGain,omitempty"`
+	GND        *GPUDensity `json:"gnd,omitempty"`
+	SppSharpen float32     `json:"sppSharpen"`
+	// SppKernel is the blur of SPP's mask at this view (sppView).
+	SppKernel []float32 `json:"sppKernel,omitempty"`
+	Sharpen   float32   `json:"sharpen"`
 
 	// A colour film (colorfilm.go): its matrices here; its curves and 3-D
 	// table from /api/gpu/colorfilm?key= (GPUColorFilmData), fetched once.
@@ -116,10 +118,10 @@ type GPURecipe struct {
 
 // GPUColorFilm is a colour film's per-render part.
 type GPUColorFilm struct {
-	Key    string     `json:"key"`
+	Key    string      `json:"key"`
 	RP     [18]float32 `json:"rp"`  // sensor layers -> film exposures (colorFilm.rp)
-	Inv    [9]float32 `json:"inv"` // linear sRGB -> sensor layers
-	HWhite float32    `json:"hWhite"`
+	Inv    [9]float32  `json:"inv"` // linear sRGB -> sensor layers
+	HWhite float32     `json:"hWhite"`
 }
 
 // GPU colour-film tables: each layer's curve sampled over log H, and the
@@ -241,7 +243,8 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 		r.GrainSigma, r.GrainMono = film.sigma, film.mono
 	}
 	if b.Raw {
-		r.SppSharpen = sppAmount(b.scale(), b.ISO, b.Sensor)
+		a, k := sppView(b.scale(), b.ISO, b.Sensor)
+		r.SppSharpen, r.SppKernel = a, k[:]
 	}
 	if p.Sharpness != 0 {
 		r.Sharpen = float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale())))
