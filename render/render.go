@@ -309,28 +309,7 @@ func (l *Linear) Downscale(maxW int) *Linear {
 	}
 	dw := maxW
 	dh := max(1, int(math.Round(float64(l.H)*float64(dw)/float64(l.W))))
-	o := &Linear{W: dw, H: dh, Pix: make([]float32, dw*dh*3), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean}
-	parallelRows(dh, func(y0, y1 int) {
-		for dy := y0; dy < y1; dy++ {
-			sy0, sy1 := dy*l.H/dh, (dy+1)*l.H/dh
-			for dx := 0; dx < dw; dx++ {
-				sx0, sx1 := dx*l.W/dw, (dx+1)*l.W/dw
-				var r, g, b float32
-				for sy := sy0; sy < sy1; sy++ {
-					row := l.Pix[(sy*l.W)*3:]
-					for sx := sx0; sx < sx1; sx++ {
-						r += row[sx*3]
-						g += row[sx*3+1]
-						b += row[sx*3+2]
-					}
-				}
-				n := float32((sy1 - sy0) * (sx1 - sx0))
-				i := (dy*dw + dx) * 3
-				o.Pix[i], o.Pix[i+1], o.Pix[i+2] = r/n, g/n, b/n
-			}
-		}
-	})
-	return o
+	return &Linear{W: dw, H: dh, Pix: areaResample(l.Pix, l.W, l.H, dw, dh), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean}
 }
 
 // mask is a heavily blurred perceptual-luminance map used by Fill Light, so
