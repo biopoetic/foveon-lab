@@ -103,6 +103,10 @@ func CameraLinear(raw *RawImage, c *CAMF, sg *SpatialGain, wb string) (*CamImage
 	out := &CamImage{W: ow, H: oh, Pix: make([]float32, ow*oh*3)}
 	// Rows in parallel (each worker its own gain row): serial, this was a
 	// sixth of a full-size development.
+	var sgr *SGRows
+	if sg != nil {
+		sgr = sg.NewRows(oh, ow)
+	}
 	parallel(oh, func(r0, r1 int) {
 		gain := make([]float64, ow*3)
 		for i := range gain {
@@ -111,12 +115,8 @@ func CameraLinear(raw *RawImage, c *CAMF, sg *SpatialGain, wb string) (*CamImage
 		for y := y0 + r0; y < y0+r1; y++ {
 			src := raw.Pix[(y*raw.W+x0)*3:]
 			dst := out.Pix[(y-y0)*ow*3:]
-			if sg != nil {
-				for x := 0; x < ow; x++ {
-					for k := 0; k < 3; k++ {
-						gain[x*3+k] = sg.At(y-y0, x, k, oh, ow)
-					}
-				}
+			if sgr != nil {
+				sgr.Fill(y-y0, gain)
 			}
 			for x := 0; x <= x1-x0; x++ {
 				fb, ft := 1.0, 1.0
