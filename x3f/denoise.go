@@ -124,15 +124,19 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	}
 	wf := [3]float32{float32(wgt[0]), float32(wgt[1]), float32(wgt[2])}
 	Y := make([]float32, n)
-	for i := range Y {
-		Y[i] = wf[0]*img.Pix[i*3] + wf[1]*img.Pix[i*3+1] + wf[2]*img.Pix[i*3+2]
-	}
+	parallel(n, func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			Y[i] = wf[0]*img.Pix[i*3] + wf[1]*img.Pix[i*3+1] + wf[2]*img.Pix[i*3+2]
+		}
+	})
 	ym := estimateNoise(Y, w, h)
 	local := boxBlur(Y, w, h, 4)
 	sig := make([]float32, n) // the luminance noise at each pixel's level
-	for i := range sig {
-		sig[i] = float32(max(ym.at(float64(local[i])), 1e-6))
-	}
+	parallel(n, func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			sig[i] = float32(max(ym.at(float64(local[i])), 1e-6))
+		}
+	})
 	Yd := atrous(Y, w, h, sig, dnK, 5)
 	var mean float64
 	for _, v := range Yd {
@@ -144,9 +148,11 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	}
 	m := float32(mean)
 	G := make([]float32, n)
-	for i := range G {
-		G[i] = Yd[i] / m
-	}
+	parallel(n, func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			G[i] = Yd[i] / m
+		}
+	})
 	// Colour smoothing follows the noise: eps (in the guide's relative
 	// units) is a few times the luminance noise at the mean level, so a clean
 	// image keeps its colour texture and a noisy one is smoothed hard.
@@ -174,26 +180,28 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		}(k)
 	}
 	wg.Wait()
-	for i := 0; i < n; i++ {
-		a, b, c := out[0][i]*m, out[1][i]*m, out[2][i]*m
-		y := wf[0]*a + wf[1]*b + wf[2]*c
-		// Put the denoised luminance back: scaling the layers keeps colour
-		// best where the signal is clear of the noise; near black the scale
-		// factor is noise itself (dark dots, colour halos), so there the
-		// luminance difference is added instead, blending over 2-6 sigma.
-		d := Yd[i] - y
-		ma, mb, mc := a+d, b+d, c+d
-		sigY := sig[i]
-		if t := (y - 2*sigY) / (4 * sigY); y > 1e-9 && t > 0 && !additive {
-			s := Yd[i] / y
-			t = min(t, 1)
-			ma = (1-t)*ma + t*a*s
-			mb = (1-t)*mb + t*b*s
-			mc = (1-t)*mc + t*c*s
+	parallel(n, func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			a, b, c := out[0][i]*m, out[1][i]*m, out[2][i]*m
+			y := wf[0]*a + wf[1]*b + wf[2]*c
+			// Put the denoised luminance back: scaling the layers keeps colour
+			// best where the signal is clear of the noise; near black the scale
+			// factor is noise itself (dark dots, colour halos), so there the
+			// luminance difference is added instead, blending over 2-6 sigma.
+			d := Yd[i] - y
+			ma, mb, mc := a+d, b+d, c+d
+			sigY := sig[i]
+			if t := (y - 2*sigY) / (4 * sigY); y > 1e-9 && t > 0 && !additive {
+				s := Yd[i] / y
+				t = min(t, 1)
+				ma = (1-t)*ma + t*a*s
+				mb = (1-t)*mb + t*b*s
+				mc = (1-t)*mc + t*c*s
+			}
+			a, b, c = ma, mb, mc
+			img.Pix[i*3], img.Pix[i*3+1], img.Pix[i*3+2] = a, b, c
 		}
-		a, b, c = ma, mb, mc
-		img.Pix[i*3], img.Pix[i*3+1], img.Pix[i*3+2] = a, b, c
-	}
+	})
 	if !noRestore {
 		if perLayerRestore {
 			restoreDetail(img, orig, rel, o.Strength)

@@ -132,23 +132,44 @@ func boxH(src, dst []float32, w, h, r int) {
 	})
 }
 
+// boxV is the vertical box pass, over bands of columns row by row (a
+// running sum per column, same arithmetic as one column at a time): walking
+// each column top to bottom strides a whole row per step and missed the
+// cache (as in x3f's boxBlur).
 func boxV(src, dst []float32, w, h, r int) {
-	parallelRows(w, func(x0, x1 int) {
-		for x := x0; x < x1; x++ {
-			var sum float32
-			cnt := 0
+	const band = 64
+	nb := (w + band - 1) / band
+	parallelRows(nb, func(b0, b1 int) {
+		var sum [band]float32
+		var cnt int
+		for bi := b0; bi < b1; bi++ {
+			x0 := bi * band
+			bw := min(band, w-x0)
+			s := sum[:bw]
+			clear(s)
+			cnt = 0
 			for y := 0; y <= min(r, h-1); y++ {
-				sum += src[y*w+x]
+				for i, v := range src[y*w+x0 : y*w+x0+bw] {
+					s[i] += v
+				}
 				cnt++
 			}
 			for y := 0; y < h; y++ {
-				dst[y*w+x] = sum / float32(cnt)
+				o := dst[y*w+x0 : y*w+x0+bw]
+				c := float32(cnt)
+				for i, v := range s {
+					o[i] = v / c
+				}
 				if y+r+1 < h {
-					sum += src[(y+r+1)*w+x]
+					for i, v := range src[(y+r+1)*w+x0 : (y+r+1)*w+x0+bw] {
+						s[i] += v
+					}
 					cnt++
 				}
 				if y-r >= 0 {
-					sum -= src[(y-r)*w+x]
+					for i, v := range src[(y-r)*w+x0 : (y-r)*w+x0+bw] {
+						s[i] -= v
+					}
 					cnt--
 				}
 			}

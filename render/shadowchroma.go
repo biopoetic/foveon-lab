@@ -3,6 +3,7 @@ package render
 import (
 	"math"
 	"sort"
+	"sync/atomic"
 )
 
 // Shadow colour noise. A Foveon sensor's colour noise in the shadows is
@@ -84,24 +85,30 @@ func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 	hi := float32(shadowChromaHi + 0.10*amount)
 	Y := make([]float32, n)
 	G := make([]float32, n) // the guide: encoded luminance
-	any := false
-	for i := 0; i < n; i++ {
-		y := 0.2126*l.Pix[i*3] + 0.7152*l.Pix[i*3+1] + 0.0722*l.Pix[i*3+2]
-		Y[i] = y
-		G[i] = enc(max(0, y))
-		if y < hi {
-			any = true
+	var any atomic.Bool
+	parallelRows(n, func(i0, i1 int) {
+		found := false
+		for i := i0; i < i1; i++ {
+			y := 0.2126*l.Pix[i*3] + 0.7152*l.Pix[i*3+1] + 0.0722*l.Pix[i*3+2]
+			Y[i] = y
+			G[i] = enc(max(0, y))
+			found = found || y < hi
 		}
-	}
-	if !any {
+		if found {
+			any.Store(true)
+		}
+	})
+	if !any.Load() {
 		return
 	}
 	var ratio [3][]float32
 	for k := 0; k < 3; k++ {
 		c := make([]float32, n)
-		for i := 0; i < n; i++ {
-			c[i] = l.Pix[i*3+k] / (Y[i] + 1e-4)
-		}
+		parallelRows(n, func(i0, i1 int) {
+			for i := i0; i < i1; i++ {
+				c[i] = l.Pix[i*3+k] / (Y[i] + 1e-4)
+			}
+		})
 		ratio[k] = guidedGauss(G, c, w, h, sigma, shadowChromaEps)
 	}
 	a := float32(amount)
@@ -176,21 +183,27 @@ func guidedGauss(I, p []float32, w, h int, sigma, eps float64) []float32 {
 	n := len(I)
 	ip := make([]float32, n)
 	ii := make([]float32, n)
-	for i := range I {
-		ip[i] = I[i] * p[i]
-		ii[i] = I[i] * I[i]
-	}
+	parallelRows(n, func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			ip[i] = I[i] * p[i]
+			ii[i] = I[i] * I[i]
+		}
+	})
 	mI, mp := GaussBlur(I, w, h, sigma), GaussBlur(p, w, h, sigma)
 	mIp, mII := GaussBlur(ip, w, h, sigma), GaussBlur(ii, w, h, sigma)
 	a, b := ip, ii // reuse
-	for i := 0; i < n; i++ {
-		a[i] = (mIp[i] - mI[i]*mp[i]) / (mII[i] - mI[i]*mI[i] + float32(eps))
-		b[i] = mp[i] - a[i]*mI[i]
-	}
+	parallelRows(n, func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			a[i] = (mIp[i] - mI[i]*mp[i]) / (mII[i] - mI[i]*mI[i] + float32(eps))
+			b[i] = mp[i] - a[i]*mI[i]
+		}
+	})
 	ma, mb := GaussBlur(a, w, h, sigma), GaussBlur(b, w, h, sigma)
-	for i := 0; i < n; i++ {
-		ma[i] = ma[i]*I[i] + mb[i]
-	}
+	parallelRows(n, func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			ma[i] = ma[i]*I[i] + mb[i]
+		}
+	})
 	return ma
 }
 
@@ -234,4 +247,3 @@ func ShadowChromaNoise(l *Linear) float64 {
 	sort.Float64s(v)
 	return v[len(v)/2]
 }
-
