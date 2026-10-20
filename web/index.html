@@ -39,6 +39,9 @@ aside{border-right:1px solid var(--line);overflow:auto;background:var(--panel)}
 .ph .star{margin-left:auto;flex:none;color:#555;font-size:18px;line-height:1;padding:2px 4px;border-radius:3px}
 .ph .star:hover{color:#bbb;background:#2c2c2c}
 .ph.fav .star{color:#f0b429}
+.ph .trash{flex:none;color:#555;font-size:13px;line-height:1;padding:2px 4px;border-radius:3px;visibility:hidden}
+.ph:hover .trash{visibility:visible}
+.ph .trash:hover{color:#e06060;background:#2c2c2c}
 body.favonly .ph:not(.fav){display:none}
 body.favonly .fhidden{display:none}
 main{overflow:auto;position:relative}
@@ -554,14 +557,35 @@ async function loadPhotos(){
     const el = document.createElement("div");
     el.className = "ph"; el.dataset.id = p.id;
     const sub = p.unsupported ? "not supported yet" : [p.lowRes && "low-res preview", p.rawDecoded && "raw-decoded", p.info.ISO && "ISO "+p.info.ISO, p.info.SH_DESC, p.info.AP_DESC && "f/"+p.info.AP_DESC].filter(Boolean).join(" · ");
-    el.innerHTML = `<img loading="lazy" src="/api/thumb?id=${p.id}" onerror="this.style.visibility='hidden'"><div>${esc(p.name)}<small>${esc(sub)}</small></div><span class="star" title="Favorite (F)">${p.favorite ? "★" : "☆"}</span>`;
+    el.innerHTML = `<img loading="lazy" src="/api/thumb?id=${p.id}" onerror="this.style.visibility='hidden'"><div>${esc(p.name)}<small>${esc(sub)}</small></div><span class="star" title="Favorite (F)">${p.favorite ? "★" : "☆"}</span><span class="trash" title="Move to the Recycle Bin (Delete)">🗑</span>`;
     if (p.favorite) el.classList.add("fav");
     el.querySelector(".star").onclick = ev => { ev.stopPropagation(); toggleFavorite(p.id); };
+    el.querySelector(".trash").onclick = ev => { ev.stopPropagation(); deletePhoto(p.id); };
     if (p.unsupported) el.style.opacity = .55;
     el.onclick = () => selectPhoto(p.id);
     group.appendChild(el);
   }
   applyFavFilter();
+}
+
+// deletePhoto moves a photo to the Recycle Bin / Trash after a confirmation
+// (recoverable from there), drops it from the list and moves on to the next.
+async function deletePhoto(id){
+  const i = S.photos.findIndex(x => x.id === id);
+  if (i < 0) return;
+  const p = S.photos[i];
+  if (!confirm(`Move ${p.name} to the Recycle Bin?
+
+You can restore it from there.`)) return;
+  const r = await fetch("/api/delete", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id})});
+  if (!r.ok){ toast("Could not delete: " + esc(await r.text()), 8000); return; }
+  S.photos.splice(i, 1);
+  document.querySelector(`.ph[data-id="${id}"]`)?.remove();
+  toast(`${esc(p.name)} moved to the Recycle Bin.`, 5000);
+  if (S.photo?.id === id){
+    const next = S.photos[i] || S.photos[i - 1];
+    if (next) selectPhoto(next.id); else closeDetail();
+  }
 }
 
 // toggleFavorite stars or unstars a photo (remembered by the app).
@@ -2564,6 +2588,7 @@ function bind(){
     if (e.key === "Escape" && document.body.classList.contains("full")){ e.preventDefault(); toggleFull(); return; }
     if (e.key === "Tab" && !e.ctrlKey && !e.altKey && !e.metaKey){ e.preventDefault(); const v = sides(); const show = !(v.list || v.panel); setSides(show, show); return; }
     if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && S.photo){ e.preventDefault(); toggleFavorite(S.photo.id); return; }
+    if (e.key === "Delete" && !e.ctrlKey && !e.metaKey && S.photo){ e.preventDefault(); deletePhoto(S.photo.id); return; }
     if ((e.key === "z" || e.key === "Z") && !e.ctrlKey && !e.metaKey && $("#detail").classList.contains("on")){ e.preventDefault(); setZoom(!ZOOM.on); return; }
     if ((e.key === "[" || e.key === "]") && S.photo){ e.preventDefault(); setRot(rotOf(S.photo.id) + (e.key === "[" ? 90 : -90)); return; }
     if (e.key === "ArrowDown" || e.key === "PageDown"){ e.preventDefault(); stepPhoto(1); }

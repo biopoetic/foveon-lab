@@ -1517,6 +1517,7 @@ func main() {
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/api/photos", s.handlePhotos)
 	mux.HandleFunc("/api/favorite", s.handleFavorite)
+	mux.HandleFunc("/api/delete", s.handleDelete)
 	mux.HandleFunc("/api/folders", s.handleFolders)
 	mux.HandleFunc("/api/browse", s.handleBrowse)
 	mux.HandleFunc("/api/pickfolder", s.handlePickFolder)
