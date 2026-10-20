@@ -375,8 +375,19 @@ func restoreChroma(img *CamImage, orig []float32, wf [3]float32, models [3]noise
 				p[i] = orig[i*3+k]
 			}
 		})
-		lvl := boxBlur(p, w, h, 2)
-		b1, b2, b4, b8 := boxBlur(c, w, h, 1), boxBlur(c, w, h, 2), boxBlur(c, w, h, 4), boxBlur(c, w, h, 8)
+		// The five blurs read c and p only: run them together (on a
+		// preview each is short, and one after another they idled cores).
+		var lvl, b1, b2, b4, b8 []float32
+		var bw sync.WaitGroup
+		for _, j := range []struct {
+			dst *[]float32
+			src []float32
+			r   int
+		}{{&lvl, p, 2}, {&b1, c, 1}, {&b2, c, 2}, {&b4, c, 4}, {&b8, c, 8}} {
+			bw.Add(1)
+			go func() { defer bw.Done(); *j.dst = boxBlur(j.src, w, h, j.r) }()
+		}
+		bw.Wait()
 		parallel(n, func(a, b int) {
 			for i := a; i < b; i++ {
 				sg := t * float32(models[k].at(float64(lvl[i])))
@@ -549,20 +560,26 @@ func boxBlurRef(p []float32, w, h, r int) []float32 {
 func guided(I, p []float32, w, h, r int, eps float32) []float32 {
 	mI, mp := boxBlur(I, w, h, r), boxBlur(p, w, h, r)
 	Ip, II := make([]float32, len(I)), make([]float32, len(I))
-	for i := range I {
-		Ip[i], II[i] = I[i]*p[i], I[i]*I[i]
-	}
+	parallel(len(I), func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			Ip[i], II[i] = I[i]*p[i], I[i]*I[i]
+		}
+	})
 	mIp, mII := boxBlur(Ip, w, h, r), boxBlur(II, w, h, r)
 	a, b := make([]float32, len(I)), make([]float32, len(I))
-	for i := range I {
-		a[i] = (mIp[i] - mI[i]*mp[i]) / (mII[i] - mI[i]*mI[i] + eps)
-		b[i] = mp[i] - a[i]*mI[i]
-	}
+	parallel(len(I), func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			a[i] = (mIp[i] - mI[i]*mp[i]) / (mII[i] - mI[i]*mI[i] + eps)
+			b[i] = mp[i] - a[i]*mI[i]
+		}
+	})
 	ma, mb := boxBlur(a, w, h, r), boxBlur(b, w, h, r)
 	out := make([]float32, len(I))
-	for i := range I {
-		out[i] = ma[i]*I[i] + mb[i]
-	}
+	parallel(len(I), func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			out[i] = ma[i]*I[i] + mb[i]
+		}
+	})
 	return out
 }
 
