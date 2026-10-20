@@ -119,6 +119,12 @@ func FromCamLinear(pix []float32, sw, sh, maxW, rot int, t CamTransform) *Linear
 		s = float64(maxW) / float64(outW)
 	}
 	dw, dh := max(1, int(math.Round(float64(sw)*s))), max(1, int(math.Round(float64(sh)*s)))
+	return FromCamLinearSize(pix, sw, sh, dw, dh, rot, t)
+}
+
+// FromCamLinearSize is FromCamLinear resampled to exactly dw×dh (before
+// rotating): a reduced-height readout brought to its frame's shape.
+func FromCamLinearSize(pix []float32, sw, sh, dw, dh, rot int, t CamTransform) *Linear {
 	m := t.Matrix()
 	var mf [9]float32
 	for i, v := range m {

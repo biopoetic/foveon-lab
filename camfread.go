@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -157,17 +158,39 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 		x3f.ClipHighlights(img, t.Gain)
 	}
 	fullW := img.W
-	if strength > 0 {
-		b := 1
-		if maxW > 0 {
-			b = max(1, img.W/maxW)
+	// A reduced-height readout (SD1 MED: rows binned in pairs, 4704×1568
+	// for a 3:2 frame) is brought to the frame's shape per axis on a
+	// reduced view. Shrinking both axes alike, then stretching the rows
+	// (rawLinearFor), kept 533 of the 1568 rows on a 1600 view: MED
+	// previews lost two thirds of their vertical detail.
+	dw, dh := 0, 0
+	if maxW > 0 && maxW < img.W && ph.previewW > 0 && ph.previewH > 0 {
+		if r := float64(img.W*ph.previewH) / float64(img.H*ph.previewW); r >= 1.5 || r <= 0.67 {
+			dw, dh = maxW, int(math.Round(float64(maxW*ph.previewH)/float64(ph.previewW)))
+			if dh > img.H {
+				dw, dh = 0, 0
+			}
 		}
-		if b > 1 {
-			img = binCam(img, b)
-		}
-		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(b), ISO: photoISO(ph)})
 	}
-	l := render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t)
+	if strength > 0 {
+		bx, by := 1, 1
+		if dw > 0 {
+			bx, by = max(1, img.W/dw), max(1, img.H/dh)
+		} else if maxW > 0 {
+			bx = max(1, img.W/maxW)
+			by = bx
+		}
+		if bx > 1 || by > 1 {
+			img = binCam2(img, bx, by)
+		}
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph)})
+	}
+	var l *render.Linear
+	if dw > 0 {
+		l = render.FromCamLinearSize(img.Pix, img.W, img.H, dw, dh, 0, t)
+	} else {
+		l = render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t)
+	}
 	// The low-frequency shadow colour noise the layer denoiser misses
 	// (render/shadowchroma.go), with noise reduction on: the colour path
 	// and colour film (its layers, fixed through the colour they make);
@@ -184,16 +207,19 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 }
 
 // binCam averages b×b blocks of camera RGB.
-func binCam(c *x3f.CamImage, b int) *x3f.CamImage {
-	w, h := c.W/b, c.H/b
+func binCam(c *x3f.CamImage, b int) *x3f.CamImage { return binCam2(c, b, b) }
+
+// binCam2 averages bx×by blocks of camera RGB.
+func binCam2(c *x3f.CamImage, bx, by int) *x3f.CamImage {
+	w, h := c.W/bx, c.H/by
 	out := &x3f.CamImage{W: w, H: h, Pix: make([]float32, w*h*3)}
-	inv := 1 / float32(b*b)
+	inv := 1 / float32(bx*by)
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			var s [3]float32
-			for yy := y * b; yy < y*b+b; yy++ {
-				row := c.Pix[(yy*c.W+x*b)*3:]
-				for xx := 0; xx < b; xx++ {
+			for yy := y * by; yy < y*by+by; yy++ {
+				row := c.Pix[(yy*c.W+x*bx)*3:]
+				for xx := 0; xx < bx; xx++ {
 					s[0] += row[xx*3]
 					s[1] += row[xx*3+1]
 					s[2] += row[xx*3+2]
