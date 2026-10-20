@@ -300,28 +300,32 @@ func restoreLuma(img *CamImage, orig []float32, wf [3]float32, rel, strength flo
 	rest := float32(1 - math.Min(1, strength))
 	w, h, n := img.W, img.H, img.W*img.H
 	d := make([]float32, n)
-	for i := range d {
-		for k := 0; k < 3; k++ {
-			d[i] += wf[k] * (orig[i*3+k] - img.Pix[i*3+k])
+	parallel(n, func(a, b int) {
+		for i := a; i < b; i++ {
+			for k := 0; k < 3; k++ {
+				d[i] += wf[k] * (orig[i*3+k] - img.Pix[i*3+k])
+			}
 		}
-	}
+	})
 	b1, b2, b4, b8 := boxBlur(d, w, h, 1), boxBlur(d, w, h, 2), boxBlur(d, w, h, 4), boxBlur(d, w, h, 8)
-	for i := range d {
-		v := wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
-		// Scale the layers, keeping their ratios (the colour): the same
-		// amount added to each layer is not grey once the colour matrix
-		// (which amplifies layer differences ~10x) is applied, and washed
-		// out saturated colours (an orange spatula at ISO 200). Near black
-		// the ratios are noise, so there it is added.
-		p := img.Pix[i*3 : i*3+3]
-		y := wf[0]*p[0] + wf[1]*p[1] + wf[2]*p[2]
-		if y > 1e-6 && y+v > 0 {
-			s := (y + v) / y
-			p[0], p[1], p[2] = p[0]*s, p[1]*s, p[2]*s
-		} else {
-			p[0], p[1], p[2] = p[0]+v, p[1]+v, p[2]+v
+	parallel(n, func(a, b int) {
+		for i := a; i < b; i++ {
+			v := wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
+			// Scale the layers, keeping their ratios (the colour): the same
+			// amount added to each layer is not grey once the colour matrix
+			// (which amplifies layer differences ~10x) is applied, and washed
+			// out saturated colours (an orange spatula at ISO 200). Near black
+			// the ratios are noise, so there it is added.
+			p := img.Pix[i*3 : i*3+3]
+			y := wf[0]*p[0] + wf[1]*p[1] + wf[2]*p[2]
+			if y > 1e-6 && y+v > 0 {
+				s := (y + v) / y
+				p[0], p[1], p[2] = p[0]*s, p[1]*s, p[2]*s
+			} else {
+				p[0], p[1], p[2] = p[0]+v, p[1]+v, p[2]+v
+			}
 		}
-	}
+	})
 }
 
 // Chroma restore threshold, in noise sigmas (research switch FOVEON_DN_CT).
@@ -361,14 +365,16 @@ func restoreChroma(img *CamImage, orig []float32, wf [3]float32, models [3]noise
 	c := make([]float32, n)
 	p := make([]float32, n)
 	for k := 0; k < 3; k++ {
-		for i := 0; i < n; i++ {
-			var dy float32
-			for j := 0; j < 3; j++ {
-				dy += wf[j] * (orig[i*3+j] - img.Pix[i*3+j])
+		parallel(n, func(a, b int) {
+			for i := a; i < b; i++ {
+				var dy float32
+				for j := 0; j < 3; j++ {
+					dy += wf[j] * (orig[i*3+j] - img.Pix[i*3+j])
+				}
+				c[i] = orig[i*3+k] - img.Pix[i*3+k] - dy
+				p[i] = orig[i*3+k]
 			}
-			c[i] = orig[i*3+k] - img.Pix[i*3+k] - dy
-			p[i] = orig[i*3+k]
-		}
+		})
 		lvl := boxBlur(p, w, h, 2)
 		b1, b2, b4, b8 := boxBlur(c, w, h, 1), boxBlur(c, w, h, 2), boxBlur(c, w, h, 4), boxBlur(c, w, h, 8)
 		parallel(n, func(a, b int) {
@@ -582,45 +588,69 @@ func atrous(p []float32, w, h int, sigma []float32, k float64, levels int) []flo
 		step := 1 << l
 		parallel(h, func(y0, y1 int) {
 			for y := y0; y < y1; y++ {
+				row, o := cur[y*w:(y+1)*w], tmp[y*w:(y+1)*w]
 				for x := 0; x < w; x++ {
+					if x >= 2*step && x < w-2*step {
+						// Interior: no mirroring (same sum, same order).
+						var s float32
+						s += kern[0] * row[x-2*step]
+						s += kern[1] * row[x-step]
+						s += kern[2] * row[x]
+						s += kern[3] * row[x+step]
+						s += kern[4] * row[x+2*step]
+						o[x] = s
+						continue
+					}
 					var s float32
 					for i, kv := range kern {
-						s += kv * cur[y*w+mirror(x+(i-2)*step, w)]
+						s += kv * row[mirror(x+(i-2)*step, w)]
 					}
-					tmp[y*w+x] = s
+					o[x] = s
 				}
 			}
 		})
 		parallel(h, func(y0, y1 int) {
 			for y := y0; y < y1; y++ {
+				var rows [5][]float32
+				for i := range rows {
+					r := mirror(y+(i-2)*step, h)
+					rows[i] = tmp[r*w : (r+1)*w]
+				}
+				o := next[y*w : (y+1)*w]
 				for x := 0; x < w; x++ {
 					var s float32
-					for i, kv := range kern {
-						s += kv * tmp[mirror(y+(i-2)*step, h)*w+x]
-					}
-					next[y*w+x] = s
+					s += kern[0] * rows[0][x]
+					s += kern[1] * rows[1][x]
+					s += kern[2] * rows[2][x]
+					s += kern[3] * rows[3][x]
+					s += kern[4] * rows[4][x]
+					o[x] = s
 				}
 			}
 		})
 		lk := float32(k * lvlNoise[min(l, len(lvlNoise)-1)])
-		for i := range cur {
-			t := lk * sigma[i]
-			d := cur[i] - next[i]
-			switch {
-			case d > t:
-				d -= t
-			case d < -t:
-				d += t
-			default:
-				d = 0
+		parallel(len(cur), func(a, b int) {
+			for i := a; i < b; i++ {
+				t := lk * sigma[i]
+				d := cur[i] - next[i]
+				switch {
+				case d > t:
+					d -= t
+				case d < -t:
+					d += t
+				default:
+					d = 0
+				}
+				out[i] += d
 			}
-			out[i] += d
-		}
+		})
 		cur, next = next, cur
 	}
-	for i := range out {
-		out[i] += cur[i]
-	}
+	parallel(len(out), func(a, b int) {
+		for i := a; i < b; i++ {
+			out[i] += cur[i]
+		}
+	})
 	return out
 }
 
