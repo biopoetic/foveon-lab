@@ -336,6 +336,29 @@ neutral grey's proportions (`DenoiseOptions.Grey`, the inverse WB gains). Result
 Rejected while looking: using the X3F's PGain and the ISO 100 colour matrices / gains (all
 worse), and the DFSOffset black level (already in the black).
 
+**dp2 Quattro drift: where it comes from (open).** Measured on 32 px block means in linear light
+(so noise averages out before Lab), ISO 6400 vs the frame's own ISO 100: SPP a* -3.1 b* +1.1; ours
+-15.1 / +10.9, and -9.9 / +8.6 with noise reduction off. So about two thirds is already in the raw
+data and a third comes from the denoiser. The denoiser part is not its luminance recombination,
+detail restore or chroma restore (switching each off changes nothing).
+
+In the raw data, regressing the lower layers on the top layer (16 px blocks, same scene) shows them
+gaining an offset as the gain rises. ISO 200, 400 and 800 record the same signal level, yet at 800
+both lower layers carry ~5 DN more. By ISO 6400 their slopes are also ~4% higher. The bottom layer
+reads mostly red and the middle mostly green, which matches the cast.
+
+The camera's own auto white balance is fooled by it too (4726 K at ISO 400, 4232 K at 6400), but a
+fixed white balance does not help (6400: a* -13.1, b* +15.8).
+
+The dark shields disagree for the lower layers: the rows above and below the image read up to
+7 DN higher than the side columns at ISO 6400, and the columns dominate the mean. Taking the rows
+only cuts the yellow shift (+10.9 -> +7.9) but deepens the green. spp-check Quattro is unchanged
+(9.184 -> 9.185) and the ISO 6400 frame is worse (+1.12), so not shipped.
+
+Unused CAMF candidates that may carry the per-ISO correction: PreCaptureOffset (-152 / -125 / 0
+per layer), OBGAIN_* and EstimatedISOreference. AGain is constant, so it cannot cause an
+ISO-dependent shift.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
