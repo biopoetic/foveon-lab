@@ -18,6 +18,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/biopoetic/foveon-lab/preset"
@@ -29,6 +30,13 @@ var bandRadii = []int{0, 1, 2, 4, 8} // bands: r0-r1, r1-r2, …
 
 func main() {
 	a := os.Args[1:]
+	if len(a) > 0 && a[0] == "-render-gain" {
+		// -gain with Foveon Lab measured as the app renders it (SPP-style
+		// sharpening included), like SPP's export.
+		renderGain = true
+		gains(a[1:])
+		return
+	}
 	if len(a) > 0 && a[0] == "-gain" {
 		gains(a[1:])
 		return
@@ -139,6 +147,10 @@ var nrStrength = 1.0
 // viaRender: measure the app's rendered output instead of the linear image.
 var viaRender bool
 
+// renderGain: -render-gain; the NR pass is measured through the app's
+// render, the no-NR reference stays linear.
+var renderGain bool
+
 // noFit: only report the band ratios.
 var noFit bool
 
@@ -192,16 +204,21 @@ func develop(path string) ([]float32, int, int, error) {
 	}
 	x3f.ClipHighlights(img, gain)
 	if nrStrength > 0 {
-		x3f.Denoise(img, x3f.DenoiseOptions{Strength: nrStrength, Scale: 1})
+		iso, _ := strconv.ParseFloat(strings.TrimSpace(f.Props["ISO"]), 64)
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: nrStrength, Scale: 1, ISO: iso})
 	}
 	l := render.FromCamLinear(img.Pix, img.W, img.H, 0, 0, render.CamTransform{Gain: gain, CC: cc})
 	fmt.Sscan(f.Props["ISO"], &l.ISO)
-	l.Sensor = render.SensorGeneration(x3f.CalibGroup(f.Props["CAMMODEL"]))
+	l.Sensor = render.SharpKey(x3f.CalibGroup(f.Props["CAMMODEL"]))
 	if b := render.RawBaseFitted(x3f.CalibGroup(f.Props["CAMMODEL"])); b != nil {
 		b.Apply(l)
 	}
 	if viaRender {
-		img := render.Render(render.NewBase(l), preset.Params{R: 1, G: 1, B: 1, ColorMode: preset.ModeStandard}, render.Compensation{})
+		p := preset.Params{R: 1, G: 1, B: 1, ColorMode: preset.ModeStandard}
+		if renderGain {
+			p = preset.Neutral()
+		}
+		img := render.Render(render.NewBase(l), p, render.Compensation{})
 		l = render.FromImage(img, 0, 0)
 	}
 	return luma(l), l.W, l.H, nil
@@ -403,7 +420,9 @@ func gains(a []string) {
 			log.Fatal(err)
 		}
 		nrStrength = 1
+		viaRender = renderGain
 		y1, _, _, err := develop(a[i])
+		viaRender = false
 		if err != nil {
 			log.Fatal(err)
 		}

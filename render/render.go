@@ -38,8 +38,8 @@ type Linear struct {
 	// ISO the photo was taken at (0 = unknown): SPP sharpens less as
 	// its noise reduction takes the fine detail away.
 	ISO float64
-	// Sensor is the Foveon generation (SensorGeneration): SPP sharpens
-	// each differently.
+	// Sensor is the sharpening key (SharpKey: the Foveon generation, the DP
+	// Merrills apart): SPP sharpens each differently.
 	Sensor string
 	// FillMean is the whole frame's mean brightness (FrameMean), kept
 	// through crops, zoom windows and rotations: SPP's Fill Light depends on

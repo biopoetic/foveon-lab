@@ -8,7 +8,12 @@ package render
 // with ISO as SPP's noise reduction takes the fine detail away (the
 // SDIM0358-0363 ISO 200-6400 series, each fitted on its own). SPP sharpens
 // the SD15 far less (SDIM1240-1245, ISO 100-3200: 0.2-0.7, fitted after
-// the black-level fix). Generations not measured yet
+// the black-level fix). The DP Merrills, though Merrill sensors, are
+// sharpened differently: a finer mask (sigma 0.7) that stays strong at high
+// ISO (the DP1 Merrill studio series ISO 100-6400, each frame fitted on its
+// own, October 2026). With the SD1's mask they came out ~20% oversharp at
+// ISO 100 and short of SPP's detail from ISO 800 (detail kept vs the ISO 100
+// frame at ISO 800, SPP 0.90, ours 0.68). Generations not measured yet
 // (SD9/SD10, Quattro) get none.
 // A reduced view gets the full-size filter's gain at its own Nyquist
 // frequency, as a sigma-1 mask at that size.
@@ -20,11 +25,30 @@ import (
 
 const sppSharpSigma = 1.0
 
-// sppSharpByISO: the fitted amount per sensor generation and ISO (log2
-// ISO 100 = 0 … 6400 = 6).
+// sppSharpByISO: the fitted amount per sharpening key (SharpKey) and ISO
+// (log2 ISO 100 = 0 … 6400 = 6); sppSharpSigmaOf gives the mask's sigma.
 var sppSharpByISO = map[string][]float64{
 	"Merrill": {2.7, 2.5, 2.4, 1.4, 1.0, 0.8, 0.5},
+	"DPM":     {2.5, 3.2, 3.3, 2.9, 2.1, 1.6, 1.4},
 	"TRUEII":  {0.3, 0.2, 0.7, 0.5, 0.4, 0.2, 0.2},
+}
+
+// sppSharpSigmaOf is the full-size mask's sigma for a sharpening key.
+func sppSharpSigmaOf(key string) float64 {
+	if key == "DPM" {
+		return 0.7
+	}
+	return sppSharpSigma
+}
+
+// SharpKey is the key SPP's sharpening is looked up by for a calibration
+// group: its sensor generation, except the DP Merrills, which SPP
+// sharpens differently from the SD1.
+func SharpKey(group string) string {
+	if group == "DPM" {
+		return "DPM"
+	}
+	return SensorGeneration(group)
 }
 
 // sppFullAmount is the full-size amount for a photo of sensor at iso (0 =
@@ -53,7 +77,8 @@ func sppAmount(s, iso float64, sensor string) float32 {
 		return float32(a)
 	}
 	hp := func(sigma, f float64) float64 { return 1 - math.Exp(-2*math.Pi*math.Pi*sigma*sigma*f*f) }
-	return float32(a * hp(sppSharpSigma, 0.5*s) / hp(1, 0.5))
+	sg := sppSharpSigmaOf(sensor)
+	return float32(a * hp(sg, 0.5*s) / hp(sg, 0.5))
 }
 
 // sppView is the mask (amount and kernel) for a view of scale s whose
@@ -67,8 +92,9 @@ func sppAmount(s, iso float64, sensor string) float32 {
 // near-identity blur with amounts of 30-100).
 func sppView(s, iso float64, sensor string) (float32, [7]float32) {
 	a := sppFullAmount(iso, sensor)
+	full := gaussKernel(sppSharpSigmaOf(sensor))
 	if a == 0 || s >= 1 {
-		return float32(a), gauss1
+		return float32(a), full
 	}
 	resp := func(k [7]float32, f float64) float64 { // 1 - the blur's gain
 		g := float64(k[3])
@@ -77,13 +103,13 @@ func sppView(s, iso float64, sensor string) (float32, [7]float32) {
 		}
 		return 1 - g
 	}
-	bestE, bestA, bestK := math.Inf(1), 0.0, gauss1
+	bestE, bestA, bestK := math.Inf(1), 0.0, full
 	for sg := 0.5; sg <= 1.0001; sg += 0.05 {
 		k := gaussKernel(sg)
 		var th, hh, tt float64
 		for i := 1; i <= 50; i++ {
 			f := 0.5 * float64(i) / 50
-			t, h := a*resp(gauss1, f*s), resp(k, f)
+			t, h := a*resp(full, f*s), resp(k, f)
 			th, hh, tt = th+t*h, hh+h*h, tt+t*t
 		}
 		if hh <= 0 {

@@ -209,7 +209,7 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 		}
 	}
 	l.ISO, _ = strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
-	l.Sensor = render.SensorGeneration(calibGroup(ph))
+	l.Sensor = render.SharpKey(calibGroup(ph))
 	return l, nil
 }
 
