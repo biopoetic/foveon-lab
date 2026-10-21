@@ -373,6 +373,27 @@ Tried and rejected:
 It needs ~10 SD14 photos with SPP exports. No more public ones were found: raw.pixls.us and
 rawsamples.ch have one each, and Imaging Resource's raws are gone.
 
+**Denoise knobs on the DP1 Merrill studio series (22 October 2026).** `tools/isocmp` on
+DP1MhSLI0100 as the reference (each pipeline against its own ISO 100 frame, fitted dE2000):
+SPP 5.67 / ours 13.22 (no NR 21.14) at ISO 1600; ISO 3200 8.96 / 14.89; ISO 6400 12.23 / 16.09.
+The 100% crops show what it is: chroma speckle in the black bottle and the cloth that SPP smooths
+away. Tried on the ISO 1600 frame (baseline 13.22):
+
+| change | dE |
+|---|---|
+| luma wavelet threshold K = 2 / 3 | 13.06 / 13.09 |
+| colour eps x2 / x4 (6 / 12) | 13.31 / 13.36 |
+| colour radius 32 -> 64 px | 15.76 |
+| **per-pixel colour eps** (eps at each pixel's own noise) | 13.19 |
+| detail restore off | 10.54 |
+| detail restore off + K = 3 | 10.47 |
+
+So the base filter leaves about 10.5 and the detail restore adds about 2.7, and none of the knobs
+closes the gap to SPP's 5.67. Per-pixel eps changing nothing says the eps choice is not the limit
+either. Knobs are exhausted; the next attempt has to be a different chroma model (e.g. a
+perceptual-space bilateral, which is what SPP's blotch-free look suggests) or noise reduction in the
+raw domain before the colour matrix, not more tuning of this guided filter.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
