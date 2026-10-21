@@ -359,6 +359,18 @@ Unused CAMF candidates that may carry the per-ISO correction: PreCaptureOffset (
 per layer), OBGAIN_* and EstimatedISOreference. AGain is constant, so it cannot cause an
 ISO-dependent shift.
 
+**SD14 (21 October 2026, open).** The SD14 now uses the DP compacts' raw base (same sensor generation):
+31.9 -> 8.4 and 31.5 -> 15.6 on its only two SPP pairs. Both still lean magenta (a* +4.6 and +15).
+Tried and rejected:
+- **Refitting the DP base with 9 more DP2 photos.** They come from kronometric.org and are mostly a
+  tungsten card exposure bracket. All 30 DP photos got worse (7.78 -> 7.91 without the SD14 pairs,
+  8.28 with them). Out of sample the SD14s got worse too: 11.8 / 16.2.
+- **A per-channel SD14 gain, fitted on one photo and tested on the other.** The two photos disagree:
+  0.96 / 1 / 0.94 vs 0.54 / 1 / 0.67.
+
+It needs ~10 SD14 photos with SPP exports. No more public ones were found: raw.pixls.us and
+rawsamples.ch have one each, and Imaging Resource's raws are gone.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
