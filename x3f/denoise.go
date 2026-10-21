@@ -48,6 +48,14 @@ type DenoiseOptions struct {
 	Scale float64
 	// ISO, when known, sets the colour filter's radius (colourRadius).
 	ISO float64
+	// Grey is a neutral grey's layer values (any scale; zero = equal
+	// layers). Near black the denoised luminance goes back additively, in
+	// these proportions: added equally to the layers it was not grey once
+	// the white balance (DP1 Merrill gains ~2.0 / 1 / 0.6) and the colour
+	// matrix were applied, a cast that grew with ISO as more pixels fell
+	// near black (DP1 Merrill still life ISO 6400 vs its own ISO 100:
+	// a* -8.0, green).
+	Grey [3]float64
 }
 
 // colourRadius is the colour filter's radius at full sensor resolution for
@@ -123,6 +131,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		wgt[k] /= sum
 	}
 	wf := [3]float32{float32(wgt[0]), float32(wgt[1]), float32(wgt[2])}
+	gw := greyWeights(o.Grey, wf)
 	Y := make([]float32, n)
 	parallel(n, func(i0, i1 int) {
 		for i := i0; i < i1; i++ {
@@ -189,7 +198,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 			// factor is noise itself (dark dots, colour halos), so there the
 			// luminance difference is added instead, blending over 2-6 sigma.
 			d := Yd[i] - y
-			ma, mb, mc := a+d, b+d, c+d
+			ma, mb, mc := a+d*gw[0], b+d*gw[1], c+d*gw[2]
 			sigY := sig[i]
 			if t := (y - 2*sigY) / (4 * sigY); y > 1e-9 && t > 0 && !additive {
 				s := Yd[i] / y
@@ -206,7 +215,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		if perLayerRestore {
 			restoreDetail(img, orig, rel, o.Strength)
 		} else {
-			restoreLuma(img, orig, wf, rel, o.Strength)
+			restoreLuma(img, orig, wf, gw, rel, o.Strength)
 			restoreChroma(img, orig, wf, models)
 		}
 	}
@@ -291,7 +300,7 @@ func restoreDetail(img *CamImage, orig []float32, rel, strength float64) {
 // mostly the clean top layer's) go back into every layer alike. Giving
 // back each layer's own difference also gives back each layer's noise, the
 // bottom layer's above all: at ISO 6400 that was most of the noise left.
-func restoreLuma(img *CamImage, orig []float32, wf [3]float32, rel, strength float64) {
+func restoreLuma(img *CamImage, orig []float32, wf, gw [3]float32, rel, strength float64) {
 	keep := keepFor(rel)
 	var wb [4]float32
 	for b := range keep {
@@ -322,7 +331,7 @@ func restoreLuma(img *CamImage, orig []float32, wf [3]float32, rel, strength flo
 				s := (y + v) / y
 				p[0], p[1], p[2] = p[0]*s, p[1]*s, p[2]*s
 			} else {
-				p[0], p[1], p[2] = p[0]+v, p[1]+v, p[2]+v
+				p[0], p[1], p[2] = p[0]+v*gw[0], p[1]+v*gw[1], p[2]+v*gw[2]
 			}
 		}
 	})
@@ -793,4 +802,15 @@ func selectK(v []float64, k int) float64 {
 		}
 	}
 	return v[k]
+}
+
+// greyWeights is grey (DenoiseOptions.Grey) scaled so that wf·gw = 1: adding
+// d·gw changes the weighted luminance by exactly d. A zero grey gives equal
+// layers (wf sums to 1).
+func greyWeights(grey [3]float64, wf [3]float32) [3]float32 {
+	y := float64(wf[0])*grey[0] + float64(wf[1])*grey[1] + float64(wf[2])*grey[2]
+	if grey[0] <= 0 || grey[1] <= 0 || grey[2] <= 0 || y <= 0 {
+		return [3]float32{1, 1, 1}
+	}
+	return [3]float32{float32(grey[0] / y), float32(grey[1] / y), float32(grey[2] / y)}
 }

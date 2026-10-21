@@ -183,7 +183,7 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 		if bx > 1 || by > 1 {
 			img = binCam2(img, bx, by)
 		}
-		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph)})
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph), Grey: greyOf(t)})
 	}
 	var l *render.Linear
 	if dw > 0 {
@@ -268,7 +268,7 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 		nr = float64(max(0, min(10, *denoise))) / 10
 	}
 	if nr > 0 {
-		x3f.Denoise(img, x3f.DenoiseOptions{Strength: nr, Scale: 1, ISO: photoISO(ph)})
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: nr, Scale: 1, ISO: photoISO(ph), Grey: greyOf(t)})
 	}
 	path := filepath.Join(dir, stem+".dng")
 	f, err := os.Create(path)
@@ -368,4 +368,17 @@ func cameraWBName(code int) string {
 func photoISO(ph *Photo) float64 {
 	iso, _ := strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
 	return iso
+}
+
+// greyOf is a neutral grey's camera layer values before the white balance:
+// the inverse of its gains (zero when a gain is missing).
+func greyOf(t render.CamTransform) [3]float64 {
+	var g [3]float64
+	for i, v := range t.Gain {
+		if v <= 0 {
+			return [3]float64{}
+		}
+		g[i] = 1 / v
+	}
+	return g
 }

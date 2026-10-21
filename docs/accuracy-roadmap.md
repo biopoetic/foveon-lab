@@ -312,6 +312,30 @@ reference rewards smoothing (the reason an earlier "beats SPP" claim was withdra
 series of a detailed scene, exported from SPP, would settle detail; until then the claim is
 "less colour noise at high ISO, detail by eye comparable".
 
+**Tripod studio series (21 October 2026).** The studio still life (DP1 Merrill DP1MhSLI and dp2
+Quattro DP2QhSLI, ISO 100-6400) settles detail, and it qualifies the claim above:
+
+- **DP1 Merrill: SPP is better at every ISO.** It keeps more detail from ISO 800 up and holds
+  its colour steady across the series.
+- **dp2 Quattro: we keep more detail, but our colour drifts** green/yellow as ISO rises (ISO 6400
+  vs our own ISO 100: a* -16, b* +11; SPP's drift is small). Not caused by the denoiser (see
+  below); still open.
+
+Part of the Merrill drift was the denoiser. Near black it added the denoised luminance back
+equally to all three layers. Once the white balance is applied (DP1 Merrill gains ~2.0 / 1 /
+0.6), equal amounts are no longer grey, so the cast grew with ISO. It now adds them back in a
+neutral grey's proportions (`DenoiseOptions.Grey`, the inverse WB gains). Results:
+
+- **DP1 Merrill vs SPP at the same ISO:** area error at ISO 3200 fell 6.13 -> 4.62 and at ISO
+  6400 9.10 -> 7.91. ISO 100-400 is unchanged.
+- **DP1 Merrill drift at ISO 6400:** a* -8.0 -> -6.7.
+- **spp-check over all 187 photos:** 6.623 -> 6.584, with 16 photos better and 1 worse
+  (SDIM0369, SD1 at ISO 6400, +0.66; its series neighbours improve 0.3-0.9).
+- **dp2 Quattro:** unchanged.
+
+Rejected while looking: using the X3F's PGain and the ISO 100 colour matrices / gains (all
+worse), and the DFSOffset black level (already in the black).
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
