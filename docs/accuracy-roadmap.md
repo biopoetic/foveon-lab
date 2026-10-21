@@ -359,7 +359,9 @@ Unused CAMF candidates that may carry the per-ISO correction: PreCaptureOffset (
 per layer), OBGAIN_* and EstimatedISOreference. AGain is constant, so it cannot cause an
 ISO-dependent shift.
 
-**SD14 (21 October 2026, open).** The SD14 now uses the DP compacts' raw base (same sensor generation):
+**SD14 (21 October 2026, resolved the same day).** Resolved: 24 more SD14 raws turned up (Carl
+Rytterfalk's 2007-08 files, recovered from the Internet Archive). The SD14 now has its own base,
+held out 9.7 on 25 photos; the DP base averaged 19.0 on the same photos. History: The SD14 now uses the DP compacts' raw base (same sensor generation):
 31.9 -> 8.4 and 31.5 -> 15.6 on its only two SPP pairs. Both still lean magenta (a* +4.6 and +15).
 Tried and rejected:
 - **Refitting the DP base with 9 more DP2 photos.** They come from kronometric.org and are mostly a
