@@ -431,6 +431,21 @@ The defaults are the best of these, so the guided filter is at its local optimum
 1600-3200 gap needs a different chroma model (a perceptual-space bilateral, which is what SPP's
 blotch-free look suggests) or noise reduction in the raw domain before the colour matrix.
 
+**The other Quattro bodies (22 October 2026).** The samples on disk settle part of the handoff's task
+2. dp0, dp1 and dp3 Quattro have sample photos, not ISO ladders (`sigma_dp*_quattro_NN` are different
+scenes at ISO 100-200). **sd Quattro H does have a ladder** (sigma_sd_quattro_h_01..07, ISO
+100-6400) but it changes resolution across it - 6192x3480 at ISO 100-400, then 3096, 2064, 2064,
+1548 - so only ISO 200 and 400 are comparable 1:1:
+
+| ISO | SPP | ours |
+|---|---|---|
+| 200 | 3.60 | **2.29** |
+| 400 | 4.49 | **3.26** |
+
+We are ahead there. The higher frames need the tool to resample to a common size before comparing
+(and downscaling averages noise, so that comparison needs its own care). `isocmp` now skips a frame
+whose size differs from the reference and says so, instead of panicking in the raw-base fit.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour

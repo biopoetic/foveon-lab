@@ -76,6 +76,12 @@ func main() {
 	fmt.Printf("%-6s | %9s %9s %9s | %9s %9s %9s\n", "ISO", "SPP", "FoveonLab", "no NR", "SPP", "FoveonLab", "no NR")
 	for i := 2; i+1 < len(a); i += 2 {
 		fr, iso := load(a[i], a[i+1])
+		if fr.spp.W != ref.spp.W || fr.spp.H != ref.spp.H || fr.ours.W != ref.ours.W || fr.ours.H != ref.ours.H {
+			// A rotated frame (or a differently-cropped export) cannot be
+			// compared pixel for pixel with the reference: say so and skip.
+			fmt.Printf("%-6s | skipped: frame is %dx%d, reference %dx%d (rotation?)\n", iso, fr.ours.W, fr.ours.H, ref.ours.W, ref.ours.H)
+			continue
+		}
 		row := [6]float64{}
 		for k, p := range [][2]*render.Linear{{fr.spp, ref.spp}, {fr.ours, ref.ours}, {fr.plain, ref.plain}} {
 			row[k] = fitted(p[0], p[1])
