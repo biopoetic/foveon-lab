@@ -194,6 +194,7 @@ func cameraLinearQuattro(raw *RawImage, c *CAMF, wb string, fixBad bool) (*CamIm
 		return nil, errors.New("x3f: no Quattro dark shield for the black level")
 	}
 	black := [3]float64{lb[0], lb[1], tb[0]}
+	black[1] += quattroMiddleBlack(c)
 	if fixBad {
 		fixQuattroBadPixels(low, w, h, 3, c, false)
 	}
@@ -329,4 +330,28 @@ func (c *CAMF) CameraWB(wbDesc string) string {
 		return wb
 	}
 	return c.quattroWB()
+}
+
+// quattroMiddleBlack is what the middle layer's black sits above its dark
+// shields, in raw units: zero at the sensor's base gain, then growing with
+// its analog gain (SensorISO; CaptureISO above it is digital). Missed, the
+// middle layer read a little high at high ISO, and once the denoiser took
+// away the noise that had masked it the shadows turned green-yellow
+// (ISO 6400 vs the frame's own ISO 100, a*/b*: dp2 Quattro -15.0/+10.6,
+// sd Quattro H -10.3/+5.7; SPP -3.1/+1.1 and -2.4/+2.0). Swept per ISO
+// against SPP's exports of both studio series (October 2026), the best
+// offset was SensorISO/100 on the dp2 Quattro (2 at 200, 4 at 400) and half
+// that on the sd Quattro H; ISO 6400 error vs SPP 24.7 -> 9.9 and
+// 15.4 -> 11.6, with the drift as small as SPP's. The other Quattro bodies
+// share the dp2's sensor and take its value (not measured: no ISO series).
+func quattroMiddleBlack(c *CAMF) float64 {
+	s := c.Matrices["SensorISO"]
+	if len(s) != 1 || s[0] < 200 {
+		return 0
+	}
+	k := 1.0
+	if id := c.Matrices["CAMERAID"]; len(id) == 1 && id[0] == cameraIDSDQH {
+		k = 0.5
+	}
+	return k * s[0] / 100
 }

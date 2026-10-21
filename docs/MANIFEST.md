@@ -34,10 +34,10 @@ photos the fit didn't see; under ~3 is invisible.
 | Goal | Done when | Now (October 2026) |
 |---|---|---|
 | Raw decoding | Every X3F generation, native, bit-identical to reference | ~90% — native Go, value-identical to x3f_extract on 60+ files |
-| Colour & tone vs SPP | ≤ 3/255 held out, every family | SD1 ~4, DP Merrill ~4, SD15 ~6 including Fill Light; without it, every slider measures 0.3–4.7 on six SD1/SD15 photos (mean ~1.5; one SD15 held out at 0.5–4.3). White balance (W02/W06) is now 0.7–3.0 on SD1/SD15/SD14/Quattro (was 5–26), and the dp2-Quattro has its own model |
-| Older cameras | SD9 / SD10 / SD14 / Quattro measured against SPP | **Measured**, and SD9/SD10/SD14 have their own measured models since v0.4.41: every step 0.4–2.8, Fill Light 0.7–4.3 (was 5–32 on the shared model). Fitted on one body per family — a second body is the validation still to run. dp2 Quattro stays on the shared model (0.6–6.4). |
+| Colour & tone vs SPP | ≤ 3/255 held out, every family | Every body has its own raw base fitted on SPP's neutral exports (~260 references). Held out: SD1 4.7, DP Merrill 5.7, SD15 5.8, DP1/DP2 5.8; Quattro 9.5, and 6.2 on the regression check since the per-model exposure (v0.4.62). Sliders: 0.3–4.7 on six SD1/SD15 photos (mean ~1.5); white balance (W02/W06) 0.7–3.0 |
+| Older cameras | SD9 / SD10 / SD14 / Quattro measured against SPP | **Done to ~9–10:** own raw bases since October 2026, held out SD10 9.5 (19 photos), SD14 9.7 (25), SD9 10.6 (13), from several bodies each (Sigma's 2003–05 sample galleries via the Internet Archive and other public samples); Auto white balance from the camera's own measurement (AutoRGBNeutral) |
 | Sharpening & detail | Matches SPP's default per ISO and generation | Done for SD1 Merrill and SD15 |
-| Noise reduction | Beats SPP side by side at ISO 1600+ | SPP still wins |
+| Noise reduction | Beats SPP side by side at ISO 1600+ | SPP still wins on detail on the DP Merrill from ISO 800. Colour holds like SPP's across the ISO range (Quattro's high-ISO green-yellow cast fixed in v0.4.63); on the dp2 Quattro we keep more detail |
 | Full-spectrum IR | Calibrated per generation | Merrill only |
 | DNG with SPP colours | The hand-off to other editors opens looking like SPP | ~85% — SPP-neutral profile embedded, not yet checked in a real editor |
 
