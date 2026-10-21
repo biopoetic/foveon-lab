@@ -284,6 +284,34 @@ Highlight+Fill, Contrast+Saturation) and correct the chaining order/strength whe
 DP Merrill (same sensor as SD1: likely shares the SD1 model, verify with 2–3 A00 exports),
 DP1/DP2 (SD14/SD15 era), Quattro (different sensor and SPP path: separate calibration).
 
+## Beyond SPP: high-ISO noise (21 October 2026)
+
+The SD1 ISO series (SDIM0358-0363, one kitchen scene at ISO 200-6400, f/5.6) exported neutral
+from SPP and rendered neutral by Foveon Lab at full size (v0.4.58), each pipeline judged against
+its **own** ISO 200 frame (so calibration differences cancel). Noise measured on the flattest
+15% of the centre (8-bit units; luminance: residual from a 5 px mean; colour: residual of each
+channel minus luminance from a 15 px mean):
+
+| ISO | luminance SPP / ours | colour SPP / ours |
+|---|---|---|
+| 200 | 2.72 / 2.79 | 2.68 / 2.84 |
+| 400 | 3.99 / 3.69 | 3.57 / 3.57 |
+| 800 | 3.85 / 3.51 | 3.16 / 3.57 |
+| 1600 | 4.35 / 3.97 | 4.92 / 4.12 |
+| 3200 | 7.16 / 6.99 | 8.81 / 4.20 |
+| 6400 | 10.25 / 8.26 | 15.61 / 5.04 |
+
+At ISO 6400 Foveon Lab has ~20% less luminance and ~3x less colour noise; a 100% crop shows SPP's
+magenta/green blotches gone and the wood grain intact. Overall dE2000 to the own ISO 200 frame is
+4-7% lower than SPP's at every ISO, but SPP is closer in colour alone at ISO 6400 (9.08 vs 9.90:
+ours is a little pinker / less saturated there).
+
+**Caveats.** Less noise is only better if detail survives, and this series cannot measure detail:
+its ISO 200 frame is motion-blurred (1/8 s), so the "detail kept" slope is ~0 for both. dE to a
+reference rewards smoothing (the reason an earlier "beats SPP" claim was withdrawn). A tripod
+series of a detailed scene, exported from SPP, would settle detail; until then the claim is
+"less colour noise at high ISO, detail by eye comparable".
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
