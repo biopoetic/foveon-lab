@@ -373,26 +373,34 @@ Tried and rejected:
 It needs ~10 SD14 photos with SPP exports. No more public ones were found: raw.pixls.us and
 rawsamples.ch have one each, and Imaging Resource's raws are gone.
 
-**Denoise knobs on the DP1 Merrill studio series (22 October 2026).** `tools/isocmp` on
-DP1MhSLI0100 as the reference (each pipeline against its own ISO 100 frame, fitted dE2000):
-SPP 5.67 / ours 13.22 (no NR 21.14) at ISO 1600; ISO 3200 8.96 / 14.89; ISO 6400 12.23 / 16.09.
-The 100% crops show what it is: chroma speckle in the black bottle and the cloth that SPP smooths
-away. Tried on the ISO 1600 frame (baseline 13.22):
+**DP1 Merrill studio series, measured with the shipped options (22 October 2026).** `tools/isocmp`
+used to call `Denoise` without `ISO` and `Grey`, so it measured a pipeline the app does not use (no
+ISO-based colour radius, no neutral-grey proportions near black). Corrected, each pipeline against
+its **own** ISO 100 frame (fitted dE2000):
+
+| ISO | SPP | ours | render shift ours / SPP |
+|---|---|---|---|
+| 1600 | 5.67 | 9.73 | 5.53 / 6.09 |
+| 3200 | 8.96 | 10.97 | 8.26 / 10.28 |
+| 6400 | 12.23 | 12.39 | 9.62 / 14.93 |
+
+So at 6400 we now match SPP's noise and beat its colour drift, at 3200 we are 1.2x, and at 1600 we
+are 1.7x. The 100% crop shows the remainder: chroma speckle in the black bottle and the cloth that
+SPP smooths away.
+
+Knobs, tried on the corrected pipeline (ISO 1600, baseline 9.73):
 
 | change | dE |
 |---|---|
-| luma wavelet threshold K = 2 / 3 | 13.06 / 13.09 |
-| colour eps x2 / x4 (6 / 12) | 13.31 / 13.36 |
-| colour radius 32 -> 64 px | 15.76 |
-| **per-pixel colour eps** (eps at each pixel's own noise) | 13.19 |
-| detail restore off | 10.54 |
-| detail restore off + K = 3 | 10.47 |
+| detail restore off | 11.45 |
+| luma wavelet threshold K = 3 | 9.88 |
+| colour eps x2 | 9.89 |
+| colour radius 64 px | 15.76 (measured before the fix; radius 32 is what the app uses) |
+| per-pixel colour eps | 13.19 (before the fix; no change) |
 
-So the base filter leaves about 10.5 and the detail restore adds about 2.7, and none of the knobs
-closes the gap to SPP's 5.67. Per-pixel eps changing nothing says the eps choice is not the limit
-either. Knobs are exhausted; the next attempt has to be a different chroma model (e.g. a
-perceptual-space bilateral, which is what SPP's blotch-free look suggests) or noise reduction in the
-raw domain before the colour matrix, not more tuning of this guided filter.
+The defaults are the best of these, so the guided filter is at its local optimum. The remaining
+1600-3200 gap needs a different chroma model (a perceptual-space bilateral, which is what SPP's
+blotch-free look suggests) or noise reduction in the raw domain before the colour matrix.
 
 ## What "perfect" would need beyond this
 
