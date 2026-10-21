@@ -294,3 +294,7 @@ func (c *RawCorrection) SetHue(gain, rot []float64) {
 	c.HueGain, c.HueRot = gain, rot
 	c.hueANeg = c.hueChangesOnlyANeg()
 }
+
+// ShippedRawBaseJSON is the raw-base file built into the app
+// (render/rawbase.json), for fit-raw to merge a refit into.
+func ShippedRawBaseJSON() []byte { return rawBaseJSON }

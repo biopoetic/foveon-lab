@@ -149,3 +149,7 @@ func BalanceJPEG(family string, l *Linear, autoWB bool) bool {
 	}
 	return true
 }
+
+// ShippedJPEGBalanceJSON is the camera-JPEG balance file built into the
+// app (render/jpegwb.json), for fit-raw to merge a refit into.
+func ShippedJPEGBalanceJSON() []byte { return jpegWBJSON }

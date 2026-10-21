@@ -14,6 +14,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -136,9 +137,12 @@ func fitRawCommand(desk string) {
 			byName[strings.ToUpper(strings.TrimSuffix(p.Name, filepath.Ext(p.Name)))] = p
 		}
 	}
-	groups := map[string][]calib.RawPair{}
-	jgroups := map[string][]calib.JPEGPair{}
-	for i, e := range exports {
+	// Which group each export belongs to (cheap: no decoding), so the fit
+	// can load one group at a time. All groups at once held four
+	// analysis-size images per photo (~46 MB): ~12 GB for ~260 photos,
+	// which ran the machine out of memory (October 2026).
+	present := map[string]bool{}
+	for i := range exports {
 		name := names[i]
 		ph := byName[strings.ToUpper(name)]
 		if ph == nil {
@@ -153,145 +157,44 @@ func fitRawCommand(desk string) {
 		if *onlyGroups != "" && !slices.Contains(strings.Split(*onlyGroups, ","), group) {
 			continue
 		}
-		// Charts (tools/synth -gamut) are drawn inside the gamut on purpose.
-		isChart := strings.Contains(strings.ToLower(filepath.ToSlash(ph.path)), "/charts/")
-		if isChart && !*charts {
-			continue
-		}
-		spp, err := calib.LoadLinear(e)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Skip scenes at the edge of sRGB (e.g. a saturated red flower): SPP
-		// works on wider data there, so they teach clipping, not colour.
-		var edge int
-		for i := 0; i < len(spp.Pix); i += 3 {
-			lo := min(spp.Pix[i], spp.Pix[i+1], spp.Pix[i+2])
-			hi := max(spp.Pix[i], spp.Pix[i+1], spp.Pix[i+2])
-			if lo < 0.0005 && hi > 0.2 || hi > 0.99 {
-				edge++
-			}
-		}
-		if frac := float64(edge) / float64(len(spp.Pix)/3); frac > 0.3 && !isChart {
-			fmt.Printf("  %s: %.0f%% of it at the sRGB edge or clipped, skipped\n", name, frac*100)
-			continue
-		}
-		var jpegErr float64 = -1
-		var jpegNeutral *render.Linear
-		if f, err := x3f.Open(ph.path); err == nil {
-			if img, _, err := f.Preview(); err == nil {
-				cam := fitAspect(render.FromImage(img, calib.AnalysisW, 0), spp.W, spp.H)
-				props := f.Props
-				neutral := func(l *render.Linear) *render.Linear {
-					return rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), render.CompensationWith(props, family, photoCC(ph))))
-				}
-				jpegNeutral = neutral(cam)
-				jpegErr = calib.MeanError(jpegNeutral, spp)
-				if !strings.Contains(strings.ToLower(filepath.ToSlash(ph.path)), "/charts/") { // a chart's preview is its container photo's
-					jgroups[group] = append(jgroups[group], calib.JPEGPair{Name: name, JPEG: cam, SPP: spp, AutoWB: props["WB_DESC"] == "Auto", Neutral: neutral})
-				}
-			}
-		}
-		// The raw base only: these photos' camera JPEG still trains the
-		// JPEG balance above (the app shows them from it).
-		if *onlyRes != "" && strings.TrimSpace(ph.props["RESOLUTION"]) != *onlyRes {
-			continue
-		}
-		if !rawDecodable(ph.props) {
-			fmt.Printf("  %s: %s resolution, which x3f_extract decodes wrongly, raw skipped\n", name, ph.props["RESOLUTION"])
-			continue
-		}
-		fmt.Printf("  %s (%s): decoding raw…\n", name, ph.Camera)
-		var raw *render.Linear
-		if *goRaw {
-			// As the app makes a preview: developed at its working width,
-			// then reduced. Developed straight at the analysis width (3×3
-			// binning, denoised at that scale) the training image was another
-			// one: the shipped SD1 base scored 5.05 on it against 3.73 on the
-			// app's (16 photos; SDIM0064 14.3 vs 8.7).
-			// A portrait photo's working width is its long side, so at
-			// sourceW it came out 1067 wide, narrower than SPP's 1200 and
-			// stretched (nearest neighbour) to fit: blurred, misaligned
-			// detail (SDIM0418 15.3, area colour alone 2.7).
-			maxW := sourceW
-			if ph.rotation == 90 || ph.rotation == 270 {
-				maxW = max(sourceW, spp.H)
-			}
-			l, err := goLinear(ph, maxW, *nr)
-			if err != nil {
-				fmt.Printf("    go raw: %v\n", err)
-				continue
-			}
-			// Turned as the app shows it (rawLinearFor): unturned, a portrait
-			// photo's landscape data was stretched onto SPP's portrait export
-			// (SDIM0412, 0418: errors 92 and 59), poisoning the whole fit.
-			if ph.rotation != 0 {
-				l = l.Rotate(ph.rotation)
-			}
-			raw = fitAspect(l.Downscale(spp.W), spp.W, spp.H)
-		} else if *camfRaw {
-			rimg, err := decodeRawAs(ph, "none")
-			if err != nil {
-				fmt.Printf("    raw decode failed: %v\n", err)
-				continue
-			}
-			t, err := camfTransform(ph)
-			if err != nil {
-				fmt.Printf("    %v\n", err)
-				continue
-			}
-			raw = stretchTo(render.FromCameraRaw(rimg, calib.AnalysisW, 0, t), spp.W, spp.H)
-		} else {
-			color := "sRGB"
-			if *noSgain {
-				color += "-nosgain"
-			}
-			if *noDenoise {
-				color += "-nodenoise"
-			}
-			rimg, err := decodeRawAs(ph, color)
-			if err != nil {
-				fmt.Printf("    raw decode failed: %v\n", err)
-				continue
-			}
-			raw = stretchTo(render.FromImage(rimg, calib.AnalysisW, 0), spp.W, spp.H)
-		}
-		if jpegErr < 0 {
-			fmt.Printf("    its camera JPEG can't be read; used for fitting only as raw\n")
-			jpegErr = calib.MeanError(raw, spp) // no better baseline exists
-		}
-		pr := ph.props
-		info := fmt.Sprintf("expnet %s expcomp %s iso %s f/%s %ss", pr["EXPNET"], pr["EXPCOMP"], pr["ISO"], pr["AP_DESC"], pr["SH_DESC"])
-		if xf, err := x3f.Open(ph.path); err == nil {
-			if c, err := xf.CAMF(); err == nil {
-				for _, k := range []string{"AutoAdjustEXPCOMP", "ExpEstimate", "ExpNet", "AutoAdjustHeadroom", "CaptureExpComp"} {
-					if v := c.Matrices[k]; len(v) > 0 && len(v) <= 4 {
-						info += fmt.Sprintf(" %s %.3g", k, v)
-					}
-				}
-			}
-		}
-		chart := strings.Contains(strings.ToLower(filepath.ToSlash(ph.path)), "/charts/")
-		rp := calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info, JPEG: jpegNeutral, TrainOnly: chart}
-		if *goRaw {
-			// Score bases on the app's own neutral rendering of them.
-			comp := rawCompensation(ph)
-			rp.Neutral = func(l *render.Linear) *render.Linear {
-				return rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), comp))
-			}
-		}
-		groups[group] = append(groups[group], rp)
+		present[group] = true
 	}
-	var fams []string
-	for f := range jgroups {
-		fams = append(fams, f)
+	groups := map[string][]calib.RawPair{}
+	jgroups := map[string][]calib.JPEGPair{}
+	// load decodes the photos of the wanted groups (nil = all present ones)
+	// into groups and jgroups.
+	load := func(want map[string]bool) {
+		for i, e := range exports {
+			name := names[i]
+			ph := byName[strings.ToUpper(name)]
+			if ph == nil {
+				continue
+			}
+			family, group := x3f.PresetFamily(ph.Camera), calibGroup(ph)
+			if !present[group] || (want != nil && !want[group]) {
+				continue
+			}
+			loadPair(name, e, ph, family, group, groups, jgroups, *charts, *onlyRes, *goRaw, *camfRaw, *noSgain, *noDenoise, *nr)
+		}
 	}
-	for f := range groups {
-		if jgroups[f] == nil {
+	research := *deltaE || *tasteOut != "" || *transfer != "" || *taste || *dngProfile || *local || *diagnose
+	if research {
+		load(nil) // these compare groups with each other
+	}
+	famsOf := func() []string {
+		var fams []string
+		for f := range jgroups {
 			fams = append(fams, f)
 		}
+		for f := range groups {
+			if jgroups[f] == nil {
+				fams = append(fams, f)
+			}
+		}
+		sort.Strings(fams)
+		return fams
 	}
-	sort.Strings(fams)
+	fams := famsOf()
 	if *deltaE {
 		for _, f := range fams {
 			calib.DeltaEReport(f, groups[f], jgroups[f], os.Stdout)
@@ -330,39 +233,52 @@ func fitRawCommand(desk string) {
 		return
 	}
 	var out []render.RawCorrection
-	for _, f := range fams {
-		c := calib.FitRawBase(f, groups[f])
-		out = append(out, c)
-		verdict := "camera JPEG stays (raw base not clearly better)"
-		if c.UseRaw {
-			verdict = "RAW BASE ON"
-		}
-		fmt.Printf("%s: %d photos, held-out error raw %.2f vs camera JPEG %.2f → %s\n", f, c.Photos, c.HeldOutRaw, c.HeldOutJPEG, verdict)
-		if s := render.RawBaseFitted(f); s != nil {
-			fmt.Printf("%s: the shipped base on the same photos (not held out): %.2f\n", f, calib.ScoreRawBase(groups[f], s))
-		}
-	}
-	js, _ := json.MarshalIndent(out, "", " ")
-	p := filepath.Join(*dir, "rawbase.json")
-	if err := os.WriteFile(p, js, 0o644); err != nil {
-		log.Fatal(err)
-	}
 	var bal []render.JPEGBalance
-	for _, f := range fams {
-		b := calib.FitJPEGBalance(f, jgroups[f])
-		bal = append(bal, b)
-		verdict := "off (not clearly better)"
-		if b.Use {
-			verdict = "ON"
+	fit := func(fams []string) {
+		for _, f := range fams {
+			c := calib.FitRawBase(f, groups[f])
+			out = append(out, c)
+			verdict := "camera JPEG stays (raw base not clearly better)"
+			if c.UseRaw {
+				verdict = "RAW BASE ON"
+			}
+			fmt.Printf("%s: %d photos, held-out error raw %.2f vs camera JPEG %.2f → %s\n", f, c.Photos, c.HeldOutRaw, c.HeldOutJPEG, verdict)
+			if s := render.RawBaseFitted(f); s != nil {
+				fmt.Printf("%s: the shipped base on the same photos (not held out): %.2f\n", f, calib.ScoreRawBase(groups[f], s))
+			}
+			b := calib.FitJPEGBalance(f, jgroups[f])
+			bal = append(bal, b)
+			verdict = "off (not clearly better)"
+			if b.Use {
+				verdict = "ON"
+			}
+			fmt.Printf("%s camera-JPEG balance: %d photos, held-out %.1f vs %.1f without -> %s; + tone curve %.1f (on: %v)\n", f, b.Photos, b.HeldOut, b.Without, verdict, b.HeldOutTone, b.ToneUse)
 		}
-		fmt.Printf("%s camera-JPEG balance: %d photos, held-out %.1f vs %.1f without -> %s; + tone curve %.1f (on: %v)\n", f, b.Photos, b.HeldOut, b.Without, verdict, b.HeldOutTone, b.ToneUse)
 	}
-	jb, _ := json.MarshalIndent(bal, "", " ")
-	pj := filepath.Join(*dir, "jpegwb.json")
-	if err := os.WriteFile(pj, jb, 0o644); err != nil {
+	// One group at a time: only its photos are in memory.
+	var want []string
+	for g := range present {
+		want = append(want, g)
+	}
+	sort.Strings(want)
+	for _, g := range want {
+		clear(groups)
+		clear(jgroups)
+		runtime.GC()
+		load(map[string]bool{g: true})
+		fit(famsOf())
+	}
+	// Written as the shipped files with the fitted groups replaced, so they
+	// can be copied to render/ as they are.
+	p := filepath.Join(*dir, "rawbase.json")
+	if err := os.WriteFile(p, mergeByFamily(render.ShippedRawBaseJSON(), out), 0o644); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Saved %s and %s: copy them to render/ and rebuild to use them.\n", p, pj)
+	pj := filepath.Join(*dir, "jpegwb.json")
+	if err := os.WriteFile(pj, mergeByFamily(render.ShippedJPEGBalanceJSON(), bal), 0o644); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Saved %s and %s (the shipped files with %s refitted): copy them to render/ and rebuild to use them.\n", p, pj, strings.Join(want, ", "))
 }
 
 // fillResearchCommand compares Fill Light surround scales held out
@@ -402,4 +318,168 @@ func fillResearchCommand(desk string) {
 	if err := calib.FillResearch(*dir, func(n string) string { return fam[strings.ToUpper(n)] }, cands, os.Stdout); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// loadPair decodes one photo with an SPP export into its group's raw pairs
+// (groups) and camera-JPEG pairs (jgroups).
+func loadPair(name, e string, ph *Photo, family, group string, groups map[string][]calib.RawPair, jgroups map[string][]calib.JPEGPair,
+	charts bool, onlyRes string, goRaw, camfRaw, noSgain, noDenoise bool, nr float64) {
+	// Charts (tools/synth -gamut) are drawn inside the gamut on purpose.
+	isChart := strings.Contains(strings.ToLower(filepath.ToSlash(ph.path)), "/charts/")
+	if isChart && !charts {
+		return
+	}
+	spp, err := calib.LoadLinear(e)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Skip scenes at the edge of sRGB (e.g. a saturated red flower): SPP
+	// works on wider data there, so they teach clipping, not colour.
+	var edge int
+	for i := 0; i < len(spp.Pix); i += 3 {
+		lo := min(spp.Pix[i], spp.Pix[i+1], spp.Pix[i+2])
+		hi := max(spp.Pix[i], spp.Pix[i+1], spp.Pix[i+2])
+		if lo < 0.0005 && hi > 0.2 || hi > 0.99 {
+			edge++
+		}
+	}
+	if frac := float64(edge) / float64(len(spp.Pix)/3); frac > 0.3 && !isChart {
+		fmt.Printf("  %s: %.0f%% of it at the sRGB edge or clipped, skipped\n", name, frac*100)
+		return
+	}
+	var jpegErr float64 = -1
+	var jpegNeutral *render.Linear
+	if f, err := x3f.Open(ph.path); err == nil {
+		if img, _, err := f.Preview(); err == nil {
+			cam := fitAspect(render.FromImage(img, calib.AnalysisW, 0), spp.W, spp.H)
+			props := f.Props
+			neutral := func(l *render.Linear) *render.Linear {
+				return rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), render.CompensationWith(props, family, photoCC(ph))))
+			}
+			jpegNeutral = neutral(cam)
+			jpegErr = calib.MeanError(jpegNeutral, spp)
+			if !strings.Contains(strings.ToLower(filepath.ToSlash(ph.path)), "/charts/") { // a chart's preview is its container photo's
+				jgroups[group] = append(jgroups[group], calib.JPEGPair{Name: name, JPEG: cam, SPP: spp, AutoWB: props["WB_DESC"] == "Auto", Neutral: neutral})
+			}
+		}
+	}
+	// The raw base only: these photos' camera JPEG still trains the
+	// JPEG balance above (the app shows them from it).
+	if onlyRes != "" && strings.TrimSpace(ph.props["RESOLUTION"]) != onlyRes {
+		return
+	}
+	if !rawDecodable(ph.props) {
+		fmt.Printf("  %s: %s resolution, which x3f_extract decodes wrongly, raw skipped\n", name, ph.props["RESOLUTION"])
+		return
+	}
+	fmt.Printf("  %s (%s): decoding raw…\n", name, ph.Camera)
+	var raw *render.Linear
+	if goRaw {
+		// As the app makes a preview: developed at its working width,
+		// then reduced. Developed straight at the analysis width (3×3
+		// binning, denoised at that scale) the training image was another
+		// one: the shipped SD1 base scored 5.05 on it against 3.73 on the
+		// app's (16 photos; SDIM0064 14.3 vs 8.7).
+		// A portrait photo's working width is its long side, so at
+		// sourceW it came out 1067 wide, narrower than SPP's 1200 and
+		// stretched (nearest neighbour) to fit: blurred, misaligned
+		// detail (SDIM0418 15.3, area colour alone 2.7).
+		maxW := sourceW
+		if ph.rotation == 90 || ph.rotation == 270 {
+			maxW = max(sourceW, spp.H)
+		}
+		l, err := goLinear(ph, maxW, nr)
+		if err != nil {
+			fmt.Printf("    go raw: %v\n", err)
+			return
+		}
+		// Turned as the app shows it (rawLinearFor): unturned, a portrait
+		// photo's landscape data was stretched onto SPP's portrait export
+		// (SDIM0412, 0418: errors 92 and 59), poisoning the whole fit.
+		if ph.rotation != 0 {
+			l = l.Rotate(ph.rotation)
+		}
+		raw = fitAspect(l.Downscale(spp.W), spp.W, spp.H)
+	} else if camfRaw {
+		rimg, err := decodeRawAs(ph, "none")
+		if err != nil {
+			fmt.Printf("    raw decode failed: %v\n", err)
+			return
+		}
+		t, err := camfTransform(ph)
+		if err != nil {
+			fmt.Printf("    %v\n", err)
+			return
+		}
+		raw = stretchTo(render.FromCameraRaw(rimg, calib.AnalysisW, 0, t), spp.W, spp.H)
+	} else {
+		color := "sRGB"
+		if noSgain {
+			color += "-nosgain"
+		}
+		if noDenoise {
+			color += "-nodenoise"
+		}
+		rimg, err := decodeRawAs(ph, color)
+		if err != nil {
+			fmt.Printf("    raw decode failed: %v\n", err)
+			return
+		}
+		raw = stretchTo(render.FromImage(rimg, calib.AnalysisW, 0), spp.W, spp.H)
+	}
+	if jpegErr < 0 {
+		fmt.Printf("    its camera JPEG can't be read; used for fitting only as raw\n")
+		jpegErr = calib.MeanError(raw, spp) // no better baseline exists
+	}
+	pr := ph.props
+	info := fmt.Sprintf("expnet %s expcomp %s iso %s f/%s %ss", pr["EXPNET"], pr["EXPCOMP"], pr["ISO"], pr["AP_DESC"], pr["SH_DESC"])
+	if xf, err := x3f.Open(ph.path); err == nil {
+		if c, err := xf.CAMF(); err == nil {
+			for _, k := range []string{"AutoAdjustEXPCOMP", "ExpEstimate", "ExpNet", "AutoAdjustHeadroom", "CaptureExpComp"} {
+				if v := c.Matrices[k]; len(v) > 0 && len(v) <= 4 {
+					info += fmt.Sprintf(" %s %.3g", k, v)
+				}
+			}
+		}
+	}
+	chart := strings.Contains(strings.ToLower(filepath.ToSlash(ph.path)), "/charts/")
+	rp := calib.RawPair{Name: name, Raw: raw, SPP: spp, JPEGErr: jpegErr, WB: pr["WB_DESC"], Info: info, JPEG: jpegNeutral, TrainOnly: chart}
+	if goRaw {
+		// Score bases on the app's own neutral rendering of them.
+		comp := rawCompensation(ph)
+		rp.Neutral = func(l *render.Linear) *render.Linear {
+			return rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), comp))
+		}
+	}
+	groups[group] = append(groups[group], rp)
+}
+
+// mergeByFamily is shipped (a JSON array of objects with a "family") with
+// the entries of fitted replacing those of the same family; new families
+// are appended. Entries keep their shipped order.
+func mergeByFamily[T any](shipped []byte, fitted []T) []byte {
+	var list []json.RawMessage
+	json.Unmarshal(shipped, &list)
+	familyOf := func(m json.RawMessage) string {
+		var v struct {
+			Family string `json:"family"`
+		}
+		json.Unmarshal(m, &v)
+		return v.Family
+	}
+	for _, f := range fitted {
+		m, _ := json.Marshal(f)
+		fam := familyOf(m)
+		replaced := false
+		for i := range list {
+			if familyOf(list[i]) == fam {
+				list[i], replaced = m, true
+			}
+		}
+		if !replaced {
+			list = append(list, m)
+		}
+	}
+	js, _ := json.MarshalIndent(list, "", " ")
+	return append(js, '\n')
 }
