@@ -124,7 +124,13 @@ func sppCheckPhoto(ph *Photo, export string) (sppScore, error) {
 		l = l.Rotate(ph.rotation)
 	}
 	l = fitAspect(l.Downscale(spp.W), spp.W, spp.H)
-	if c := rawCorrectionFor(ph); c != nil {
+	c := rawCorrectionFor(ph)
+	if ph.RawDecoded {
+		// SD9/SD10 (no camera JPEG to show): the app applies the group's
+		// base in decodePreview, which rawCorrectionFor leaves out.
+		c = render.RawBaseFor(calibGroup(ph))
+	}
+	if c != nil {
 		c.Apply(l)
 	}
 	v := rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), rawCompensation(ph)))
