@@ -57,7 +57,7 @@ func SensorGeneration(group string) string {
 	switch group {
 	case "SD1", "DPM":
 		return "Merrill"
-	case "SD15":
+	case "SD15", "DP":
 		return "TRUEII"
 	case "SD9", "SD10":
 		return "SD9"

@@ -477,6 +477,13 @@ func CalibGroup(model string) string {
 	if strings.Contains(m, "QUATTRO") {
 		return "Quattro"
 	}
+	// The original DP compacts (DP1/DP1s/DP1x, DP2/DP2s/DP2x): the SD15's
+	// sensor generation, but the SD15's raw base was badly off on them
+	// (20 DP2x/DP1s/DP1 photos vs SPP: 24.6, worse than their camera JPEG's
+	// 21.2); their own base, held out, 5.8 (October 2026).
+	if regexp.MustCompile(`\bDP[12][SX]?\b`).MatchString(m) {
+		return "DP"
+	}
 	return PresetFamily(model)
 }
 

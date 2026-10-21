@@ -10,7 +10,7 @@ func TestCalibGroup(t *testing.T) {
 		"SIGMA DP2 Merrill": "DPM",
 		"SIGMA DP3 Merrill": "DPM",
 		"SIGMA SD15":        "SD15",
-		"SIGMA DP2x":        "SD15",
+		"SIGMA DP2x":        "DP",
 	} {
 		if got := CalibGroup(model); got != want {
 			t.Errorf("CalibGroup(%q) = %q, want %q", model, got, want)
