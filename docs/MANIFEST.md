@@ -36,8 +36,8 @@ photos the fit didn't see; under ~3 is invisible.
 | Raw decoding | Every X3F generation, native, bit-identical to reference | ~90% — native Go, value-identical to x3f_extract on 60+ files |
 | Colour & tone vs SPP | ≤ 3/255 held out, every family | Every body has its own raw base fitted on SPP's neutral exports (~260 references). Held out: SD1 4.7, DP Merrill 5.7, SD15 5.8, DP1/DP2 5.8; Quattro 9.5, and 6.2 on the regression check since the per-model exposure (v0.4.62). Sliders: 0.3–4.7 on six SD1/SD15 photos (mean ~1.5); white balance (W02/W06) 0.7–3.0 |
 | Older cameras | SD9 / SD10 / SD14 / Quattro measured against SPP | **Done to ~9–10:** own raw bases since October 2026, held out SD10 9.5 (19 photos), SD14 9.7 (25), SD9 10.6 (13), from several bodies each (Sigma's 2003–05 sample galleries via the Internet Archive and other public samples); Auto white balance from the camera's own measurement (AutoRGBNeutral) |
-| Sharpening & detail | Matches SPP's default per ISO and generation | Done for SD1 Merrill and SD15 |
-| Noise reduction | Beats SPP side by side at ISO 1600+ | SPP still wins on detail on the DP Merrill from ISO 800. Colour holds like SPP's across the ISO range (Quattro's high-ISO green-yellow cast fixed in v0.4.63); on the dp2 Quattro we keep more detail |
+| Sharpening & detail | Matches SPP's default per ISO and generation | Done for SD1 Merrill, SD15 and the DP Merrills (their own finer mask; ISO 100 within ~1% of SPP per band) |
+| Noise reduction | Beats SPP side by side at ISO 1600+ | Detail: we keep more of the ISO 100 frame's texture than SPP on the DP1 Merrill series (ISO 1600 0.83 vs 0.71, ISO 6400 0.64 vs 0.40) and on the dp2 Quattro. Colour noise: SPP still cleaner at ISO 1600+ (colour error vs ISO 100, 4.7 vs 2.9 at 1600). Colour holds like SPP's across the ISO range (Quattro cast fixed in v0.4.63) |
 | Full-spectrum IR | Calibrated per generation | Merrill only |
 | DNG with SPP colours | The hand-off to other editors opens looking like SPP | ~85% — SPP-neutral profile embedded, not yet checked in a real editor |
 
