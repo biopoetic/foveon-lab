@@ -22,6 +22,20 @@ All numbers held out (the photo was not used to fit what is tested on it).
 Visibility: under ~3 is invisible, 5–10 shows only side by side, 25+ is obvious. Before the
 calibration work the end-to-end error was ~28–40.
 
+### Checking accuracy: `foveon-lab spp-check`
+
+Every photo with a neutral SPP export (`<name>_A00.tif` under the calibration folder) is developed
+exactly as the app shows its preview and scored against the export: all pixels, "area" (both
+images reduced 4×: colour and tone without fine detail) and shadows (SPP darker than linear 0.06).
+
+    foveon-lab spp-check -save after.json -compare before.json
+
+`-compare` prints each photo's change and flags those worse by more than `-worse` (0.3). Run it
+before and after any change to rendering or calibration. The v0.4.58 baseline
+(`foveon-calibration/spp-check-v0.4.58.json`, 83 photos, 4½ min): SD1 6.12 / area 5.04 /
+shadows 3.87 (53 photos), SD15 5.40 / 4.83 / 4.27 (30). These include photos the raw-base fit
+skips as clipped or out of gamut, so they sit above the held-out fit numbers.
+
 ### Tone and colour: three photos, every slider (18 October 2026)
 
 Three SD1 photos (SDIM0031, SDIM0046, SDIM0067) were exported from SPP with the whole A ladder
@@ -237,8 +251,14 @@ scales per image (or blend by its histogram) from the same measured FIR local me
 that exists, Fill Light stays at 3–13 on unseen photos, and it is the last large SPP gap: every
 other A slider measured 0.4–4.3 on SDIM0031.
 
-### 4. More pairs for the SD1 raw mapping (gain: ~7 → ~5)
-Seven A00 pairs today. 15–20 photos (varied light, WB, ISO, medium-res files) would steady the
+### 4. ~~More pairs for the SD1 raw mapping~~ — done (21 October 2026)
+60 more neutral exports (35 SD1, 25 SD15; `spp-references.ps1` in the calibration folder, picked
+for variety in scene, ISO, MED/HI and lens) and an app-faithful `fit-raw` (developed, turned and
+rendered as the app shows each photo): held out, SD1 4.70 vs the previous base's 4.85 (49
+photos), SD15 5.84 vs 6.17 (29), shipped in v0.4.58. A separate SD1 MED base did not pay (4.90 vs
+4.38 on the 7 MED photos).
+
+Earlier note: seven A00 pairs then. 15–20 photos (varied light, WB, ISO, medium-res files) would steady the
 3×3 matrix + curves; a small 3D LUT could then replace the per-channel curves.
 - Effort: ~10 A00 exports.
 - **Tried and rejected (2026-10-13): synthetic charts as extra training pairs.** Two SD1 charts

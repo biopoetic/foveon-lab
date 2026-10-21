@@ -1294,6 +1294,10 @@ func calibCommand(desk string) bool {
 		fillResearchCommand(desk)
 		return true
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "spp-check" {
+		sppCheckCommand(desk)
+		return true
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "fit-raw" {
 		rawTool = findRawTool("")
 		fitRawCommand(desk)
