@@ -498,12 +498,14 @@ func CalibGroup(model string) string {
 	// The original DP compacts (DP1/DP1s/DP1x, DP2/DP2s/DP2x): the SD15's
 	// sensor generation, but the SD15's raw base was badly off on them
 	// (20 DP2x/DP1s/DP1 photos vs SPP: 24.6, worse than their camera JPEG's
-	// 21.2); their own base, held out, 5.8 (October 2026). The SD14 shares
-	// the DP compacts' base: on the one SD14 photo with an SPP export
-	// (testdata/SD14) the SD15's scores 31.9, the DP base 8.4, the camera's
-	// own colour alone 18.9.
-	if regexp.MustCompile(`\bDP[12][SX]?\b`).MatchString(m) || strings.Contains(m, "SD14") {
+	// 21.2); their own base, held out, 5.8 (October 2026).
+	if regexp.MustCompile(`\bDP[12][SX]?\b`).MatchString(m) {
 		return "DP"
+	}
+	// The SD14 has its own: on 26 SD14 photos with SPP exports the DP base
+	// (same sensor generation) averaged 18.6, the SD15's ~31.
+	if strings.Contains(m, "SD14") {
+		return "SD14"
 	}
 	return PresetFamily(model)
 }

@@ -201,6 +201,13 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 			fmt.Fprintf(os.Stderr, "shadow chroma noise %s: %.4f\n", ph.Name, noise)
 		}
 	}
+	// The body's brightness relative to its calibration group (not for the
+	// IR looks, which model the sensor layers themselves).
+	if g := render.ModelExposure(modelOf(ph)); g != 1 && irWhite == nil {
+		for i := range l.Pix {
+			l.Pix[i] *= g
+		}
+	}
 	l.ISO, _ = strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
 	l.Sensor = render.SensorGeneration(calibGroup(ph))
 	return l, nil

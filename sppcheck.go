@@ -32,9 +32,15 @@ import (
 
 type sppScore struct {
 	Group  string  `json:"group"`
+	Model  string  `json:"model"`
 	All    float64 `json:"all"`
 	Area   float64 `json:"area"`
 	Shadow float64 `json:"shadow"`
+	// EV is our overall brightness relative to SPP's in stops (mean linear
+	// luminance); AreaEV0 is Area with that difference scaled out, i.e. what
+	// a perfect exposure match would leave.
+	EV      float64 `json:"ev"`
+	AreaEV0 float64 `json:"areaEV0"`
 }
 
 func sppCheckCommand(desk string) {
@@ -81,9 +87,9 @@ func sppCheckCommand(desk string) {
 			fmt.Printf("  %s: %v\n", name, err)
 			continue
 		}
-		s.Group = group
+		s.Group, s.Model = group, modelOf(ph)
 		scores[name] = s
-		fmt.Printf("  %-10s %-8s all %6.2f  area %5.2f  shadows %5.2f\n", name, group, s.All, s.Area, s.Shadow)
+		fmt.Printf("  %-10s %-8s all %6.2f  area %5.2f  shadows %5.2f  ev %+5.2f  area@ev0 %5.2f\n", name, group, s.All, s.Area, s.Shadow, s.EV, s.AreaEV0)
 	}
 	fmt.Printf("%d photos in %s\n", len(scores), time.Since(start).Round(time.Second))
 	printSPPSummary(scores)
@@ -150,6 +156,20 @@ func sppCheckPhoto(ph *Photo, export string) (sppScore, error) {
 	}
 	if n > 0 {
 		s.Shadow = sum / float64(n)
+	}
+	var yo, ys float64
+	for i := 0; i+2 < len(spp.Pix) && i+2 < len(v.Pix); i += 3 {
+		yo += 0.2126*float64(v.Pix[i]) + 0.7152*float64(v.Pix[i+1]) + 0.0722*float64(v.Pix[i+2])
+		ys += 0.2126*float64(spp.Pix[i]) + 0.7152*float64(spp.Pix[i+1]) + 0.0722*float64(spp.Pix[i+2])
+	}
+	if yo > 0 && ys > 0 {
+		s.EV = math.Log2(yo / ys)
+		k := float32(ys / yo)
+		m := v.Downscale(spp.W / 4)
+		for i := range m.Pix {
+			m.Pix[i] *= k
+		}
+		s.AreaEV0 = calib.MeanError(m, spp.Downscale(spp.W/4))
 	}
 	return s, nil
 }
