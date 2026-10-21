@@ -398,6 +398,10 @@ Knobs, tried on the corrected pipeline (ISO 1600, baseline 9.73):
 | colour radius 64 px | 15.76 (measured before the fix; radius 32 is what the app uses) |
 | per-pixel colour eps | 13.19 (before the fix; no change) |
 
+A 5x5 median on the chroma differences (same luminance, speckle removed the classic way) was also
+tried and rejected: ISO 1600 9.73 -> 10.09, ISO 6400 12.39 -> 13.22. The chroma noise is correlated
+blotches, not isolated outliers, so a median keeps it.
+
 The defaults are the best of these, so the guided filter is at its local optimum. The remaining
 1600-3200 gap needs a different chroma model (a perceptual-space bilateral, which is what SPP's
 blotch-free look suggests) or noise reduction in the raw domain before the colour matrix.
