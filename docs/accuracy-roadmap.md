@@ -399,6 +399,12 @@ Knobs, tried on the corrected pipeline (ISO 1600, baseline 9.73):
 | colour radius 64 px (before the fix) | 15.76 |
 | per-pixel colour eps (before the fix) | 13.19 |
 
+**The same filter in the app, judged by spp-check (22 October 2026).** Wired into the develop path at
+ISO 800 and up, it makes spp-check *worse*: six photos worse, none better (DP1MhSLI0800 +1.13,
+1600 +0.95, 3200 +0.63, DP3_05 +1.08, DP3_06 +0.79, DP3_04 +0.53; group mean 6.846 -> 7.0+).
+So the isocmp gain (9.73 -> 6.49) was the metric rewarding smoothing: SPP keeps more chroma than the
+filter leaves. spp-check is the arbiter for this, and the filter is rejected.
+
 A 5x5 median on the chroma differences (same luminance, speckle removed the classic way) was also
 tried and rejected: ISO 1600 9.73 -> 10.09, ISO 6400 12.39 -> 13.22. The chroma noise is correlated
 blotches, not isolated outliers, so a median keeps it.
