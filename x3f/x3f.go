@@ -138,6 +138,20 @@ func parse(r io.ReaderAt, size int64, path string) (*File, error) {
 			f.Props[k] = v
 		}
 	}
+	// Quattro files have no rotation in the header: take the embedded
+	// JPEG's EXIF orientation (6 = turn 90° clockwise, 8 = 270°, 3 = 180°).
+	// Their portrait photos showed sideways (SDIM DP1 Quattro_03, sd Quattro
+	// H_18: SPP exports them upright).
+	if f.Rotation == 0 {
+		switch f.Props["EXIF_ORIENTATION"] {
+		case "6":
+			f.Rotation = 90
+		case "8":
+			f.Rotation = 270
+		case "3":
+			f.Rotation = 180
+		}
+	}
 	return f, nil
 }
 
@@ -201,6 +215,10 @@ func (f *File) exifProps() map[string]string {
 			}
 		case 0x8769: // Exif IFD
 			exif = int(bo.Uint32(t[off:]))
+		case 0x0112: // Orientation
+			if typ == 3 {
+				out["EXIF_ORIENTATION"] = strconv.Itoa(int(bo.Uint16(t[off:])))
+			}
 		}
 	})
 	entries(exif, func(tag, typ, cnt, off int) {
