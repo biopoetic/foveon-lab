@@ -118,6 +118,16 @@ func (c *CAMF) WBTransform(wb string) (gain [3]float64, cc [9]float64, err error
 			gain[i] = 1 / neutral[i]
 		}
 		cc = mul33(xyzToSRGB, mul33(rawToXYZ, diag))
+		// Their Auto entry is the generic daylight one; the camera's own
+		// auto measurement is AutoRGBNeutral, the raw layers of the scene's
+		// grey. Balance on it (scaled to the daylight neutral's middle layer,
+		// so exposure stays). Ignored, an SD14 shot on Auto under cool light
+		// came out pink where the camera's JPEG is neutral.
+		if a := c.Matrices["AutoRGBNeutral"]; wb == "Auto" && len(a) == 3 && a[0] > 0 && a[1] > 0 && a[2] > 0 {
+			for i := range gain {
+				gain[i] = a[1] / (neutral[1] * a[i])
+			}
+		}
 	}
 	// The SD15 spells it "FnumberGainFact" (1.044 red at f/1.0, the
 	// aperture a lens without contacts reports): missed, its photos came
