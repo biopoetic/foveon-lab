@@ -395,8 +395,9 @@ Knobs, tried on the corrected pipeline (ISO 1600, baseline 9.73):
 | detail restore off | 11.45 |
 | luma wavelet threshold K = 3 | 9.88 |
 | colour eps x2 | 9.89 |
-| colour radius 64 px | 15.76 (measured before the fix; radius 32 is what the app uses) |
-| per-pixel colour eps | 13.19 (before the fix; no change) |
+| colour radius 48 px (after the fix) | 10.23 |
+| colour radius 64 px (before the fix) | 15.76 |
+| per-pixel colour eps (before the fix) | 13.19 |
 
 A 5x5 median on the chroma differences (same luminance, speckle removed the classic way) was also
 tried and rejected: ISO 1600 9.73 -> 10.09, ISO 6400 12.39 -> 13.22. The chroma noise is correlated
