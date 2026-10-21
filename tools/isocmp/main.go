@@ -24,6 +24,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/biopoetic/foveon-lab/calib"
@@ -122,7 +123,20 @@ func develop(f *x3f.File, strength float64) (*render.Linear, error) {
 	}
 	x3f.ClipHighlights(img, gain)
 	if strength > 0 {
-		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1})
+		// Same options the shipped full-size path uses (camfread.go): the
+		// ISO picks the colour radius and Grey is a neutral grey's layer
+		// values (the inverse WB gains), which the near-black recombination
+		// adds back in neutral proportions.
+		iso, _ := strconv.ParseFloat(strings.TrimSpace(f.Props["ISO"]), 64)
+		var grey [3]float64
+		for i, v := range gain {
+			if v <= 0 {
+				grey = [3]float64{}
+				break
+			}
+			grey[i] = 1 / v
+		}
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1, ISO: iso, Grey: grey})
 	}
 	l := render.FromCamLinear(img.Pix, img.W, img.H, 0, 0, render.CamTransform{Gain: gain, CC: cc})
 	if b := render.RawBaseFitted(x3f.CalibGroup(f.Props["CAMMODEL"])); b != nil {
