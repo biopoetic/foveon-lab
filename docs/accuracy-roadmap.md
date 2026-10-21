@@ -451,9 +451,14 @@ Imaging Resource's dp0 Quattro page is a Preview with no lab samples and its dp1
 are 404; DPReview reviewed the dp2 Quattro only (which is why that is the one "hSLI" series on
 disk) and its forum/studio pages block automated fetches; a 2015 DPReview thread linked 12 dp0
 test X3Fs at ISO 200 on Google Drive, and that folder is gone (404); the Internet Archive has no
-Foveon raw collections; rawsamples.ch is unreachable from here. The only public dp1 Quattro ISO
-ladder found (seattlesteve.com, ISO 100-6400) is JPEGs from SPP exports, not raws, so it cannot be
-compared against SPP's output. So the three bodies stay unmeasured at high ISO until someone shoots
+Foveon raw collections; rawsamples.ch is unreachable from here. Two further sources were checked:
+**raw.pixls.us** (the CC0 raw library behind darktable/rawspeed) has a Sigma section with DP0
+Quattro, sd Quattro and sd Quattro H but **exactly one DP0 file** (`/data/Sigma/DP0 Quattro/
+_SDI0263.X3F`, the same photo already on disk) and no DP1/DP3 Quattro at all; the **Focus Numérique**
+dp1 review had twelve downloadable X3F raw files at ISO 100-800, but its image host
+(img1.focus-numerique.com) no longer resolves and the files were never archived. The only public dp1
+Quattro ISO ladder found (seattlesteve.com, ISO 100-6400) is JPEGs from SPP exports, not raws, so it
+cannot be compared against SPP's output. So the three bodies stay unmeasured at high ISO until someone shoots
 a ladder with one (same scene, tripod, SPP neutral exports). sd Quattro H is the only Quattro ladder
 on disk, and it changes resolution mid-series (see above).
 
