@@ -403,6 +403,24 @@ A 5x5 median on the chroma differences (same luminance, speckle removed the clas
 tried and rejected: ISO 1600 9.73 -> 10.09, ISO 6400 12.39 -> 13.22. The chroma noise is correlated
 blotches, not isolated outliers, so a median keeps it.
 
+**A post-matrix chroma filter (22 October 2026, prototype).** Guided by luminance on Cb/Cr in linear
+sRGB, luminance untouched, applied after the raw base at ISO 1600 (isocmp, fitted dE):
+
+| sigma (px) | dE | by eye |
+|---|---|---|
+| 2 | 6.49 | acceptable: noise gone, a slight pink cast on the caps |
+| 4 | 4.21 | too much: colour bleeds across edges, caps go magenta |
+| 8 | 3.41 | unacceptable |
+| 16 | 3.14 | unacceptable |
+
+So the "better than SPP" numbers at 4 px and up are the smoothing artefact the earlier caveat warns
+about; at 2 px it is 6.49 against SPP's 5.67, close, and the crop keeps its colour. Two things it
+exposed: (a) `isocmp` also omitted the app's shadow colour fix (`render.ShadowChromaFix`); adding it
+makes the dE *worse* (1600 9.73 -> 14.57) because the comparison rewards a colourful shadow the
+app deliberately mutes (SPP mutes too), so dE alone cannot judge that choice - `spp-check` must.
+(b) The app's `shadowMute` (0.5) may be stronger than SPP's at 1600-6400; that is the next thing to
+measure, with spp-check on high-ISO groups, not dE.
+
 The defaults are the best of these, so the guided filter is at its local optimum. The remaining
 1600-3200 gap needs a different chroma model (a perceptual-space bilateral, which is what SPP's
 blotch-free look suggests) or noise reduction in the raw domain before the colour matrix.
