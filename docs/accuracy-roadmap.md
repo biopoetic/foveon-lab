@@ -446,6 +446,13 @@ We are ahead there. The higher frames need the tool to resample to a common size
 (and downscaling averages noise, so that comparison needs its own care). `isocmp` now skips a frame
 whose size differs from the reference and says so, instead of panicking in the raw-base fit.
 
+**Public ladders for dp0/dp1/dp3 Quattro (22 October 2026): none found.** Imaging Resource's dp0
+Quattro page is a Preview with no lab samples, and its dp1/dp3 "SAMPLES" pages are 404; the cameras'
+studio raws were never published there. So those three bodies stay unmeasured for high ISO until
+someone shoots an ISO ladder with one (same scene, tripod, SPP neutral exports) - the same way the
+DP1 Merrill and dp2 Quattro series were made. The sd Quattro H is the only Quattro ladder on disk,
+and it changes resolution mid-series (see above).
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
