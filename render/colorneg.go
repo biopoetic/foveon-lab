@@ -455,4 +455,3 @@ func (cp ColorPrint) offsets() [3]float64 {
 	e := cp.Exp * math.Log10(2)
 	return [3]float64{e - cp.C/100, e - cp.M/100, e - cp.Y/100}
 }
-

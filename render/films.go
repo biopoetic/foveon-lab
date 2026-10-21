@@ -36,8 +36,8 @@ type Film struct {
 	// have been made in, since the format sets the grain's physical size.
 	Formats    []string `json:"formats,omitempty"`
 	FormatsSrc string   `json:"formats_src,omitempty"`
-	Src   string  `json:"src"`
-	URL   string  `json:"url,omitempty"`
+	Src        string   `json:"src"`
+	URL        string   `json:"url,omitempty"`
 	// Grain is the RMS on the positive, the value the Film grain slider
 	// takes (0 if unknown).
 	Grain float64 `json:"grain"`

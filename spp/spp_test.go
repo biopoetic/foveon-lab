@@ -112,7 +112,7 @@ func TestSetCurrent(t *testing.T) {
 		"<X3F_FillLight>0,25</X3F_FillLight>", "<X3F_ColorB>1,08</X3F_ColorB>", "<X3F_Name>[FL] Pop</X3F_Name>",
 		"<X3F_WhiteBalancePreset>2</X3F_WhiteBalancePreset>",
 		"<X3F_WhiteBalanceTemp>5000</X3F_WhiteBalanceTemp>", // ColorTemp 0 keeps SPP's value
-		"<X3F_BrightnessBW>-0,9</X3F_BrightnessBW>"} { // B&W settings untouched
+		"<X3F_BrightnessBW>-0,9</X3F_BrightnessBW>"} {       // B&W settings untouched
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %s", want)
 		}

@@ -20,10 +20,10 @@ import (
 // densityGain returns the multi-pixel setup for a render: the ND gain (a
 // constant) and whether a graduated filter is active.
 type densitySetup struct {
-	nd   float32 // per-pixel gain from a neutral filter (1 = none)
-	gnd  bool
-	stops float64
-	cos, sin float64
+	nd           float32 // per-pixel gain from a neutral filter (1 = none)
+	gnd          bool
+	stops        float64
+	cos, sin     float64
 	centre, soft float64
 }
 

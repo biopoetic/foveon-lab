@@ -211,9 +211,9 @@ func aerochromeBands() []func(float64) float64 {
 // channel-swapped colour infrared). edge is the filter's own visible cutoff.
 func colourIRBands(edge, width float64) []func(float64) float64 {
 	return []func(float64) float64{
-		func(l float64) float64 { return sig(l, 700, 10) },                              // infrared -> red
-		func(l float64) float64 { return sig(l, 700, 10) },                              // infrared -> green
-		func(l float64) float64 { return sig(l, edge, width) * (1 - sig(l, 700, 10)) },  // visible red -> blue
+		func(l float64) float64 { return sig(l, 700, 10) },                             // infrared -> red
+		func(l float64) float64 { return sig(l, 700, 10) },                             // infrared -> green
+		func(l float64) float64 { return sig(l, edge, width) * (1 - sig(l, 700, 10)) }, // visible red -> blue
 	}
 }
 

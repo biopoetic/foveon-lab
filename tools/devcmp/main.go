@@ -5,8 +5,8 @@ package main
 
 import (
 	"fmt"
-	imgcolor "image/color"
 	"image"
+	imgcolor "image/color"
 	"math"
 	"os"
 	"os/exec"
