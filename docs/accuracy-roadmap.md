@@ -468,6 +468,14 @@ cannot be compared against SPP's output. So the three bodies stay unmeasured at 
 a ladder with one (same scene, tripod, SPP neutral exports). sd Quattro H is the only Quattro ladder
 on disk, and it changes resolution mid-series (see above).
 
+**Quattro drift: a bottom-layer black offset is not the lever (22 October 2026).** The middle layer
+already carries an ISO-dependent black (`quattroMiddleBlack`, half the SensorISO/100 term on the
+sd Quattro H). Adding the same term to the bottom layer, from -0.5 to +1.0 of SensorISO/100, moves
+the sd Quattro H ISO 6400 render shift only between 17.05 and 18.64 (baseline 17.13) and the fitted
+dE between 6.51 and 6.59 (baseline 6.56) - i.e. nothing. So the drift is not a black offset on that
+layer; the raw-data layer *slopes* (~4% higher by 6400, per the dp2 Quattro measurement above) are
+the next thing to model.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
