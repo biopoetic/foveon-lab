@@ -675,7 +675,17 @@ two-stage colour-processing pair that sits between the WB gains and the output, 
 neither. A stage that is missing entirely would shift the channels exactly like this (green crushed,
 red untouched), so the next step is to apply CP1 then CP2 after the gains and before the correction -
 in whichever order and normalisation SPP uses - and re-read the channel ratios against SPP's
-0.0918/0.0739/0.0382.## What "perfect" would need beyond this
+0.0918/0.0739/0.0382.
+
+A numeric sanity check of the *order* we use now, for a raw pixel with equal channels (gains
+0.7586/0.5205/0.5098, corrections whose rows each sum to 1): applying the gains and then the
+correction gives **R:G:B = 1 : 0.10 : 0.44**, applying the correction first and the gains after gives
+**1 : 0.68 : 0.67**; SPP's own ratios on this photo are **1 : 0.805 : 0.416**. Neither order matches,
+and the equal-channel input is a crude stand-in for a daylight neutral (the real neutral has camera
+channels in the inverse ratio of the gains), so this is a *pointer*, not a conclusion: the green end of
+our output sits near order A's 0.10 (we measure 0.15) while SPP is at 0.8, which is the size of the
+error a missing colour stage produces. Worth testing the two orders and CP1/CP2 on the real file before
+changing anything.## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
