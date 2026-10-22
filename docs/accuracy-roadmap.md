@@ -724,7 +724,29 @@ and the equal-channel input is a crude stand-in for a daylight neutral (the real
 channels in the inverse ratio of the gains), so this is a *pointer*, not a conclusion: the green end of
 our output sits near order A's 0.10 (we measure 0.15) while SPP is at 0.8, which is the size of the
 error a missing colour stage produces. Worth testing the two orders and CP1/CP2 on the real file before
-changing anything.## What "perfect" would need beyond this
+changing anything.**Coloured specks in dark areas (22 October 2026, seen by the user).** `SDIM0095.X3F` (SD1 Merrill,
+ISO 100, WB Shade, Vivid preset) in the accurate preview shows single-pixel green/red/blue dots over
+the cat's dark fur. What the code says about them:
+
+- bad pixels *are* repaired on this path - `camfread.go:113` calls `x3f.FixBadPixels(raw, c)` before
+  `CameraLinear` - so these are pixels the CAMF `BadnessTable` does not list;
+- the accurate preview denoises at `defaultNR = 0.3` (`accurate.go`), not at zero, so this is not a
+  "no noise reduction" view;
+- there is **no outlier/despeckle pass anywhere** in `x3f/` or `render/` (only the single `median`
+  helper in `denoise.go`), so a lone high sample survives the colour matrix untouched;
+- the Vivid preset then raises saturation, which turns each surviving outlier into a bright coloured
+  dot instead of a dim one.
+
+So the likely shape is a statistical outlier (a hot pixel the table does not know, or a cosmic-ray
+style single sample) amplified by the matrix and the preset. The fix to try, in order:
+1. count them first - in the camera-linear image of this frame, pixels whose channel deviates from its
+   3x3 median by more than, say, 20% and 8x the local sigma; if there are hundreds, it is hot pixels;
+2. an outlier rejection pass on camera-linear RGB before the raw base (median of 3x3 per channel,
+   replace only the deviating channel above a threshold), kept off for smooth gradients;
+3. validate with `spp-check` (the group numbers must not move) and visually on this frame in Vivid and
+   in the neutral preset.
+
+## What "perfect" would need beyond this## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
