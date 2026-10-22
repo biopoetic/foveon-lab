@@ -665,9 +665,17 @@ DP1/SD14 path expects, and the WB/matrix that goes with it may be the DP1's. Pri
 (`WhiteBalanceGains` + `WhiteBalanceColorCorrections`), the same one the SD14/DP1 path uses. Green comes
 out five times dark with that pair, so either the DP1s's CAMF holds the DP1's corrections, or SPP puts
 this body on the older `WhiteBalanceIlluminants`/`WhiteBalanceCorrections` (camera-to-XYZ + WB) branch
-instead. Next: read the DP1s's own `DP1_*` matrix names (the file carries both families of names), print
-the older-branch result for the same file, and compare the two - whichever branch gives SPP's channel
-ratios is the one to route this body to.## What "perfect" would need beyond this
+instead. Checked which matrices the file actually carries: **only the `DP1_*` family** (`DP1_WhiteBalanceGains`,
+`DP1_WhiteBalanceColorCorrections`, per illuminant) - so the DP1 fallback in `WBTransform` is already the
+right branch, and it is applying the DP1s's own gains and corrections. No older-branch matrices
+(`WhiteBalanceIlluminants`) exist in the file, so the older branch is not the answer.
+
+What *is* in the file and unused: **`DP1_CP1_Matrix` (2x3 matrices) and `DP1_CP2_Matrix` (3x3)** - a
+two-stage colour-processing pair that sits between the WB gains and the output, and our render applies
+neither. A stage that is missing entirely would shift the channels exactly like this (green crushed,
+red untouched), so the next step is to apply CP1 then CP2 after the gains and before the correction -
+in whichever order and normalisation SPP uses - and re-read the channel ratios against SPP's
+0.0918/0.0739/0.0382.## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
