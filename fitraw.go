@@ -126,7 +126,9 @@ func fitRawCommand(desk string) {
 	onlyRes := fsFlags.String("res", "", "research: only photos of this RESOLUTION (HI, MED), e.g. to test a separate SD1 MED base")
 	nr := fsFlags.Float64("nr", defaultNR, "with -go: noise reduction of the training decodes (the app's own by default; 0 until v0.4.56)")
 	charts := fsFlags.Bool("charts", false, "research: also train on synthetic charts (…/charts/*.X3F). Off by default: on 2026-10-13 two in-gamut SD1 charts (166/192 clean patches) made the held-out SD1 starting image worse, 6.87 -> 7.58 dE (SPP's response on them is strongly non-linear in the shadows)")
+	autoWB := fsFlags.Bool("autowb", false, "research: fit each group on its Auto-white-balance photos only, as a per-balance \"family|Auto\" entry (SD15: held out 8.05 vs the shipped all-photo base's 5.25, so not the default)")
 	fsFlags.Parse(os.Args[2:])
+	calib.AutoWBOnly = *autoWB
 	if rawTool == "" && !*goRaw {
 		log.Fatal("fit-raw needs x3f_extract (or -go)")
 	}
