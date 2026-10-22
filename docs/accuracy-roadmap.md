@@ -431,6 +431,45 @@ The defaults are the best of these, so the guided filter is at its local optimum
 1600-3200 gap needs a different chroma model (a perceptual-space bilateral, which is what SPP's
 blotch-free look suggests) or noise reduction in the raw domain before the colour matrix.
 
+**The shadow fix's tonal reach, not the denoiser (22 October 2026).** The DP1 Merrill studio series
+(`DP1MhSLI0100-6400`), measured with noisebench against each frame's own ISO 100. Stage means
+(per-stage linear RGB over the whole frame) show the denoiser leaves the frame's global colour
+almost unchanged: at 6400 a* is -0.44 after the matrix, -1.15 after the shadow fix, -0.94 after the
+raw base, against +3.99 at ISO 100 - so the large green drift of the crop (a* -7.4) is already in
+the raw/matrix output, not made by the denoiser.
+
+The denoiser's restore stages are not the lever either. Turning `restoreChroma`'s five bands off
+entirely changes colour-only by 0.01-0.12 at 1600-6400 (4.66 -> 4.62, 7.02 -> 6.90, 10.91 -> 10.90)
+and by 0.30 at 800 (2.98 -> 3.28), and leaves detail kept identical: the fine chroma bands are not
+what survives. Turning both restores off improves 1600-6400 (4.29 / 6.30 / 9.45) but is worse at 800
+(3.19) and costs real luminance detail (0.83 -> 0.72, 0.74 -> 0.58, 0.64 -> 0.47), so it is not
+shipped.
+
+The lever is `render.SmoothShadowChroma`'s tonal reach: `hi = 0.06 + 0.10*amount` reached linear
+0.16 (sRGB ~112) when `amount` saturates at high ISO, so it desaturated real midtone colour (the
+bottles and cloth of the studio scene). The reach now stays at 0.06; the radius still grows with the
+measured shadow noise. Colour only (blurred), before -> after, with SPP's number:
+
+| ISO | ours before | ours after | SPP | detail before / after | SPP |
+|---|---|---|---|---|---|
+| 800 | 2.98 | **2.93** | 2.50 | 0.99 / 0.99 | 0.90 |
+| 1600 | 4.66 | **4.46** | 2.92 | 0.83 / 0.83 | 0.71 |
+| 3200 | 7.02 | **6.31** | 6.44 | 0.74 / 0.73 | 0.56 |
+| 6400 | 10.91 | **9.89** | 8.68 | 0.64 / 0.65 | 0.40 |
+
+Ours is now below SPP's colour error at 3200 and detail stays above SPP's at every ISO. On the
+series itself 3200 and 6400 improve by 0.09 / 0.13 and 800 / 1600 are 0.03 / 0.01 worse. `spp-check`
+DPM over the 32 photos: **6.846 -> 6.835** (8 better, 20 slightly worse, 4 unchanged; the group
+gain is DP3_07 -2.01 and DP1MHVFAB -0.43, while DP3_03 is 0.83 worse and DP3_01 0.46). The full
+172-photo check also improves: **7.229 -> 7.206**, with Quattro **6.053 -> 5.945** (33 photos better,
+8 worse), SD14 8.938 -> 8.953, DP 6.144 -> 6.148, SD9 8.746 -> 8.747, SD15 10.694 -> 10.691 and SD1
+unchanged at 3.994; the one visible group cost is SD10 **8.826 -> 8.888**, almost all of it
+SIGMA-PHOTO_IMG00177_MOD (+0.79). A smaller reach instead (`hi = 0.06 + 0.04*amount`, max 0.10) is
+more even on DPM (**6.821**) but worse on the ISO series (2.96 / 4.54 / 6.58 / 10.39), so the
+constant 0.06 ships. The noise-adaptive muting itself (`shadowMute` 0.5) is kept: turning it off at
+6400 leaves colour-only at 9.89 and slightly improves the a* mean (-6.54 -> -5.90) and residual
+spread (14.9 -> 14.4), so it is not the cause and was not touched.
+
 **The other Quattro bodies (22 October 2026).** The samples on disk settle part of the handoff's task
 2. dp0, dp1 and dp3 Quattro have sample photos, not ISO ladders (`sigma_dp*_quattro_NN` are different
 scenes at ISO 100-200). **sd Quattro H does have a ladder** (sigma_sd_quattro_h_01..07, ISO 100-6400), but it changes

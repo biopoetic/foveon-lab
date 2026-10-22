@@ -54,8 +54,26 @@ const (
 // how noisy the shadows are (SPP/our shadow chroma against ShadowChromaNoise
 // over ten SD1 photos: correlation -0.63), and keeps clean dark greens
 // colourful. So the strength follows the photo's measured shadow colour
-// noise: none up to shadowNoiseLo, full from shadowNoiseHi, reaching
-// brighter tones and a wider area as it grows.
+// noise: none up to shadowNoiseLo, full from shadowNoiseHi, and the filter
+// covers a wider area as it grows.
+//
+// The tonal reach used to grow with the noise too (hi = 0.06 + 0.10·amount,
+// up to 0.16 linear, sRGB ~112). At high ISO, where amount saturates, that
+// reaches real midtone colour: on the DP1 Merrill studio series it
+// desaturated the bottles and cloth, while smoothing and muting the 0-0.06
+// shadows kept their benefit. Measured with noisebench against each frame's
+// own ISO 100 (colour only blurred; growing is the old reach, fixed the
+// constant 0.06):
+//
+//	ISO   colour, growing / fixed   detail kept, growing / fixed
+//	 800  2.98 / 2.93               0.99 / 0.99
+//	1600  4.66 / 4.46               0.83 / 0.83
+//	3200  7.02 / 6.31               0.74 / 0.73
+//	6400  10.91 / 9.89              0.64 / 0.65
+//
+// spp-check DPM over 32 photos: 6.846 -> 6.835; all 172 photos: 7.229 ->
+// 7.206 (Quattro 6.053 -> 5.945, SD10 8.826 -> 8.888). So the reach stays
+// at the deep shadows at every strength; only the radius grows.
 const (
 	shadowNoiseLo = 0.02
 	shadowNoiseHi = 0.10
@@ -73,8 +91,7 @@ func ShadowChromaAmount(noise float64) float64 {
 // SmoothShadowChroma removes low-frequency colour noise from the shadows of
 // a linear sRGB image, in place. fullW is the width of the full-resolution
 // frame l was made from (the filter covers the same scene area at every
-// size); amount (0-1, ShadowChromaAmount) scales the effect, its tonal
-// reach and its radius.
+// size); amount (0-1, ShadowChromaAmount) scales the effect and its radius.
 func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 	if amount <= 0 || l.W < 8 || l.H < 8 {
 		return
@@ -82,7 +99,7 @@ func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 	w, h, n := l.W, l.H, l.W*l.H
 	sigma := shadowChromaSigma * (1 + 2*amount) * float64(w) / float64(max(fullW, w))
 	sigma = max(sigma, 1)
-	hi := float32(shadowChromaHi + 0.10*amount)
+	hi := float32(shadowChromaHi)
 	Y := make([]float32, n)
 	G := make([]float32, n) // the guide: encoded luminance
 	var any atomic.Bool
