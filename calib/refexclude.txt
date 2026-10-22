@@ -13,3 +13,25 @@
 #
 # Format details: names and groups are case-insensitive; the reason is the
 # text after '#' and is required.
+
+# A corrupt TIFF: the bottom two thirds decode as pure magenta in our
+# loader and in Windows' own TIFF decoder, while the top third is normal.
+# spp-check: all 85.60, ev +1.54, area@ev0 79.57 (the whole frame, not an
+# exposure difference). The camera-JPEG comparison has corr 0.855.
+SDIM0290 # corrupt export: the lower part of the TIFF decodes as magenta in every decoder
+
+# There are two different photos called SDIM0076: a SIGMA DP2 Merrill
+# sample on the Desktop and a SIGMA SD1 Merrill MED file in D:\Foto. The
+# export's EXIF says "SIGMA DP2 Merrill" and it matches the DP2 sample
+# (camera-JPEG corr 0.994, gain-corrected error 4.6); against the SD1 file
+# it is corr 0.032, error 46.9, and spp-check -only SD1 reads 52.43. The
+# DPM entry is correct, so only the SD1 namesake is excluded.
+SDIM0076@SD1 # wrong camera: the export is a SIGMA DP2 Merrill image for the SD1 file of the same name
+
+# The export is visibly darker and far more saturated than the camera
+# JPEG's neutral preview (SDIM1005 and SDIM1244, the same group, match
+# theirs): 0.57 EV darker, and the yellow label turns deep yellow while the
+# preview stays pale. spp-check all 7.36, ev -0.27, area@ev0 9.42 - scaling
+# out the EV makes it worse, so this is not a pure exposure difference but
+# another SPP colour/contrast setting.
+SDIM1013 # non-neutral: 0.57 EV darker and much more saturated than the camera JPEG (other SPP settings)
