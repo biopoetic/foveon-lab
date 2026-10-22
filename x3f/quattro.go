@@ -19,6 +19,8 @@ import (
 const (
 	cameraIDSDQ  = 40 // sd Quattro
 	cameraIDSDQH = 41 // sd Quattro H
+	cameraIDDP1Q = 80 // dp1 Quattro
+	cameraIDDP0Q = 83 // dp0 Quattro
 )
 
 // keepRect is x3fuse's x3f_transform_rect_to_keep_image: a CAMF rectangle
@@ -342,16 +344,32 @@ func (c *CAMF) CameraWB(wbDesc string) string {
 // against SPP's exports of both studio series (October 2026), the best
 // offset was SensorISO/100 on the dp2 Quattro (2 at 200, 4 at 400) and half
 // that on the sd Quattro H; ISO 6400 error vs SPP 24.7 -> 9.9 and
-// 15.4 -> 11.6, with the drift as small as SPP's. The other Quattro bodies
-// share the dp2's sensor and take its value (not measured: no ISO series).
+// 15.4 -> 11.6, with the drift as small as SPP's.
+//
+// dp0 and dp1 Quattro got their own ISO series in October 2026 (same scene,
+// f/8, ISO 100-6400, SPP exports). Sweeping an extra middle black per ISO
+// with 32 px block means in linear light (a*/b* drift from the frame's own
+// ISO 100) put the best common k at 0.63 (dp0) and 0.59 (dp1) of
+// SensorISO/100, both well below the dp2's 1.0: at ISO 6400 the old value
+// over-corrected and pushed our drift red (+5.6/+10.1 against SPP's
+// -5.1/+6.8 on the dp0), while k=0.6 lands at -1.1/+13.2. The drift error
+// falls at every ISO on both series. Shipped k=0.6 for both bodies:
+// spp-check -only Quattro 6.064 -> 5.979 over 60 photos, dp0 6.010 -> 5.820,
+// dp1 7.342 -> 7.089, no photo worse (SIGMA_DP1_QUATTRO_12 8.05 -> 6.92).
+// dp3 Quattro and sd Quattro still have no series and borrow the dp2's 1.0.
 func quattroMiddleBlack(c *CAMF) float64 {
 	s := c.Matrices["SensorISO"]
 	if len(s) != 1 || s[0] < 200 {
 		return 0
 	}
 	k := 1.0
-	if id := c.Matrices["CAMERAID"]; len(id) == 1 && id[0] == cameraIDSDQH {
-		k = 0.5
+	if id := c.Matrices["CAMERAID"]; len(id) == 1 {
+		switch int(id[0]) {
+		case cameraIDSDQH:
+			k = 0.5
+		case cameraIDDP0Q, cameraIDDP1Q:
+			k = 0.6
+		}
 	}
 	return k * s[0] / 100
 }

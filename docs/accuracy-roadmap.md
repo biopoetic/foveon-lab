@@ -730,3 +730,40 @@ Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free F
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
 research project — X3F raw → SPP-identical output — and only worth starting if steps 1–4 leave a
 gap users actually notice.
+
+**dp0 / dp1 Quattro: their own middle-layer black, k = 0.6 (22 October 2026).** Two complete
+ladders that had sat unmeasured (same scene, f/8, ISO 100-6400, SPP exports) settle the borrowed
+dp2 value for the compact Quattro bodies. The middle-layer black was swept per ISO as an extra
+offset on top of the shipped rule (-8, -4, 0, +4, +8 raw units), with the full-size render, the
+shipped noise reduction and raw base; drift is the 32 px block mean in linear light, each frame
+against its own ISO 100, as a*/b*. Drift before -> after and SPP's own drift:
+
+| body | ISO | before | after | SPP | error before -> after |
+|---|---|---|---|---|---|
+| dp0 | 200 | +0.4 / +1.1 | +0.4 / +1.1 | +0.4 / +1.0 | 0.08 -> 0.08 |
+| dp0 | 400 | +1.0 / +1.1 | +0.4 / +1.5 | +0.4 / +1.0 | 0.61 -> 0.46 |
+| dp0 | 800 | +1.2 / +2.8 | +0.2 / +3.4 | -0.8 / +3.6 | 2.20 -> 1.05 |
+| dp0 | 1600 | +1.7 / +4.5 | -0.3 / +5.5 | -1.5 / +4.1 | 3.18 -> 1.84 |
+| dp0 | 3200 | +2.4 / +5.4 | -1.4 / +7.2 | -2.4 / +2.5 | 5.65 -> 4.81 |
+| dp0 | 6400 | +5.6 / +10.1 | -1.1 / +13.2 | -5.1 / +6.8 | 11.18 -> 7.53 |
+| dp1 | 200 | -0.6 / +0.9 | -0.6 / +0.9 | -0.0 / +0.0 | 1.00 -> 1.00 |
+| dp1 | 400 | +0.6 / +0.9 | +0.0 / +1.2 | -0.8 / +1.1 | 1.36 -> 0.80 |
+| dp1 | 800 | +0.4 / +2.3 | -0.6 / +2.8 | -2.4 / +3.1 | 2.90 -> 1.76 |
+| dp1 | 1600 | -0.4 / +4.4 | -2.4 / +5.4 | -3.1 / +3.5 | 2.91 -> 2.03 |
+| dp1 | 3200 | +1.4 / +9.5 | -2.5 / +11.1 | -5.6 / +7.7 | 7.21 -> 4.60 |
+| dp1 | 6400 | +3.8 / +15.2 | -3.1 / +18.2 | -6.8 / +9.6 | 11.97 -> 9.34 |
+
+A single k times SensorISO/100, fitted over ISO 400-6400, is **0.63 on the dp0** and **0.59 on the
+dp1**; the per-ISO optima are ~0 at ISO 200, ~1.3 at 400 and ~2.4-2.8 at 800-6400, so the k is
+well determined and much lower than the dp2's 1.0. The old value over-corrected the compacts and
+pushed their shadow drift *red* at the top (dp0 ISO 6400 +5.6/+10.1 against SPP's -5.1/+6.8);
+**k = 0.6 ships for both bodies**. The residual b* at 3200-6400 (ours more yellow than SPP's) grows
+as the middle black is reduced, while a* needs it reduced - the two pull opposite ways, so this is
+the least-squares compromise, not a perfect match.
+
+`spp-check -only Quattro`, 60 photos: **6.064 -> 5.979** (area 4.582 -> 4.490, shadows 5.554 ->
+5.457), 8 photos better, none worse by more than 0.05 (the largest change the wrong way is +0.05).
+dp0 6.010 -> 5.820 over 12 photos and dp1 7.342 -> 7.089 over 11; **SIGMA_DP1_QUATTRO_12 8.05 ->
+6.92** and the ISO 6400 frames dp0_34 13.51 -> 11.67, dp1_20 13.83 -> 12.84. dp2, dp3, sd Quattro
+and sd Quattro H are unchanged to the hundredth. dp3 Quattro and sd Quattro still have no ladder:
+they stay on the dp2's k = 1.0.
