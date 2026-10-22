@@ -554,6 +554,10 @@ Sunlight-like balance, not the recorded Overcast. The SD15 model was fitted on A
 set's mismatch is expected; even at the best WB the dE is 10.8, so the raw base's fit on Auto-WB
 photos contributes too. Next: either apply SPP's WB rule (whatever it computes for the neutral
 export) or keep WB_DESC != Auto photos out of the group's fit - the second is easy and honest.
+**Done (22 October 2026):** `calib.FitRawBase` now fits on Auto-WB photos only (photos without a
+WB_DESC count as Auto; the filter is skipped when fewer than three would remain). The existing
+shipped bases are not refitted yet - that needs `fit-raw` over the SD15 photos in a fresh session, and
+the SD15 model (tone/fill, from `analyze`) should get the same rule.
 
 ## What "perfect" would need beyond this
 

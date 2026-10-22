@@ -137,6 +137,20 @@ func applied(c *render.RawCorrection, l *render.Linear) *render.Linear {
 // The shipped base's hue correction (HueGain/HueRot, which fitRaw does not
 // fit) is carried into the refit and every held-out fold.
 func FitRawBase(family string, pairs []RawPair) render.RawCorrection {
+	// Fit on Auto-white-balance photos only: SPP's neutral export does not
+	// follow the recorded illuminant (the SD15 kronometric set records
+	// Overcast but SPP renders it closest to Sunlight - dE 13.25 against
+	// 10.81, 22 Oct 2026), so a fixed-WB photo would pull the fit toward the
+	// wrong balance. Photos without a WB_DESC count as Auto.
+	fit := make([]RawPair, 0, len(pairs))
+	for _, p := range pairs {
+		if p.WB == "" || p.WB == "Auto" {
+			fit = append(fit, p)
+		}
+	}
+	if len(fit) >= 3 {
+		pairs = fit
+	}
 	var hg, hr []float64
 	if s := render.RawBaseFitted(family); s != nil {
 		hg, hr = s.HueGain, s.HueRot
