@@ -555,9 +555,14 @@ set's mismatch is expected; even at the best WB the dE is 10.8, so the raw base'
 photos contributes too. Next: either apply SPP's WB rule (whatever it computes for the neutral
 export) or keep WB_DESC != Auto photos out of the group's fit - the second is easy and honest.
 **Done (22 October 2026):** `calib.FitRawBase` now fits on Auto-WB photos only (photos without a
-WB_DESC count as Auto; the filter is skipped when fewer than three would remain). The existing
-shipped bases are not refitted yet - that needs `fit-raw` over the SD15 photos in a fresh session, and
-the SD15 model (tone/fill, from `analyze`) should get the same rule.
+WB_DESC count as Auto; the filter is skipped when fewer than three would remain).
+
+**The SD15 refit cannot be honest yet.** All four SD15 photos on disk are the kronometric Overcast
+set, so there is no Auto-WB photo to fit on: the filter is skipped and `fit-raw` fits the same four
+photos it then evaluates. It reads 4.99 in-sample against the shipped base's 10.69 - a big apparent
+gain, but not a held-out one (the cross-check in `fit-raw` reports the raw error on the fitted
+photos). The refit was therefore **not shipped**; the code change stays, ready for the day an
+Auto-WB SD15 photo (or a second SD15 set) exists.
 
 ## What "perfect" would need beyond this
 
