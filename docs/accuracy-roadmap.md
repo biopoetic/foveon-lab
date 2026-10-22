@@ -773,7 +773,21 @@ denoiser's structure (the a-trous luminance transform or the guided per-channel 
 sample. The cure has to be inside `x3f/denoise.go` (where the local model is built), and the dump test
 is the fast loop for it. Nothing was shipped: the probes were reverted and the tree is clean.
 
-## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
+**DP1s: the obvious causes are ruled out (22 October 2026).** Tried, measured against SPP's
+0.0918/0.0739/0.0382 on the same file:
+
+| change | result |
+|---|---|
+| none (shipped) | 0.0937 / 0.0138 / 0.0197 - red right, green and blue far low |
+| WB gains inverted | 0.0000 / 0.0732 / 0.0035 - green lands on SPP, red collapses |
+| gain after the colour correction (GAIN·CC) | 0.0054 / 0.0483 / 0.0114 - worse |
+| CP1/CP2 applied | not tried - the matrices are 0.92-1.08 and appear in neither x3fuse-core nor dcraw |
+
+So no ordering or gain-direction fix works, and CP1/CP2 are too small to explain a factor of five. That
+points at the **plane mapping itself**: the DP1s is the 2009 generation, and its raw planes may not be
+the bottom/middle/top order the Merrill-era code assumes. Next session: print each raw plane's mean and
+compare with SPP's channel means - if the planes' ratios are already wrong before any matrix, the decode
+order is the issue, not the colour transform.## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
