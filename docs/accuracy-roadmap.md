@@ -528,6 +528,13 @@ DP 6.14 (28), DPM 6.85 (32), SD9 8.75 (12), SD10 8.83 (20), SD14 8.94 (25), **SD
 Use this as the regression anchor; SD15 is the weakest group on this set despite its model, which is
 the next thing to look at there (the four photos may simply be hard ones - check before fitting).
 
+**Why SD15 is the weakest group (22 October 2026).** All four photos are the kronometric SD15 set
+(SDIM0009-0012) and they score 10.35, 10.29, 11.11, 11.03 with **ev -0.05 on every one** - a
+systematic offset, not one hard photo. The lens-less aperture-gain fix (`FnumberGainFact`, already
+merged) is in the tree, so that is not it. Next: compare one of them against SPP block by block
+(like the Quattro `-drift` run) to see whether the 0.05 EV and the area error come from the raw base
+or the tone; they are a different set from the three photos the SD15 model was fitted on.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
