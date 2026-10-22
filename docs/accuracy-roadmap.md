@@ -652,8 +652,13 @@ question.**Six of the 172 photos are non-neutral references (22 October 2026).**
 
 So only one is a bad reference on its own; three are mild exposure differences in the export; and
 **DP1s is a real render error** - 18 dE, and removing the -1.24 EV makes it *worse*, so it is not a
-brightness story at all. The DP1s is the old DP1 body (not the Merrill), so it is worth a session of its
-own: check its matrix/WB against SPP the way the Quattro drift was checked.## What "perfect" would need beyond this
+brightness story at all. The DP1s is the old DP1 body (not the Merrill). Checked its channels against SPP (same-frame `isocmp
+-drift`): ours R 0.0937 / G 0.0138 / B 0.0197 against SPP's 0.0918 / 0.0739 / 0.0382. Red is right,
+**green is five times too dark and blue twice**, a strong magenta cast - not an exposure story and not a
+white-balance name (the photo records Sunlight and the DP1s has that gain set). A channel that is
+nearly zero points at the black level: the green (and blue) dark shield is over-subtracted on this body
+at ISO 50, or its matrix is the DP1's rather than the DP1s's. Next: print the per-channel black for
+this file (`cameraLinear` in `x3f/develop.go` prints nothing today) and compare with the DP1's.## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
