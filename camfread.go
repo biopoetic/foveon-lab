@@ -79,6 +79,11 @@ func photoCC(ph *Photo) *[9]float64 {
 // linear camera RGB (noise below black kept) and the transform to linear
 // output RGB — its CAMF white balance + colour matrix (x3f.WBTransform,
 // which also covers the SD9/SD10/SD14/DP1's camera-to-XYZ form).
+const (
+	despeckleFraction = 0.6
+	despeckleFloor    = 0.0015
+)
+
 func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
 	return goDevelopFor(ph, false, false, "")
 }
@@ -121,6 +126,18 @@ func goDevelopFor(ph *Photo, layers, sceneWB bool, wbName string) (*x3f.CamImage
 	img, err := x3f.CameraLinear(raw, c, x3f.NewSpatialGain(c, f.Props, wb), wb)
 	if err != nil {
 		return nil, t, err
+	}
+	// A stuck sample that the CAMF badness table does not list survives the
+	// colour matrix as a bright coloured dot in dark areas (SD1, ISO 100,
+	// visually in both the Vivid and the Neutral preset), so reject single
+	// outliers here, before tone: one channel far from its 3x3 median is
+	// replaced by that median, and nothing else is touched.
+	lin := &render.Linear{W: img.W, H: img.H, Pix: img.Pix}
+	if n := render.Despeckle(lin, despeckleFraction, despeckleFloor); n > 0 {
+		img.Pix = lin.Pix
+		if os.Getenv("FL_DEBUG_DESPECKLE") != "" {
+			fmt.Fprintf(os.Stderr, "despeckle %s: %d samples\n", ph.Name, n)
+		}
 	}
 	gain, cc, err := c.WBTransform(wb)
 	if err != nil {
