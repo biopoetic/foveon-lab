@@ -587,8 +587,13 @@ problem on its face, so the photos were checked: the exports match the camera (2
 worst ones carry the same exposure metadata as the good ones (`CaptureExpComp` -0.31, EXPNET -0.30 on
 SDIM1174, 1243 and 0973 alike). What differs is the scene: the bad ones are dark, `ev` down to -1.26,
 so SPP's tone is lifting deep shadows far more than our SD15 tone curves (fitted on brighter sets).
-That is a tone/fill question on dark photos, not a white-balance or base one - the next step there is
-to look at the SD15 fill-light and shadow lift against SPP on SDIM1174.
+That looked like a tone question - but the two tools disagree, so it is not settled. On SDIM1174
+`isocmp -drift` (centre 1200x800 crop) gives ours 0.2209/0.2409/0.2083 against SPP's
+0.2298/0.2373/0.2090: a 4% difference. `spp-check` reports 41.74 dE and ev -1.26 for the same pair.
+One of them is measuring something else - most likely `spp-check` on photos outside the calibration
+set pairs a different reference (a JPEG or another export) than the A00 file, or measures the whole
+frame where ours falls off. The 12.92 average over those 33 photos should not be trusted until
+`spp-check` says which file it compared against; that print is the next small change.
 
 ## What "perfect" would need beyond this
 
