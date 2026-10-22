@@ -660,9 +660,14 @@ nearly zero points at the black level: the green (and blue) dark shield is over-
 at ISO 50, or its matrix is the DP1's rather than the DP1s's. Printed the per-channel black for this file: **0.68 / 0.59 / 0.54** - essentially zero, so the DP1s
 file's dark shield is **not found** and `blackLevel` falls back to nothing. That alone cannot explain a
 dark green (no subtraction would make it *brighter*), but it says the body's CAMF layout is not what the
-DP1/SD14 path expects, and the WB/matrix that goes with it may be the DP1's. Next: print the WB gains
-and the colour matrix actually applied for this file, and compare with a DP1 file and with
-`RAW_SIGMA_SD14` (the DP1s shares the SD14 era processing).## What "perfect" would need beyond this
+DP1/SD14 path expects, and the WB/matrix that goes with it may be the DP1's. Printed what is applied: `WBTransform` returns gains **0.7586 / 0.5205 / 0.5098** and the colour matrix
+[4.19 -4.93 1.74; -1.59 3.91 -1.31; 0.73 -3.20 3.48] - i.e. the DP1s takes the **TRUE II branch**
+(`WhiteBalanceGains` + `WhiteBalanceColorCorrections`), the same one the SD14/DP1 path uses. Green comes
+out five times dark with that pair, so either the DP1s's CAMF holds the DP1's corrections, or SPP puts
+this body on the older `WhiteBalanceIlluminants`/`WhiteBalanceCorrections` (camera-to-XYZ + WB) branch
+instead. Next: read the DP1s's own `DP1_*` matrix names (the file carries both families of names), print
+the older-branch result for the same file, and compare the two - whichever branch gives SPP's channel
+ratios is the one to route this body to.## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
