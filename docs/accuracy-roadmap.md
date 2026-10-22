@@ -510,6 +510,12 @@ a colour drift.
 different pixel sizes; with the render brought to the export's size the frames are fine. Probe
 removed.
 
+**The top-black model does not transfer between bodies (22 October 2026).** The dp2-fitted correction
+(delta = 0.11 x (CaptureISO/100 - 1)) applied to the sd Quattro H makes ISO 6400 *worse*: fitted dE
+9.48 -> 9.66 and render shift 13.48 -> 19.32 (1600/3200 unchanged). So the top layer's black offset
+is body-specific and the dp2 gain was small anyway; shipping it would need a ladder per body, and
+there is no second scene for a held-out check. Rejected.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
