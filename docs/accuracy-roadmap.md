@@ -433,18 +433,24 @@ blotch-free look suggests) or noise reduction in the raw domain before the colou
 
 **The other Quattro bodies (22 October 2026).** The samples on disk settle part of the handoff's task
 2. dp0, dp1 and dp3 Quattro have sample photos, not ISO ladders (`sigma_dp*_quattro_NN` are different
-scenes at ISO 100-200). **sd Quattro H does have a ladder** (sigma_sd_quattro_h_01..07, ISO
-100-6400) but it changes resolution across it - 6192x3480 at ISO 100-400, then 3096, 2064, 2064,
-1548 - so only ISO 200 and 400 are comparable 1:1:
+scenes at ISO 100-200). **sd Quattro H does have a ladder** (sigma_sd_quattro_h_01..07, ISO 100-6400), but it changes
+resolution across it - 6192x3480 at ISO 100-400, then 3096, 2064, 2064, 1548. `isocmp` now box-averages
+the reference down to each frame's size (and scales the crop with it) instead of skipping, so the
+whole ladder can be measured; the 800-6400 numbers therefore compare against a downscaled ISO 100,
+which averages some noise away, so treat them as slightly flattering:
 
-| ISO | SPP | ours |
-|---|---|---|
-| 200 | 3.60 | **2.29** |
-| 400 | 4.49 | **3.26** |
+| ISO | SPP | ours | render shift ours / SPP |
+|---|---|---|---|
+| 200 | 3.60 | **2.29** | 2.45 / 3.71 |
+| 400 | 4.49 | **3.26** | 3.50 / 4.66 |
+| 800* | 5.91 | **3.27** | 4.11 / 6.50 |
+| 1600* | 6.35 | **3.07** | 9.35 / 6.82 |
+| 3200* | 7.98 | **4.02** | 11.34 / 7.92 |
+| 6400* | 10.46 | **6.56** | 17.13 / 10.69 |
 
-We are ahead there. The higher frames need the tool to resample to a common size before comparing
-(and downscaling averages noise, so that comparison needs its own care). `isocmp` now skips a frame
-whose size differs from the reference and says so, instead of panicking in the raw-base fit.
+(* reference downscaled to the frame's resolution.) Noise is ahead at every ISO, but the colour/tone
+drift grows from 1600 up - the same shape as the dp2 Quattro drift noted above, on the same sensor
+generation, and it is now the open issue for this body rather than noise.
 
 **Public ladders for dp0/dp1/dp3 Quattro (22 October 2026): none found.** What was checked:
 Imaging Resource's dp0 Quattro page is a Preview with no lab samples and its dp1/dp3 "SAMPLES" pages

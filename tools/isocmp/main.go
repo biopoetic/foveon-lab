@@ -68,7 +68,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		return frame{cut(spp, crop), cut(ours, crop), cut(plain, crop)}, f.Props["ISO"]
+		return frame{spp, ours, plain}, f.Props["ISO"]
 	}
 	ref, refISO := load(a[0], a[1])
 	fmt.Printf("reference ISO %s, crop %v, noise reduction %.1f\n", refISO, crop, *strength)
@@ -76,20 +76,35 @@ func main() {
 	fmt.Printf("%-6s | %9s %9s %9s | %9s %9s %9s\n", "ISO", "SPP", "FoveonLab", "no NR", "SPP", "FoveonLab", "no NR")
 	for i := 2; i+1 < len(a); i += 2 {
 		fr, iso := load(a[i], a[i+1])
-		if fr.spp.W != ref.spp.W || fr.spp.H != ref.spp.H || fr.ours.W != ref.ours.W || fr.ours.H != ref.ours.H {
-			// A rotated frame (or a differently-cropped export) cannot be
-			// compared pixel for pixel with the reference: say so and skip.
-			fmt.Printf("%-6s | skipped: frame is %dx%d, reference %dx%d (rotation?)\n", iso, fr.ours.W, fr.ours.H, ref.ours.W, ref.ours.H)
+		// A frame at a different resolution (a camera resolution mode, as in
+		// the sd Quattro H ladder) is compared at its own size: the reference
+		// is box-averaged down to it, and the crop scales with it. A rotated
+		// frame cannot be aligned this way and is skipped.
+		if (fr.spp.W > fr.spp.H) != (ref.spp.W > ref.spp.H) {
+			fmt.Printf("%-6s | skipped: frame is %dx%d, reference %dx%d (rotation)\n", iso, fr.ours.W, fr.ours.H, ref.ours.W, ref.ours.H)
+			continue
+		}
+		rf, cropF := ref, crop
+		if fr.spp.W != ref.spp.W || fr.spp.H != ref.spp.H {
+			rf = frame{resample(ref.spp, fr.spp.W, fr.spp.H), resample(ref.ours, fr.ours.W, fr.ours.H), resample(ref.plain, fr.plain.W, fr.plain.H)}
+			sx := float64(fr.spp.W) / float64(ref.spp.W)
+			sy := float64(fr.spp.H) / float64(ref.spp.H)
+			cropF = image.Rect(int(float64(crop.Min.X)*sx), int(float64(crop.Min.Y)*sy), int(float64(crop.Max.X)*sx), int(float64(crop.Max.Y)*sy))
+		}
+		fs := frame{cut(fr.spp, cropF), cut(fr.ours, cropF), cut(fr.plain, cropF)}
+		rs := frame{cut(rf.spp, cropF), cut(rf.ours, cropF), cut(rf.plain, cropF)}
+		if fs.spp.W != rs.spp.W || fs.spp.H != rs.spp.H {
+			fmt.Printf("%-6s | skipped: cropped sizes differ\n", iso)
 			continue
 		}
 		row := [6]float64{}
-		for k, p := range [][2]*render.Linear{{fr.spp, ref.spp}, {fr.ours, ref.ours}, {fr.plain, ref.plain}} {
+		for k, p := range [][2]*render.Linear{{fs.spp, rs.spp}, {fs.ours, rs.ours}, {fs.plain, rs.plain}} {
 			row[k] = fitted(p[0], p[1])
 			row[3+k], _ = calib.DeltaEStats(p[0], p[1])
 		}
 		fmt.Printf("%-6s | %9.2f %9.2f %9.2f | %9.2f %9.2f %9.2f\n", iso, row[0], row[1], row[2], row[3], row[4], row[5])
 		name := strings.TrimSuffix(filepath.Base(a[i]), filepath.Ext(a[i]))
-		if err := sideBySide(filepath.Join(*out, fmt.Sprintf("iso%s_%s.jpg", iso, name)), fr.spp, fr.ours, fr.plain); err != nil {
+		if err := sideBySide(filepath.Join(*out, fmt.Sprintf("iso%s_%s.jpg", iso, name)), fs.spp, fs.ours, fs.plain); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -161,6 +176,42 @@ func loadTIFF(p string) (*render.Linear, error) {
 		return nil, err
 	}
 	return render.FromImage(img, 0, 0), nil
+}
+
+// resample box-averages l down to w x h (linear light), for comparing a
+// frame shot at a lower camera resolution with the full-size reference.
+func resample(l *render.Linear, w, h int) *render.Linear {
+	if l.W == w && l.H == h {
+		return l
+	}
+	o := &render.Linear{W: w, H: h, Pix: make([]float32, w*h*3)}
+	for y := 0; y < h; y++ {
+		y0, y1 := y*l.H/h, (y+1)*l.H/h
+		if y1 <= y0 {
+			y1 = y0 + 1
+		}
+		for x := 0; x < w; x++ {
+			x0, x1 := x*l.W/w, (x+1)*l.W/w
+			if x1 <= x0 {
+				x1 = x0 + 1
+			}
+			var r, g, b float64
+			var n float64
+			for yy := y0; yy < y1; yy++ {
+				for xx := x0; xx < x1; xx++ {
+					i := (yy*l.W + xx) * 3
+					r += float64(l.Pix[i])
+					g += float64(l.Pix[i+1])
+					b += float64(l.Pix[i+2])
+					n++
+				}
+			}
+			o.Pix[(y*w+x)*3] = float32(r / n)
+			o.Pix[(y*w+x)*3+1] = float32(g / n)
+			o.Pix[(y*w+x)*3+2] = float32(b / n)
+		}
+	}
+	return o
 }
 
 func cut(l *render.Linear, r image.Rectangle) *render.Linear {
