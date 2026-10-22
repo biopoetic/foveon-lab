@@ -89,7 +89,7 @@ func sppCheckCommand(desk string) {
 		}
 		s.Group, s.Model = group, modelOf(ph)
 		scores[name] = s
-		fmt.Printf("  %-10s %-8s all %6.2f  area %5.2f  shadows %5.2f  ev %+5.2f  area@ev0 %5.2f\n", name, group, s.All, s.Area, s.Shadow, s.EV, s.AreaEV0)
+		fmt.Printf("  %-10s %-8s all %6.2f  area %5.2f  shadows %5.2f  ev %+5.2f  area@ev0 %5.2f  ref %s\n", name, group, s.All, s.Area, s.Shadow, s.EV, s.AreaEV0, filepath.Base(filepath.Dir(exp))+"/"+filepath.Base(exp))
 	}
 	fmt.Printf("%d photos in %s\n", len(scores), time.Since(start).Round(time.Second))
 	printSPPSummary(scores)

@@ -593,7 +593,14 @@ That looked like a tone question - but the two tools disagree, so it is not sett
 One of them is measuring something else - most likely `spp-check` on photos outside the calibration
 set pairs a different reference (a JPEG or another export) than the A00 file, or measures the whole
 frame where ours falls off. The 12.92 average over those 33 photos should not be trusted until
-`spp-check` says which file it compared against; that print is the next small change.
+`spp-check` says which file it compared against - and it does now (each row prints its `ref`), which
+settled it: **the same 33 photos without `-compare` read 5.196** (area 4.64, shadows 4.09), and
+SDIM1174 is **5.41** with ev -0.02, exactly what `isocmp` saw. So the 12.92 / 41.74 figures came from
+the run that also passed `-compare dist\check\all-base.json`, not from the photos: either the compare
+path re-scores, or state leaks between photos there. Until that is found, treat any `-compare` run's
+absolute numbers as suspect - use it only for the per-photo deltas, and re-score without it for the
+group figure. SD15 at 5.20 over 33 photos is a healthy group, so the earlier "weakest group" reading was
+an artefact of the four-photo set plus this bug.
 
 ## What "perfect" would need beyond this
 
