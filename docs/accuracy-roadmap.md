@@ -592,15 +592,19 @@ That looked like a tone question - but the two tools disagree, so it is not sett
 0.2298/0.2373/0.2090: a 4% difference. `spp-check` reports 41.74 dE and ev -1.26 for the same pair.
 One of them is measuring something else - most likely `spp-check` on photos outside the calibration
 set pairs a different reference (a JPEG or another export) than the A00 file, or measures the whole
-frame where ours falls off. The 12.92 average over those 33 photos should not be trusted until
-`spp-check` says which file it compared against - and it does now (each row prints its `ref`), which
-settled it: **the same 33 photos without `-compare` read 5.196** (area 4.64, shadows 4.09), and
-SDIM1174 is **5.41** with ev -0.02, exactly what `isocmp` saw. So the 12.92 / 41.74 figures came from
-the run that also passed `-compare dist\check\all-base.json`, not from the photos: either the compare
-path re-scores, or state leaks between photos there. Until that is found, treat any `-compare` run's
-absolute numbers as suspect - use it only for the per-photo deltas, and re-score without it for the
-group figure. SD15 at 5.20 over 33 photos is a healthy group, so the earlier "weakest group" reading was
-an artefact of the four-photo set plus this bug.
+frame where ours falls off. The 12.92 average was **the Auto-WB base itself, not `-compare`** (corrected 22 Oct 2026 after a
+controlled rerun). With the 4-photo `SD15|Auto` entry installed and no `-compare`, the same 33 photos
+read exactly **12.923**; with the entry removed they read **5.196** (area 4.64, shadows 4.09), and
+SDIM1174 is 5.41 with ev -0.02, matching `isocmp`. So the four-photo fit is badly overfit: applied to
+the 13 Auto photos in the wider set it costs 12-54 dE, three of them photos it was fitted on
+(SDIM0973 5.37 -> 29.52). `FitRawBase` had already refused it (`useRaw` false, 12% gain against the 20%
+rule) - but `RawBaseFitted` (used by `camfread.go` and `spp-check`) applies a fitted base regardless of
+`useRaw`, which is how a rejected entry reached the render. Two things follow: a per-WB entry must pass
+the `useRaw` test before it is installed, and SD15 at **5.20 over 33 photos** is a healthy group - the
+earlier "weakest group" reading was the four-photo kronometric set plus this overfit.
+
+The `ref` column in `spp-check` is still worth keeping: it makes it obvious which file a row
+compared against.
 
 ## What "perfect" would need beyond this
 
