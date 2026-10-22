@@ -204,6 +204,21 @@ func printSPPSummary(scores map[string]sppScore) {
 		a := by[g]
 		fmt.Printf("%-8s %3d photos: all %.3f  area %.3f  shadows %.3f\n", g, a.n, a.all/float64(a.n), a.area/float64(a.n), a.shadow/float64(a.n))
 	}
+	// A neutral SPP export lands within a few hundredths of a stop of our own
+	// brightness. A row far off that is a reference developed with other
+	// settings (a "processing" test shot, say), and its error is mostly that
+	// difference: say how much of the average such rows carry, so the group
+	// figure can be read honestly.
+	n, sum := 0, 0.0
+	for _, s := range scores {
+		if math.Abs(s.EV) > 0.25 {
+			n++
+			sum += s.All
+		}
+	}
+	if n > 0 {
+		fmt.Printf("          %d of %d photos are non-neutral (|ev| > 0.25), averaging %.2f: read area@ev0 for those\n", n, len(scores), sum/float64(n))
+	}
 }
 
 func printSPPCompare(before, now map[string]sppScore, worse float64) {

@@ -631,7 +631,14 @@ channel. The name says it: it is a "processing" test shot, developed in SPP with
 the neutral ones the calibration set is supposed to use. So it (and the other high-`all`, high-`|ev|`
 rows - SDIM1174 before it) belongs **out of the set**, not in a bug report. When reading the table,
 `spp-check`'s `area@ev0` column is the one that separates "our tone is wrong" from "this export was not
-neutral": a big `all` with a small `area@ev0` is an exposure/lift difference in the reference.## What "perfect" would need beyond this
+neutral": a big `all` with a small `area@ev0` is an exposure/lift difference in the reference.
+
+`spp-check` now says how much those rows distort a group, after the per-group lines:
+"3 of 60 photos are non-neutral (|ev| > 0.25), averaging 26.25". On DP+DPM that is three photos
+carrying 26.25 between them, so the DPM group's honest figure is about **4.8 rather than 6.85** and the
+pair's is **5.4 rather than 6.52**. Quote the neutral-only figure when comparing pipelines; the
+all-photos figure is what a user sees if their export settings differ from ours, which is a different
+question.## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
