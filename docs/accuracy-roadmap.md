@@ -746,7 +746,24 @@ style single sample) amplified by the matrix and the preset. The fix to try, in 
 3. validate with `spp-check` (the group numbers must not move) and visually on this frame in Vivid and
    in the neutral preset.
 
-## What "perfect" would need beyond this## What "perfect" would need beyond this
+**The coloured dots come from the denoiser (22 October 2026).** Bisected with `speckdump_test.go`
+(`FL_DUMP_PHOTO=... FL_DUMP_COLOR=... go test -run TestDumpPreview`), which renders the frame through
+the accurate-preview path and writes `dist/preview-dump.png`:
+
+| render | dots |
+|---|---|
+| `sRGB` (denoise at defaultNR = 0.3) | **yes** |
+| `sRGB-nodenoise` (denoiser skipped) | **no - clean** |
+| `sRGB` with `FOVEON_DN_NORESTORE=1` | **yes, more of them** |
+
+So the decode is fine, the camera-linear outliers measure 520 and the colour matrix is not the
+problem: the denoiser itself paints them, and its detail restore is not the cause (turning it off makes
+it worse). The shape of the bug points at the chroma path at very low signal - near black a tiny
+difference is a huge ratio - so the fix is to make the denoiser's chroma work vanish with brightness
+(scale it by luma, or skip near-black pixels as `ShadowChromaFix` already does) rather than to reject
+single samples. `render/despeckle.go` stays (it is harmless and cheap) but it is not the cure for this.
+
+## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a

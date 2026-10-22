@@ -30,7 +30,11 @@ func TestDumpPreview(t *testing.T) {
 	if ph == nil {
 		t.Fatalf("%s not found by the scanner", path)
 	}
-	l, err := rawLinear(ph, 1600, "sRGB")
+	color := os.Getenv("FL_DUMP_COLOR")
+	if color == "" {
+		color = "sRGB"
+	}
+	l, err := rawLinear(ph, 1600, color)
 	if err != nil {
 		t.Fatal(err)
 	}
