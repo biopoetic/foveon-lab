@@ -578,7 +578,36 @@ func guided(I, p []float32, w, h, r int, eps float32) []float32 {
 	a, b := make([]float32, len(I)), make([]float32, len(I))
 	parallel(len(I), func(i0, i1 int) {
 		for i := i0; i < i1; i++ {
-			a[i] = (mIp[i] - mI[i]*mp[i]) / (mII[i] - mI[i]*mI[i] + eps)
+			// He et al.'s 0 <= a <= 1 is what makes this an edge-preserving
+			// filter. Where the neighbourhood is flatter than eps the estimate
+			// is noise, and in float32 the two near-equal subtractions below
+			// lose their significant digits: a then runs away and ma*I + mb
+			// paints spikes along dark edges (SD1, ISO 100, black fur - the
+			// coloured dots of 2026-10-22). Clamping keeps the model a
+			// weighted average of the guide, and the subtraction is done in
+			// float64 so eps still means what it says at low signal.
+			// Where the neighbourhood is flatter than eps the estimate is
+			// noise: in float32 the two near-equal subtractions lose their
+			// significant digits and a runs away, which paints spikes along
+			// dark edges (SD1, ISO 100, black fur - the coloured dots of
+			// 2026-10-22). There the local mean is the honest answer (a = 0).
+			// Elsewhere a may legitimately exceed 1 - a chroma plane varies
+			// more than the luminance guide - so it is only bounded against a
+			// runaway, not clamped to He et al.'s [0,1] (which cost the
+			// calibration 2-6 dE on 85 photos).
+			mi, mpf := float64(mI[i]), float64(mp[i])
+			varI := float64(mII[i]) - mi*mi
+			ai := 0.0
+			if varI > 0.5*float64(eps) {
+				ai = (float64(mIp[i]) - mi*mpf) / (varI + float64(eps))
+				if ai > 8 {
+					ai = 8
+				}
+				if ai < -8 {
+					ai = -8
+				}
+			}
+			a[i] = float32(ai)
 			b[i] = mp[i] - a[i]*mI[i]
 		}
 	})
