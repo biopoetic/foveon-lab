@@ -286,7 +286,7 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 	// SPP's neutral colours as the DNG's own profile, where a raw base was
 	// fitted for this camera group; else the camera's matrix.
 	var prof *render.DNGProfile
-	if c := render.RawBaseFitted(calibGroup(ph)); c != nil {
+	if c := render.RawBaseFitted(calibGroup(ph), wbDesc(ph)); c != nil {
 		prof = c.DNGProfile("Foveon Lab SPP Neutral (" + calibGroup(ph) + ")")
 	}
 	err = render.WriteCameraDNG(f, img.Pix, img.W, img.H, t.Gain, t.CC, prof, "SIGMA", dngModel(ph), "Foveon Lab "+version)

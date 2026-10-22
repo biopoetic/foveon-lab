@@ -195,7 +195,7 @@ func develop(f *x3f.File, strength float64) (*render.Linear, error) {
 		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1, ISO: iso, Grey: grey})
 	}
 	l := render.FromCamLinear(img.Pix, img.W, img.H, 0, 0, render.CamTransform{Gain: gain, CC: cc})
-	if b := render.RawBaseFitted(x3f.CalibGroup(f.Props["CAMMODEL"])); b != nil {
+	if b := render.RawBaseFitted(x3f.CalibGroup(f.Props["CAMMODEL"]), strings.TrimSpace(f.Props["WB_DESC"])); b != nil {
 		b.Apply(l)
 	}
 	return l, nil

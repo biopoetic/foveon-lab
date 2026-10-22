@@ -572,6 +572,20 @@ photos. Applying that base and running `spp-check -only SD15` on the kronometric
 the honest options are a base per white balance, or a WB-aware mapping, or keeping the Overcast photos
 out of the SD15 group entirely. The refit was reverted; the Auto-WB fit filter stays for that work.
 
+**Per-white-balance raw bases are implemented (22 October 2026).** `RawCorrection` carries a `wb`
+field, `RawBaseFor`/`RawBaseFitted` take the photo's `WB_DESC` and prefer a `family|WB` entry over the
+family's WB-less one, `fit-raw` tags a fit that used Auto photos only and merges by `family|WB`, and
+every call site passes the balance. The shipped data is **unchanged**: with the SD15 Auto entry
+installed the kronometric Overcast set stayed exactly where it was (10.694, all four photos), which is
+the property the mechanism was built for.
+
+**But SD15 itself needs a closer look before anything ships.** The Auto fit reads 5.64 against the
+shipped base's 6.41 on its four photos - a 12% gain, under the project's 20% rule, so `useRaw` stays
+false - and the wider `D:\Foto\Photos\SD15` set (33 photos that have SPP exports) sits at **12.92**
+with individual photos at 41.7, 30.4, 26.7 and 23.6 dE and ev down to -1.26. That is not a base-fitting
+problem; those photos need checking one by one (a wrong export pairing or a different camera mode
+would look like this).
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour

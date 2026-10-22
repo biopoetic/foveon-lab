@@ -210,7 +210,7 @@ func develop(path string) ([]float32, int, int, error) {
 	l := render.FromCamLinear(img.Pix, img.W, img.H, 0, 0, render.CamTransform{Gain: gain, CC: cc})
 	fmt.Sscan(f.Props["ISO"], &l.ISO)
 	l.Sensor = render.SharpKey(x3f.CalibGroup(f.Props["CAMMODEL"]))
-	if b := render.RawBaseFitted(x3f.CalibGroup(f.Props["CAMMODEL"])); b != nil {
+	if b := render.RawBaseFitted(x3f.CalibGroup(f.Props["CAMMODEL"]), strings.TrimSpace(f.Props["WB_DESC"])); b != nil {
 		b.Apply(l)
 	}
 	if viaRender {

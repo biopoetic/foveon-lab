@@ -134,7 +134,7 @@ func sppCheckPhoto(ph *Photo, export string) (sppScore, error) {
 	if ph.RawDecoded {
 		// SD9/SD10 (no camera JPEG to show): the app applies the group's
 		// base in decodePreview, which rawCorrectionFor leaves out.
-		c = render.RawBaseFor(calibGroup(ph))
+		c = render.RawBaseFor(calibGroup(ph), wbDesc(ph))
 	}
 	if c != nil {
 		c.Apply(l)

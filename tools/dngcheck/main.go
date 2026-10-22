@@ -68,7 +68,7 @@ func check(path, export string) error {
 		return err
 	}
 	group := x3f.CalibGroup(f.Props["CAMMODEL"])
-	base := render.RawBaseFitted(group)
+	base := render.RawBaseFitted(group, "")
 	if base == nil {
 		return fmt.Errorf("no raw base for %q", group)
 	}

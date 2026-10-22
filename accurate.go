@@ -43,7 +43,7 @@ func rawCorrectionFor(ph *Photo) *render.RawCorrection {
 	if ph.Kind != "x3f" || ph.RawDecoded || ph.Unsupported != "" || !rawDecodable(ph.props) {
 		return nil
 	}
-	if c := render.RawBaseFor(calibGroup(ph)); c != nil {
+	if c := render.RawBaseFor(calibGroup(ph), wbDesc(ph)); c != nil {
 		return c
 	}
 	// At high ISO the camera JPEG is noisy and colour-shifted (Merrill high
@@ -51,7 +51,7 @@ func rawCorrectionFor(ph *Photo) *render.RawCorrection {
 	// x3f package: use the raw path with the family's fitted correction even
 	// where it did not beat the JPEG at base ISO.
 	if goRaw && highISO(ph) {
-		return render.RawBaseFitted(calibGroup(ph))
+		return render.RawBaseFitted(calibGroup(ph), wbDesc(ph))
 	}
 	return nil
 }
@@ -394,6 +394,10 @@ func (s *server) handleAccurate(w http.ResponseWriter, r *http.Request) {
 
 // calibGroup is the group ph's learned raw base and JPEG balance belong to
 // (x3f.CalibGroup of the camera model; ph.Camera already holds the family).
+// wbDesc is the photo's in-camera white balance name ("Auto", "Overcast",
+// ...), which selects a per-balance raw base when one was fitted.
+func wbDesc(ph *Photo) string { return strings.TrimSpace(ph.props["WB_DESC"]) }
+
 func calibGroup(ph *Photo) string {
 	m := ph.props["CAMMODEL"]
 	if m == "" {

@@ -148,11 +148,13 @@ func FitRawBase(family string, pairs []RawPair) render.RawCorrection {
 			fit = append(fit, p)
 		}
 	}
+	autoWB := false
 	if len(fit) >= 3 {
 		pairs = fit
+		autoWB = true
 	}
 	var hg, hr []float64
-	if s := render.RawBaseFitted(family); s != nil {
+	if s := render.RawBaseFitted(family, ""); s != nil {
 		hg, hr = s.HueGain, s.HueRot
 	}
 	c := fitRaw(pairs)
@@ -164,6 +166,12 @@ func FitRawBase(family string, pairs []RawPair) render.RawCorrection {
 		}
 	}
 	c.Family, c.Photos = family, real
+	if autoWB {
+		// The fit kept Auto-WB photos only, so the entry is for that balance:
+		// it keys as "family|Auto" and leaves the family's WB-less base (what
+		// fixed-WB photos use) alone.
+		c.WB = "Auto"
+	}
 	if real < 3 {
 		return c
 	}

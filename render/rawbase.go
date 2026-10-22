@@ -16,6 +16,11 @@ import (
 // RawCorrection maps an x3f_extract sRGB decode to SPP's neutral look.
 type RawCorrection struct {
 	Family string `json:"family"` // "SD1" (Merrill) or "SD15"
+	// WB restricts the entry to one in-camera white balance ("Auto", ...).
+	// The base is white-balance dependent: fitted on Auto photos it made the
+	// Overcast SD15 set 10.69 -> 51.26 dE (2026-10-22), so entries can be
+	// per balance, with the WB-less one as the fallback.
+	WB string `json:"wb,omitempty"`
 	// UseRaw: the held-out test showed the raw base beats the camera JPEG.
 	UseRaw bool       `json:"useRaw"`
 	Matrix [9]float64 `json:"matrix"` // linear RGB, row-major
@@ -59,7 +64,11 @@ func init() {
 	for i := range list {
 		list[i].MakeMonotone()
 		list[i].hueANeg = list[i].hueChangesOnlyANeg()
-		rawBases[list[i].Family] = &list[i]
+		key := list[i].Family
+		if list[i].WB != "" {
+			key += "|" + list[i].WB
+		}
+		rawBases[key] = &list[i]
 	}
 }
 
@@ -88,8 +97,19 @@ func (c *RawCorrection) MakeMonotone() {
 
 // RawBaseFor is the correction for a camera family, or nil when the raw
 // base is not (measured to be) better than the camera JPEG there.
-func RawBaseFor(family string) *RawCorrection {
-	c := rawBases[family]
+// rawBase looks the family up, preferring an entry fitted for this white
+// balance over the family's WB-less one.
+func rawBase(family, wb string) *RawCorrection {
+	if wb != "" {
+		if c := rawBases[family+"|"+wb]; c != nil {
+			return c
+		}
+	}
+	return rawBases[family]
+}
+
+func RawBaseFor(family, wb string) *RawCorrection {
+	c := rawBase(family, wb)
 	if c == nil || !c.UseRaw {
 		return nil
 	}
@@ -98,8 +118,8 @@ func RawBaseFor(family string) *RawCorrection {
 
 // RawBaseFitted is the family's fitted correction even where it did not
 // beat the camera JPEG at base ISO (nil if none was fitted).
-func RawBaseFitted(family string) *RawCorrection {
-	c := rawBases[family]
+func RawBaseFitted(family, wb string) *RawCorrection {
+	c := rawBase(family, wb)
 	if c == nil || (c.Photos < 3 && c.TasteFrom == "") {
 		return nil
 	}

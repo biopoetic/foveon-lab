@@ -243,7 +243,7 @@ func fitRawCommand(desk string) {
 				verdict = "RAW BASE ON"
 			}
 			fmt.Printf("%s: %d photos, held-out error raw %.2f vs camera JPEG %.2f → %s\n", f, c.Photos, c.HeldOutRaw, c.HeldOutJPEG, verdict)
-			if s := render.RawBaseFitted(f); s != nil {
+			if s := render.RawBaseFitted(f, ""); s != nil {
 				fmt.Printf("%s: the shipped base on the same photos (not held out): %.2f\n", f, calib.ScoreRawBase(groups[f], s))
 			}
 			b := calib.FitJPEGBalance(f, jgroups[f])
@@ -460,19 +460,22 @@ func loadPair(name, e string, ph *Photo, family, group string, groups map[string
 func mergeByFamily[T any](shipped []byte, fitted []T) []byte {
 	var list []json.RawMessage
 	json.Unmarshal(shipped, &list)
-	familyOf := func(m json.RawMessage) string {
+	// Keyed by family and white balance: a per-balance entry (family|Auto)
+	// replaces only the same balance's entry, never the family's WB-less base.
+	keyOf := func(m json.RawMessage) string {
 		var v struct {
 			Family string `json:"family"`
+			WB     string `json:"wb"`
 		}
 		json.Unmarshal(m, &v)
-		return v.Family
+		return v.Family + "|" + v.WB
 	}
 	for _, f := range fitted {
 		m, _ := json.Marshal(f)
-		fam := familyOf(m)
+		key := keyOf(m)
 		replaced := false
 		for i := range list {
-			if familyOf(list[i]) == fam {
+			if keyOf(list[i]) == key {
 				list[i], replaced = m, true
 			}
 		}
