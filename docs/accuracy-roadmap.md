@@ -498,6 +498,14 @@ The same diagnostic found a separate bug on sd Quattro H: its lower-resolution f
 dark (linear mean 0.019 against SPP's 0.29 at ISO 1600), so its 800-6400 rows are measuring that, not
 a colour drift.
 
+**sd Quattro H reduced-resolution frames: where the decode goes wrong (22 October 2026).** A debug
+print in `cameraLinearQuattro` shows the ISO 100 (01) and ISO 1600 (05) frames decode with the same
+raw geometry - raw 3328x2240, top 6656x4480, the same dark rectangles - so the frame size is not the
+problem: the difference must be in what those rectangles and the black level give for the reduced
+mode (the ISO 1600 render comes out at a linear mean of 0.019 against SPP's 0.29). Next step is to
+print the black level and the kept rectangle for both frames side by side; the probe was removed
+again (research hook).
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
