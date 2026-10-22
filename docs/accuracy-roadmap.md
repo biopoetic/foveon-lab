@@ -522,6 +522,12 @@ frames sit at 2-6, while the high-ISO frames carry the group: sd Quattro H ISO 6
 14.94, shadows 21.96) and dp2 Quattro ISO 6400 11.09 (area 9.39). Any future Quattro work should use
 this as the regression baseline: the drift, not the base ISO, is what moves the number.
 
+**spp-check baseline, every group (22 October 2026, after the tool fixes).** 172 photos:
+**all 7.229**, area 6.239, shadows 5.860. By group: SD1 3.99 (2 photos), Quattro 6.05 (49),
+DP 6.14 (28), DPM 6.85 (32), SD9 8.75 (12), SD10 8.83 (20), SD14 8.94 (25), **SD15 10.69 (4)**.
+Use this as the regression anchor; SD15 is the weakest group on this set despite its model, which is
+the next thing to look at there (the four photos may simply be hard ones - check before fitting).
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
