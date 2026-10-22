@@ -564,6 +564,14 @@ gain, but not a held-out one (the cross-check in `fit-raw` reports the raw error
 photos). The refit was therefore **not shipped**; the code change stays, ready for the day an
 Auto-WB SD15 photo (or a second SD15 set) exists.
 
+**Measured the other way round (22 Oct 2026): the raw base is heavily white-balance dependent.** Three
+Auto-WB SD15 photos (SDIM0973-0975, found on D:\Foto\Photos\SD15 after the Desktop\SD15 folder
+disappeared) were exported and fitted: held-out raw 5.64 against the shipped base's 6.41 on those
+photos. Applying that base and running `spp-check -only SD15` on the kronometric Overcast set made it
+**10.69 -> 51.26** (all four photos 38-47 worse). So a per-group base cannot serve both balances:
+the honest options are a base per white balance, or a WB-aware mapping, or keeping the Overcast photos
+out of the SD15 group entirely. The refit was reverted; the Auto-WB fit filter stays for that work.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
