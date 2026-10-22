@@ -548,10 +548,12 @@ Overcast** - sweeping the WB name on SDIM0011 gives (R/G/B means):
 | **SPP's export** | 0.350 | 0.358 | 0.312 |
 
 Auto is much closer than the recorded setting (blue 0.357 against SPP's 0.312, versus 0.208), though
-still red-heavy. So the SD15 model was fitted on Auto-WB photos and this kronometric set records
-Overcast while SPP renders it close to Auto. Next: establish what WB SPP actually applies by default
-(its preview shows the in-camera setting, but the neutral export may use Auto), and either apply the
-same rule or keep WB_DESC != Auto photos out of the group's fit.
+still red-heavy. Measured as dE against SPP's export, the four WB choices on that photo read:
+Overcast **13.25**, Auto 12.98, **Sunlight 10.81**, Shade 15.25 - so SPP's neutral is closest to a
+Sunlight-like balance, not the recorded Overcast. The SD15 model was fitted on Auto-WB photos, so this
+set's mismatch is expected; even at the best WB the dE is 10.8, so the raw base's fit on Auto-WB
+photos contributes too. Next: either apply SPP's WB rule (whatever it computes for the neutral
+export) or keep WB_DESC != Auto photos out of the group's fit - the second is easy and honest.
 
 ## What "perfect" would need beyond this
 
