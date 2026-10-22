@@ -534,8 +534,13 @@ The channel means on SDIM0011 (`isocmp -drift` with the same frame as reference)
 ours R 0.4592 / G 0.3164 / B 0.2083 against SPP's 0.3499 / 0.3578 / 0.3119 - red **+31%**, green
 **-12%**, blue **-33%**, a strong warm cast rather than a 0.05 EV brightness error (which alone would
 be about 2 dE, not 10). The lens-less aperture-gain fix (`FnumberGainFact`) is already in the tree.
-So the SD15 model, fitted on three other photos, does not fit this set's white balance: the next step
-is to compare the photo's CAMF white balance (and AutoRGBNeutral) with what the render applies.
+The CAMF white balance is *not* the cause: the file carries OvercastWBGain and OvercastCCMatrix, the
+name maps ("Overcast"), and `WBTransform` already uses the per-illuminant
+`WhiteBalanceColorCorrections` matrix. So the suspect moves to the SD15 raw-base/tone model itself -
+it was fitted on daylight photos and this set is Overcast; a WB-dependent chroma/tone fit would show
+exactly this cast. Next: render this photo with the raw base bypassed (`RawBaseFitted` skipped) and
+compare the channel means again - if the cast disappears, the base's fit is the problem, not the
+decode.
 
 ## What "perfect" would need beyond this
 
