@@ -534,13 +534,24 @@ The channel means on SDIM0011 (`isocmp -drift` with the same frame as reference)
 ours R 0.4592 / G 0.3164 / B 0.2083 against SPP's 0.3499 / 0.3578 / 0.3119 - red **+31%**, green
 **-12%**, blue **-33%**, a strong warm cast rather than a 0.05 EV brightness error (which alone would
 be about 2 dE, not 10). The lens-less aperture-gain fix (`FnumberGainFact`) is already in the tree.
-The CAMF white balance is *not* the cause: the file carries OvercastWBGain and OvercastCCMatrix, the
-name maps ("Overcast"), and `WBTransform` already uses the per-illuminant
-`WhiteBalanceColorCorrections` matrix. So the suspect moves to the SD15 raw-base/tone model itself -
-it was fitted on daylight photos and this set is Overcast; a WB-dependent chroma/tone fit would show
-exactly this cast. Next: render this photo with the raw base bypassed (`RawBaseFitted` skipped) and
-compare the channel means again - if the cast disappears, the base's fit is the problem, not the
-decode.
+The CAMF white balance is *not* missing data: the file carries OvercastWBGain and OvercastCCMatrix,
+the name maps ("Overcast"), and `WBTransform` already uses the per-illuminant
+`WhiteBalanceColorCorrections` matrix. But **SPP's neutral export is not using the recorded
+Overcast** - sweeping the WB name on SDIM0011 gives (R/G/B means):
+
+| WB | R | G | B |
+|---|---|---|---|
+| Overcast (what we apply) | 0.459 | 0.316 | 0.208 |
+| Sunlight | 0.436 | 0.325 | 0.240 |
+| **Auto** | 0.406 | 0.320 | **0.357** |
+| Shade | 0.476 | 0.314 | 0.173 |
+| **SPP's export** | 0.350 | 0.358 | 0.312 |
+
+Auto is much closer than the recorded setting (blue 0.357 against SPP's 0.312, versus 0.208), though
+still red-heavy. So the SD15 model was fitted on Auto-WB photos and this kronometric set records
+Overcast while SPP renders it close to Auto. Next: establish what WB SPP actually applies by default
+(its preview shows the in-camera setting, but the neutral export may use Auto), and either apply the
+same rule or keep WB_DESC != Auto photos out of the group's fit.
 
 ## What "perfect" would need beyond this
 
