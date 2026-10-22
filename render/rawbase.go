@@ -101,7 +101,12 @@ func (c *RawCorrection) MakeMonotone() {
 // balance over the family's WB-less one.
 func rawBase(family, wb string) *RawCorrection {
 	if wb != "" {
-		if c := rawBases[family+"|"+wb]; c != nil {
+		// A per-balance entry only counts when it won its held-out test
+		// (UseRaw): a small fit can be badly overfit - a 4-photo SD15|Auto
+		// entry cost the wider set 12-54 dE on 13 photos (2026-10-22) - and
+		// FitRawBase had already rejected it. The family's WB-less base keeps
+		// its old behaviour.
+		if c := rawBases[family+"|"+wb]; c != nil && c.UseRaw {
 			return c
 		}
 	}
