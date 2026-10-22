@@ -606,6 +606,14 @@ earlier "weakest group" reading was the four-photo kronometric set plus this ove
 The `ref` column in `spp-check` is still worth keeping: it makes it obvious which file a row
 compared against.
 
+**SD15 needs no per-balance base (22 October 2026).** With all the SD15 exports on disk (33 photos, of
+which 12 are Auto-WB) `fit-raw` gives a held-out error of **8.05** and the tool now accepts it
+(8.05 against the camera JPEG's 12.05 clears the 20% rule) - but the shipped WB-less base reads
+**5.25 on the same photos**. So an Auto-only refit is worse than what ships, the earlier 12.92 was the
+four-photo overfit, and the honest decision is to keep the shipped base and add no per-balance entry.
+The mechanism stays (`wb` field, `family|WB` keys, the useRaw guard) for a body where a fixed-WB set
+really is the majority - SD15 is not one.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
