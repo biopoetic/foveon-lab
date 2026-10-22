@@ -516,6 +516,12 @@ removed.
 is body-specific and the dp2 gain was small anyway; shipping it would need a ladder per body, and
 there is no second scene for a held-out check. Rejected.
 
+**Quattro group baseline with the fixed tool (22 October 2026).** `spp-check -only Quattro` over the
+49 Quattro photos on disk: **all 6.053**, area 4.455, shadows 5.744. The spread is the story - most
+frames sit at 2-6, while the high-ISO frames carry the group: sd Quattro H ISO 6400 **17.82** (area
+14.94, shadows 21.96) and dp2 Quattro ISO 6400 11.09 (area 9.39). Any future Quattro work should use
+this as the regression baseline: the drift, not the base ISO, is what moves the number.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
