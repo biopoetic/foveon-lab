@@ -583,8 +583,12 @@ the property the mechanism was built for.
 shipped base's 6.41 on its four photos - a 12% gain, under the project's 20% rule, so `useRaw` stays
 false - and the wider `D:\Foto\Photos\SD15` set (33 photos that have SPP exports) sits at **12.92**
 with individual photos at 41.7, 30.4, 26.7 and 23.6 dE and ev down to -1.26. That is not a base-fitting
-problem; those photos need checking one by one (a wrong export pairing or a different camera mode
-would look like this).
+problem on its face, so the photos were checked: the exports match the camera (2640x1760), and the
+worst ones carry the same exposure metadata as the good ones (`CaptureExpComp` -0.31, EXPNET -0.30 on
+SDIM1174, 1243 and 0973 alike). What differs is the scene: the bad ones are dark, `ev` down to -1.26,
+so SPP's tone is lifting deep shadows far more than our SD15 tone curves (fitted on brighter sets).
+That is a tone/fill question on dark photos, not a white-balance or base one - the next step there is
+to look at the SD15 fill-light and shadow lift against SPP on SDIM1174.
 
 ## What "perfect" would need beyond this
 
