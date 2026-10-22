@@ -1,0 +1,15 @@
+# SPP references that spp-check and fit-raw must not use.
+#
+# One entry per line, with the evidence for it after '#':
+#
+#	NAME            the export is wrong for every group that uses the name
+#	NAME@GROUP      the export is wrong only for that camera group
+#
+# The tools print every entry they skip: nothing here is dropped silently.
+# Keep this list short and evidenced. A reference belongs here when it is
+# not a neutral SPP export (|ev| > 0.25 in spp-check, or made with another
+# SPP setting) or when it is the wrong image for the photo (a name
+# collision, a different camera, a different frame).
+#
+# Format details: names and groups are case-insensitive; the reason is the
+# text after '#' and is required.

@@ -67,8 +67,10 @@ func sppCheckCommand(desk string) {
 			want[strings.ToUpper(s)] = true
 		}
 	}
+	printReferenceExclusions()
 	start := time.Now()
 	scores := map[string]sppScore{}
+	excluded := 0
 	for _, ph := range scanPhotos(strings.Split(*photos, ";"), false) {
 		if ph.Kind != "x3f" || ph.Unsupported != "" {
 			continue
@@ -77,6 +79,11 @@ func sppCheckCommand(desk string) {
 		exp, ok := exports[name]
 		group := calibGroup(ph)
 		if !ok || (len(want) > 0 && !want[name] && !want[strings.ToUpper(group)]) {
+			continue
+		}
+		if e, bad := calib.ExcludedReference(name, group); bad {
+			fmt.Printf("  excluded  %-10s %-8s ref %s  %s\n", name, group, filepath.Base(filepath.Dir(exp))+"/"+filepath.Base(exp), e.Reason)
+			excluded++
 			continue
 		}
 		if _, done := scores[name]; done {
@@ -90,6 +97,9 @@ func sppCheckCommand(desk string) {
 		s.Group, s.Model = group, modelOf(ph)
 		scores[name] = s
 		fmt.Printf("  %-10s %-8s all %6.2f  area %5.2f  shadows %5.2f  ev %+5.2f  area@ev0 %5.2f  ref %s\n", name, group, s.All, s.Area, s.Shadow, s.EV, s.AreaEV0, filepath.Base(filepath.Dir(exp))+"/"+filepath.Base(exp))
+	}
+	if excluded > 0 {
+		fmt.Printf("%d excluded reference(s), not scored\n", excluded)
 	}
 	fmt.Printf("%d photos in %s\n", len(scores), time.Since(start).Round(time.Second))
 	printSPPSummary(scores)

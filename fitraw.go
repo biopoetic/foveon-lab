@@ -124,6 +124,7 @@ func fitRawCommand(desk string) {
 	onlyGroups := fsFlags.String("groups", "", "decode only these groups (comma separated), to save time")
 	dngProfile := fsFlags.Bool("dngprofile", false, "research: held-out dE of the raw base as a DNG camera profile (ForwardMatrix + one Adobe tone curve) vs the full per-channel raw base")
 	onlyRes := fsFlags.String("res", "", "research: only photos of this RESOLUTION (HI, MED), e.g. to test a separate SD1 MED base")
+	outDir := fsFlags.String("out", "", "write rawbase.json and jpegwb.json to this folder instead of the -dir folder")
 	nr := fsFlags.Float64("nr", defaultNR, "with -go: noise reduction of the training decodes (the app's own by default; 0 until v0.4.56)")
 	charts := fsFlags.Bool("charts", false, "research: also train on synthetic charts (…/charts/*.X3F). Off by default: on 2026-10-13 two in-gamut SD1 charts (166/192 clean patches) made the held-out SD1 starting image worse, 6.87 -> 7.58 dE (SPP's response on them is strongly non-linear in the shadows)")
 	autoWB := fsFlags.Bool("autowb", false, "research: fit each group on its Auto-white-balance photos only, as a per-balance \"family|Auto\" entry (SD15: held out 8.05 vs the shipped all-photo base's 5.25, so not the default)")
@@ -132,11 +133,18 @@ func fitRawCommand(desk string) {
 	if rawTool == "" && !*goRaw {
 		log.Fatal("fit-raw needs x3f_extract (or -go)")
 	}
+	printReferenceExclusions()
 	exports, names := calib.ExportsFor(*dir, "A00")
 	byName := map[string]*Photo{}
 	for _, p := range scanPhotos(strings.Split(*photos, ";"), false) {
 		if p.Kind == "x3f" {
-			byName[strings.ToUpper(strings.TrimSuffix(p.Name, filepath.Ext(p.Name)))] = p
+			// First in scan order wins, as in spp-check: two different photos
+			// can share a base name (SDIM0076 is both a DP2 Merrill sample
+			// and an SD1 file), and the export belongs to one of them.
+			key := strings.ToUpper(strings.TrimSuffix(p.Name, filepath.Ext(p.Name)))
+			if _, ok := byName[key]; !ok {
+				byName[key] = p
+			}
 		}
 	}
 	// Which group each export belongs to (cheap: no decoding), so the fit
@@ -151,7 +159,12 @@ func fitRawCommand(desk string) {
 			fmt.Printf("  %s: X3F not found under -photos, skipped\n", name)
 			continue
 		}
-		family, group := x3f.PresetFamily(ph.Camera), calibGroup(ph)
+		group := calibGroup(ph)
+		if e, bad := calib.ExcludedReference(name, group); bad {
+			fmt.Printf("  %s (%s): excluded reference, skipped: %s\n", name, group, e.Reason)
+			continue
+		}
+		family := x3f.PresetFamily(ph.Camera)
 		if family == "" && group != "Quattro" { // Quattro: no presets, but its own raw base
 			fmt.Printf("  %s: %s has no family, skipped\n", name, ph.Camera)
 			continue
@@ -173,6 +186,9 @@ func fitRawCommand(desk string) {
 				continue
 			}
 			family, group := x3f.PresetFamily(ph.Camera), calibGroup(ph)
+			if _, bad := calib.ExcludedReference(name, group); bad {
+				continue // listed once, in the present/group pass above
+			}
 			if !present[group] || (want != nil && !want[group]) {
 				continue
 			}
@@ -272,11 +288,17 @@ func fitRawCommand(desk string) {
 	}
 	// Written as the shipped files with the fitted groups replaced, so they
 	// can be copied to render/ as they are.
-	p := filepath.Join(*dir, "rawbase.json")
+	dest := *outDir
+	if dest == "" {
+		dest = *dir
+	} else if err := os.MkdirAll(dest, 0o755); err != nil {
+		log.Fatal(err)
+	}
+	p := filepath.Join(dest, "rawbase.json")
 	if err := os.WriteFile(p, mergeByFamily(render.ShippedRawBaseJSON(), out), 0o644); err != nil {
 		log.Fatal(err)
 	}
-	pj := filepath.Join(*dir, "jpegwb.json")
+	pj := filepath.Join(dest, "jpegwb.json")
 	if err := os.WriteFile(pj, mergeByFamily(render.ShippedJPEGBalanceJSON(), bal), 0o644); err != nil {
 		log.Fatal(err)
 	}
