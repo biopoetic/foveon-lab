@@ -476,6 +476,13 @@ dE between 6.51 and 6.59 (baseline 6.56) - i.e. nothing. So the drift is not a b
 layer; the raw-data layer *slopes* (~4% higher by 6400, per the dp2 Quattro measurement above) are
 the next thing to model.
 
+**Per-layer gains too (22 October 2026).** Sweeping the bottom and middle layer gains from 0.96 to
+1.04 on the sd Quattro H ISO 6400 frame moves the render shift only between 16.79 and 18.42
+(baseline 17.13) and the fitted dE between 6.52 and 7.09 (baseline 6.56). So neither a black offset
+nor a layer gain explains the drift. Blind sweeps of the Quattro decode are exhausted: the next step
+has to be a diagnostic - compare ours against SPP per channel in linear light (offset vs gain vs
+hue) on the sd Quattro H and dp2 ladders - and only then a model.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
