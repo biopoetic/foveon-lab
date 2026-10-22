@@ -763,7 +763,17 @@ difference is a huge ratio - so the fix is to make the denoiser's chroma work va
 (scale it by luma, or skip near-black pixels as `ShadowChromaFix` already does) rather than to reject
 single samples. `render/despeckle.go` stays (it is harmless and cheap) but it is not the cure for this.
 
-## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
+**Despeckling does not fix it (22 October 2026).** Tried the obvious cure three ways on SDIM0095: a
+filter on the camera-linear image (before the denoiser), one at the denoiser's output over dark pixels
+(luma < 0.15, then < 0.5 with a 25% threshold), and one on the Linear after the colour transform. All
+three leave the dots. That is itself a finding: the dots are **not single-sample outliers relative to
+their 3x3 neighbourhood** - they read as small vertical dashes and 2x2-ish clusters in the render, which
+a median test cannot see because the median lands on the cluster - so they are produced by the
+denoiser's structure (the a-trous luminance transform or the guided per-channel model), not by one hot
+sample. The cure has to be inside `x3f/denoise.go` (where the local model is built), and the dump test
+is the fast loop for it. Nothing was shipped: the probes were reverted and the tree is clean.
+
+## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
