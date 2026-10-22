@@ -71,12 +71,27 @@ func main() {
 		}
 		return frame{spp, ours, plain}, f.Props["ISO"]
 	}
+	// normFrame brings our render and the no-NR render to the SPP export's
+	// size: in a camera resolution mode SPP exports the frame smaller while
+	// our decode still renders the full sensor, and comparing crops of two
+	// different sizes compares different parts of the scene.
+	normFrame := func(fr frame) frame {
+		if fr.ours.W != fr.spp.W || fr.ours.H != fr.spp.H {
+			fr.ours = resample(fr.ours, fr.spp.W, fr.spp.H)
+		}
+		if fr.plain.W != fr.spp.W || fr.plain.H != fr.spp.H {
+			fr.plain = resample(fr.plain, fr.spp.W, fr.spp.H)
+		}
+		return fr
+	}
 	ref, refISO := load(a[0], a[1])
+	ref = normFrame(ref)
 	fmt.Printf("reference ISO %s, crop %v, noise reduction %.1f\n", refISO, crop, *strength)
 	fmt.Printf("%-6s | %-29s | %-29s\n", "", "noise + detail (fitted dE)", "render shift (plain dE)")
 	fmt.Printf("%-6s | %9s %9s %9s | %9s %9s %9s\n", "ISO", "SPP", "FoveonLab", "no NR", "SPP", "FoveonLab", "no NR")
 	for i := 2; i+1 < len(a); i += 2 {
 		fr, iso := load(a[i], a[i+1])
+		fr = normFrame(fr)
 		// A frame at a different resolution (a camera resolution mode, as in
 		// the sd Quattro H ladder) is compared at its own size: the reference
 		// is box-averaged down to it, and the crop scales with it. A rotated

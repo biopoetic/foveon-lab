@@ -441,16 +441,21 @@ which averages some noise away, so treat them as slightly flattering:
 
 | ISO | SPP | ours | render shift ours / SPP |
 |---|---|---|---|
-| 200 | 3.60 | **2.29** | 2.45 / 3.71 |
-| 400 | 4.49 | **3.26** | 3.50 / 4.66 |
-| 800* | 5.91 | **3.27** | 4.11 / 6.50 |
-| 1600* | 6.35 | **3.07** | 9.35 / 6.82 |
-| 3200* | 7.98 | **4.02** | 11.34 / 7.92 |
-| 6400* | 10.46 | **6.56** | 17.13 / 10.69 |
+| 200 | 3.60 | **2.19** | 2.31 / 3.71 |
+| 400 | 4.49 | **3.07** | 3.30 / 4.66 |
+| 800 | 5.91 | **4.05** | 5.05 / 6.50 |
+| 1600 | 6.35 | **5.38** | 6.48 / 6.82 |
+| 3200 | 7.98 | 8.00 | 9.56 / 7.92 |
+| 6400 | 10.46 | **9.48** | 13.48 / 10.69 |
 
-(* reference downscaled to the frame's resolution.) Noise is ahead at every ISO, but the colour/tone
-drift grows from 1600 up - the same shape as the dp2 Quattro drift noted above, on the same sensor
-generation, and it is now the open issue for this body rather than noise.
+Ahead at 200-1600 and at 6400, level at 3200. The colour/tone drift still grows from 3200 up, the
+same shape as the dp2 Quattro drift on the same sensor generation, and that is the open issue for
+this body rather than noise.
+
+(Correction: an earlier run showed these frames rendering near-black - a linear mean of 0.019
+against SPP's 0.29 - and that was an artefact of the tool, not the decode: our render is always full
+sensor size while SPP exports the reduced mode smaller, so the two crops covered different parts of
+the scene. `isocmp` now brings the render to the export's size per frame before comparing.)
 
 **Public ladders for dp0/dp1/dp3 Quattro (22 October 2026): none found.** What was checked:
 Imaging Resource's dp0 Quattro page is a Preview with no lab samples and its dp1/dp3 "SAMPLES" pages
@@ -498,13 +503,12 @@ The same diagnostic found a separate bug on sd Quattro H: its lower-resolution f
 dark (linear mean 0.019 against SPP's 0.29 at ISO 1600), so its 800-6400 rows are measuring that, not
 a colour drift.
 
-**sd Quattro H reduced-resolution frames: where the decode goes wrong (22 October 2026).** A debug
-print in `cameraLinearQuattro` shows the ISO 100 (01) and ISO 1600 (05) frames decode with the same
-raw geometry - raw 3328x2240, top 6656x4480, the same dark rectangles - so the frame size is not the
-problem: the difference must be in what those rectangles and the black level give for the reduced
-mode (the ISO 1600 render comes out at a linear mean of 0.019 against SPP's 0.29). Next step is to
-print the black level and the kept rectangle for both frames side by side; the probe was removed
-again (research hook).
+**sd Quattro H reduced-resolution frames: not a decode bug (22 October 2026).** A debug print in
+`cameraLinearQuattro` showed the ISO 100 and ISO 1600 frames decode with the same raw geometry
+(3328x2240 raw, 6656x4480 top, the same kept rectangle) and the same black within 15 DN
+(260.9/259.7/259.1 against 275.0/272.4/268.0). The near-black render was the tool comparing crops of
+different pixel sizes; with the render brought to the export's size the frames are fine. Probe
+removed.
 
 ## What "perfect" would need beyond this
 
