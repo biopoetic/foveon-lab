@@ -623,7 +623,15 @@ Note the SD15 row there is 10.694 over 4 photos: the default scan only reaches t
 the 33 SD15 raws on `D:\Foto\Photos\SD15` are not in it. With `-photos D:\Foto\Photos\SD15` the same
 group reads **5.196 over 33**, which is the number to quote.
 
-## What "perfect" would need beyond this
+**The worst photos in the set are non-neutral exports, not render errors (22 October 2026).** Sorting
+`spp-check` by `all` puts KRON_PROCESSING_SDIM7824 (DPM) at 58.39 and RAW_SIGMA_DP1S (DP) at 17.97 on top.
+Checked the first one properly: its `area@ev0` is **9.71** against `all` 58.39, i.e. the whole error is a
+**-1.40 EV brightness difference**, and `isocmp`'s centre crop puts our render within 12% of SPP's per
+channel. The name says it: it is a "processing" test shot, developed in SPP with settings that are not
+the neutral ones the calibration set is supposed to use. So it (and the other high-`all`, high-`|ev|`
+rows - SDIM1174 before it) belongs **out of the set**, not in a bug report. When reading the table,
+`spp-check`'s `area@ev0` column is the one that separates "our tone is wrong" from "this export was not
+neutral": a big `all` with a small `area@ev0` is an exposure/lift difference in the reference.## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
