@@ -614,6 +614,15 @@ four-photo overfit, and the honest decision is to keep the shipped base and add 
 The mechanism stays (`wb` field, `family|WB` keys, the useRaw guard) for a body where a fixed-WB set
 really is the majority - SD15 is not one.
 
+**No regression from the per-balance work (22 October 2026).** `spp-check -compare` over every group:
+**172 photos 7.229 -> 7.229**, 0 better, 0 worse, so the `wb` field, the `family|WB` lookup and the
+useRaw guard changed nothing that ships. The per-group table is unchanged too (DP 6.14, DPM 6.85,
+Quattro 6.05, SD1 3.99, SD9 8.75, SD10 8.83, SD14 8.94).
+
+Note the SD15 row there is 10.694 over 4 photos: the default scan only reaches the calibration desk, so
+the 33 SD15 raws on `D:\Foto\Photos\SD15` are not in it. With `-photos D:\Foto\Photos\SD15` the same
+group reads **5.196 over 33**, which is the number to quote.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
