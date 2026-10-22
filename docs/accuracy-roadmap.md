@@ -657,8 +657,12 @@ brightness story at all. The DP1s is the old DP1 body (not the Merrill). Checked
 **green is five times too dark and blue twice**, a strong magenta cast - not an exposure story and not a
 white-balance name (the photo records Sunlight and the DP1s has that gain set). A channel that is
 nearly zero points at the black level: the green (and blue) dark shield is over-subtracted on this body
-at ISO 50, or its matrix is the DP1's rather than the DP1s's. Next: print the per-channel black for
-this file (`cameraLinear` in `x3f/develop.go` prints nothing today) and compare with the DP1's.## What "perfect" would need beyond this
+at ISO 50, or its matrix is the DP1's rather than the DP1s's. Printed the per-channel black for this file: **0.68 / 0.59 / 0.54** - essentially zero, so the DP1s
+file's dark shield is **not found** and `blackLevel` falls back to nothing. That alone cannot explain a
+dark green (no subtraction would make it *brighter*), but it says the body's CAMF layout is not what the
+DP1/SD14 path expects, and the WB/matrix that goes with it may be the DP1's. Next: print the WB gains
+and the colour matrix actually applied for this file, and compare with a DP1 file and with
+`RAW_SIGMA_SD14` (the DP1s shares the SD14 era processing).## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
