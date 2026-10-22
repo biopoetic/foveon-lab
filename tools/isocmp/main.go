@@ -36,6 +36,7 @@ func main() {
 	out := flag.String("out", ".", "folder for the side-by-side crops")
 	cropF := flag.String("crop", "", "x,y,w,h of the 1:1 crop (default: the centre 1200×800)")
 	strength := flag.Float64("nr", 1, "Foveon Lab noise reduction strength")
+	drift := flag.Bool("drift", false, "print per-channel linear means (ours vs SPP) instead of the dE table")
 	flag.Parse()
 	a := flag.Args()
 	if len(a) < 4 || len(a)%2 != 0 {
@@ -95,6 +96,25 @@ func main() {
 		rs := frame{cut(rf.spp, cropF), cut(rf.ours, cropF), cut(rf.plain, cropF)}
 		if fs.spp.W != rs.spp.W || fs.spp.H != rs.spp.H {
 			fmt.Printf("%-6s | skipped: cropped sizes differ\n", iso)
+			continue
+		}
+		if *drift {
+			mean := func(l *render.Linear) [3]float64 {
+				var s [3]float64
+				n := float64(l.W * l.H)
+				for i := 0; i < l.W*l.H; i++ {
+					s[0] += float64(l.Pix[i*3])
+					s[1] += float64(l.Pix[i*3+1])
+					s[2] += float64(l.Pix[i*3+2])
+				}
+				return [3]float64{s[0] / n, s[1] / n, s[2] / n}
+			}
+			o, p2 := mean(fs.ours), mean(fs.spp)
+			ro, rp := mean(rs.ours), mean(rs.spp)
+			fmt.Printf("%-6s | ours %.4f %.4f %.4f | SPP %.4f %.4f %.4f | ours/ref %.3f %.3f %.3f | SPP/ref %.3f %.3f %.3f\n",
+				iso, o[0], o[1], o[2], p2[0], p2[1], p2[2],
+				o[0]/ro[0], o[1]/ro[1], o[2]/ro[2],
+				p2[0]/rp[0], p2[1]/rp[1], p2[2]/rp[2])
 			continue
 		}
 		row := [6]float64{}

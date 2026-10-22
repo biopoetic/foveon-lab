@@ -483,6 +483,21 @@ nor a layer gain explains the drift. Blind sweeps of the Quattro decode are exha
 has to be a diagnostic - compare ours against SPP per channel in linear light (offset vs gain vs
 hue) on the sd Quattro H and dp2 ladders - and only then a model.
 
+**Quattro drift: the top layer's black (22 October 2026).** `isocmp -drift` prints the mean linear
+R/G/B of our render and of SPP against each pipeline's own ISO 100. On the dp2 Quattro ladder our blue
+falls with ISO (ours/ref 0.63 at 6400) while SPP keeps 0.886, and red/green hold at ~1.0 - so the top
+(blue) layer is over-subtracted at high ISO, not a hue rotation. Reducing the top layer's black helps
+monotonically: at ISO 6400 the fitted dE goes 11.34 (none) -> 10.91 (-4 DN) -> 10.82 (-6) -> 10.78
+(-8) -> 10.83 (-12) -> 10.99 (-16), an optimum near -7 DN. A model keyed on **CaptureISO** (delta =
+0.11 x (CaptureISO/100 - 1), about 7 DN at 6400) reads 400 2.27 (SPP 3.14), 1600 5.30 (5.33), 3200
+7.68 (6.87), 6400 10.93 (9.51): low ISOs untouched, 6400 better by 0.4. Not shipped - it is a constant
+fitted on one scene per ISO and the gain is small; a second scene per ISO is needed for a held-out
+check. SensorISO is the wrong key for it (it is ~1600 at CaptureISO 6400).
+
+The same diagnostic found a separate bug on sd Quattro H: its lower-resolution frames render far too
+dark (linear mean 0.019 against SPP's 0.29 at ISO 1600), so its 800-6400 rows are measuring that, not
+a colour drift.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
