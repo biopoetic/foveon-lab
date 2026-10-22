@@ -638,7 +638,22 @@ neutral": a big `all` with a small `area@ev0` is an exposure/lift difference in 
 carrying 26.25 between them, so the DPM group's honest figure is about **4.8 rather than 6.85** and the
 pair's is **5.4 rather than 6.52**. Quote the neutral-only figure when comparing pipelines; the
 all-photos figure is what a user sees if their export settings differ from ours, which is a different
-question.## What "perfect" would need beyond this
+question.**Six of the 172 photos are non-neutral references (22 October 2026).** Listed by |ev|, with what
+`area@ev0` says about each:
+
+| photo | group | all | ev | area@ev0 | reading |
+|---|---|---|---|---|---|
+| KRON_PROCESSING_SDIM7824 | DPM | 58.39 | -1.40 | 9.71 | the reference is not neutral; drop it |
+| RAW_SIGMA_DP1S | DP | 17.97 | -1.24 | **21.18** | **worse after the EV correction - a real error** |
+| RYTTERFALK_SDIM0656 | SD14 | 15.85 | +0.39 | 8.75 | partly exposure |
+| SIGMA-PHOTO_VW_BEETLE | SD10 | 13.60 | -0.32 | 6.08 | partly exposure |
+| SIGMA-PHOTO_IMG00046_A | SD10 | 5.08 | +0.35 | 3.97 | partly exposure |
+| KRON_DP2CARDX3FS_SDIM0686 | DP | 2.41 | +0.28 | 1.09 | mostly exposure |
+
+So only one is a bad reference on its own; three are mild exposure differences in the export; and
+**DP1s is a real render error** - 18 dE, and removing the -1.24 EV makes it *worse*, so it is not a
+brightness story at all. The DP1s is the old DP1 body (not the Merrill), so it is worth a session of its
+own: check its matrix/WB against SPP the way the Quattro drift was checked.## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
