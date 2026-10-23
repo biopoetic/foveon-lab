@@ -25,7 +25,11 @@ func TestGoLinear(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plain.W != 1200 || dn.W != plain.W || dn.H != plain.H {
+	// The two paths must agree so a view can swap between them without
+	// shifting; the width is the binned one, at most the 1200 asked for
+	// (binning rounds up to 4, giving 1176, rather than down to 1568 which
+	// would cost 1.8x the pixels to denoise).
+	if plain.W > 1200 || dn.W != plain.W || dn.H != plain.H {
 		t.Fatalf("sizes %dx%d / %dx%d", plain.W, plain.H, dn.W, dn.H)
 	}
 	var mean [2]float64

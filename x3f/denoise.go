@@ -175,6 +175,8 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		scale = 1
 	}
 	r := max(2, int(math.Round(colourRadius(o.ISO)*scale)))
+	// The guide does not change per layer: its blurs are shared.
+	mI, mII := boxBlur(G, w, h, r), boxBlurSq(G, w, h, r)
 	var out [3][]float32
 	var wg sync.WaitGroup
 	for k := 0; k < 3; k++ {
@@ -185,7 +187,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 			for i := range p {
 				p[i] /= m
 			}
-			out[k] = guided(G, p, w, h, r, eps)
+			out[k] = guidedPre(G, p, w, h, r, eps, mI, mII)
 		}(k)
 	}
 	wg.Wait()
@@ -567,14 +569,33 @@ func boxBlurRef(p []float32, w, h, r int) []float32 {
 
 // guided is He et al.'s guided filter of p by guide I (radius r, eps).
 func guided(I, p []float32, w, h, r int, eps float32) []float32 {
-	mI, mp := boxBlur(I, w, h, r), boxBlur(p, w, h, r)
-	Ip, II := make([]float32, len(I)), make([]float32, len(I))
+	mI, mII := boxBlur(I, w, h, r), boxBlurSq(I, w, h, r)
+	return guidedPre(I, p, w, h, r, eps, mI, mII)
+}
+
+// boxBlurSq blurs I*I without materialising the square.
+func boxBlurSq(I []float32, w, h, r int) []float32 {
+	II := make([]float32, len(I))
 	parallel(len(I), func(i0, i1 int) {
 		for i := i0; i < i1; i++ {
-			Ip[i], II[i] = I[i]*p[i], I[i]*I[i]
+			II[i] = I[i] * I[i]
 		}
 	})
-	mIp, mII := boxBlur(Ip, w, h, r), boxBlur(II, w, h, r)
+	return boxBlur(II, w, h, r)
+}
+
+// guidedPre is guided with the guide's own statistics already computed: the
+// guide is the same for all three layers, so mI and mII are shared instead of
+// being rebuilt per layer (a third of the box blurs in a render).
+func guidedPre(I, p []float32, w, h, r int, eps float32, mI, mII []float32) []float32 {
+	mp := boxBlur(p, w, h, r)
+	Ip := make([]float32, len(I))
+	parallel(len(I), func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			Ip[i] = I[i] * p[i]
+		}
+	})
+	mIp := boxBlur(Ip, w, h, r)
 	a, b := make([]float32, len(I)), make([]float32, len(I))
 	parallel(len(I), func(i0, i1 int) {
 		for i := i0; i < i1; i++ {

@@ -127,18 +127,10 @@ func goDevelopFor(ph *Photo, layers, sceneWB bool, wbName string) (*x3f.CamImage
 	if err != nil {
 		return nil, t, err
 	}
-	// A stuck sample that the CAMF badness table does not list survives the
-	// colour matrix as a bright coloured dot in dark areas (SD1, ISO 100,
-	// visually in both the Vivid and the Neutral preset), so reject single
-	// outliers here, before tone: one channel far from its 3x3 median is
-	// replaced by that median, and nothing else is touched.
-	lin := &render.Linear{W: img.W, H: img.H, Pix: img.Pix}
-	if n := render.Despeckle(lin, despeckleFraction, despeckleFloor); n > 0 {
-		img.Pix = lin.Pix
-		if os.Getenv("FL_DEBUG_DESPECKLE") != "" {
-			fmt.Fprintf(os.Stderr, "despeckle %s: %d samples\n", ph.Name, n)
-		}
-	}
+	// (A single-sample outlier rejection ran here while the coloured dots in
+	// dark areas were being chased, but the dots turned out to be the guided
+	// filter's runaway coefficient, fixed in x3f/denoise.go: the pass cost ten
+	// seconds per decode on a 15 MP frame and purchased nothing.)
 	gain, cc, err := c.WBTransform(wb)
 	if err != nil {
 		return nil, t, err
@@ -163,10 +155,19 @@ func goLinear(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
 // (clipped highlights then go to that white): Sunlight-balanced, or with
 // sceneWB balanced like the photo itself (goDevelopFor).
 func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string) (*render.Linear, error) {
+	timing := os.Getenv("FOVEON_TIMING") != ""
+	mark := time.Now()
+	lap := func(name string) {
+		if timing {
+			fmt.Fprintf(os.Stderr, "  %-16s %s\n", name, time.Since(mark).Round(time.Millisecond))
+			mark = time.Now()
+		}
+	}
 	img, t, err := goDevelopFor(ph, irWhite != nil, sceneWB, wbName)
 	if err != nil {
 		return nil, err
 	}
+	lap("develop")
 	// Before the denoiser: its chroma filter would spread the clipped
 	// highlights' false colour into their neighbours.
 	if irWhite != nil {
@@ -189,18 +190,34 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 			}
 		}
 	}
+	// The binning factor is chosen for both paths, so a denoised view and the
+	// plain one come out at the same size: with noise reduction the frame is
+	// binned first (binning averages noise), and either way the source is
+	// capped at that width - a 4704 px frame binned to 1600 gives 1568, and
+	// the plain path follows it instead of rendering 1600 and shifting on the
+	// swap.
+	origW := img.W
+	bx, by := 1, 1
+	if dw > 0 {
+		bx, by = max(1, (img.W+dw-1)/dw), max(1, (img.H+dh-1)/dh)
+	} else if maxW > 0 {
+		// Round up: 4704/1600 truncates to 2, which leaves a 2352 px
+		// preview - 2.25x the pixels to denoise for a view shown at 1600.
+		bx = max(1, (img.W+maxW-1)/maxW)
+		by = bx
+	}
 	if strength > 0 {
-		bx, by := 1, 1
-		if dw > 0 {
-			bx, by = max(1, img.W/dw), max(1, img.H/dh)
-		} else if maxW > 0 {
-			bx = max(1, img.W/maxW)
-			by = bx
-		}
 		if bx > 1 || by > 1 {
 			img = binCam2(img, bx, by)
 		}
+		lap(fmt.Sprintf("bin %dx%d -> %dx%d", bx, by, img.W, img.H))
 		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph), Grey: greyOf(t)})
+	}
+	lap("denoise")
+	if dw == 0 && bx > 1 {
+		if binnedW := origW / bx; maxW > binnedW {
+			maxW = binnedW
+		}
 	}
 	var l *render.Linear
 	if dw > 0 {
@@ -208,10 +225,12 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 	} else {
 		l = render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t)
 	}
+	lap("to linear")
 	// The low-frequency shadow colour noise the layer denoiser misses
 	// (render/shadowchroma.go), with noise reduction on: the colour path
 	// and colour film (its layers, fixed through the colour they make);
 	// not the IR looks, which model the layers themselves.
+	lap("develop+bin")
 	if strength > 0 && (irWhite == nil || sceneWB) {
 		noise := render.ShadowChromaFix(l, fullW, t.Colour)
 		if os.Getenv("FOVEON_DN_DEBUG") != "" {
