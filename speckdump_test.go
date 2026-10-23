@@ -6,6 +6,7 @@ package main
 // at without the browser.
 
 import (
+	"encoding/json"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -39,7 +40,13 @@ func TestDumpPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := render.NewBase(l)
-	img := render.Render(b, preset.Neutral(), render.Compensation{SatFactor: 1})
+	pr := preset.Neutral()
+	if js := os.Getenv("FL_DUMP_PARAMS"); js != "" {
+		if err := json.Unmarshal([]byte(js), &pr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	img := render.Render(b, pr, render.Compensation{SatFactor: 1})
 	out := filepath.Join("dist", "preview-dump.png")
 	f, err := os.Create(out)
 	if err != nil {
