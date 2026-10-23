@@ -115,6 +115,34 @@ func BenchmarkDecodeRaw(b *testing.B) {
 	}
 }
 
+// BenchmarkDecodeSection decodes the raw section from memory, so the file
+// read and its cache effects stay out of the measurement.
+func BenchmarkDecodeSection(b *testing.B) {
+	ph := benchPhoto(b)
+	f, err := x3f.Open(ph.path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	im, ok := f.RawSection()
+	if !ok {
+		b.Skip("no raw section")
+	}
+	data, err := os.ReadFile(ph.path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	sec := data[im.Offset : im.Offset+im.Length]
+	payload := sec[28:]
+	w, h := int(im.Width), int(im.Height)
+	quattro := im.Format == 35 || im.Format == 37 || im.Format == 39
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := x3f.DecodeTrueForBench(payload, w, h, quattro); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkCameraLinear(b *testing.B) {
 	ph := benchPhoto(b)
 	raw, c, f := benchDecoded(b, ph)

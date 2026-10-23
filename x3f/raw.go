@@ -177,6 +177,12 @@ func decodeHuffman10(b []byte, w, h, stride int) (*RawImage, error) {
 // and the difference bit length it stands for (all TRUE codes are <= 8 bits).
 type prefix [256]struct{ n, bits uint8 }
 
+// DecodeTrueForBench is decodeTRUE for benchmarks, so the decoder can be
+// measured on data already in memory.
+func DecodeTrueForBench(b []byte, w, h int, quattro bool) (*RawImage, error) {
+	return decodeTRUE(b, w, h, quattro)
+}
+
 func decodeTRUE(b []byte, w, h int, quattro bool) (*RawImage, error) {
 	if w <= 0 || h <= 0 || w > 20000 || h > 20000 {
 		return nil, fmt.Errorf("x3f: bad raw size %dx%d", w, h)
