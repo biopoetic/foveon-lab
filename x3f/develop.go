@@ -107,6 +107,8 @@ func CameraLinear(raw *RawImage, c *CAMF, sg *SpatialGain, wb string) (*CamImage
 	if sg != nil {
 		sgr = sg.NewRows(oh, ow)
 	}
+	b0, b1, b2 := black[0], black[1], black[2]
+	s0, s1, s2 := scale[0], scale[1], scale[2]
 	parallel(oh, func(r0, r1 int) {
 		gain := make([]float64, ow*3)
 		for i := range gain {
@@ -118,23 +120,27 @@ func CameraLinear(raw *RawImage, c *CAMF, sg *SpatialGain, wb string) (*CamImage
 			if sgr != nil {
 				sgr.Fill(y-y0, gain)
 			}
+			// No per-channel branch and no shade test inside the pixel loop:
+			// the two cases are separate and the three layers are unrolled, so
+			// the body is straight arithmetic over contiguous slices.
+			if shade == nil {
+				for x := 0; x <= x1-x0; x++ {
+					i := x * 3
+					dst[i] = float32((float64(src[i]) - b0) * s0 * gain[i])
+					dst[i+1] = float32((float64(src[i+1]) - b1) * s1 * gain[i+1])
+					dst[i+2] = float32((float64(src[i+2]) - b2) * s2 * gain[i+2])
+				}
+				continue
+			}
 			for x := 0; x <= x1-x0; x++ {
-				fb, ft := 1.0, 1.0
-				if shade != nil {
-					dx, dy := float64(x+x0)-cx, float64(y)-cy
-					r2 := (dx*dx + dy*dy) / den2
-					fb = 1 + shade[0]*r2*r2 + shade[1]*r2
-					ft = 1 + shade[2]*r2*r2 + shade[3]*r2
-				}
-				for k := 0; k < 3; k++ {
-					v := (float64(src[x*3+k]) - black[k]) * scale[k] * gain[x*3+k]
-					if k == 0 {
-						v *= fb
-					} else if k == 2 {
-						v *= ft
-					}
-					dst[x*3+k] = float32(v)
-				}
+				i := x * 3
+				dx, dy := float64(x+x0)-cx, float64(y)-cy
+				r2 := (dx*dx + dy*dy) / den2
+				fb := 1 + shade[0]*r2*r2 + shade[1]*r2
+				ft := 1 + shade[2]*r2*r2 + shade[3]*r2
+				dst[i] = float32((float64(src[i]) - b0) * s0 * gain[i] * fb)
+				dst[i+1] = float32((float64(src[i+1]) - b1) * s1 * gain[i+1])
+				dst[i+2] = float32((float64(src[i+2]) - b2) * s2 * gain[i+2] * ft)
 			}
 		}
 	})
