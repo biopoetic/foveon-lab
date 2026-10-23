@@ -148,7 +148,11 @@ func scanPhotos(roots []string, all bool) []*Photo {
 		})
 	}
 
-	// Reading X3F headers is I/O-latency bound; do it in parallel.
+	// Reading X3F headers is I/O-latency bound; do it in parallel, and skip
+	// the read altogether for a file whose header is already known
+	// (photometa.go: a cold disk made 844 photos cost 41 s, a warm cache
+	// 0.43 s).
+	mc := loadMetaCache()
 	ok := make([]bool, len(out))
 	var wg sync.WaitGroup
 	jobs := make(chan int)
@@ -157,7 +161,7 @@ func scanPhotos(roots []string, all bool) []*Photo {
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
-				ok[i] = loadMeta(out[i])
+				ok[i] = loadMetaCached(out[i], mc)
 			}
 		}()
 	}
@@ -166,6 +170,8 @@ func scanPhotos(roots []string, all bool) []*Photo {
 	}
 	close(jobs)
 	wg.Wait()
+	lastScanCache = fmt.Sprintf("%d hits, %d misses", mc.hits, mc.misses)
+	mc.save()
 	kept := out[:0]
 	for i, ph := range out {
 		if ok[i] {
