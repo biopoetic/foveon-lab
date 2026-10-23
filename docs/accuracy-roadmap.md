@@ -787,7 +787,26 @@ So no ordering or gain-direction fix works, and CP1/CP2 are too small to explain
 points at the **plane mapping itself**: the DP1s is the 2009 generation, and its raw planes may not be
 the bottom/middle/top order the Merrill-era code assumes. Next session: print each raw plane's mean and
 compare with SPP's channel means - if the planes' ratios are already wrong before any matrix, the decode
-order is the issue, not the colour transform.## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
+order is the issue, not the colour transform.**Render timing framework (23 October 2026).** `tools/bench.ps1` runs the stage summary and the
+benchmarks on one photo and keeps the output in `dist/bench-<stamp>.txt`; `-Compare` prints the deltas
+against an earlier run. Everything is measured, nothing is felt:
+
+```
+SDIM0095.X3F (4704x1568, bin 3)
+  open+decode      747.8 ms    56%
+  camera linear    170.9 ms    13%
+  bin               10.6 ms     1%
+  denoise          399.6 ms    30%
+  to linear          4.6 ms     0%
+  preview          998.0 ms
+```
+
+Micro benchmarks (15 MP SD1 frame, `-benchtime 1x`): preview 995 ms / 803 MB allocated, develop 417 ms,
+camera linear 109 ms, denoise 201 ms / 339 MB, bin 12 ms, to linear 40 ms. The next two targets are
+therefore the file read and decode (56%), and the denoiser's allocation churn (339 MB per frame is
+mostly scratch buffers that could be pooled).
+
+## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
