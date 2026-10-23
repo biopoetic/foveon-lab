@@ -639,7 +639,7 @@ function accLabel(p){
   if (st === "ready") return "ACCURATE PREVIEW (raw data → SPP neutral)";
   if (st === "fast") return "ACCURATE PREVIEW (quick version — the full, denoised one follows)";
   if (st === "failed") return "accurate preview failed — camera JPEG";
-  return "decoding raw data for the accurate preview…";
+  return "decoding raw data for the accurate preview… (the camera JPEG is shown meanwhile)";
 }
 async function accInit(){
   try { const a = await (await fetch("/api/accurate")).json(); ACC.on = a.on; ACC.available = a.available; } catch {}

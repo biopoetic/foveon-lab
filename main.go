@@ -426,11 +426,19 @@ func (s *server) sourceMode(ph *Photo) string {
 		return "raw"
 	}
 	if s.useRaw(ph) {
-		if m := s.rawMode(ph); m == "rawfast" {
+		switch s.rawStateOf(ph) {
+		case rawReady:
+			return "raw"
+		case rawFast:
 			s.requestRaw(ph) // the full decode follows
-			return m
+			return "rawfast"
 		}
-		return "raw"
+		// Nothing raw is ready yet: paint the camera's own embedded JPEG at
+		// once and let the quick and the full decode replace it (the client
+		// polls /api/rawstate and re-renders when the mode changes), so the
+		// first view of a photo does not wait for a decode at all.
+		s.requestRaw(ph)
+		return "jpg"
 	}
 	s.requestRaw(ph)
 	return "jpg"
