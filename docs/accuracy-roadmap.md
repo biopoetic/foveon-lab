@@ -806,7 +806,18 @@ camera linear 109 ms, denoise 201 ms / 339 MB, bin 12 ms, to linear 40 ms. The n
 therefore the file read and decode (56%), and the denoiser's allocation churn (339 MB per frame is
 mostly scratch buffers that could be pooled).
 
-## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
+**Where the render time goes now (23 October 2026).** After the 12 s -> 1.29 s preview fix and the
+denoiser's scratch pooling, a 15 MP SD1 preview reads: open 1 ms, **decode raw 435 ms (49%)**, bad
+pixels 30 ms, camera linear 123 ms, bin 14 ms, **denoise 239-285 ms (32%)**, to linear 5 ms. The
+denoiser pooling is measured (339 MB -> 253 MB, 243-306 ms -> 239-241 ms); the decoder's inner loop was
+attacked by hoisting its per-pixel seed tests and the difference could not be seen through the
+measurement noise, so it was reverted rather than claimed. The decoder is a stateful bit reader - the
+accumulator chains along each row - so the remaining big win there would be a rewrite (word-at-a-time
+refills, splitting the first two columns out properly), not a tweak. The honest next targets are
+CameraLinear (123 ms for three full-frame passes) and reusing the decoded raw across views (it is
+already cached per photo, so this is only about the first view).
+
+## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a

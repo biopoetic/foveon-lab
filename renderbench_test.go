@@ -101,6 +101,20 @@ func BenchmarkDevelop(b *testing.B) {
 	}
 }
 
+func BenchmarkDecodeRaw(b *testing.B) {
+	ph := benchPhoto(b)
+	f, err := x3f.Open(ph.path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := f.DecodeRaw(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkCameraLinear(b *testing.B) {
 	ph := benchPhoto(b)
 	raw, c, f := benchDecoded(b, ph)
@@ -176,8 +190,26 @@ func TestBenchSummary(t *testing.T) {
 	ph := benchPhoto(t)
 
 	start := time.Now()
-	raw, c, f := benchDecoded(t, ph)
-	tDecode := time.Since(start)
+	bf, err := x3f.Open(ph.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tOpen := time.Since(start)
+	start = time.Now()
+	c, err := bf.CAMF()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := bf.DecodeRaw()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tRaw := time.Since(start)
+	start = time.Now()
+	x3f.FixBadPixels(raw, c)
+	tBad := time.Since(start)
+	f := bf
+	tDecode := tOpen + tRaw + tBad
 
 	start = time.Now()
 	wb := developWB(c, ph)
@@ -222,7 +254,7 @@ func TestBenchSummary(t *testing.T) {
 		name string
 		d    time.Duration
 	}{
-		{"open+decode", tDecode}, {"camera linear", tCam}, {"bin", tBin},
+		{"open", tOpen}, {"decode raw", tRaw}, {"bad pixels", tBad}, {"camera linear", tCam}, {"bin", tBin},
 		{"denoise", tDen}, {"to linear", tLin},
 	} {
 		fmt.Printf("  %-14s %7.1f ms  %4.0f%%\n", row.name, float64(row.d.Microseconds())/1000, 100*float64(row.d)/float64(total))
