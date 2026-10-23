@@ -201,9 +201,13 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 	if dw > 0 {
 		bx, by = max(1, (img.W+dw-1)/dw), max(1, (img.H+dh-1)/dh)
 	} else if maxW > 0 {
-		// Round up: 4704/1600 truncates to 2, which leaves a 2352 px
-		// preview - 2.25x the pixels to denoise for a view shown at 1600.
-		bx = max(1, (img.W+maxW-1)/maxW)
+		// Truncating on purpose: a 4704 px frame asked for a 1600 px preview
+		// bins by 2 and denoises at 2352 px. Rounding up to 3 made the preview
+		// smaller and faster but binned 3x3 before the denoiser, and the
+		// calibration caught it: 81 photos worse by more than 0.3 dE, DP
+		// 6.14 -> 6.70, DPM 6.85 -> 7.83 (2026-10-23). A sharper source
+		// denoises closer to what SPP does.
+		bx = max(1, img.W/maxW)
 		by = bx
 	}
 	if strength > 0 {
@@ -219,6 +223,7 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 			maxW = binnedW
 		}
 	}
+	_ = origW
 	var l *render.Linear
 	if dw > 0 {
 		l = render.FromCamLinearSize(img.Pix, img.W, img.H, dw, dh, 0, t)

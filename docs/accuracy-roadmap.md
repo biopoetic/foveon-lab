@@ -817,7 +817,17 @@ refills, splitting the first two columns out properly), not a tweak. The honest 
 CameraLinear (123 ms for three full-frame passes) and reusing the decoded raw across views (it is
 already cached per photo, so this is only about the first view).
 
-## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
+**The fast binning was a quality regression, and the calibration caught it (23 October 2026).** Rounding
+the preview's bin factor up (a 4704 px frame asked for 1600 binned by 3 instead of 2) cut the denoiser's
+pixels by 2.25x - and cost, measured over the whole set: **81 photos worse by more than 0.3 dE against 42
+better**, DP 6.14 -> 6.70, DPM 6.85 -> 7.83, SD10 8.83 -> 10.33. Binning 3x3 before the denoiser smooths
+what the denoiser then has to work from, and SPP's output is sharper than that. Reverted to truncating
+(2x2, 2352 px, denoised at that scale): **69 better, 7 worse**, total 7.229 -> **7.09**, DPM 6.55,
+Quattro 5.97. So the speed is the denoiser's pooling and the CameraLinear rewrite (measured neutral to
+positive), not the coarser binning. Lesson: a preview-resolution change is a quality change; run the
+calibration before keeping it.
+
+## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
