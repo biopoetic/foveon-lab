@@ -356,7 +356,12 @@ func Load(sources ...Source) ([]Preset, []error) {
 				if src.Skip != nil && src.Skip(p.Name) {
 					continue
 				}
-				pkey := fmt.Sprintf("%+v", p.Params)
+				// The camera is part of the identity: the same values in the
+				// SD1 and the SD15 pack are two presets, not a renamed copy
+				// (the [FL] Max Detail entry is deliberately identical in
+				// both).
+				p.Camera = cameraOf(p.Name, f)
+				pkey := fmt.Sprintf("%+v|%s", p.Params, p.Camera)
 				key := p.Name + "|" + pkey
 				if i, ok := seen[key]; ok {
 					out[i].Dupes++
@@ -366,7 +371,6 @@ func Load(sources ...Source) ([]Preset, []error) {
 					continue
 				}
 				p.Source = rel
-				p.Camera = cameraOf(p.Name, f)
 				p.Group = groupOf(p.Name)
 				h := sha1.Sum([]byte(p.Source + "\x00" + key))
 				p.ID = hex.EncodeToString(h[:6])
