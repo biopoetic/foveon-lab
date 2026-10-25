@@ -827,7 +827,20 @@ Quattro 5.97. So the speed is the denoiser's pooling and the CameraLinear rewrit
 positive), not the coarser binning. Lesson: a preview-resolution change is a quality change; run the
 calibration before keeping it.
 
-## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
+**Go optimisations after the speedups (25 October 2026).** The decoder's inner loop tested `col < 2` twice
+per pixel to reach the row parity's seed values; starting the accumulators at those seeds removes the
+branch. Measured on BenchmarkDecodeSection with a 62.8 MB sd Quattro H file (warm data, stable):
+**1021/1020 ms -> 806/801 ms, about 21%**, output unchanged (the x3f tests compare decoded pixels).
+The same change had looked neutral on a 15 MP SD1 frame earlier, where run-to-run noise of 1.5-2x
+swamped it - measure on a large, stable sample.
+
+The profile now: decode raw ~800 ms on that file, denoise 217 ms, camera linear 106 ms, bad pixels
+31 ms on the SD1 preview. The remaining Go targets, in order: the denoiser's gathers (boxBlur is
+already banded at 64 columns; à-trous is row-major already), then FixBadPixels. A Goose port was
+measured on a branch (see experiments/README.md): 1.44x on à-trous, 1.7x on box blur, parity on
+camera-linear, and the decision document recommends against cgo for the ~70 ms it would buy.
+
+## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
