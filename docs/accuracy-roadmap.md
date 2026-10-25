@@ -939,16 +939,31 @@ Output bit-identical (raw hash 6086a713d653f29f / c6237a082a6df3c2).
 The rest of the decoder does not respond to the obvious reorganisations. Hoisting the first two columns
 and unrolling even/odd in `decodePlane` - five copies of the per-pixel step to avoid the `col < 2` and
 `col < outW` tests and the accumulator array - measured no gain: the step is over the inliner's budget,
-so every pixel pays a call anyway. What is left is the decoding itself: ~29 M pixels a frame, a table
-lookup, two shifts and a sign fix each. A real win there needs a different code path (a second-level
-table that resolves the prefix *and* the payload, or a word-at-a-time refill with a 128-bit window),
-not a branch cleanup.
+so every pixel pays a call anyway. What is left is the decoding itself, and that did pay:
+
+**The whole pixel comes out of a 12-bit table (same day).** Measured first how many bits a pixel
+consumes: `prefix n + payload bits` is <= 12 for **86% of a Quattro H frame and 99% of a Merrill one**
+(<= 16 for 99.8%). So the top 12 bits of the window decide the pixel outright: one lookup in a
+4096-entry table of `{bits consumed, difference}`, 16 KB, which stays in L1. Codes that run past the
+window fall back to the old two-step path (which also keeps the corrupt-file check).
+
+**Decode of the Quattro H section: process CPU 1.90 -> 0.95 s/op, wall clock 1.18 -> 0.66 s (-44%)**,
+five paired runs each, order rotated; a Merrill frame measures the same (-43%). The decoded raw is
+**bit-identical over 18 files across 9 bodies** (SD9/SD10/SD14/DP1/DP1s/DP1-3 Merrill, dp0/dp1 Quattro,
+sd Quattro, sd Quattro H) - the hash corpus is the check that makes a rewrite of the most load-bearing
+code in the program safe to ship. `TestCodes12` holds the table to a bit-by-bit decode of all 4096
+windows.
+
+The lesson from the two decoder attempts together: the *branch* cleanup was worth nothing because the
+per-pixel step could not inline, but the *data* structure (one decision per pixel instead of two) was
+worth 44%. Cheap data before clever code.
 
 **The clock to use on this machine.** Wall clock is unusable while something else runs (one Denoise
 swung 325-575 ms, one decode 765-1300 ms). Process CPU seconds - `GetProcessTimes` on Windows,
 `/cpu/classes/*` in `runtime/metrics` - remove the descheduling, and paired CPU ratios resolved the
 decoder's 7% when the wall clock could not. Frequency scaling still shows up in CPU seconds (the same
 decode took 1.15-2.1 s/op over an hour), so pair the runs and compare the ratio, never the absolute.
+
 
 ## What "perfect" would need beyond this
 
