@@ -117,8 +117,11 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		}
 	}
 	orig := append([]float32(nil), img.Pix...)
+	// plane copies layer k into pooled scratch: six of these a call (three for
+	// the noise models, one per layer for the guided filter) come to 53 MB of
+	// garbage at 2.2 MP.
 	plane := func(k int) []float32 {
-		p := make([]float32, n)
+		p := getPlane(n)
 		for i := range p {
 			p[i] = img.Pix[i*3+k]
 		}
@@ -133,6 +136,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		pk := plane(k)
 		models[k] = estimateNoise(pk, w, h)
 		s := models[k].at(median(pk))
+		putPlane(pk)
 		wgt[k] = 1 / (s * s)
 		sum += wgt[k]
 	}
@@ -215,6 +219,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 				p[i] /= m
 			}
 			out[k] = guidedPre(G, p, w, h, r, eps, mI, mII)
+			putPlane(p)
 		}(k)
 	}
 	wg.Wait()
