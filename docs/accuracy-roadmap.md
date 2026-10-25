@@ -907,6 +907,29 @@ ties, and Hoare's two-way partition peels off few values per pass (4.5 us for 25
 call). A Dutch-flag partition handles the ties in one pass but was not faster on real blocks: the
 noise-model stage stayed at 50-54 ms. Left as it was.
 
+**Tried and reverted: sorting instead of selecting.** Same idea from the other end - the median of 256
+values could come from `slices.Sort`. It is twice as slow: the noise-model stage went 49 -> 91 ms
+(minimum of 10 interleaved runs). Go's pdqsort does ~2000 comparisons where the selection does a
+partition or two, and both are memory-latency-bound on 2 KB of data.
+
+**Tried and reverted: folding the guided filter's products into the blur.** `guidedPre` materialised
+`I*p` (and `boxBlurSq` materialised `I*I`) before blurring them; multiplying inside the horizontal
+pass avoids a whole plane write and read. Guided stage: 74 vs 76 ms minimum (12 interleaved runs
+each), i.e. no better - the extra multiply in the blur's inner loop costs what the saved pass cost.
+
+**The per-layer planes now come from the pool (shipped).** `Denoise` copied each layer plane twice
+(noise models, guided filter): six full planes a call, 53 MB at the 2.2 MP preview, all garbage. They
+are pooled now, and `BenchmarkDenoise` says **476.7 -> 444.7 MB/op**, 4412 -> 4403 allocs/op, with the
+values unchanged. Allocations are measured, not felt: this one needed no A/B and no calibration.
+
+**What the day taught about measuring, in five lines.** Profile the split before optimising - "the
+restore is 176 ms and 160 of it is the luma blurs" was a guess, and the wrong half. Per-pixel code in
+Go must not call anything: a method call per pixel was 8% of a `Denoise`, an indirect closure call 30%
+of a stage. A profile *share* is not a time: the shared-read blur's share fell while the call got
+slower. On a loaded 15 W laptop one run lies - interleave the binaries, rotate the order, take the
+minimum of ten, and go three-way when judging two changes. And prove the output is unchanged (the hash
+of a real frame) before saying no recalibration is needed.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
