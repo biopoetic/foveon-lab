@@ -36,6 +36,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"time"
 )
 
 // DenoiseOptions tunes Denoise. Zero values pick defaults.
@@ -107,6 +108,14 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		return
 	}
 	w, h, n := img.W, img.H, img.W*img.H
+	timing := os.Getenv("FOVEON_DN_TIMING") != ""
+	mark := time.Now()
+	lap := func(name string) {
+		if timing {
+			fmt.Fprintf(os.Stderr, "    dn %-14s %s\n", name, time.Since(mark).Round(time.Millisecond))
+			mark = time.Now()
+		}
+	}
 	orig := append([]float32(nil), img.Pix...)
 	plane := func(k int) []float32 {
 		p := make([]float32, n)
@@ -130,6 +139,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	for k := range wgt {
 		wgt[k] /= sum
 	}
+	lap("noise models")
 	wf := [3]float32{float32(wgt[0]), float32(wgt[1]), float32(wgt[2])}
 	gw := greyWeights(o.Grey, wf)
 	Y := make([]float32, n)
@@ -147,6 +157,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		}
 	})
 	Yd := atrous(Y, w, h, sig, dnK, 5)
+	lap("atrous")
 	var mean float64
 	for _, v := range Yd {
 		mean += float64(v)
@@ -213,6 +224,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 			img.Pix[i*3], img.Pix[i*3+1], img.Pix[i*3+2] = a, b, c
 		}
 	})
+	lap("guided")
 	if !noRestore {
 		if perLayerRestore {
 			restoreDetail(img, orig, rel, o.Strength)

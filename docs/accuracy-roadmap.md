@@ -840,7 +840,20 @@ already banded at 64 columns; à-trous is row-major already), then FixBadPixels.
 measured on a branch (see experiments/README.md): 1.44x on à-trous, 1.7x on box blur, parity on
 camera-linear, and the decision document recommends against cgo for the ~70 ms it would buy.
 
-## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
+**Where the denoiser's time goes (25 October 2026).** `FOVEON_DN_TIMING=1` prints the stages; on the
+62.8 MB Quattro H frame one call is 523 ms:
+
+| stage | ms | share |
+|---|---:|---:|
+| noise models (`estimateNoise` x4) | 79 | 15% |
+| à-trous (5 levels) | 118 | 23% |
+| guided filter (3 layers) | 150 | 29% |
+| restore (luma + chroma) | ~176 | 34% |
+
+So the restore is the biggest single piece, not the wavelet or the guided filter: that is where a
+Go optimisation should go next, and it is the part the Goose experiments did not cover.
+
+## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
