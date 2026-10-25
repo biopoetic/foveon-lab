@@ -867,7 +867,41 @@ from ~176 ms to ~190-205 ms: four `boxMeanAt` calls per pixel each touch four po
 a walk down contiguous memory. So the four blurs stay: the bottleneck was never the number of passes,
 it is locality. The stage is left alone until there is a measurement that says otherwise.
 
-## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
+**The 160 ms was a guess, and the restore's other half is the expensive one (25 October 2026).**
+`FOVEON_DN_TIMING` now times the two restores apart. On this machine (i5-8365U, the Quattro H
+preview binned 3x, 1808x1205, 2.2 MP) one `Denoise` call is ~350-450 ms:
+
+| stage | ms |
+|---|---:|
+| noise models | 50 |
+| à-trous | 71 |
+| guided | 95 |
+| restore luma | 27 |
+| restore chroma | 101 |
+
+`restoreLuma` is the cheap half: four blurs and one combine. `restoreChroma` is 80% of the restore -
+three layers, each with four blurs of `c`, one of `p`, and a per-pixel threshold pass - which is also
+why the integral image above, aimed at `restoreLuma`, could not have paid off even if it had been
+faster. The stage shares swing with the machine (it runs 1.5-2x slower under load), so these are
+minimums of interleaved runs, not single samples.
+
+**The threshold loop was the cost (25 October 2026).** `restoreChroma`'s combine called
+`noiseModel.at` (a method wrapping `math.Sqrt` and `math.Max`) and a `soft` closure five times per
+pixel per layer: ~8.8 M indirect calls and sqrt per call in a preview. Written out inline, with the
+three-way maths unchanged: **restore chroma 101 -> 72 ms**, and in the CPU profile the combine falls
+from 12.5% to 6.9% of a call. The bands of `c` and of `d` now also share one read of their plane
+(`boxBlurRads`: a row is copied once into scratch, then each radius walks it in cache, each keeping its
+own running sum), which takes `boxBlur` from 36.3% to 33.7% of the profile. Output is **bit-identical**
+- a hash of the denoised Quattro H preview is the same before and after (1389d16fece4d207), and
+`TestBoxBlurRads` asserts the shared-read blurs equal the separate ones exactly - so no
+recalibration was needed.
+
+**Tried and reverted: a three-way partition in `selectK`.** The residuals of flat blocks carry many
+ties, and Hoare's two-way partition peels off few values per pass (4.5 us for 256 values, 6% of a
+call). A Dutch-flag partition handles the ties in one pass but was not faster on real blocks: the
+noise-model stage stayed at 50-54 ms. Left as it was.
+
+## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
