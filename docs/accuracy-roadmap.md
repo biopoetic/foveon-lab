@@ -853,7 +853,18 @@ camera-linear, and the decision document recommends against cgo for the ~70 ms i
 So the restore is the biggest single piece, not the wavelet or the guided filter: that is where a
 Go optimisation should go next, and it is the part the Goose experiments did not cover.
 
-## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
+**The restore's four blurs are one integral image (next step, 25 October 2026).** `restoreLuma` calls
+`boxBlur` four times (radii 1, 2, 4, 8) over the same plane - about 160 ms of the 176 ms the stage
+costs. All four are box means of the same data, so they are one 2D prefix (integral) image built once
+plus four lookups per pixel. The catch is precision: a float32 integral over 1.8 M samples loses its
+significant digits in the difference of two near-equal sums, so the integral has to be float64 (15 MB
+for this plane, fine) - and the output then differs in the last bits, which the golden test will
+report, so it must be regenerated deliberately after an `spp-check` confirmation.
+
+Expected: the stage from ~176 ms to ~30 ms, i.e. ~13% of a whole preview. That is a bigger win than
+anything the Goose experiment offered, and it is plain Go.
+
+## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
 separation, its noise reduction, its local Fill Light), not mapping around it. That is a
