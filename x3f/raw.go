@@ -304,6 +304,15 @@ type trueBits struct {
 
 func (r *trueBits) fill() {
 	for r.n <= 56 {
+		// Three bytes at a time while the window can take them: a fill from
+		// the usual n < 40 then needs one step instead of three.
+		if r.n <= 40 && r.pos+3 <= len(r.b) {
+			x := uint64(r.b[r.pos])<<16 | uint64(r.b[r.pos+1])<<8 | uint64(r.b[r.pos+2])
+			r.acc |= x << (40 - r.n)
+			r.pos += 3
+			r.n += 24
+			continue
+		}
 		var v byte
 		if r.pos < len(r.b) {
 			v = r.b[r.pos]
