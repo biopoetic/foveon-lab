@@ -8,6 +8,55 @@ import (
 	"testing"
 )
 
+// TestCodes12 checks the 12-bit fast table against the bit-level rules it
+// stands for: a window either does not resolve (the slow path runs), or it
+// consumes and produces exactly what reading the prefix code and then its
+// payload bit by bit does.
+func TestCodes12(t *testing.T) {
+	// A prefix table shaped like a file's: canonical codes of 1..8 bits for
+	// categories 0..7 (category i = i magnitude bits).
+	var pre prefix
+	next := 0
+	for s := 1; s <= 8; s++ {
+		code := uint8(next << (8 - s))
+		size := uint8(s)
+		lo := int(code) &^ (1<<(8-s) - 1)
+		for j := lo; j < lo+1<<(8-s); j++ {
+			pre[j].n, pre[j].bits = size, uint8(s-1)
+		}
+		next = (next + 1) << 1
+	}
+	codes := buildCodes12(&pre)
+	resolved := 0
+	for w := 0; w < 1<<12; w++ {
+		e := pre[uint8(w>>4)]
+		n := int(e.n) + int(e.bits)
+		if e.n == 0 || n > 12 {
+			if codes[w].bits != 0 {
+				t.Fatalf("window %03x: resolved to %d bits, the code runs past the window", w, codes[w].bits)
+			}
+			continue
+		}
+		// Reference: read the payload MSB-first, one bit at a time.
+		pos := int(e.n)
+		var u int32
+		for i := 0; i < int(e.bits); i++ {
+			u = u<<1 | int32(w>>(11-pos)&1)
+			pos++
+		}
+		if e.bits > 0 && u>>(e.bits-1) == 0 {
+			u -= 1<<e.bits - 1
+		}
+		if got := codes[w]; int(got.bits) != n || int32(got.diff) != u {
+			t.Fatalf("window %03x: table %d bits %d, want %d bits %d", w, got.bits, got.diff, n, u)
+		}
+		resolved++
+	}
+	if resolved < 1<<11 {
+		t.Fatalf("only %d of 4096 windows resolved", resolved)
+	}
+}
+
 // TestDecodeTRUESynthetic decodes a hand-built two-plane-row stream: code
 // "0" = difference 0, code "1" + one magnitude bit = ±1.
 func TestDecodeTRUESynthetic(t *testing.T) {
