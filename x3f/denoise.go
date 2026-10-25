@@ -321,8 +321,7 @@ func restoreDetail(img *CamImage, orig []float32, rel, strength float64) {
 		for i := range d {
 			d[i] = orig[i*3+k] - img.Pix[i*3+k]
 		}
-		bands := boxBlurRads(d, w, h, []int{1, 2, 4, 8})
-		b1, b2, b4, b8 := bands[0], bands[1], bands[2], bands[3]
+		b1, b2, b4, b8 := boxBlur(d, w, h, 1), boxBlur(d, w, h, 2), boxBlur(d, w, h, 4), boxBlur(d, w, h, 8)
 		for i := range d {
 			img.Pix[i*3+k] += wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
 		}
@@ -350,8 +349,7 @@ func restoreLuma(img *CamImage, orig []float32, wf, gw [3]float32, rel, strength
 			}
 		}
 	})
-	bands := boxBlurRads(d, w, h, []int{1, 2, 4, 8})
-	b1, b2, b4, b8 := bands[0], bands[1], bands[2], bands[3]
+	b1, b2, b4, b8 := boxBlur(d, w, h, 1), boxBlur(d, w, h, 2), boxBlur(d, w, h, 4), boxBlur(d, w, h, 8)
 	parallel(n, func(a, b int) {
 		for i := a; i < b; i++ {
 			v := wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
@@ -410,16 +408,18 @@ func restoreChroma(img *CamImage, orig []float32, wf [3]float32, models [3]noise
 				p[i] = orig[i*3+k]
 			}
 		})
-		// The four bands of c share one read of c; the brightness plane p is
-		// blurred alongside them.
+		// The five blurs read c and p only: run them together (on a
+		// preview each is short, and one after another they idled cores).
 		var lvl []float32
-		var bands [][]float32
+		var b1, b2, b4, b8 []float32
 		var bw sync.WaitGroup
-		bw.Add(2)
+		bw.Add(5)
 		go func() { defer bw.Done(); lvl = boxBlur(p, w, h, 2) }()
-		go func() { defer bw.Done(); bands = boxBlurRads(c, w, h, []int{1, 2, 4, 8}) }()
+		go func() { defer bw.Done(); b1 = boxBlur(c, w, h, 1) }()
+		go func() { defer bw.Done(); b2 = boxBlur(c, w, h, 2) }()
+		go func() { defer bw.Done(); b4 = boxBlur(c, w, h, 4) }()
+		go func() { defer bw.Done(); b8 = boxBlur(c, w, h, 8) }()
 		bw.Wait()
-		b1, b2, b4, b8 := bands[0], bands[1], bands[2], bands[3]
 		// The threshold loop is the hot one: the noise model, the five
 		// thresholds and the five soft cuts are written out here rather than
 		// called, because a call per pixel (and an indirect one through the
@@ -508,33 +508,6 @@ func boxBlur(p []float32, w, h, r int) []float32 {
 	blurRowsH(p, tmp, w, h, r)
 	out := boxBlurCols(tmp, w, h, r)
 	putPlane(tmp)
-	return out
-}
-
-// boxBlurRads blurs one plane at several radii at once. The horizontal passes
-// share a single read of p: each row is copied once into scratch, and every
-// radius walks the copy while it is in cache. Each radius keeps its own
-// running sum in the same order as boxBlur, so the results are bit-identical.
-func boxBlurRads(p []float32, w, h int, radii []int) [][]float32 {
-	tmp := make([][]float32, len(radii))
-	for i := range tmp {
-		tmp[i] = getPlane(len(p))
-	}
-	parallel(h, func(y0, y1 int) {
-		buf := make([]float32, w)
-		for y := y0; y < y1; y++ {
-			row := p[y*w : (y+1)*w]
-			copy(buf, row)
-			for i, r := range radii {
-				blurRowH(buf, tmp[i][y*w:(y+1)*w], w, r)
-			}
-		}
-	})
-	out := make([][]float32, len(radii))
-	for i, r := range radii {
-		out[i] = boxBlurCols(tmp[i], w, h, r)
-		putPlane(tmp[i])
-	}
 	return out
 }
 
