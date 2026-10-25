@@ -888,13 +888,19 @@ minimums of interleaved runs, not single samples.
 **The threshold loop was the cost (25 October 2026).** `restoreChroma`'s combine called
 `noiseModel.at` (a method wrapping `math.Sqrt` and `math.Max`) and a `soft` closure five times per
 pixel per layer: ~8.8 M indirect calls and sqrt per call in a preview. Written out inline, with the
-three-way maths unchanged: **restore chroma 101 -> 72 ms**, and in the CPU profile the combine falls
-from 12.5% to 6.9% of a call. The bands of `c` and of `d` now also share one read of their plane
-(`boxBlurRads`: a row is copied once into scratch, then each radius walks it in cache, each keeping its
-own running sum), which takes `boxBlur` from 36.3% to 33.7% of the profile. Output is **bit-identical**
-- a hash of the denoised Quattro H preview is the same before and after (1389d16fece4d207), and
-`TestBoxBlurRads` asserts the shared-read blurs equal the separate ones exactly - so no
-recalibration was needed.
+three-way maths unchanged: **restore chroma 101 -> 71 ms**, and in the CPU profile the combine falls
+from 12.5% to 6.9% of a call. Output is **bit-identical** - a hash of the denoised Quattro H preview
+is the same before and after (1389d16fece4d207) - so no recalibration was needed. On the whole call,
+three-way interleaved A/B on the 2.2 MP preview (HEAD / this / this plus the shared-read blur below;
+9 runs each, order rotated, minimum): **350 / 325 / 369 ms**.
+
+**Tried and reverted: the four bands sharing one read of their plane (same day).** `boxBlurRads` copied
+each row once into scratch and ran all four radii over the copy, so one band group read its source from
+memory once instead of four times. The profile loved it (`boxBlur` 36.3% -> 33.7% of a call) and the
+output was bit-identical, but the call got **slower**: 369 ms against 325 with the separate blurs. It
+holds four temporary planes at once, and for the 2.2 MP preview that working set no longer fits the
+6 MB L3 - the same locality lesson as the integral image, one level down. A CPU-profile share can fall
+while the wall time rises; the interleaved A/B is the one that decides.
 
 **Tried and reverted: a three-way partition in `selectK`.** The residuals of flat blocks carry many
 ties, and Hoare's two-way partition peels off few values per pass (4.5 us for 256 values, 6% of a
