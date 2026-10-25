@@ -930,6 +930,26 @@ slower. On a loaded 15 W laptop one run lies - interleave the binaries, rotate t
 minimum of ten, and go three-way when judging two changes. And prove the output is unchanged (the hash
 of a real frame) before saying no recalibration is needed.
 
+**The decoder: three bytes per refill (25 October 2026).** The TRUE reader's `fill` looped one byte at
+a time, three iterations to take the 64-bit window from the usual `n < 40` past 56; it was 23% of a
+decode. Three bytes now go in with one load, one shift and one or: eight interleaved pairs of
+*process CPU seconds per decode* (the wall clock swung 2x, see below), **seven lower, median 0.93**.
+Output bit-identical (raw hash 6086a713d653f29f / c6237a082a6df3c2).
+
+The rest of the decoder does not respond to the obvious reorganisations. Hoisting the first two columns
+and unrolling even/odd in `decodePlane` - five copies of the per-pixel step to avoid the `col < 2` and
+`col < outW` tests and the accumulator array - measured no gain: the step is over the inliner's budget,
+so every pixel pays a call anyway. What is left is the decoding itself: ~29 M pixels a frame, a table
+lookup, two shifts and a sign fix each. A real win there needs a different code path (a second-level
+table that resolves the prefix *and* the payload, or a word-at-a-time refill with a 128-bit window),
+not a branch cleanup.
+
+**The clock to use on this machine.** Wall clock is unusable while something else runs (one Denoise
+swung 325-575 ms, one decode 765-1300 ms). Process CPU seconds - `GetProcessTimes` on Windows,
+`/cpu/classes/*` in `runtime/metrics` - remove the descheduling, and paired CPU ratios resolved the
+decoder's 7% when the wall clock could not. Frequency scaling still shows up in CPU seconds (the same
+decode took 1.15-2.1 s/op over an hour), so pair the runs and compare the ratio, never the absolute.
+
 ## What "perfect" would need beyond this
 
 Pixel-identical output means reproducing SPP's own raw pipeline (demosaic-free Foveon colour
