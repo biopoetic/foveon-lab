@@ -143,6 +143,28 @@ func BenchmarkDecodeSection(b *testing.B) {
 	}
 }
 
+func BenchmarkFixBadPixels(b *testing.B) {
+	ph := benchPhoto(b)
+	f, err := x3f.Open(ph.path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	c, err := f.CAMF()
+	if err != nil {
+		b.Fatal(err)
+	}
+	raw, err := f.DecodeRaw()
+	if err != nil {
+		b.Fatal(err)
+	}
+	src := append([]uint16(nil), raw.Pix...)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		copy(raw.Pix, src)
+		x3f.FixBadPixels(raw, c)
+	}
+}
+
 func BenchmarkCameraLinear(b *testing.B) {
 	ph := benchPhoto(b)
 	raw, c, f := benchDecoded(b, ph)
