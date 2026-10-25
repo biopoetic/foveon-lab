@@ -324,7 +324,9 @@ func decodePlane(data []byte, pre *prefix, seed int32, rows, cols int, dst []uin
 	starts := [2][2]int32{{seed, seed}, {seed, seed}}
 	for row := 0; row < rows; row++ {
 		par := row & 1
-		var acc [2]int32
+		// Start the accumulators at this row parity's seeds: the first two
+		// columns then need no special case inside the loop.
+		acc := [2]int32{starts[par][0], starts[par][1]}
 		base := row * outW * nch
 		for col := 0; col < cols; col++ {
 			if r.n < 40 {
@@ -350,11 +352,7 @@ func decodePlane(data []byte, pre *prefix, seed int32, rows, cols int, dst []uin
 				diff = v
 			}
 			odd := col & 1
-			prev := acc[odd]
-			if col < 2 {
-				prev = starts[par][odd]
-			}
-			v := prev + diff
+			v := acc[odd] + diff
 			acc[odd] = v
 			if col < 2 {
 				starts[par][odd] = v
