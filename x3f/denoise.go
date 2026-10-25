@@ -151,9 +151,25 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	ym := estimateNoise(Y, w, h)
 	local := boxBlur(Y, w, h, 4)
 	sig := make([]float32, n) // the luminance noise at each pixel's level
+	// sigma(v) = sqrt(a + b·v) written out rather than through noiseModel.at:
+	// a method call and a math.Max per pixel was 8% of a denoise in the
+	// profile (most of it in restoreChroma, which is written out too).
+	na, nb := ym.a, ym.b
 	parallel(n, func(i0, i1 int) {
 		for i := i0; i < i1; i++ {
-			sig[i] = float32(max(ym.at(float64(local[i])), 1e-6))
+			v := float64(local[i])
+			if v < 0 {
+				v = 0
+			}
+			x := na + nb*v
+			if x < 1e-14 {
+				x = 1e-14
+			}
+			s := float32(math.Sqrt(x))
+			if s < 1e-6 {
+				s = 1e-6
+			}
+			sig[i] = s
 		}
 	})
 	Yd := atrous(Y, w, h, sig, dnK, 5)
@@ -228,9 +244,12 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	if !noRestore {
 		if perLayerRestore {
 			restoreDetail(img, orig, rel, o.Strength)
+			lap("restore detail")
 		} else {
 			restoreLuma(img, orig, wf, gw, rel, o.Strength)
+			lap("restore luma")
 			restoreChroma(img, orig, wf, models)
+			lap("restore chroma")
 		}
 	}
 }
@@ -302,7 +321,8 @@ func restoreDetail(img *CamImage, orig []float32, rel, strength float64) {
 		for i := range d {
 			d[i] = orig[i*3+k] - img.Pix[i*3+k]
 		}
-		b1, b2, b4, b8 := boxBlur(d, w, h, 1), boxBlur(d, w, h, 2), boxBlur(d, w, h, 4), boxBlur(d, w, h, 8)
+		bands := boxBlurRads(d, w, h, []int{1, 2, 4, 8})
+		b1, b2, b4, b8 := bands[0], bands[1], bands[2], bands[3]
 		for i := range d {
 			img.Pix[i*3+k] += wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
 		}
@@ -330,7 +350,8 @@ func restoreLuma(img *CamImage, orig []float32, wf, gw [3]float32, rel, strength
 			}
 		}
 	})
-	b1, b2, b4, b8 := boxBlur(d, w, h, 1), boxBlur(d, w, h, 2), boxBlur(d, w, h, 4), boxBlur(d, w, h, 8)
+	bands := boxBlurRads(d, w, h, []int{1, 2, 4, 8})
+	b1, b2, b4, b8 := bands[0], bands[1], bands[2], bands[3]
 	parallel(n, func(a, b int) {
 		for i := a; i < b; i++ {
 			v := wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
@@ -374,15 +395,6 @@ func restoreChroma(img *CamImage, orig []float32, wf [3]float32, models [3]noise
 			fmt.Fprintf(os.Stderr, "denoise: layer %d noise a=%.3g b=%.3g, sigma at 0.05/0.2/0.5: %.5f %.5f %.5f\n", k, models[k].a, models[k].b, models[k].at(0.05), models[k].at(0.2), models[k].at(0.5))
 		}
 	}
-	soft := func(c, th float32) float32 {
-		switch {
-		case c > th:
-			return c - th
-		case c < -th:
-			return c + th
-		}
-		return 0
-	}
 	// Each band's noise relative to the pixel noise: the finer box's.
 	fr := [5]float32{1, 1.0 / 3, 1.0 / 5, 1.0 / 9, 1.0 / 17}
 	c := make([]float32, n)
@@ -398,27 +410,48 @@ func restoreChroma(img *CamImage, orig []float32, wf [3]float32, models [3]noise
 				p[i] = orig[i*3+k]
 			}
 		})
-		// The five blurs read c and p only: run them together (on a
-		// preview each is short, and one after another they idled cores).
-		var lvl, b1, b2, b4, b8 []float32
+		// The four bands of c share one read of c; the brightness plane p is
+		// blurred alongside them.
+		var lvl []float32
+		var bands [][]float32
 		var bw sync.WaitGroup
-		for _, j := range []struct {
-			dst *[]float32
-			src []float32
-			r   int
-		}{{&lvl, p, 2}, {&b1, c, 1}, {&b2, c, 2}, {&b4, c, 4}, {&b8, c, 8}} {
-			bw.Add(1)
-			go func() { defer bw.Done(); *j.dst = boxBlur(j.src, w, h, j.r) }()
-		}
+		bw.Add(2)
+		go func() { defer bw.Done(); lvl = boxBlur(p, w, h, 2) }()
+		go func() { defer bw.Done(); bands = boxBlurRads(c, w, h, []int{1, 2, 4, 8}) }()
 		bw.Wait()
+		b1, b2, b4, b8 := bands[0], bands[1], bands[2], bands[3]
+		// The threshold loop is the hot one: the noise model, the five
+		// thresholds and the five soft cuts are written out here rather than
+		// called, because a call per pixel (and an indirect one through the
+		// old soft closure) was a third of this stage.
+		na, nb := models[k].a, models[k].b
 		parallel(n, func(a, b int) {
 			for i := a; i < b; i++ {
-				sg := t * float32(models[k].at(float64(lvl[i])))
-				img.Pix[i*3+k] += soft(c[i]-b1[i], sg*fr[0]) + soft(b1[i]-b2[i], sg*fr[1]) + soft(b2[i]-b4[i], sg*fr[2]) +
-					soft(b4[i]-b8[i], sg*fr[3]) + soft(b8[i], sg*fr[4])
+				v := float64(lvl[i])
+				if v < 0 {
+					v = 0
+				}
+				x := na + nb*v
+				if x < 1e-14 {
+					x = 1e-14
+				}
+				sg := t * float32(math.Sqrt(x))
+				img.Pix[i*3+k] += softThreshold(c[i]-b1[i], sg*fr[0]) + softThreshold(b1[i]-b2[i], sg*fr[1]) +
+					softThreshold(b2[i]-b4[i], sg*fr[2]) + softThreshold(b4[i]-b8[i], sg*fr[3]) + softThreshold(b8[i], sg*fr[4])
 			}
 		})
 	}
+}
+
+// softThreshold leaves the part of c beyond th, keeping its sign.
+func softThreshold(c, th float32) float32 {
+	switch {
+	case c > th:
+		return c - th
+	case c < -th:
+		return c + th
+	}
+	return 0
 }
 
 // noiseSigma estimates a plane's noise from the median absolute horizontal
@@ -472,50 +505,92 @@ func putPlane(b []float32) {
 // boxBlur is a separable box blur of radius r (edges average fewer pixels).
 func boxBlur(p []float32, w, h, r int) []float32 {
 	tmp := getPlane(len(p))
-	out := getPlane(len(p))
+	blurRowsH(p, tmp, w, h, r)
+	out := boxBlurCols(tmp, w, h, r)
+	putPlane(tmp)
+	return out
+}
+
+// boxBlurRads blurs one plane at several radii at once. The horizontal passes
+// share a single read of p: each row is copied once into scratch, and every
+// radius walks the copy while it is in cache. Each radius keeps its own
+// running sum in the same order as boxBlur, so the results are bit-identical.
+func boxBlurRads(p []float32, w, h int, radii []int) [][]float32 {
+	tmp := make([][]float32, len(radii))
+	for i := range tmp {
+		tmp[i] = getPlane(len(p))
+	}
 	parallel(h, func(y0, y1 int) {
+		buf := make([]float32, w)
 		for y := y0; y < y1; y++ {
 			row := p[y*w : (y+1)*w]
-			o := tmp[y*w : (y+1)*w]
-			if 2*r+1 >= w {
-				// Narrow image: the general form.
-				var s float32
-				cnt := 0
-				for x := -r; x < w; x++ {
-					if x+r < w {
-						s += row[x+r]
-						cnt++
-					}
-					if x-r-1 >= 0 {
-						s -= row[x-r-1]
-						cnt--
-					}
-					if x >= 0 {
-						o[x] = s / float32(cnt)
-					}
-				}
-				continue
-			}
-			// Left edge, middle (full window, no branches), right edge.
-			var s float32
-			for x := 0; x < r; x++ {
-				s += row[x]
-			}
-			for x := 0; x <= r; x++ {
-				s += row[x+r]
-				o[x] = s / float32(x+r+1)
-			}
-			inv := 1 / float32(2*r+1)
-			for x := r + 1; x < w-r; x++ {
-				s += row[x+r] - row[x-r-1]
-				o[x] = s * inv
-			}
-			for x := max(r+1, w-r); x < w; x++ {
-				s -= row[x-r-1]
-				o[x] = s / float32(w-(x-r))
+			copy(buf, row)
+			for i, r := range radii {
+				blurRowH(buf, tmp[i][y*w:(y+1)*w], w, r)
 			}
 		}
 	})
+	out := make([][]float32, len(radii))
+	for i, r := range radii {
+		out[i] = boxBlurCols(tmp[i], w, h, r)
+		putPlane(tmp[i])
+	}
+	return out
+}
+
+// blurRowsH is boxBlur's horizontal pass, p into dst.
+func blurRowsH(p, dst []float32, w, h, r int) {
+	parallel(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			blurRowH(p[y*w:(y+1)*w], dst[y*w:(y+1)*w], w, r)
+		}
+	})
+}
+
+// blurRowH is one row of the horizontal pass.
+func blurRowH(row, o []float32, w, r int) {
+	if 2*r+1 >= w {
+		// Narrow image: the general form.
+		var s float32
+		cnt := 0
+		for x := -r; x < w; x++ {
+			if x+r < w {
+				s += row[x+r]
+				cnt++
+			}
+			if x-r-1 >= 0 {
+				s -= row[x-r-1]
+				cnt--
+			}
+			if x >= 0 {
+				o[x] = s / float32(cnt)
+			}
+		}
+		return
+	}
+	// Left edge, middle (full window, no branches), right edge.
+	var s float32
+	for x := 0; x < r; x++ {
+		s += row[x]
+	}
+	for x := 0; x <= r; x++ {
+		s += row[x+r]
+		o[x] = s / float32(x+r+1)
+	}
+	inv := 1 / float32(2*r+1)
+	for x := r + 1; x < w-r; x++ {
+		s += row[x+r] - row[x-r-1]
+		o[x] = s * inv
+	}
+	for x := max(r+1, w-r); x < w; x++ {
+		s -= row[x-r-1]
+		o[x] = s / float32(w-(x-r))
+	}
+}
+
+// boxBlurCols is boxBlur's vertical pass: tmp into a new plane.
+func boxBlurCols(tmp []float32, w, h, r int) []float32 {
+	out := getPlane(len(tmp))
 	// Vertical pass row by row over bands of columns, a running sum per
 	// column: walking each column top to bottom strides a whole row per
 	// step and missed the cache, 46% of a full-size development's time.
@@ -554,8 +629,6 @@ func boxBlur(p []float32, w, h, r int) []float32 {
 			}
 		}
 	})
-	// tmp is scratch; out carries the result.
-	putPlane(tmp)
 	return out
 }
 

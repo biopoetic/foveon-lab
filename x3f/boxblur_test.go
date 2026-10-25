@@ -24,6 +24,29 @@ func TestBoxBlurSame(t *testing.T) {
 	}
 }
 
+// boxBlurRads gives exactly what the separate blurs give: the radii share one
+// read of the plane, not their arithmetic.
+func TestBoxBlurRads(t *testing.T) {
+	rng := rand.New(rand.NewSource(3))
+	for _, sz := range [][2]int{{257, 129}, {600, 401}, {97, 45}} {
+		w, h := sz[0], sz[1]
+		p := make([]float32, w*h)
+		for i := range p {
+			p[i] = rng.Float32()
+		}
+		radii := []int{1, 2, 4, 8}
+		got := boxBlurRads(p, w, h, radii)
+		for i, r := range radii {
+			want := boxBlur(p, w, h, r)
+			for j := range want {
+				if got[i][j] != want[j] {
+					t.Fatalf("%dx%d r%d: at %d %g want %g", w, h, r, j, got[i][j], want[j])
+				}
+			}
+		}
+	}
+}
+
 // selectK picks what a full sort would put at k.
 func TestSelectK(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
