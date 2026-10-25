@@ -861,8 +861,11 @@ significant digits in the difference of two near-equal sums, so the integral has
 for this plane, fine) - and the output then differs in the last bits, which the golden test will
 report, so it must be regenerated deliberately after an `spp-check` confirmation.
 
-Expected: the stage from ~176 ms to ~30 ms, i.e. ~13% of a whole preview. That is a bigger win than
-anything the Goose experiment offered, and it is plain Go.
+**Tried, and slower (same day).** The integral image works and gives the same picture, but the stage went
+from ~176 ms to ~190-205 ms: four `boxMeanAt` calls per pixel each touch four points rows apart in a
+15 MB float64 table, which is a cache miss where the banded box blur (64-column bands, running sums) is
+a walk down contiguous memory. So the four blurs stay: the bottleneck was never the number of passes,
+it is locality. The stage is left alone until there is a measurement that says otherwise.
 
 ## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this## What "perfect" would need beyond this
 
