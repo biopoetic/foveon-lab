@@ -6,7 +6,10 @@ package main
 // noise reduction, turned, reduced, raw base, neutral render with SPP's
 // sharpening) and compared with the export at the analysis width.
 //
-//	foveon-lab spp-check [-save now.json] [-compare before.json] [-only SD1,SDIM0031]
+//	foveon-lab spp-check [-save now.json] [-compare before.json] [-only SD1,SDIM0031] [-step A17]
+//
+// -step scores another calibration step (A17 = Fill Light +1, ...) against
+// the <name>_<step>.tif exports instead of the neutral A00.
 //
 // Three numbers per photo, mean absolute 8-bit sRGB differences: all
 // pixels; "area" on both images reduced 4x (colour and tone without fine
@@ -51,12 +54,26 @@ func sppCheckCommand(desk string) {
 	compare := fs.String("compare", "", "a JSON file from an earlier -save: print each photo's change")
 	only := fs.String("only", "", "comma-separated camera groups and/or photo names to check (default: all)")
 	worse := fs.Float64("worse", 0.3, "with -compare: flag photos worse by more than this")
+	stepCode := fs.String("step", "A00", "calibration step to score (e.g. A17 = Fill Light +1): developed with its settings, against <name>_<step>.tif")
 	fs.Parse(os.Args[2:])
 
+	step := strings.ToUpper(*stepCode)
+	params := preset.Neutral()
+	found := false
+	for _, st := range calib.Steps() {
+		if st.Code == step {
+			params, found = st.Params, true
+		}
+	}
+	if !found {
+		fmt.Printf("no calibration step %s\n", step)
+		os.Exit(2)
+	}
+	suffix := "_" + step + ".tif"
 	exports := map[string]string{}
-	matches, _ := filepath.Glob(filepath.Join(*dir, "*", "*_A00.tif"))
+	matches, _ := filepath.Glob(filepath.Join(*dir, "*", "*"+suffix))
 	for _, m := range matches {
-		name := strings.ToUpper(strings.TrimSuffix(filepath.Base(m), "_A00.tif"))
+		name := strings.ToUpper(strings.TrimSuffix(filepath.Base(m), suffix))
 		if _, ok := exports[name]; !ok || filepath.Base(filepath.Dir(m)) == "exports" {
 			exports[name] = m
 		}
@@ -89,7 +106,7 @@ func sppCheckCommand(desk string) {
 		if _, done := scores[name]; done {
 			continue
 		}
-		s, err := sppCheckPhoto(ph, exp)
+		s, err := sppCheckPhoto(ph, exp, params)
 		if err != nil {
 			fmt.Printf("  %s: %v\n", name, err)
 			continue
@@ -121,9 +138,9 @@ func sppCheckCommand(desk string) {
 	}
 }
 
-// sppCheckPhoto develops ph as the app's preview and scores it against its
-// SPP export.
-func sppCheckPhoto(ph *Photo, export string) (sppScore, error) {
+// sppCheckPhoto develops ph as the app's preview with settings p and scores
+// it against its SPP export.
+func sppCheckPhoto(ph *Photo, export string, p preset.Params) (sppScore, error) {
 	spp, err := calib.LoadLinear(export)
 	if err != nil {
 		return sppScore{}, err
@@ -149,7 +166,7 @@ func sppCheckPhoto(ph *Photo, export string) (sppScore, error) {
 	if c != nil {
 		c.Apply(l)
 	}
-	v := rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), rawCompensation(ph)))
+	v := rgbaToLinear(render.Render(render.NewBase(l), p, rawCompensation(ph)))
 	s := sppScore{All: calib.MeanError(v, spp)}
 	s.Area = calib.MeanError(v.Downscale(spp.W/4), spp.Downscale(spp.W/4))
 	var sum float64
