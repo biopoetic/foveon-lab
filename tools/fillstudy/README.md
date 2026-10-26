@@ -12,6 +12,8 @@ numpy/scipy; each script prints its own table.
   leave-one-out refit with the app's own surround (replicated), and a
   Gaussian surround.
 - `fillrefit.py` — the pooled refit written into copies of the model files.
+- `fillstudy11.py` - SD1 + DP Merrill pooled, held out per family; `-write`
+  refits the steps where pooling wins into `refit_model.json`.
 
 Results and the decisions taken from them: `docs/accuracy-roadmap.md`
 (Fill Light) and `docs/HOW_SPP_WORKS.md` section 5.
