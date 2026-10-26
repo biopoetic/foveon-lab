@@ -251,6 +251,29 @@ scales per image (or blend by its histogram) from the same measured FIR local me
 that exists, Fill Light stays at 3–13 on unseen photos, and it is the last large SPP gap: every
 other A slider measured 0.4–4.3 on SDIM0031.
 
+**Update (20 October 2026): more data, and the scene term.** The table above is superseded. The
+model class turned out right and the data thin: refitted on all 8 SD1 / 5 SD15 photos, plus (SD1
+only) a term in the whole frame's mean brightness, held out over 8 SD1 photos it reaches Fill +0.5
+**3.17**, +1 **6.09**, +2 **14.79**; +0.25 and −1 unchanged (`docs/HOW_SPP_WORKS.md` §5,
+`tools/fillstudy`). Still the largest slider gap, and still data-limited. Seven of the eight SD1
+originals were lost with the D: drive on 26 October 2026 (their SPP exports survive, and the fit
+needs only those), so the next data is the same ladder on the DP Merrill, the same sensor
+(`spp-fill-dpm.ps1` in the calibration folder, 14 photos).
+
+**Done (26 October 2026): SD1 + DP Merrill, one Fill model.** With the 14 DP Merrill ladders the
+pooled refit (`tools/fillstudy/fillstudy11.py`, leave-one-out) beats the SD1-only fit on the SD1
+and the shipped one on the DP Merrill at three steps, which were refitted on all 20–22 photos:
+
+| Fill | SD1 held out | DP Merrill held out |
+|---|---|---|
+| +0.25 | 2.38 → **1.65** | 1.99 → **1.46** |
+| +2 | 14.79 → **12.95** | 13.43 → **11.85** |
+| −1 | 7.48 → **4.63** | 6.34 → **4.22** |
+
++0.5 and +1 stay as they were (pooled 0.05 worse on the SD1, 0.4–0.6 better on the DP Merrill).
+In the app, X3F to image against SPP's Fill exports (`spp-check -step`, 15 photos): +0.25 6.13 →
+5.92, +2 18.50 → 16.98, −1 8.47 → 6.66; +1 unchanged. +2 is still the largest gap.
+
 ### 4. ~~More pairs for the SD1 raw mapping~~ — done (21 October 2026)
 60 more neutral exports (35 SD1, 25 SD15; `spp-references.ps1` in the calibration folder, picked
 for variety in scene, ISO, MED/HI and lens) and an app-faithful `fit-raw` (developed, turned and

@@ -119,6 +119,10 @@ The hardest slider. Fill Light lifts shadows by a local, edge-preserving operato
   term in (frame mean − pixel) brightness, held out over 8 photos: Fill +0.5 4.04 → **3.17**, +1
   7.50 → **6.09**, +2 16.40 → **14.79**; +0.25 and −1 did not improve and are unchanged. On the
   SD15 (5 photos) it did not help. The mean is the full frame's, so a crop does not change the fill.
+- **The DP Merrill fills like the SD1** (26 October 2026): one model fitted on 8 SD1 + 14 DP Merrill
+  photos beats each family's own, held out, at Fill +0.25 / +2 / −1 (SD1 2.38 / 14.79 / 7.48 →
+  1.65 / 12.95 / 4.63; DP Merrill 1.99 / 13.43 / 6.34 → 1.46 / 11.85 / 4.22). Same sensor, same
+  operator.
 
 ## 6. The starting image
 
