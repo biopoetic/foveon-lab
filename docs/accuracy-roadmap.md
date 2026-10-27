@@ -1031,3 +1031,70 @@ dp0 6.010 -> 5.820 over 12 photos and dp1 7.342 -> 7.089 over 11; **SIGMA_DP1_QU
 6.92** and the ISO 6400 frames dp0_34 13.51 -> 11.67, dp1_20 13.83 -> 12.84. dp2, dp3, sd Quattro
 and sd Quattro H are unchanged to the hundredth. dp3 Quattro and sd Quattro still have no ladder:
 they stay on the dp2's k = 1.0.
+
+**SD9 / SD10 / SD14: scene-dependent tone, and no group-wide lever survives held out (27 October 2026).**
+The three oldest groups are the weakest on the 183-photo check (SD9 8.745 / 12 photos, SD10 8.889
+/ 20, SD14 8.957 / 25; all 7.090), well above DPM 4.8 and the other groups. A per-photo
+decomposition of the same `spp-check` renders separates the error:
+
+| group | n | all | area | detail (all-area) | mean abs ev | area@ev0 | error after perfect per-photo WB | after per-channel tone | after per-photo matrix+tone |
+|---|---|---|---|---|---|---|---|---|---|
+| SD9 | 12 | 8.745 | 8.203 | 0.542 | 0.085 | 8.157 | 6.225 | 5.673 | **4.297** |
+| SD10 | 20 | 8.889 | 8.252 | 0.636 | 0.127 | 7.130 | 6.096 | 5.528 | **4.222** |
+| SD14 | 25 | 8.957 | 8.406 | 0.551 | 0.070 | 7.916 | 8.649 | 5.444 | **4.354** |
+
+- **Exposure is small:** mean |ev| is 0.07-0.13 stop and scaling it out moves the group by 0.6-1.0.
+  Not the lever.
+- **Fine detail is small:** all minus area is only 0.54-0.64 (6% of the error). Not the lever.
+- **Tone is the largest single term:** a per-photo per-channel curve alone removes 3.1-3.5
+  (8.75 -> 5.67 on SD9, 8.89 -> 5.53 on SD10, 8.96 -> 5.44 on SD14), and a per-photo 3x3 matrix
+  plus curve removes 4.2-4.6 (to 4.30 / 4.22 / 4.35). That is an in-sample upper bound, not a
+  model: it maps each photo's own histogram onto its own export.
+- **The error rises with brightness and the sign differs by group.** 8-bit error in six SPP
+  brightness bands (0-1/6 ... 5/6-1) and the signed bias: SD9 5.21/8.79/9.83/11.70/14.90/14.05,
+  bias -0.04/+1.37/-0.44/-1.14/+0.98/+0.99; SD10 4.90/8.11/11.17/11.96/13.33/13.78, bias
+  +1.47/+1.14/+0.16/+1.21/+3.00/+2.83; SD14 6.76/8.56/10.11/11.20/10.46/8.81, bias
+  +2.08/-1.13/-0.10/+0.77/-0.51/-1.17. SD10 is systematically too bright and SD14 too red/dark in
+  its darkest 1/6, but no single direction fits all photos.
+- **The group mean white balance is already right.** Mean cast (stops, brightness removed):
+  SD9 -0.065/+0.104/-0.039, SD10 +0.016/+0.003/-0.019, SD14 +0.005/+0.038/-0.043. The spread is
+  scene colour: a per-photo channel-gain oracle is even *worse* on two SD14 photos
+  (RYTTERFALK_SDIM3378 35.45 against 7.40, RAW_SIGMA_SD14 18.87 against 7.89), because their scenes
+  are strongly coloured. A grey-world gain is not the missing piece.
+
+What was tried, held out (leave-one-out over each group's photos; the correction is fitted on the
+other photos and scored on the one left out, so these are honest generalisation numbers):
+
+| correction fitted on the rendered images | SD9 | SD10 | SD14 |
+|---|---|---|---|
+| shipped (no correction) | 8.745 | 8.889 | 8.957 |
+| 3x3 matrix | +0.312 | +0.229 | +0.137 |
+| 3x3 matrix, 50% toward identity | +0.152 | +0.092 | +0.052 |
+| per-channel 64-bin curve | +0.759 | +1.094 | +0.536 |
+| matrix + 64-bin curve | +0.994 | +1.161 | +0.538 |
+| matrix + curve, 25% toward identity | +0.685 | +0.784 | +0.316 |
+| per-in-camera-WB 3x3 matrix | +0.208 | +0.488 | **-0.095** |
+
+Every global colour/tone transform is **worse** held out. The only negative number is SD14's
+per-WB matrix at -0.095, and it is not a lever: 25 photos, 15 Sunlight / 5 Custom / 4 Auto / 1
+Incandescent, one photo per fold for the small groups, and the SD14's mean cast is already ~0.
+A single luminance tone curve (16 bins, with and without a per-channel version, full and half
+strength) was tested the same way and also failed to beat the shipped base. So the per-photo
+matrix+tone bound of ~4.3 is **scene-dependent**: it is what a per-photo fit can do, not what a
+group can learn. This is the same lesson as Fill Light, one stage earlier.
+
+**References.** All 57 references of the three groups were re-checked against the camera's own
+embedded JPEG (now rotated with the photo, which the earlier refcheck did not do). Every one is
+the same frame (RGB correlation 0.80-0.995) and none is a different photo; the three rows with
+|ev| > 0.25 (SIGMA-PHOTO_IMG00046_A +0.35, SIGMA-PHOTO_VW_BEETLE -0.32, RYTTERFALK_SDIM0656
++0.39) are the same ones the 22 October audit showed to be neutral exports of a render that is
+off, not bad references. KRONOMETRIC_IMG02743 (20.37, the worst row) matches its camera JPEG
+(corr 0.961, ev +0.10) and is simply a 31%-clipped, saturated disc; `fit-raw` already skips it.
+No entry was added to `calib/refexclude.txt`.
+
+**Decision: no render change.** The decomposition says the biggest single lever is tone, but both
+the tone curve and the colour matrix are scene-dependent and lose held out. Shipping one would be
+in-sample fitting, which this project has rejected before (SD15 base, Fill refits). The 183-photo
+check is unchanged at 7.090 (SD9 8.745, SD10 8.889, SD14 8.957, every other group identical), so
+there is no regression to report either. The next honest lever is a scene-adaptive tone model
+(predicted from the photo's own histogram or metadata), not another fixed per-group curve.
