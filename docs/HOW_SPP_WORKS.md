@@ -123,6 +123,14 @@ The hardest slider. Fill Light lifts shadows by a local, edge-preserving operato
   photos beats each family's own, held out, at Fill +0.25 / +2 / −1 (SD1 2.38 / 14.79 / 7.48 →
   1.65 / 12.95 / 4.63; DP Merrill 1.99 / 13.43 / 6.34 → 1.46 / 11.85 / 4.22). Same sensor, same
   operator.
+- **The Quattro needs its own fit, and the frame-mean term carries it** (27 October 2026): 10–11
+  Quattro photos across dp0/dp1/dp2/dp3/sd/sd Quattro H, pooled leave-one-out. With the frame-mean
+  term the held-out error beats the shipped (one-photo) coefficients at every step: +0.25
+  2.25 → **1.85**, +0.5 5.35 → **4.07**, +1 11.02 → **8.23**, +2 21.79 → **15.84**, −1 5.98 → **5.27**.
+  Without the frame-mean term +2 is 17.78 and −1 is 6.34, so the term is load-bearing on this sensor.
+  All five steps were refitted on every photo (`tools/fillstudy/fillstudy12.py`); in the app
+  (`spp-check -step`, 9 photos) the five steps go 7.52→6.94, 10.70→9.13, 16.78→12.98, 27.92→19.35 and
+  8.20→7.44.
 
 ## 6. The starting image
 

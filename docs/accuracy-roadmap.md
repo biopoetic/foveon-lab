@@ -1098,3 +1098,49 @@ in-sample fitting, which this project has rejected before (SD15 base, Fill refit
 check is unchanged at 7.090 (SD9 8.745, SD10 8.889, SD14 8.957, every other group identical), so
 there is no regression to report either. The next honest lever is a scene-adaptive tone model
 (predicted from the photo's own histogram or metadata), not another fixed per-group curve.
+
+**Quattro Fill Light: its own pooled fit, all five steps (27 October 2026).** The Quattro fill in
+`render/model_Quattro.json` had been fitted on one or two photos, so no held-out number existed.
+Nine new SPP Fill ladders were exported for dp0 05/15, dp1 03/09, DP2QhHOUSE_P1, DP2QOUTBAP0,
+dp3 08, sd Quattro 13 and sd Quattro H 03; with the older SDIM4388 and `_SDI0263` exports the
+per-step set is 10-11 photos (`_SDI0263_A17` is truncated and skipped). All are Quattro bodies;
+the SD1/DP Merrill coefficients were not used as a prior (different sensor).
+
+`tools/fillstudy/fillstudy12.py` fits the pooled leave-one-out model of `fillstudy11.py`, with and
+without the frame-mean term. 8-bit luminance error over the whole frame:
+
+| step | n | shipped | LOO 3-term | LOO 4-term (frame mean) |
+|---|---|---|---|---|
+| B14 (+0.25) | 10 | 2.248 | 2.192 | **1.846** |
+| A16 (+0.5) | 11 | 5.346 | 4.891 | **4.074** |
+| A17 (+1) | 10 | 11.022 | 9.536 | **8.229** |
+| B15 (+2) | 10 | 21.792 | 17.783 | **15.840** |
+| B16 (−1) | 10 | 5.980 | 6.344 | **5.265** |
+
+The 4-term fit wins at every step, so every step was refitted on all its photos. The frame-mean
+term matters most at +2 and −1; without it B16 is worse than the shipped coefficients. The gain is
+not one photo: at +2 and +1 nine of ten photos improve; at −1 the app has six better and three
+worse (see the rows below), which is the honest cost of a pooled fit at a setting that was already
+close.
+
+In the app (`spp-check -only Quattro -step`, the same 9 photos before and after; area/shadows in
+brackets):
+
+| step | before | after | change | photos better / worse by >0.30 |
+|---|---|---|---|---|
+| B14 (+0.25) | 7.517 | **6.940** | -0.577 | 8 / 0 |
+| A16 (+0.5) | 10.695 | **9.125** | -1.570 | 8 / 0 |
+| A17 (+1) | 16.779 | **12.982** | -3.797 | 9 / 0 |
+| B15 (+2) | 27.922 | **19.350** | -8.572 | 9 / 0 |
+| B16 (−1) | 8.203 | **7.440** | -0.763 | 6 / 3 |
+
+B15's area 24.757 → 16.495 and shadows 42.999 → 24.452; A17 14.307 → 10.747 and 18.250 → 12.405.
+The three B16 photos worse by more than 0.30 are DP2QHHOUSE_P1 +0.48 (now 8.65),
+SIGMA_SD_QUATTRO_13 +0.67 (5.76) and SIGMA_DP0_QUATTRO_05 +0.90 (7.75); the block mean still falls
+because dp0_15 improves by 5.82. The next-worst photo on any step is still SIGMA_DP1_QUATTRO_03 at
++1 (20.39) and +2 (26.61), so the high-Fill residual remains scene-dependent.
+
+**A00 is untouched.** A full `spp-check -photos Desktop -compare` after the refit reads 183 photos
+**7.090 -> 7.090** (SD9 8.745, SD10 8.889, SD14 8.957, DP 6.149, DPM 6.547, Quattro 5.974, SD1
+4.000, SD15 10.694; 0 better, 0 worse). Fill 0 does not use the fill coefficients, so this is
+bit-for-bit the same render, and the group table confirms it.

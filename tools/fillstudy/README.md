@@ -14,6 +14,10 @@ numpy/scipy; each script prints its own table.
 - `fillrefit.py` — the pooled refit written into copies of the model files.
 - `fillstudy11.py` - SD1 + DP Merrill pooled, held out per family; `-write`
   refits the steps where pooling wins into `refit_model.json`.
+- `fillstudy12.py` - the Quattro counterpart: its own fill on 10-11 photos,
+  pooled leave-one-out with and without the frame-mean term; `-write` refits
+  every step whose held-out error beats the shipped coefficients into
+  `refit_model_Quattro.json`.
 
 Results and the decisions taken from them: `docs/accuracy-roadmap.md`
 (Fill Light) and `docs/HOW_SPP_WORKS.md` section 5.
