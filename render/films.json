@@ -1427,6 +1427,23 @@
   },
   {
    "maker": "Kodak",
+   "name": "Ektar 100",
+   "kind": "cn",
+   "iso": 100,
+   "rms": 0,
+   "src": "Kodak E-4046 (2016): Kodak publishes a Print Grain Index, not RMS; PGI less than 25 at 135 (Kodak's visual threshold) and 38/66 at 8x10/16x20 prints, which cannot be compared to RMS granularity",
+   "url": "https://125px.com/docs/film/kodak/e4046_ektar_100-2016.pdf",
+   "bw": false,
+   "formats": [
+    "135",
+    "120",
+    "4x5",
+    "8x10"
+   ],
+   "formats_src": "Sizes listed in the film's own data sheet (PGI table: 135, 120, 4x5, 8x10)"
+  },
+  {
+   "maker": "Kodak",
    "name": "Portra 160",
    "kind": "cn",
    "iso": 160,
