@@ -1144,3 +1144,113 @@ because dp0_15 improves by 5.82. The next-worst photo on any step is still SIGMA
 **7.090 -> 7.090** (SD9 8.745, SD10 8.889, SD14 8.957, DP 6.149, DPM 6.547, Quattro 5.974, SD1
 4.000, SD15 10.694; 0 better, 0 worse). Fill 0 does not use the fill coefficients, so this is
 bit-for-bit the same render, and the group table confirms it.
+
+**DP / DPM / Quattro: the error decomposed per photo, and per-body bases rejected (28 October 2026).**
+
+The baseline was re-run first (183 photos, `spp-check -photos Desktop`, 12m53s): **ALL 7.090**, DP
+6.149 (28), DPM 6.547 (32), Quattro 5.974 (60), area 6.095, shadows 5.737 - identical to `f9f78ff`,
+saved as the base of this round. Every number below is against that tree.
+
+`spp-decomp` (new command, same `checkRender` as `spp-check`, so it judges exactly the same image)
+splits each photo's error into exposure (`ev`, `area@ev0`), a brightness-free white-balance cast
+(channel means against SPP in stops), tone (mean absolute error and signed bias in six SPP
+brightness bands), fine detail (`all - area`), shadows, and three per-photo **in-sample oracles**:
+per-channel gains, a per-channel 64-bin tone curve, and a 3x3 matrix plus that curve. The oracles
+map a photo's own histogram onto its own export, so they bound what a perfect per-photo fix would
+leave; they are never evidence that a group-wide fix works. `-refs` additionally compares every
+export with the camera's own embedded JPEG (rotated with the photo).
+
+| group | n | all | area | detail | shadows | mean abs ev | area@ev0 | mean cast (stops) | WB oracle | tone oracle | matrix+tone |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| DP | 28 | 6.149 | 5.651 | 0.50 | 4.169 | 0.10 | 5.51 | 0.227 | 3.62 | 2.81 | **2.49** |
+| DPM | 32 | 6.547 | 5.293 | 1.25 | 5.502 | 0.07 | 3.76 | 0.037 | 4.96 | 4.23 | **4.17** |
+| Quattro | 60 | 5.974 | 4.484 | 1.49 | 5.443 | 0.03 | 4.38 | 0.032 | 5.81 | 5.13 | **4.80** |
+
+- **The DP group's headroom is one body and one scene.** 0.50 of the 6.149 is fine detail (the
+  smallest of the three groups); the cast is the largest of the three (0.227 stops RMS) and it is
+  the **DP2** body: 9 photos at 8.34 with a mean cast of +0.37/-0.26/-0.10 stops, against 18 DP2X
+  photos at 4.39 with a cast of -0.01/+0.01/-0.01. Seven of the nine DP2 photos are the kronometric
+  grey-card series under incandescent light (14.12 and 13.30 are two of them), which is also why
+  DP's in-sample oracles look so good (tone 2.81, matrix+tone 2.49): on a flat card a per-channel
+  curve can map the whole image. The DP1s keeps its 22 October problem: 18.04, cast +0.98/-0.98,
+  ev -1.24 (area@ev0 21.21 - scaling the exposure out makes it worse, so it is a channel crush).
+- **The DPM's error is shadows and noise, not colour.** Absolute error by SPP brightness band:
+  4.92 / 6.98 / 7.20 / 7.15 / 6.49 / 6.76 with a bias of -1.29 / -2.45 / -1.30 / -0.43 / -0.70 /
+  -2.02, and the shadows-against-ISO correlation is **+0.93**. The worst rows are the ISO ladders:
+  DP3_MERRILL_07 (ISO 6400, 12.41, shadows 20.18, detail 2.68), DP1MHSLI6400 (11.41, 16.86), and
+  the ISO 3200/1600 frames. The in-sample oracles only reach 4.17, i.e. even a perfect per-photo
+  colour/tone map leaves most of the high-ISO error: it is spatial (noise reduction), which is
+  exactly why the stronger chroma filter was rejected on 22 October.
+- **The Quattro is the ISO drift, already known, and it is the whole spread.** all-against-ISO
+  **+0.81**, shadows-against-ISO **+0.88**; band error 4.74 / 9.05 / 10.34 / 8.36 / 5.14 / 3.40, no
+  consistent bias (the error is spread, not a shift). Eight of the ten worst frames are ISO
+  1600-6400 (six of them at 3200 or higher): H_07 17.78, dp1_20 12.99, dp0_34 11.61, H_06 9.70;
+  the two at base ISO are dp1_03 (ISO 400, detail 3.81) and DP2QHHOUSE_P1 (ISO 100, detail 3.31). The
+  in-sample matrix+tone bound halves H_07 (17.78 -> 8.77) and dp0_34 (11.61 -> 8.96), but that is
+  the scene-adaptive colour the drift work has already shown not to transfer.
+- **Highlights are systematically different, and are not the lever.** SPP clips 3.1% of DP pixels
+  (any 8-bit channel at 255), 0.7% of DPM and 1.1% of Quattro; our render clips 0.1%, 0.3% and
+  0.0%. The top brightness band runs 3.3 (DP), 2.0 (DPM) and 0.2 (Quattro) too dark. So SPP
+  deliberately clips to white where we keep detail, and matching that would change every bright
+  photo by policy, not by a fitted correction. It is recorded, not chased.
+- **The worst photos do not share one cause.** Of the ten worst: six are ISO 3200-6400 ladder
+  frames (three DPM, three Quattro: noise/drift, cast ~0.03), two are the flat DP2 cards (detail
+  0.00, shadows 0.00, colour-only), KRON_PROCESSING_SDIM7824 is the known non-neutral export
+  (-1.40 EV, area@ev0 9.71) and RAW_SIGMA_DP1S is the DP1s channel crush. Scene type is the only
+  common thread inside each family, and it is the ISO drift there.
+
+**References: no new exclusions.** The two called out in the task are genuine neutral exports.
+SIGMA_SD_QUATTRO_H_07: camera-JPEG correlation 0.974, JPEG-to-export EV -0.06, gain-corrected error
+12.33; `_H_06`: 0.982, -0.01, 10.31 - same frame, same exposure, so the 17.78 and 9.70 are our
+render, not the reference. The DP2 cards also check out: correlation 0.81-0.99, EV -0.03..+0.16,
+gain-corrected error 0.7-2.5 (the 0.814 is a flat card, where correlation has little variance to
+correlate), so they cannot be dropped as non-neutral - our base is what is wrong there. The
+dp0-Quattro ISO ladder's JPEGs are 0.21-0.28 stops darker than SPP's exports, but `spp-check`'s own
+ev for those photos is -0.00..+0.02 (our render matches the export), so that is the camera JPEG's
+tone curve at high ISO, not a non-neutral export. `calib/refexclude.txt` is unchanged.
+
+**Lever 1 - a per-body base for the DP2 - rejected on the cross-scene split.** Fitting the
+matrix+curve mapping on the DP2's other photos and applying it to the one left out gives
+**8.34 -> 4.95 over the 9 DP2 photos**. That number is tempting, and it is why the split matters:
+fitting on the seven cards and testing on the body's two other scenes makes both **worse**
+(KRON_DPREDITMYPIC 9.84 -> 15.50, KRONOMETRIC_SDIM0790 6.51 -> 7.95), and the reverse split (fit on
+the two scenes, test on the cards) improves them 8.38 -> 4.47. A constrained "taste" model (32-bin
+luminance curve + saturation, 33 parameters) behaves the same way: 8.34 -> 6.21 leave-one-out, but
+fit-on-cards -> other scenes 8.18 -> 15.80. The leave-one-out gain is the seven shots of one chart;
+with only two non-card DP2 photos on disk a body base cannot be validated, so nothing was shipped.
+What is needed is 10+ DP2 scenes under more than one light.
+
+**Lever 2 - per-body bases inside the Quattro - rejected, no net gain.** A robust per-body 3x3 +
+isotonic per-channel curves, leave-one-out inside each body: dp0 5.82 -> 5.78 (12), dp1 7.10 ->
+7.42 (11), dp2 5.85 -> 5.43 (13), dp3 4.72 -> 4.41 (6), sd Quattro 5.08 -> 4.45 (5), sd Quattro H
+6.21 -> 6.46 (13); **-0.07 on the group**, with two bodies worse. A 9+192-parameter mapping per
+body is also the class least likely to transfer; the small gains are not worth a new stage.
+
+**Lever 3 - a group-wide tone curve - still does not hold out, except a small Quattro gain.** The
+"taste" model (luminance curve alone, then curve+saturation), leave-one-out: DP 6.149 -> 6.233 /
+6.483, DPM 6.547 -> 6.594 / 6.594, **Quattro 5.974 -> 5.876 / 5.732**. Per body: DP1 Merrill
+4.816 -> 4.878, DP2X 4.394 -> 4.414, DP3 Merrill 5.199 -> 5.360; Quattro dp0 5.512, dp1 7.007,
+dp2 5.391, dp3 4.104, sd 4.363, sd Quattro H 6.455. So the old
+bodies' group-wide tone stays rejected (fourth time), and the Quattro's 0.24 (4%) is the only
+held-out positive in this round. It is **not shipped**: one new render stage that would change
+every Quattro preset (not just the neutral A00) for 0.24/255, while the group's real error - the
+high-ISO drift - is untouched (sd Quattro H gets 0.25 *worse*). The code and the split are recorded
+here for whoever has a preset regression to spend on it.
+
+**Measurement note: a sparse bright bin can flatten a fitted curve.** Running lever 2 through
+`calib.FitMapping` first gave dp0 5.82 -> 10.35, dp1 7.10 -> 13.20, sd Quattro H 6.21 -> 25.42.
+The cause is `MakeMonotone`'s top-down clamp: when our render has a few hundred pixels at ~0.97
+where SPP has 0.04-0.2 (the coloured specks of 22 October), bin 62's mean output is ~0.04 and every
+brighter-looking bin below it is clamped down to it, flattening the whole channel curve. With
+isotonic regression (pool adjacent violators) the same data gives the numbers above, and the
+per-photo oracles change by up to 40 (H_07's tone oracle 51.98 -> 11.33). The shipped bases pool 20-60
+photos, where the bright bins are dense and the clamp does not bite; the per-photo oracle was the
+case that exposed it, and `spp-decomp` now uses the isotonic fit for its curves.
+
+**Decision: no render change.** The decomposition says each group's largest term is scene- or
+body-specific (DP: one body's colour on one chart; DPM: high-ISO noise; Quattro: high-ISO drift),
+and every group-wide or per-body correction tested loses held out or is too small to justify the
+stage. The 183-photo check is unchanged at **7.090** (DP 6.149, DPM 6.547, Quattro 5.974, every
+other group identical; 0 better by >0.05, 0 worse by >0.30), so there is no regression either. The
+next honest levers are more DP2 scenes and a Quattro high-ISO colour model with a second scene per
+ISO, not another global curve.
