@@ -95,3 +95,30 @@ func TestFilmFormats(t *testing.T) {
 		t.Error("no film has verified formats")
 	}
 }
+
+// The Film stock menu disables an option unless the library has grain, a
+// characteristic curve or a colour model for it (web/index.html:
+// f.rms || f.curve || f.color). The data-backed stocks must not be
+// unselectable: Portra was once disabled for three releases.
+func TestFilmsSelectable(t *testing.T) {
+	for _, name := range []string{
+		"Kodak T-Max 100",
+		"Kodak T-Max 400",
+		"Kodak Ektar 100",
+	} {
+		f, ok := FilmByKey(name)
+		if !ok {
+			t.Fatalf("%s: no library entry", name)
+		}
+		if f.RMS == 0 && f.Curve == nil && !f.Color {
+			t.Errorf("%s: no grain, no curve and no colour model: the menu disables it", name)
+		}
+	}
+	// The T-Max curves are the point of this round: both must attach.
+	for _, name := range []string{"Kodak T-Max 100", "Kodak T-Max 400"} {
+		f, _ := FilmByKey(name)
+		if f.Curve == nil {
+			t.Errorf("%s: no characteristic curve", name)
+		}
+	}
+}
