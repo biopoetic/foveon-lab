@@ -134,6 +134,15 @@ func fitTaste(pairs []RawPair) Taste {
 	return t
 }
 
+// FitTaste and Applied expose the taste fit to the tools: a handful of
+// parameters (a 32-bin luminance curve and a saturation) fitted robustly
+// with medians, so it is the candidate to test when a many-parameter
+// matrix+curve fit overfits (spp-decomp's leave-one-out checks).
+func FitTaste(pairs []RawPair) Taste { return fitTaste(pairs) }
+
+// Applied renders l with the taste correction.
+func (t *Taste) Applied(l *render.Linear) *render.Linear { return t.applied(l) }
+
 // TasteReport prints held-out dE2000 vs SPP for the taste base within each
 // group, next to the full fitted raw base, and across groups: the taste
 // learnt on each group applied to every other.

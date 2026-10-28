@@ -138,20 +138,16 @@ func sppCheckCommand(desk string) {
 	}
 }
 
-// sppCheckPhoto develops ph as the app's preview with settings p and scores
-// it against its SPP export.
-func sppCheckPhoto(ph *Photo, export string, p preset.Params) (sppScore, error) {
-	spp, err := calib.LoadLinear(export)
-	if err != nil {
-		return sppScore{}, err
-	}
+// linearForCheck decodes ph and brings it to spp's analysis size with its
+// raw base applied: the image the app's preview starts from.
+func linearForCheck(ph *Photo, spp *render.Linear) (*render.Linear, error) {
 	maxW := sourceW
 	if ph.rotation == 90 || ph.rotation == 270 {
 		maxW = max(sourceW, spp.H) // the short side at least the export's width
 	}
 	l, err := goLinear(ph, maxW, defaultNR)
 	if err != nil {
-		return sppScore{}, err
+		return nil, err
 	}
 	if ph.rotation != 0 {
 		l = l.Rotate(ph.rotation)
@@ -165,6 +161,36 @@ func sppCheckPhoto(ph *Photo, export string, p preset.Params) (sppScore, error) 
 	}
 	if c != nil {
 		c.Apply(l)
+	}
+	return l, nil
+}
+
+// checkRender develops ph as the app shows its preview in the neutral
+// preset and returns the render and its SPP export, both at the analysis
+// size. spp-check and spp-decomp share it so both judge the same image.
+func checkRender(ph *Photo, export string) (*render.Linear, *render.Linear, error) {
+	spp, err := calib.LoadLinear(export)
+	if err != nil {
+		return nil, nil, err
+	}
+	l, err := linearForCheck(ph, spp)
+	if err != nil {
+		return nil, nil, err
+	}
+	v := rgbaToLinear(render.Render(render.NewBase(l), preset.Neutral(), rawCompensation(ph)))
+	return v, spp, nil
+}
+
+// sppCheckPhoto develops ph as the app's preview with settings p and scores
+// it against its SPP export.
+func sppCheckPhoto(ph *Photo, export string, p preset.Params) (sppScore, error) {
+	spp, err := calib.LoadLinear(export)
+	if err != nil {
+		return sppScore{}, err
+	}
+	l, err := linearForCheck(ph, spp)
+	if err != nil {
+		return sppScore{}, err
 	}
 	v := rgbaToLinear(render.Render(render.NewBase(l), p, rawCompensation(ph)))
 	s := sppScore{All: calib.MeanError(v, spp)}
