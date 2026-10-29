@@ -6,6 +6,9 @@ testdata/
 # ... except the synthetic golden references, which are ours and small.
 !x3f/testdata/
 !x3f/testdata/**
+# ... and the small fragment inputs that prove tools/sensfit.
+!tools/sensfit/testdata/
+!tools/sensfit/testdata/**
 
 # Session handoffs: working notes for the maintainer, not project content.
 # They name local paths (signing-key backups, tool locations), so they stay
