@@ -108,6 +108,7 @@ func TestFilmsSelectable(t *testing.T) {
 		"Kodak Portra 160",
 		"Kodak Portra 800",
 		"Kodak Gold 200",
+		"Kodak Ultramax 400",
 	} {
 		f, ok := FilmByKey(name)
 		if !ok {
