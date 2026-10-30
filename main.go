@@ -333,7 +333,7 @@ func (s *server) loadPresets() {
 	// in SPP itself; a preset already loaded (same values) isn't repeated.
 	var srcs []preset.Source
 	if s.presetsDir != "" {
-		srcs = append(srcs, preset.Source{FS: os.DirFS(s.presetsDir)})
+		srcs = append(srcs, preset.Source{FS: os.DirFS(s.presetsDir), Merge: flMerge(s.presetsDir)})
 	}
 	srcs = append(srcs, preset.Source{Label: "Built-in", FS: preset.Builtin()})
 	if f := spp.SettingsFile(); f != "" {
@@ -1119,6 +1119,13 @@ func (s *server) handlePresets(w http.ResponseWriter, r *http.Request) {
 		}
 		path := filepath.Join(s.presetsDir, "FoveonLab_"+cam+".xml")
 		if err := preset.Append(path, req.Name, req.Params); err != nil {
+			httpErr(w, 500, err)
+			return
+		}
+		// The film, push, paper and darkroom fields have no SPP XML
+		// equivalent: keep them beside the file and merge them back on load
+		// (presetsidecar.go).
+		if err := saveFLParams(s.presetsDir, filepath.Base(path), req.Name, req.Params); err != nil {
 			httpErr(w, 500, err)
 			return
 		}

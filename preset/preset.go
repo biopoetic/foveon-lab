@@ -302,6 +302,10 @@ type Source struct {
 	Match func(path string) bool
 	// Skip drops presets by name (e.g. ones Foveon Lab itself wrote).
 	Skip func(name string) bool
+	// Merge adds fields SPP's XML cannot carry, after the XML is parsed and
+	// before presets are de-duplicated (so two looks that differ only in
+	// such a field stay two presets). p.Source is already set.
+	Merge func(*Preset)
 }
 
 // LoadDir loads every *.xml under root.
@@ -363,6 +367,10 @@ func Load(sources ...Source) ([]Preset, []error) {
 				// (the [FL] Max Detail entry is deliberately identical in
 				// both).
 				p.Camera = cameraOf(p.Name, f)
+				p.Source = rel
+				if src.Merge != nil {
+					src.Merge(&p)
+				}
 				pkey := fmt.Sprintf("%+v|%s", p.Params, p.Camera)
 				key := p.Name + "|" + pkey
 				if i, ok := seen[key]; ok {
