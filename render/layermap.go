@@ -66,6 +66,12 @@ func fitSpectra() [][]float64 {
 // S) -> the film's layer exposures (log sensitivities sens R, G, B), in
 // daylight, both normalised by white.
 func fitLayerMap(f *colorFilm, S [][3]float64, sens map[string][][2]float64) bool {
+	return fitLayerMapOn(f, S, sens, fitSpectra())
+}
+
+// fitLayerMapOn is fitLayerMap on an explicit training set, so a test can
+// hold half the spectra out.
+func fitLayerMapOn(f *colorFilm, S [][3]float64, sens map[string][][2]float64, train [][]float64) bool {
 	sp := spectral()
 	fs := make([][3]float64, len(sp.lams))
 	var ws, wf [3]float64
@@ -76,12 +82,11 @@ func fitLayerMap(f *colorFilm, S [][3]float64, sens map[string][][2]float64) boo
 			wf[k] += fs[i][k] * sp.illum[i]
 		}
 	}
-	train := fitSpectra()
 	white := make([]float64, len(sp.lams))
 	for i := range white {
 		white[i] = 1
 	}
-	train = append(train, white)
+	train = append(append([][]float64{}, train...), white)
 	type sample struct {
 		x [6]float64
 		h [3]float64
