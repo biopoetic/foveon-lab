@@ -693,7 +693,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	op.setLayerFilter(p, c)
 	op.tone = newFilmTone(p)
 	if c.CC != nil {
-		if f := colorFilmOn(p.Film, p.Paper, c.Sensor, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}); f != nil {
+		if f := colorFilmOnPush(p.Film, p.Paper, c.Sensor, p.Push, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}); f != nil {
 			if inv, ok := invert3x3(*c.CC); ok {
 				op.cfilm = f
 				for i, v := range inv {

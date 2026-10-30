@@ -326,9 +326,9 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <div class="row" title="Development time. Longer = more contrast (and more grain), from the developer's time-gamma curve. Double-click = the data sheet's time."><div class="lab"><span>Time</span><b id="devTimeVal"></b></div>
             <input type="range" id="devTime" step="0.1">
           </div>
-          <div class="row" title="Push / pull: the film rated at a higher (or lower) exposure index, and only at the stops the film's data sheet lists. Pushed, the shadows sink into the film's toe; the sheet's longer development time brings the contrast back. Double-click = box speed."><div class="lab"><span>Push / pull</span><b id="pushVal"></b></div>
-            <input type="range" id="push" min="0" max="0" step="1">
           </div>
+          <div class="row" id="pushRow" title="Push / pull: the film rated at a higher (or lower) exposure index, and only at the stops the film's data sheet lists. Pushed, the shadows sink into the film's toe; for a black &amp; white film the sheet's longer development time brings the contrast back, for a colour negative the maker publishes the pushed curves themselves. Double-click = box speed."><div class="lab"><span>Push / pull</span><b id="pushVal"></b></div>
+            <input type="range" id="push" min="0" max="0" step="1">
           </div>
           <div class="row" id="paperRow" title="The print: the enlarger's light through the negative onto a printing paper, at a contrast grade. The printer exposes so that the negative's mid-grey prints mid-grey; the paper's curve sets how the highlights roll off and how deep the blacks go (its D-max). None = a scan of the negative."><div class="lab">Paper <span class="dim" id="paperSrc"></span></div>
             <div style="display:flex;gap:6px"><select id="paperSel" style="flex:1"><option value="">None (scan)</option></select>
@@ -1230,11 +1230,32 @@ const PAPER_TIP = {
   colour: "The print: a 3200 K enlarger lamp through the negative (its orange mask too) onto colour paper. The filtration is set so the negative's grey prints neutral 18% grey; the paper's own layers, curves and dyes make the print, seen in daylight."};
 function syncDev(f){
   // Black-and-white negatives with a curve: developer, time, push, and
-  // B&W papers. Colour negatives: colour papers only. Slides: nothing to print.
+  // B&W papers. Colour negatives: colour papers and the maker's published
+  // push families (the EI 800/1600/3200 curves of Portra 800, say).
+  // Slides: nothing to print.
   const cn = !!(f && f.color && f.kind === "cn"), c = f && !f.color && f.curve;
   $("#filmDev").style.display = c || cn ? "" : "none";
   $("#devRows").style.display = c ? "" : "none";
-  if (cn){ syncPaper("colour"); return; }
+  const psl = $("#push");
+  if (cn){
+    syncPaper("colour");
+    const fams = (f.push || []).slice().sort((a, b) => a.stops - b.stops);
+    const pushStops = [0, ...fams.map(x => x.stops)].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
+    psl.dataset.stops = pushStops.join(",");
+    psl.disabled = pushStops.length < 2;
+    psl.min = pushStops[0]; psl.max = pushStops[pushStops.length - 1]; psl.step = 1;
+    const push = snapPush(S.params.push || 0), fam = fams.find(x => x.stops === push);
+    S.params.push = push;
+    psl.value = push;
+    const ei = fam ? fam.ei : f.iso;
+    $("#pushVal").textContent = push
+      ? `EI ${ei} (${push > 0 ? "+" : "−"}${Math.abs(push)} stop${Math.abs(push) === 1 ? "" : "s"})`
+      : `EI ${ei} (box speed)`;
+    $("#pushVal").title = fam ? fam.src : "";
+    $("#pushRow").style.display = pushStops.length > 1 ? "" : "none";
+    return;
+  }
+  $("#pushRow").style.display = "";
   if (!c) return;
   const sel = $("#devSel");
   if (sel.dataset.film !== f.name){
@@ -1246,7 +1267,6 @@ function syncDev(f){
   $("#devSrc").innerHTML = `(<a href="${esc(c.url)}" target="_blank" rel="noopener" title="${esc(c.src)}">data sheet</a>${d.src ? ` <span title="${esc(d.src)}">ⓘ</span>` : ""})`;
   // Push: only the stops the film's data sheet lists (0 = box speed).
   const pushStops = [0, ...Object.keys(d.push || {}).map(Number)].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
-  const psl = $("#push");
   psl.dataset.stops = pushStops.join(",");
   psl.disabled = pushStops.length < 2;
   psl.min = pushStops[0]; psl.max = pushStops[pushStops.length - 1];

@@ -37,6 +37,7 @@ import (
 	"encoding/json"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -165,6 +166,9 @@ type colorFilm struct {
 	// filtration: a printed negative's enlarger filtration (log10 gain per
 	// paper layer, R G B).
 	filtration [3]float64
+	// ei: the exposure index a colour negative's curve family is rated at
+	// (its ISO, or a published push family's EI).
+	ei float64
 	// printLUT: a printed negative's table for a filtration (colorneg.go);
 	// nil for a slide.
 	printLUT func(lg [3]float64) []float32
@@ -180,8 +184,15 @@ func colorFilmFor(key, sensor string) *colorFilm { return colorFilmOn(key, "", s
 
 // colorFilmOn is film key (a slide, or a negative printed on paper; ""
 // = the first colour paper, with the enlarger's colour head cp) prepared
-// for sensor, nil if any has no model.
+// for sensor, nil if any has no model. A colour negative is at box speed.
 func colorFilmOn(key, paper, sensor string, cp ColorPrint) *colorFilm {
+	return colorFilmOnPush(key, paper, sensor, 0, cp)
+}
+
+// colorFilmOnPush is colorFilmOn with a colour negative rated push stops
+// over its ISO: its published family at that EI (colorneg.go), or box speed
+// when the sheet publishes none. Slides ignore push.
+func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *colorFilm {
 	if n := colorNegs().negs[key]; n != nil {
 		if paper == "" || colorNegs().papers[paper] == nil {
 			if o := colorNegs().order; len(o) > 0 {
@@ -194,10 +205,10 @@ func colorFilmOn(key, paper, sensor string, cp ColorPrint) *colorFilm {
 		}
 		colorFilmMu.Lock()
 		defer colorFilmMu.Unlock()
-		k := key + "|" + paper + "|" + sensor
+		k := key + "|" + paper + "|" + sensor + "|" + strconv.FormatFloat(push, 'g', -1, 64)
 		f, ok := colorFilmCache[k]
 		if !ok {
-			f = newColorNeg(n, pp, sensor)
+			f = newColorNeg(n, pp, sensor, push)
 			colorFilmCache[k] = f
 		}
 		if f == nil || cp == (ColorPrint{}) {

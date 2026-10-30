@@ -53,6 +53,18 @@ type Film struct {
 	// Color: a colour film rendered from its own layers and dyes
 	// (colorfilm.go, colorneg.go).
 	Color bool `json:"color,omitempty"`
+	// Push: a colour negative's published push families (stops over its
+	// ISO, the exposure index they are rated at, and the sheet's page).
+	// Empty for every other film and for a negative whose maker publishes
+	// none.
+	Push []FilmPush `json:"push,omitempty"`
+}
+
+// FilmPush is one published push family of a colour negative.
+type FilmPush struct {
+	Stops float64 `json:"stops"`
+	EI    float64 `json:"ei"`
+	Src   string  `json:"src"`
 }
 
 var filmByKey = sync.OnceValue(func() map[string]Film {
@@ -87,6 +99,7 @@ func Films() []Film {
 		}
 		f.Curve = filmCurves()[f.Maker+" "+f.Name]
 		f.Color = IsColorFilm(f.Maker + " " + f.Name)
+		f.Push = ColorNegPushes(f.Maker + " " + f.Name)
 	}
 	return d.Films
 }

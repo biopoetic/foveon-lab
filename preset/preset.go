@@ -68,7 +68,9 @@ type Params struct {
 	Film string `json:"film,omitempty"`
 	// Development of a film with a characteristic curve: Developer from
 	// its data sheet ("" = the first), DevTime in minutes (0 = the
-	// developer's standard time), Push in stops over the developer's EI.
+	// developer's standard time), Push in stops over the developer's EI
+	// (for a colour negative: over its ISO, choosing the maker's published
+	// push family).
 	Developer string  `json:"developer,omitempty"`
 	DevTime   float64 `json:"devTime,omitempty"`
 	Push      float64 `json:"push,omitempty"`

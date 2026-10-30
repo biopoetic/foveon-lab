@@ -30,20 +30,35 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
+	"strconv"
 	"sync"
 )
 
+// colorNegPush is one published push family of a colour negative: the
+// characteristic curves at an exposure index above the film's ISO, with the
+// longer development the maker's sheet gives them (p. 4 of E-4040, for
+// example). The curves' log-exposure axis is absolute, so the family is used
+// with the film rated at EI: a scene's mid-grey then lands one stop lower per
+// stop of push, exactly as in the camera.
+type colorNegPush struct {
+	EI   float64                 `json:"ei"`
+	Src  string                  `json:"src"`
+	Char map[string][][2]float64 `json:"char"`
+}
+
 type colorNegData struct {
-	Film    string                  `json:"film"`
-	ISO     float64                 `json:"iso"`
-	Src     string                  `json:"src"`
-	URL     string                  `json:"url"`
-	Char    map[string][][2]float64 `json:"char"`
-	Sens    map[string][][2]float64 `json:"sens"`
-	Dmin    [][2]float64            `json:"dmin"`
-	Neutral [][2]float64            `json:"neutral"`
-	Dye     map[string][][2]float64 `json:"dye"`
-	DyeSrc  string                  `json:"dyeSrc"`
+	Film    string                   `json:"film"`
+	ISO     float64                  `json:"iso"`
+	Src     string                   `json:"src"`
+	URL     string                   `json:"url"`
+	Char    map[string][][2]float64  `json:"char"`
+	Push    map[string]*colorNegPush `json:"push,omitempty"` // key: stops over ISO
+	Sens    map[string][][2]float64  `json:"sens"`
+	Dmin    [][2]float64             `json:"dmin"`
+	Neutral [][2]float64             `json:"neutral"`
+	Dye     map[string][][2]float64  `json:"dye"`
+	DyeSrc  string                   `json:"dyeSrc"`
 }
 
 type colorPaperData struct {
@@ -81,6 +96,38 @@ var colorNegs = sync.OnceValue(func() (out struct {
 // IsColorNegative reports whether the library film named key has the
 // colour-negative model.
 func IsColorNegative(key string) bool { _, ok := colorNegs().negs[key]; return ok }
+
+// negFamily is the characteristic family for a push in stops: the published
+// one, or the base family with the film's ISO. A stop the sheet does not
+// publish falls back to the base family rather than inventing a curve; the
+// editor only offers the published stops.
+func negFamily(d *colorNegData, push float64) (map[string][][2]float64, float64) {
+	if push != 0 && len(d.Push) > 0 {
+		if p := d.Push[strconv.FormatFloat(push, 'g', -1, 64)]; p != nil {
+			return p.Char, p.EI
+		}
+	}
+	return d.Char, d.ISO
+}
+
+// ColorNegPushes lists a negative's published push families, by stops over
+// its ISO, for the editor's Push / pull control.
+func ColorNegPushes(key string) []FilmPush {
+	d := colorNegs().negs[key]
+	if d == nil || len(d.Push) == 0 {
+		return nil
+	}
+	out := make([]FilmPush, 0, len(d.Push))
+	for k, p := range d.Push {
+		stops, err := strconv.ParseFloat(k, 64)
+		if err != nil {
+			continue
+		}
+		out = append(out, FilmPush{Stops: stops, EI: p.EI, Src: p.Src})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Stops < out[j].Stops })
+	return out
+}
 
 // ColorPapers is the library's colour printing papers (the first is the
 // default).
@@ -176,20 +223,22 @@ func FitNeutral(key string) (NegativeFit, bool) {
 	return f, true
 }
 
-// newColorNeg prepares negative d printed on paper pp for sensor.
-func newColorNeg(d *colorNegData, pp *colorPaperData, sensor string) *colorFilm {
+// newColorNeg prepares negative d printed on paper pp for sensor, its
+// curve family at push stops over ISO.
+func newColorNeg(d *colorNegData, pp *colorPaperData, sensor string, push float64) *colorFilm {
 	S := layerSens(sensor)
 	if S == nil {
 		return nil
 	}
 	sp := spectral()
 	// 1. Sensor layers -> the negative's layer exposures (as a slide).
-	f := &colorFilm{hWhite: 10 / d.ISO / sensorGrey}
+	char, ei := negFamily(d, push)
+	f := &colorFilm{hWhite: 10 / ei / sensorGrey, ei: ei}
 	if !fitLayerMap(f, S, d.Sens) {
 		return nil
 	}
 	for k, n := range [3]string{"R", "G", "B"} {
-		f.curve[k] = d.Char[n]
+		f.curve[k] = char[n]
 	}
 	// 2. Status M reads at the dyes' peaks: D - D_min = A·c.
 	eps, dmin := negDyes(d)
