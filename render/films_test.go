@@ -111,6 +111,7 @@ func TestFilmsSelectable(t *testing.T) {
 		"Kodak Ultramax 400",
 		"Fujifilm Fujicolor Pro 400H",
 		"Fujifilm Fujicolor Pro 160C",
+		"Fujifilm Fujicolor Pro 800Z",
 	} {
 		f, ok := FilmByKey(name)
 		if !ok {
