@@ -102,6 +102,12 @@ var noDespeckle = os.Getenv("FOVEON_DN_NOSPECK") != ""
 // (FOVEON_DN_NOSC=1), for isolating the stage that paints a colour patch.
 var noShadowChroma = os.Getenv("FOVEON_DN_NOSC") != ""
 
+// mottleFix enables the experimental large-radius Quattro chroma pass
+// (FOVEON_DN_MOTTLE=1). It is off by default: measured on dp2 Quattro it
+// removed ~5% of the chroma RMS and ~5% of the 8-32 px blotch at 3200-6400
+// but made the blotch worse at 800-1600, so it did not earn a place.
+var mottleFix = os.Getenv("FOVEON_DN_MOTTLE") != ""
+
 // identity33 is the 3×3 identity.
 var identity33 = [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
 
@@ -279,6 +285,14 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 		if os.Getenv("FOVEON_DN_DEBUG") != "" {
 			fmt.Fprintf(os.Stderr, "shadow chroma noise %s: %.4f\n", ph.Name, noise)
 		}
+	}
+	// Quattro chroma mottle: the per-layer denoiser removes the fine chroma
+	// noise, but 8-32 px blotches survive and SPP's band is 1.5-2.5x lower
+	// at 3200-6400. A wide, edge-aware pass on low-chroma pixels only
+	// (render/mottle.go), guided by the luminance, which on Quattro is
+	// dominated by the clean top layer. Both paths run it, at their scale.
+	if strength > 0 && mottleFix && calibGroup(ph) == "Quattro" && photoISO(ph) >= 800 {
+		render.MottleChroma(l, render.MottleSigma(fullW, l.W), 0.02, 0.10)
 	}
 	// The body's brightness relative to its calibration group (not for the
 	// IR looks, which model the sensor layers themselves).
