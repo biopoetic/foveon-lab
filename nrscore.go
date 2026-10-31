@@ -74,6 +74,40 @@ type nrMetric struct {
 	RowBand float64 `json:"rowBand"`
 	ColBand float64 `json:"colBand"`
 	Blocks  int     `json:"blocks"`
+	// ToneNoise is luminance noise in the 1-8 px band on the flat blocks,
+	// by the ISO 100 reference's tone: deep shadow (<32), shadow (32-64),
+	// mid (64-96) and light (>=96). The dark surround of a high-ISO frame is
+	// a tone band of its own, so its coarse "pepper" is not averaged away
+	// with the mid-tones' finer grain.
+	ToneNoise [4]float64 `json:"toneNoise"`
+	// Saturation and colour error on coloured flat areas: each pipeline
+	// against its own ISO 100 frame, on two sets. SatRetain is every coloured
+	// flat block (large areas included); SatLocal is the blocks whose colour
+	// is local — the block differs from its 48 px surroundings, so it is a
+	// patch like the chart's. Wide chroma smoothing can keep a large coloured
+	// area and still pale a patch, so the local number is the one that sees
+	// the chart. The ratios are block chroma / the same block's ISO 100
+	// chroma (1 = kept, 0.6 = visibly pale); ColourErr is the mean CIELAB
+	// a*/b* distance of the local blocks' means (dE without lightness).
+	// ColourBlocks and LocalBlocks are the counts they rest on.
+	SatRetain    float64 `json:"satRetain"`
+	SatLocal     float64 `json:"satLocal"`
+	SatStrong    float64 `json:"satStrong"`
+	SatAbs       float64 `json:"satAbs"` // absolute chroma on the strong blocks
+	ColourErr    float64 `json:"colourErr"`
+	ColourBlocks int     `json:"colourBlocks"`
+	LocalBlocks  int     `json:"localBlocks"`
+	StrongBlocks int     `json:"strongBlocks"`
+	// Black neutrality on the darkest flat blocks: the mean a*/b* of those
+	// blocks in this pipeline, their spread (the RMS of the block means'
+	// distance from the frame's dark mean: low-frequency mottle), and the
+	// drift from the pipeline's own ISO 100 frame. Neutral black is 0/0.
+	DarkA      float64 `json:"darkA"`
+	DarkB      float64 `json:"darkB"`
+	DarkSpread float64 `json:"darkSpread"`
+	DarkDriftA float64 `json:"darkDriftA"`
+	DarkDriftB float64 `json:"darkDriftB"`
+	DarkBlocks int     `json:"darkBlocks"`
 }
 
 type nrRecord struct {
@@ -638,6 +672,88 @@ func flatMask(ref *lab8) ([]bool, int) {
 	return sel, nsel
 }
 
+// nrBlock is one 16x16 block, its ISO 100 reference mean a*/b*, and how far
+// its colour stands from a 48 px surround (the "local colour" contrast).
+type nrBlock struct {
+	bx, by int
+	a, b   float64
+	local  float64
+}
+
+// blockSelections chooses the coloured flat blocks and the darkest flat
+// blocks from the ISO 100 reference, over the pixels flatMask accepted. The
+// colour blocks are the chart's patches and other flat colour: a mean chroma
+// of 12-110 and a within-block chroma spread under 6 (a gradient or an edge
+// is not a patch). The dark blocks are the flat blocks whose reference mean
+// luma is below 48, i.e. the black surround, so its neutrality is measured
+// apart from the mid-tones.
+func blockSelections(ref *lab8, sel []bool) (colour, dark []nrBlock) {
+	const B = 16
+	bw, bh := ref.w/B, ref.h/B
+	// Surround mean for the "local colour" test: a 48 px box of the ISO 100
+	// frame's a*/b*.
+	surA := boxPlane(ref.a, ref.w, ref.h, 48)
+	surB := boxPlane(ref.b, ref.w, ref.h, 48)
+	for by := 0; by < bh; by++ {
+		for bx := 0; bx < bw; bx++ {
+			var sy, sa, sb, saa, sbb float64
+			var n, ok int
+			for y := by * B; y < (by+1)*B; y++ {
+				for x := bx * B; x < (bx+1)*B; x++ {
+					i := y*ref.w + x
+					vy, va, vb := float64(ref.y[i]), float64(ref.a[i]), float64(ref.b[i])
+					sy += vy
+					sa += va
+					sb += vb
+					saa += va * va
+					sbb += vb * vb
+					n++
+					if sel[i] {
+						ok++
+					}
+				}
+			}
+			if n == 0 {
+				continue
+			}
+			frac := float64(ok) / float64(n)
+			my, ma, mb := sy/float64(n), sa/float64(n), sb/float64(n)
+			ch := math.Hypot(ma, mb)
+			spread := math.Sqrt(math.Max(0, (saa/float64(n)-ma*ma+sbb/float64(n)-mb*mb)/2))
+			cx, cy := bx*B+B/2, by*B+B/2
+			ci := cy*ref.w + cx
+			local := math.Hypot(ma-float64(surA[ci]), mb-float64(surB[ci]))
+			blk := nrBlock{bx, by, ma, mb, local}
+			if frac >= 0.8 && my >= 25 && ch >= 12 && ch <= 110 && spread < 6 {
+				colour = append(colour, blk)
+			}
+			if frac >= 0.6 && my < 48 {
+				dark = append(dark, blk)
+			}
+		}
+	}
+	return colour, dark
+}
+
+// blockMeanAB is a block's mean a*/b* in one pipeline.
+func blockMeanAB(p *lab8, bx, by int) (float64, float64) {
+	const B = 16
+	var sa, sb float64
+	var n int
+	for y := by * B; y < (by+1)*B && y < p.h; y++ {
+		for x := bx * B; x < (bx+1)*B && x < p.w; x++ {
+			i := y*p.w + x
+			sa += float64(p.a[i])
+			sb += float64(p.b[i])
+			n++
+		}
+	}
+	if n == 0 {
+		return 0, 0
+	}
+	return sa / float64(n), sb / float64(n)
+}
+
 var nrBands = [5]int{0, 1, 2, 4, 8} // band k: box(r[k]) - box(r[k+1])
 
 // measureNR computes one pipeline's metrics for target against its own
@@ -711,6 +827,92 @@ func measureNR(target, ref, basis *lab8, sel []bool) nrMetric {
 			m.NoiseA[b] = math.Sqrt(sa / n)
 			m.NoiseB[b] = math.Sqrt(sb / n)
 		}
+	}
+	// Coarse dark-tone noise ("pepper"): the 1-8 px band of the
+	// target-minus-reference luminance, reported per reference tone band.
+	// The scene cancels in the difference, so a band's number is the
+	// pipeline's own added noise in that tone range.
+	nb18 := bandPlane(dy, w, h, 1, 8)
+	toneEdges := [5]float64{0, 32, 64, 96, 256}
+	for b := 0; b < 4; b++ {
+		var ss float64
+		var n float64
+		for i := range nb18 {
+			if sel[i] && float64(ref.y[i]) >= toneEdges[b] && float64(ref.y[i]) < toneEdges[b+1] {
+				ss += float64(nb18[i]) * float64(nb18[i])
+				n++
+			}
+		}
+		if n > 0 {
+			m.ToneNoise[b] = math.Sqrt(ss / n)
+		}
+	}
+	// Coloured flat blocks and the darkest flat blocks: 16x16 blocks that
+	// the ISO 100 mask accepted, so both pipelines are measured on the same
+	// patches and the noise cannot pick its own areas.
+	cblk, dblk := blockSelections(ref, sel)
+	if len(cblk) > 0 {
+		var ratio, strongRatio, strongAbs, strongW, localRatio, cerr, localW float64
+		localN, strongN := 0, 0
+		for _, cb := range cblk {
+			ta, tb := blockMeanAB(target, cb.bx, cb.by)
+			chT, chR := math.Hypot(ta, tb), math.Hypot(cb.a, cb.b)
+			r := 0.0
+			if chR > 1e-6 {
+				r = chT / chR
+				ratio += r
+			}
+			// Saturated flat colour (the chart's squares and other strong
+			// colour), weighted by how saturated it was at ISO 100: the
+			// patches a pale high-ISO rendering is judged by.
+			if chR >= 30 {
+				w := math.Min(chR, 60)
+				strongN++
+				strongW += w
+				strongRatio += w * r
+				strongAbs += w * chT
+			}
+			// Weight a local patch by its contrast, so the chart's squares
+			// (bright on the black mount) count more than a low-contrast
+			// colour gradient. Above 12 the block is local at all.
+			if cb.local > 12 {
+				w := math.Min(cb.local, 48)
+				localN++
+				localW += w
+				localRatio += w * r
+				cerr += w * math.Hypot(ta-cb.a, tb-cb.b)
+			}
+		}
+		m.SatRetain = ratio / float64(len(cblk))
+		m.ColourBlocks = len(cblk)
+		if strongN > 0 && strongW > 0 {
+			m.SatStrong = strongRatio / strongW
+			m.SatAbs = strongAbs / strongW
+			m.StrongBlocks = strongN
+		}
+		if localN > 0 && localW > 0 {
+			m.SatLocal = localRatio / localW
+			m.ColourErr = cerr / localW
+			m.LocalBlocks = localN
+		}
+	}
+	if len(dblk) > 0 {
+		var ta, tb, ra, rb float64
+		for _, db := range dblk {
+			a, b := blockMeanAB(target, db.bx, db.by)
+			ra, rb = ra+db.a, rb+db.b
+			ta, tb = ta+a, tb+b
+		}
+		n := float64(len(dblk))
+		m.DarkA, m.DarkB = ta/n, tb/n
+		m.DarkDriftA, m.DarkDriftB = ta/n-ra/n, tb/n-rb/n
+		var sp float64
+		for _, db := range dblk {
+			a, b := blockMeanAB(target, db.bx, db.by)
+			sp += math.Pow(a-m.DarkA, 2) + math.Pow(b-m.DarkB, 2)
+		}
+		m.DarkSpread = math.Sqrt(sp / (2 * n))
+		m.DarkBlocks = len(dblk)
 	}
 	// Low-frequency chroma mottling (8-32 px) in the flat blocks: the
 	// added colour variation, not the scene's own colour gradients.
@@ -949,17 +1151,26 @@ func printNRSummary(recs []nrRecord) {
 		iso  float64
 	}
 	type agg struct {
-		n        int
-		oy, sy   float64 // luma noise
-		oc, sc   float64 // chroma noise
-		od, sd   [4]float64
-		oBs, sBs [4]float64
-		ob, sb   float64 // blotch
-		oi, si   float64 // impulse dots / MP
-		oda, odb float64 // drift vector
-		orb, srb float64 // row banding
-		ocb, scb float64 // col banding
-		oursMS   float64
+		n            int
+		oy, sy       float64 // luma noise
+		oc, sc       float64 // chroma noise
+		od, sd       [4]float64
+		oBs, sBs     [4]float64
+		ob, sb       float64 // blotch
+		oi, si       float64 // impulse dots / MP
+		oda, odb     float64 // drift vector
+		orb, srb     float64 // row banding
+		ocb, scb     float64 // col banding
+		oursMS       float64
+		otn, stn     [4]float64 // tone-band luma noise
+		osat, ssat   float64    // saturation retention (all coloured blocks)
+		osatL, ssatL float64    // saturation retention (local patches)
+		osatS, ssatS float64    // saturation retention (saturated flat colour)
+		oabs, sabs   float64    // absolute chroma on those blocks
+		oerr, serr   float64    // colour error
+		oda2, odb2   float64    // dark a*/b*
+		sda2, sdb2   float64
+		osp, ssp     float64 // dark spread
 	}
 	by := map[key]*agg{}
 	for _, r := range recs {
@@ -991,6 +1202,26 @@ func printNRSummary(recs []nrRecord) {
 		a.ocb += r.Ours.ColBand
 		a.scb += r.SPP.ColBand
 		a.oursMS += r.OursMS
+		for b := 0; b < 4; b++ {
+			a.otn[b] += r.Ours.ToneNoise[b]
+			a.stn[b] += r.SPP.ToneNoise[b]
+		}
+		a.osat += r.Ours.SatRetain
+		a.ssat += r.SPP.SatRetain
+		a.osatL += r.Ours.SatLocal
+		a.ssatL += r.SPP.SatLocal
+		a.osatS += r.Ours.SatStrong
+		a.ssatS += r.SPP.SatStrong
+		a.oabs += r.Ours.SatAbs
+		a.sabs += r.SPP.SatAbs
+		a.oerr += r.Ours.ColourErr
+		a.serr += r.SPP.ColourErr
+		a.oda2 += r.Ours.DarkA
+		a.odb2 += r.Ours.DarkB
+		a.sda2 += r.SPP.DarkA
+		a.sdb2 += r.SPP.DarkB
+		a.osp += r.Ours.DarkSpread
+		a.ssp += r.SPP.DarkSpread
 	}
 	var ks []key
 	for k := range by {
@@ -1027,8 +1258,30 @@ func printNRSummary(recs []nrRecord) {
 		fmt.Printf("%-24s %5g %3d  %6.3f/%5.3f %6.3f/%5.3f %6.3f/%5.3f %6.3f/%5.3f\n",
 			k.body, k.iso, a.n, a.oBs[0]/n, a.sBs[0]/n, a.oBs[1]/n, a.sBs[1]/n, a.oBs[2]/n, a.sBs[2]/n, a.oBs[3]/n, a.sBs[3]/n)
 	}
+	// The picture the columns above miss: the chart's colour, the dark
+	// surround's pepper and its neutrality.
+	fmt.Println("\nColour on coloured flat blocks, ours / SPP. sat* are block chroma / the same block's ISO 100")
+	fmt.Println("chroma (1 = kept); absChroma is the mean CIELAB chroma of the saturated blocks (ch >= 30 at ISO 100);")
+	fmt.Println("colourErr is their mean a*/b* distance from that ISO 100 (dE without lightness):")
+	fmt.Printf("%-24s %5s %3s  %13s %13s %13s %13s %13s\n", "body", "ISO", "n", "satAll", "satLocal", "satStrong", "absChroma", "colourErr")
+	for _, k := range ks {
+		a := by[k]
+		n := float64(a.n)
+		fmt.Printf("%-24s %5g %3d  %6.3f/%5.3f %6.3f/%5.3f %6.3f/%5.3f %6.1f/%5.1f %6.2f/%5.2f\n",
+			k.body, k.iso, a.n, a.osat/n, a.ssat/n, a.osatL/n, a.ssatL/n, a.osatS/n, a.ssatS/n,
+			a.oabs/n, a.sabs/n, a.oerr/n, a.serr/n)
+	}
+	fmt.Println("\nDark tones, ours / SPP: pepper is the 1-8 px luma sigma on flat blocks with ISO 100 luma < 32;")
+	fmt.Println("dark a*/b* and spread are 16x16 block means there (neutral = 0/0, spread = low-frequency mottle):")
+	fmt.Printf("%-24s %5s %3s  %13s %13s %13s %13s\n", "body", "ISO", "n", "pepper<32", "dark a*", "dark b*", "dark spread")
+	for _, k := range ks {
+		a := by[k]
+		n := float64(a.n)
+		fmt.Printf("%-24s %5g %3d  %6.2f/%5.2f %6.1f/%5.1f %6.1f/%5.1f %6.2f/%5.2f\n",
+			k.body, k.iso, a.n, a.otn[0]/n, a.stn[0]/n, a.oda2/n, a.sda2/n, a.odb2/n, a.sdb2/n, a.osp/n, a.ssp/n)
+	}
 	// Where SPP wins, averaged over the high-ISO rows.
-	var n, wy, wc, wb int
+	var n, wy, wc, wb, wsat, werr int
 	for _, k := range ks {
 		a := by[k]
 		n++
@@ -1041,8 +1294,15 @@ func printNRSummary(recs []nrRecord) {
 		if a.sb < a.ob {
 			wb++
 		}
+		if a.ssatL > a.osatL {
+			wsat++
+		}
+		if a.serr < a.oerr {
+			werr++
+		}
 	}
-	fmt.Printf("\nSPP has less noise on %d of %d body/ISO rows (luma), less chroma noise on %d, less blotch on %d.\n", wy, n, wc, wb)
+	fmt.Printf("\nSPP has less noise on %d of %d body/ISO rows (luma), less chroma noise on %d, less blotch on %d,\n", wy, n, wc, wb)
+	fmt.Printf("higher colour retention on %d and lower colour error on %d.\n", wsat, werr)
 }
 
 func writeNRCSV(path string, recs []nrRecord) error {
@@ -1054,7 +1314,10 @@ func writeNRCSV(path string, recs []nrRecord) error {
 		"o_detail0,o_detail1,o_detail2,o_detail3,s_detail0,s_detail1,s_detail2,s_detail3," +
 		"o_basis0,o_basis1,o_basis2,o_basis3,s_basis0,s_basis1,s_basis2,s_basis3,o_impulse,s_impulse," +
 		"o_blotchA,o_blotchB,s_blotchA,s_blotchB,o_driftA,o_driftB,s_driftA,s_driftB," +
-		"o_rowBand,o_colBand,s_rowBand,s_colBand\n")
+		"o_rowBand,o_colBand,s_rowBand,s_colBand," +
+		"o_tone0,o_tone1,o_tone2,o_tone3,s_tone0,s_tone1,s_tone2,s_tone3," +
+		"o_sat,s_sat,o_satLocal,s_satLocal,o_satStrong,s_satStrong,o_satAbs,s_satAbs,o_colourErr,s_colourErr,o_colourBlocks,s_colourBlocks,o_localBlocks,s_localBlocks,o_strongBlocks,s_strongBlocks," +
+		"o_darkA,o_darkB,o_darkSpread,o_darkDriftA,o_darkDriftB,s_darkA,s_darkB,s_darkSpread,s_darkDriftA,s_darkDriftB\n")
 	f := func(v float64) string { return strconv.FormatFloat(v, 'f', 4, 64) }
 	for _, r := range recs {
 		vals := []string{r.Ladder, r.Ref, r.Name, r.Group, r.Model,
@@ -1089,6 +1352,20 @@ func writeNRCSV(path string, recs []nrRecord) error {
 		vals = append(vals, f(r.Ours.BlotchA), f(r.Ours.BlotchB), f(r.SPP.BlotchA), f(r.SPP.BlotchB),
 			f(r.Ours.DriftA), f(r.Ours.DriftB), f(r.SPP.DriftA), f(r.SPP.DriftB),
 			f(r.Ours.RowBand), f(r.Ours.ColBand), f(r.SPP.RowBand), f(r.SPP.ColBand))
+		for _, m := range []nrMetric{r.Ours, r.SPP} {
+			for _, v := range m.ToneNoise {
+				vals = append(vals, f(v))
+			}
+		}
+		vals = append(vals, f(r.Ours.SatRetain), f(r.SPP.SatRetain), f(r.Ours.SatLocal), f(r.SPP.SatLocal),
+			f(r.Ours.SatStrong), f(r.SPP.SatStrong),
+			f(r.Ours.SatAbs), f(r.SPP.SatAbs),
+			f(r.Ours.ColourErr), f(r.SPP.ColourErr),
+			strconv.Itoa(r.Ours.ColourBlocks), strconv.Itoa(r.SPP.ColourBlocks),
+			strconv.Itoa(r.Ours.LocalBlocks), strconv.Itoa(r.SPP.LocalBlocks),
+			strconv.Itoa(r.Ours.StrongBlocks), strconv.Itoa(r.SPP.StrongBlocks),
+			f(r.Ours.DarkA), f(r.Ours.DarkB), f(r.Ours.DarkSpread), f(r.Ours.DarkDriftA), f(r.Ours.DarkDriftB),
+			f(r.SPP.DarkA), f(r.SPP.DarkB), f(r.SPP.DarkSpread), f(r.SPP.DarkDriftA), f(r.SPP.DarkDriftB))
 		b.WriteString(strings.Join(vals, ",") + "\n")
 	}
 	return os.WriteFile(path, []byte(b.String()), 0o644)
