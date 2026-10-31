@@ -98,6 +98,10 @@ func noiseAwareFix(group string) bool { return group == "DPM" || group == "Quatt
 // (FOVEON_DN_NOSPECK=1), for before/after crops.
 var noDespeckle = os.Getenv("FOVEON_DN_NOSPECK") != ""
 
+// noShadowChroma switches the low-frequency shadow colour fix off
+// (FOVEON_DN_NOSC=1), for isolating the stage that paints a colour patch.
+var noShadowChroma = os.Getenv("FOVEON_DN_NOSC") != ""
+
 // identity33 is the 3×3 identity.
 var identity33 = [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
 
@@ -190,18 +194,13 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 	// not noise) and stand out as black/white dots once the grain around them
 	// is gone. Repair them in camera-linear RGB, where tools/speck measures
 	// them and the thresholds below were fitted, before the denoiser. Only at
-	// high ISO, only on the DPM/Quattro families and only on a full-size
-	// export, so low ISO and preview cost stay as they were. The
-	// flat-neighbour test keeps stars and specular points, whose PSF lights
-	// the neighbours. Research switch FOVEON_DN_NOSPECK=1 renders the
-	// "before" for the speckle crops.
-	if maxW == 0 && !noDespeckle && strength > 0 && photoISO(ph) >= 800 && noiseAwareFix(calibGroup(ph)) {
-		lin := &render.Linear{W: img.W, H: img.H, Pix: img.Pix}
-		if n := render.Despeckle(lin, 0.5, 0.01, 0.05); os.Getenv("FOVEON_DN_DEBUG") != "" {
-			fmt.Fprintf(os.Stderr, "despeckle %s: %d samples\n", ph.Name, n)
-		}
-		img.Pix = lin.Pix
-	}
+	// high ISO, only on the DPM/Quattro families and at the working
+	// resolution of both the export and the preview: a preview binned 2-4x
+	// dilutes the same hot sample rather than moving it, so the same pass and
+	// the same thresholds keep the two paths consistent (before this the
+	// export had no dots and the preview did). The flat-neighbour test keeps
+	// stars and specular points, whose PSF lights the neighbours. Research
+	// switch FOVEON_DN_NOSPECK=1 renders the "before" for the speckle crops.
 	fullW := img.W
 	// A reduced-height readout (SD1 MED: rows binned in pairs, 4704×1568
 	// for a 3:2 frame) is brought to the frame's shape per axis on a
@@ -242,6 +241,13 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 			img = binCam2(img, bx, by)
 		}
 		lap(fmt.Sprintf("bin %dx%d -> %dx%d", bx, by, img.W, img.H))
+		if !noDespeckle && photoISO(ph) >= 800 && noiseAwareFix(calibGroup(ph)) {
+			lin := &render.Linear{W: img.W, H: img.H, Pix: img.Pix}
+			if n := render.Despeckle(lin, 0.5, 0.01, 0.05); os.Getenv("FOVEON_DN_DEBUG") != "" {
+				fmt.Fprintf(os.Stderr, "despeckle %s (%dx%d): %d samples\n", ph.Name, img.W, img.H, n)
+			}
+			img.Pix = lin.Pix
+		}
 		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph), Grey: greyOf(t), NoiseAware: noiseAwareFix(calibGroup(ph))})
 	}
 	lap("denoise")
@@ -259,12 +265,11 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 	}
 	lap("to linear")
 	// The low-frequency shadow colour noise the layer denoiser misses
-	// The low-frequency shadow colour noise the layer denoiser misses
 	// (render/shadowchroma.go), with noise reduction on: the colour path
 	// and colour film (its layers, fixed through the colour they make);
 	// not the IR looks, which model the layers themselves.
 	lap("develop+bin")
-	if strength > 0 && (irWhite == nil || sceneWB) {
+	if strength > 0 && !noShadowChroma && (irWhite == nil || sceneWB) {
 		noise := render.ShadowChromaFix(l, fullW, t.Colour)
 		if os.Getenv("FOVEON_DN_DEBUG") != "" {
 			fmt.Fprintf(os.Stderr, "shadow chroma noise %s: %.4f\n", ph.Name, noise)
