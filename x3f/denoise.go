@@ -246,14 +246,15 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		}
 	})
 	lap("guided")
+	ramp := restoreRamp(rel, o.ISO)
 	if !noRestore {
 		if perLayerRestore {
 			restoreDetail(img, orig, rel, o.Strength)
 			lap("restore detail")
 		} else {
-			restoreLuma(img, orig, wf, gw, rel, o.Strength)
+			restoreLuma(img, orig, wf, gw, rel, o.Strength, sig, ramp)
 			lap("restore luma")
-			restoreChroma(img, orig, wf, models)
+			restoreChroma(img, orig, wf, models, ramp)
 			lap("restore chroma")
 		}
 	}
@@ -338,7 +339,31 @@ func restoreDetail(img *CamImage, orig []float32, rel, strength float64) {
 // mostly the clean top layer's) go back into every layer alike. Giving
 // back each layer's own difference also gives back each layer's noise, the
 // bottom layer's above all: at ISO 6400 that was most of the noise left.
-func restoreLuma(img *CamImage, orig []float32, wf, gw [3]float32, rel, strength float64) {
+//
+// restoreRamp is how far into the noisy-restore regime a frame is: 0 at ISO
+// 400 and below (the restore behaves as it always did, so low ISO is
+// untouched) and 1 by ISO 800 on a frame whose relative luminance noise is
+// high enough. The relative-noise thresholds are measured on the DP1
+// Merrill studio ladder: 0.019 at ISO 200 and 0.028 at ISO 400, 0.044 at
+// ISO 800 and 0.067 at ISO 1600. Both gates are smooth so a body's ISO
+// steps do not jump, and the ISO gate keeps a synthetic or dark low-ISO
+// frame (whose measured relative noise can be high) on the old path.
+func restoreRamp(rel, iso float64) float64 {
+	ir := math.Max(0, math.Min(1, (iso-400)/400))
+	nr := (rel - 0.030) / (0.045 - 0.030)
+	nr = math.Max(0, math.Min(1, nr))
+	return ir * nr * nr * (3 - 2*nr)
+}
+
+// dnLT (research switch FOVEON_DN_LT) makes the restore noise-aware: each
+// band is soft-thresholded at dnLT times its own noise before it is given
+// back, so a real edge returns and the part of the residual that is only
+// noise does not. Without it the restore gives back (1-strength) of the
+// whole residual, and at NR Low (strength 0.3) that put most of the noise
+// back (DP1 Merrill studio ISO 6400 vs SPP: luma 15.1 against 11.1).
+var dnLT = envFloat("FOVEON_DN_LT", 2.0)
+
+func restoreLuma(img *CamImage, orig []float32, wf, gw [3]float32, rel, strength float64, sig []float32, ramp float64) {
 	keep := keepFor(rel)
 	var wb [4]float32
 	for b := range keep {
@@ -355,9 +380,21 @@ func restoreLuma(img *CamImage, orig []float32, wf, gw [3]float32, rel, strength
 		}
 	})
 	b1, b2, b4, b8 := boxBlur(d, w, h, 1), boxBlur(d, w, h, 2), boxBlur(d, w, h, 4), boxBlur(d, w, h, 8)
+	// Each band's noise relative to the pixel noise: the finer box's.
+	fr := [5]float32{1, 1.0 / 3, 1.0 / 5, 1.0 / 9, 1.0 / 17}
+	lt := float32(dnLT)
+	r := float32(ramp)
 	parallel(n, func(a, b int) {
 		for i := a; i < b; i++ {
-			v := wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
+			vOld := wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
+			v := vOld
+			if lt > 0 && r > 0 {
+				t := lt * sig[i]
+				vNew := wb[0]*softThreshold(d[i]-b1[i], t*fr[0]) + wb[1]*softThreshold(b1[i]-b2[i], t*fr[1]) +
+					wb[2]*softThreshold(b2[i]-b4[i], t*fr[2]) + wb[3]*softThreshold(b4[i]-b8[i], t*fr[3]) +
+					rest*softThreshold(b8[i], t*fr[4])
+				v = vOld*(1-r) + vNew*r
+			}
 			// Scale the layers, keeping their ratios (the colour): the same
 			// amount added to each layer is not grey once the colour matrix
 			// (which amplifies layer differences ~10x) is applied, and washed
@@ -377,8 +414,13 @@ func restoreLuma(img *CamImage, orig []float32, wf, gw [3]float32, rel, strength
 
 // Chroma restore threshold, in noise sigmas (research switch FOVEON_DN_CT).
 // It does not follow the NR strength: scaling it down for NR Low brought
-// the colour noise back (DP2 Merrill ISO 6400, dE2000 8.3 -> 18.1).
-var dnCT = envFloat("FOVEON_DN_CT", 3.0)
+// the colour noise back (DP2 Merrill ISO 6400, dE2000 8.3 -> 18.1). It does
+// follow the frame's noise through restoreRamp: 3 on a clean frame (as
+// before) and dnCT on a noisy one, where a coherent colour error of 10-30 px
+// is only 1-2 sigma at any one pixel but is exactly what the restore was
+// putting back. DP1 Merrill studio, NR Low: ISO 1600 chroma 2.25 -> 0.95
+// dE, ISO 6400 4.99 -> 2.96, while retained luminance detail is unchanged.
+var dnCT = envFloat("FOVEON_DN_CT", 6.0)
 
 // restoreChroma gives back the colour detail the filters removed where it
 // stands clear of the noise: each layer's difference minus the luminance
@@ -390,9 +432,16 @@ var dnCT = envFloat("FOVEON_DN_CT", 3.0)
 // noise are alike; a coloured surface or edge is large at the coarse scales,
 // where the noise is not. Without it a clean ISO 200 frame lost its colour
 // detail (print on an orange spatula) and its saturated edges bled.
-func restoreChroma(img *CamImage, orig []float32, wf [3]float32, models [3]noiseModel) {
+func restoreChroma(img *CamImage, orig []float32, wf [3]float32, models [3]noiseModel, ramp float64) {
 	w, h, n := img.W, img.H, img.W*img.H
-	t := float32(dnCT)
+	r := float32(ramp)
+	// On a clean frame keep the old threshold (3 sigma); on a noisy one
+	// raise it to dnCT, because a blotch is coherent over 10-30 px and only
+	// 1-2 sigma at each pixel.
+	t := 3*(1-r) + float32(dnCT)*r
+	if debugNoise && r > 0 {
+		fmt.Fprintf(os.Stderr, "denoise: chroma restore threshold %.2f sigma (ramp %.2f)\n", t, r)
+	}
 	if debugNoise {
 		for k := 0; k < 3; k++ {
 			fmt.Fprintf(os.Stderr, "denoise: layer %d noise a=%.3g b=%.3g, sigma at 0.05/0.2/0.5: %.5f %.5f %.5f\n", k, models[k].a, models[k].b, models[k].at(0.05), models[k].at(0.2), models[k].at(0.5))
