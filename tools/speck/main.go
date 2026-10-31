@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
@@ -29,7 +30,7 @@ func median9(n [9]float64) float64 {
 
 // count returns how many channel samples sit more than fraction away from
 // their 3x3 median (and more than floor above it), and how many per channel.
-func count(l *render.Linear, fraction, floor float64) (int, [3]int) {
+func count(l *render.Linear, fraction, floor, flatSpan float64) (int, [3]int) {
 	var n [9]float64
 	total := 0
 	var per [3]int
@@ -46,7 +47,14 @@ func count(l *render.Linear, fraction, floor float64) (int, [3]int) {
 					}
 				}
 				med := median9(n)
-				if med < 1e-9 {
+				lo, hi := math.MaxFloat64, -math.MaxFloat64
+				for j, q := range n {
+					if j == 4 {
+						continue
+					}
+					lo, hi = math.Min(lo, q), math.Max(hi, q)
+				}
+				if med < 1e-9 || hi-lo > flatSpan {
 					continue
 				}
 				d := v - med
@@ -65,15 +73,18 @@ func count(l *render.Linear, fraction, floor float64) (int, [3]int) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "usage: speck photo.X3F [fraction] [floor]\n")
+		fmt.Fprintf(os.Stderr, "usage: speck photo.X3F [fraction] [floor] [flatSpan]\n")
 		os.Exit(2)
 	}
-	fraction, floor := 0.6, 0.0015
+	fraction, floor, flatSpan := 0.6, 0.0015, 0.05
 	if len(os.Args) > 2 {
 		fmt.Sscanf(os.Args[2], "%g", &fraction)
 	}
 	if len(os.Args) > 3 {
 		fmt.Sscanf(os.Args[3], "%g", &floor)
+	}
+	if len(os.Args) > 4 {
+		fmt.Sscanf(os.Args[4], "%g", &flatSpan)
 	}
 	f, err := x3f.Open(os.Args[1])
 	if err != nil {
@@ -98,9 +109,9 @@ func main() {
 		os.Exit(1)
 	}
 	lin := &render.Linear{W: img.W, H: img.H, Pix: img.Pix}
-	before, per := count(lin, fraction, floor)
-	changed := render.Despeckle(lin, fraction, floor)
-	after, _ := count(lin, fraction, floor)
+	before, per := count(lin, fraction, floor, flatSpan)
+	changed := render.Despeckle(lin, fraction, floor, flatSpan)
+	after, _ := count(lin, fraction, floor, flatSpan)
 	fmt.Printf("%s: %dx%d, bad pixels repaired %d, outlier samples %d (R %d G %d B %d) at fraction %.2f floor %g\n",
 		os.Args[1], img.W, img.H, fixed, before, per[0], per[1], per[2], fraction, floor)
 	fmt.Printf("   despeckle changed %d samples, outliers left %d\n", changed, after)

@@ -94,6 +94,10 @@ func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
 // to 0.47 in spp-check with it).
 func noiseAwareFix(group string) bool { return group == "DPM" || group == "Quattro" }
 
+// noDespeckle is the research switch that keeps the pre-fix speckle path
+// (FOVEON_DN_NOSPECK=1), for before/after crops.
+var noDespeckle = os.Getenv("FOVEON_DN_NOSPECK") != ""
+
 // identity33 is the 3×3 identity.
 var identity33 = [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
 
@@ -181,6 +185,23 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 	} else {
 		x3f.ClipHighlights(img, t.Gain)
 	}
+	// Single-pixel hot/dead samples that the CAMF lists do not cover survive
+	// the denoiser (it smooths, but one sample far off its neighbourhood is
+	// not noise) and stand out as black/white dots once the grain around them
+	// is gone. Repair them in camera-linear RGB, where tools/speck measures
+	// them and the thresholds below were fitted, before the denoiser. Only at
+	// high ISO, only on the DPM/Quattro families and only on a full-size
+	// export, so low ISO and preview cost stay as they were. The
+	// flat-neighbour test keeps stars and specular points, whose PSF lights
+	// the neighbours. Research switch FOVEON_DN_NOSPECK=1 renders the
+	// "before" for the speckle crops.
+	if maxW == 0 && !noDespeckle && strength > 0 && photoISO(ph) >= 800 && noiseAwareFix(calibGroup(ph)) {
+		lin := &render.Linear{W: img.W, H: img.H, Pix: img.Pix}
+		if n := render.Despeckle(lin, 0.5, 0.01, 0.05); os.Getenv("FOVEON_DN_DEBUG") != "" {
+			fmt.Fprintf(os.Stderr, "despeckle %s: %d samples\n", ph.Name, n)
+		}
+		img.Pix = lin.Pix
+	}
 	fullW := img.W
 	// A reduced-height readout (SD1 MED: rows binned in pairs, 4704×1568
 	// for a 3:2 frame) is brought to the frame's shape per axis on a
@@ -237,6 +258,7 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 		l = render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t)
 	}
 	lap("to linear")
+	// The low-frequency shadow colour noise the layer denoiser misses
 	// The low-frequency shadow colour noise the layer denoiser misses
 	// (render/shadowchroma.go), with noise reduction on: the colour path
 	// and colour film (its layers, fixed through the colour they make);
