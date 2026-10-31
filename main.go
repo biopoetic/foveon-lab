@@ -1319,6 +1319,10 @@ func calibCommand(desk string) bool {
 		sppCheckCommand(desk)
 		return true
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "nr-score" {
+		nrScoreCommand(desk)
+		return true
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "spp-decomp" {
 		sppDecompCommand(desk)
 		return true
