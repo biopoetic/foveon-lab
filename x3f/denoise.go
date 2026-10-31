@@ -211,6 +211,10 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		scale = 1
 	}
 	r := max(2, int(math.Round(colourRadius(o.ISO)*scale)))
+	if debugNoise {
+		fmt.Fprintf(os.Stderr, "denoise: wf %.9g %.9g %.9g mean %.9g eps %.9g r %d\n",
+			wf[0], wf[1], wf[2], mean, eps, r)
+	}
 	// The guide does not change per layer: its blurs are shared.
 	mI, mII := boxBlur(G, w, h, r), boxBlurSq(G, w, h, r)
 	var out [3][]float32
@@ -260,10 +264,14 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 			restoreDetail(img, orig, rel, o.Strength)
 			lap("restore detail")
 		} else {
-			restoreLuma(img, orig, wf, gw, rel, o.Strength, sig, ramp)
-			lap("restore luma")
-			restoreChroma(img, orig, wf, models, ramp)
-			lap("restore chroma")
+			if !noLumaRestore {
+				restoreLuma(img, orig, wf, gw, rel, o.Strength, sig, ramp)
+				lap("restore luma")
+			}
+			if !noChromaRestore {
+				restoreChroma(img, orig, wf, models, ramp)
+				lap("restore chroma")
+			}
 		}
 	}
 }
@@ -288,6 +296,15 @@ var (
 		{0.21, 0.17, 0.21, 0.46},
 	}
 	noRestore = os.Getenv("FOVEON_DN_NORESTORE") != ""
+	// FOVEON_DN_NOLUMA / FOVEON_DN_NOCHROMA split the restore, so the luma
+	// and chroma halves can be measured on their own. Measured on the fixed
+	// basis (DP1 Merrill ladder, task 14): the four variants agree on 0-1 px
+	// detail to 0.0003 at every ISO, and the luma half adds no detail; but
+	// spp-check needs both halves (183 photos, ALL 7.064 both, 7.165 luma
+	// only, 7.207 chroma only; 1/16/32 photos worse by >0.30). So the luma
+	// restore stays: it buys no detail, but removing it is not free either.
+	noLumaRestore   = os.Getenv("FOVEON_DN_NOLUMA") != ""
+	noChromaRestore = os.Getenv("FOVEON_DN_NOCHROMA") != ""
 	// perLayerRestore: give back each layer's own difference, as up to
 	// v0.4.8 (research switch FOVEON_DN_PERLAYER=1), which gave back each
 	// layer's noise with it. The default gives back the luminance detail
