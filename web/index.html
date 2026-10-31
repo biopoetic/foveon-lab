@@ -34,6 +34,11 @@ aside{border-right:1px solid var(--line);overflow:auto;background:var(--panel)}
 .ph{display:flex;gap:8px;align-items:center;padding:5px 8px;cursor:pointer;border-bottom:1px solid #202020}
 .ph:hover{background:#242424}
 .ph.sel{background:#3a2f18}
+.ph.pick{box-shadow:inset 3px 0 var(--accent)}
+#selBar{display:flex;gap:5px;align-items:center;padding:5px 8px;border-bottom:1px solid var(--line);background:var(--panel2);font-size:12px;color:var(--dim);position:sticky;top:0;z-index:2}
+#selBar button{padding:1px 7px;font-size:12px}
+#selBar #selCount{flex:1;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#exportSel{margin-left:2px}
 .ph img{width:72px;height:48px;object-fit:cover;border-radius:3px;background:#000;flex:none}
 .ph small{display:block;color:var(--dim)}
 .ph .star{margin-left:auto;flex:none;color:#555;font-size:18px;line-height:1;padding:2px 4px;border-radius:3px}
@@ -159,8 +164,8 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 .fdir .fn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fdir .fc{opacity:.55;font-size:12px;white-space:nowrap}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;width:min(440px,92vw);display:flex;flex-direction:column;gap:9px}
-#bProg{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
-#bProg div{height:100%;width:0;background:var(--accent);transition:width .2s}
+#bProg,#cardProg{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+#bProg div,#cardProg div{height:100%;width:0;background:var(--accent);transition:width .2s}
 .lookbar{grid-column:1/-1;color:var(--dim);padding:2px 2px 6px}
 .lookbar a,.cap a.more{color:var(--accent2);cursor:pointer}
 #aiSetup{display:none;flex-direction:column;gap:7px;padding:10px 12px;border-bottom:1px solid var(--line)}
@@ -204,10 +209,19 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <label class="chk" id="accLab" title="Accurate previews: start from the raw data mapped onto SPP's own neutral rendering instead of the camera's JPEG (measured ~3x closer to SPP on SD1 Merrill files; the camera JPEG carries the in-camera colour mode). The first view of a photo decodes its raw data in the background: a quick version in ~2-5 s, then the full, denoised one (~10-30 s)."><input type="checkbox" id="accurate"> Accurate</label>
     <label class="chk" title="Also list ordinary JPEG, TIFF and PNG files (e.g. your SPP exports or other cameras). Presets only imitate the look on them — they are not Foveon raw data and SPP can't open them."><input type="checkbox" id="allImages"> All images</label>
     <label class="chk" title="Show only the photos you starred (☆ next to each photo, or the F key)"><input type="checkbox" id="favOnly"> ★ Favorites</label>
-    <button id="folders" title="Choose where your X3F photos and SPP preset files are">Folders…</button>
+    <button id="folders" title="Choose where your photos are">Folders…</button>
+    <button id="cardBtn" class="primary" title="Copy new photos off a camera card into your library">Import from card…</button>
     <button id="quit" title="Stop Foveon Lab">Quit</button>
   </header>
-  <aside id="photos"></aside>
+  <aside id="photos">
+    <div id="selBar" title="Select several photos, then export them with one look">
+      <button id="selAll" title="Select every listed photo">All</button>
+      <button id="selFav" title="Select the photos you starred">★</button>
+      <button id="selClear" title="Select only the photo you are looking at">1</button>
+      <span id="selCount">1 selected</span>
+    </div>
+    <div id="photoList"></div>
+  </aside>
   <main id="main">
     <section id="gridView">
       <div id="bar">
@@ -222,6 +236,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         </select>
         <span id="count" style="color:var(--dim)"></span>
         <button class="ai" id="aiOpen" title="Let an AI agent pick and tune the best preset for this photo">✦ AI pick</button>
+        <button id="exportSel" class="primary" title="Export the selected photos with one look">Export…</button>
       </div>
       <div class="note">The preview is an <b>emulation</b> of SPP settings on the JPEG embedded in the X3F (Sigma's algorithms are not public). Use it to pick and compare presets; develop the final image in SPP. White Balance / ColorTemp are not emulated.</div>
       <div id="grid"></div>
@@ -250,7 +265,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div class="src" id="pSrc"></div>
         <canvas id="histo" width="256" height="72" title="Histogram of the rendered image (R, G, B and luminance)"></canvas>
         <div class="src" id="clipInfo"></div>
-        <div class="pbar"><button id="undoBtn" title="Undo the last change to this photo (Ctrl+Z)" disabled>↶ Undo</button><button id="redoBtn" title="Redo (Ctrl+Shift+Z or Ctrl+Y)" disabled>↷ Redo</button><button id="reset" title="Undo every change to this preset">Reset to preset</button><button id="save" class="primary">Save as preset</button></div>
+        <div class="pbar"><button id="undoBtn" title="Undo the last change to this photo (Ctrl+Z)" disabled>↶ Undo</button><button id="redoBtn" title="Redo (Ctrl+Shift+Z or Ctrl+Y)" disabled>↷ Redo</button><button id="reset" title="Undo every change to this preset">Reset to preset</button><button id="saveEdits" title="Remember these settings for this photo; a batch export can keep them">Remember</button><button id="save" class="primary">Save as preset</button></div>
         <div class="grp" data-g="tone"><div class="gh"><span class="chev">▾</span><span class="gt">Tone</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
           <div class="gb" id="g-tone">
           </div>
@@ -451,16 +466,41 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
   </div>
 </div>
 <div id="batch" class="modal">
-  <div class="box">
-    <b>Batch export</b>
+  <div class="box" style="width:min(560px,94vw)">
+    <b>Export photos</b>
     <div class="src" id="bPreset"></div>
-    <label class="chk"><input type="radio" name="bScope" value="folder" checked> <span id="bFolderLab">This folder</span></label>
+    <label class="chk"><input type="radio" name="bScope" value="selected" checked> <span id="bSelectedLab">The selected photos</span></label>
+    <label class="chk"><input type="radio" name="bScope" value="folder"> <span id="bFolderLab">This folder</span></label>
     <label class="chk"><input type="radio" name="bScope" value="all"> <span id="bAllLab">All listed photos</span></label>
-    <label class="chk">Format <select id="bFormat"><option value="jpeg">JPEG (full resolution)</option><option value="tiff">TIFF 16-bit</option><option value="dng">DNG 16-bit (as rendered)</option></select></label>
-    <div class="src">Saved next to each photo in a <code>foveon-lab</code> folder. Your originals are not touched.</div>
+    <label class="chk" id="bLookRow">Look <select id="bPresetSel" style="flex:1"></select></label>
+    <div id="bEditChoice" style="display:none">
+      <div class="src">Some selected photos have their own saved edits.</div>
+      <label class="chk"><input type="radio" name="bEdits" value="preset" checked> Use the look for all</label>
+      <label class="chk"><input type="radio" name="bEdits" value="keep"> Keep each photo's saved edits</label>
+    </div>
+    <label class="chk">Format <select id="bFormat"><option value="jpeg">JPEG (full size)</option><option value="tiff">TIFF 16-bit</option><option value="dng">DNG 16-bit</option></select></label>
+    <label class="chk">Save to <select id="bDest"><option value="">Next to each photo (foveon-lab folder)</option><option value="chosen">A folder I choose</option></select></label>
+    <div id="bDestRow" style="display:none;gap:6px;align-items:center"><input id="bDestPath" type="text" style="flex:1" placeholder="Folder"><button id="bDestPick">Choose…</button></div>
+    <label class="chk" id="bPhotosRow" style="display:none"><input type="checkbox" id="bPhotos"> Add the finished photos to Apple Photos</label>
+    <div class="src" id="bNote">Full size, sRGB, JPEG at high quality. A file that is already there is never replaced; the new one gets a number.</div>
     <div id="bProg"><div></div></div>
     <div class="src" id="bMsg"></div>
-    <div class="btns"><button class="primary" id="bStart">Export</button> <button id="bClose">Close</button></div>
+    <div class="btns"><button class="primary" id="bStart">Export</button> <button id="bStop" style="display:none">Stop</button> <button id="bClose">Close</button></div>
+  </div>
+</div>
+<div id="cardDlg" class="modal">
+  <div class="box" style="width:min(620px,94vw)">
+    <b>Import from card</b>
+    <div class="src" id="cardStatus">Looking for a card…</div>
+    <label class="chk">Card or folder <select id="cardRoot" style="flex:1"></select><button id="cardPick">Choose…</button></label>
+    <label class="chk">Library <input id="cardLibrary" type="text" style="flex:1" placeholder="Where the originals are copied"><button id="cardLibPick">Choose…</button></label>
+    <div class="src" id="cardLibNote">Your card is only read. The originals are copied once into a folder named by the day they were taken.</div>
+    <label class="chk" id="cardPhotosRow" style="display:none"><input type="checkbox" id="cardPhotos"> Add exported photos to Apple Photos (an album by date)</label>
+    <label class="chk" id="cardICloudRow" style="display:none"><input type="checkbox" id="cardICloud"> Keep the library in iCloud Drive</label>
+    <div class="src" id="cardScan">Choose a card to see what is new.</div>
+    <div id="cardProg"><div></div></div>
+    <div class="src" id="cardMsg"></div>
+    <div class="btns"><button class="primary" id="cardStart">Import</button> <button id="cardStop" style="display:none">Stop</button> <button id="cardClose">Close</button></div>
   </div>
 </div>
 <div id="toast"></div>
@@ -505,6 +545,7 @@ const S = {
   cam: store.get("cam","auto"), src: store.get("src",""), q: "",
   list: [], idx: -1, params: null, base: null,
   looks: store.get("looks", ""), lookKey: "", lookGroups: null, lookOpen: null,
+  sel: new Set(), selAnchor: null,
 };
 
 function toast(html, ms=4000){
@@ -531,8 +572,8 @@ function renderURL(opts){
 // ---------- photos ----------
 async function loadPhotos(){
   S.photos = (await (await fetch("/api/photos")).json()) || [];
-  const box = $("#photos"); box.innerHTML = "";
-  if (!S.photos.length){ box.innerHTML = '<div class="empty">No X3F photos found. Use <b>Folders…</b> to choose where they are.</div>'; return; }
+  const box = $("#photoList"); box.innerHTML = "";
+  if (!S.photos.length){ box.innerHTML = '<div class="empty">No photos found yet. Use <b>Import from card…</b> or <b>Folders…</b> to choose where they are.</div>'; paintSelection(); return; }
   // One collapsible group per folder; collapsed folders are remembered.
   const collapsed = new Set(store.get("collapsedFolders", []));
   const counts = {};
@@ -562,10 +603,53 @@ async function loadPhotos(){
     el.querySelector(".star").onclick = ev => { ev.stopPropagation(); toggleFavorite(p.id); };
     el.querySelector(".trash").onclick = ev => { ev.stopPropagation(); deletePhoto(p.id); };
     if (p.unsupported) el.style.opacity = .55;
-    el.onclick = () => selectPhoto(p.id);
+    el.onclick = ev => photoClicked(p.id, ev);
     group.appendChild(el);
   }
   applyFavFilter();
+  paintSelection();
+}
+
+// ---------- choosing several photos ----------
+// A plain click opens one photo; ctrl/cmd-click adds or removes one; a
+// shift-click adds everything between the last click and this one. The
+// selection is what "Export…" uses.
+function photoClicked(id, ev){
+  const visible = S.photos.filter(p => !$("#favOnly").checked || p.favorite);
+  if (ev.shiftKey && S.selAnchor && visible.some(p => p.id === S.selAnchor)){
+    const a = visible.findIndex(p => p.id === S.selAnchor), b = visible.findIndex(p => p.id === id);
+    if (a >= 0 && b >= 0){
+      for (let i = Math.min(a, b); i <= Math.max(a, b); i++) S.sel.add(visible[i].id);
+    }
+  } else if (ev.ctrlKey || ev.metaKey){
+    S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id);
+    S.selAnchor = id;
+  } else {
+    S.sel = new Set([id]);
+    S.selAnchor = id;
+  }
+  selectPhoto(id);
+  paintSelection();
+}
+
+function paintSelection(){
+  const n = S.sel.size;
+  $("#selCount").textContent = n === 1 ? "1 selected" : `${n} selected`;
+  document.querySelectorAll("#photoList .ph").forEach(el => el.classList.toggle("pick", S.sel.has(el.dataset.id)));
+  const photo = S.photos.find(p => p.id === S.photo?.id);
+  if (!n && photo){ S.sel = new Set([photo.id]); S.selAnchor = photo.id; }
+  $("#exportSel").textContent = CARD.settings?.photosApp && CARD.settings?.platform === "darwin" ? "Export to Photos…" : "Export…";
+  $("#exportSel").disabled = n === 0;
+}
+
+function selectAllPhotos(){
+  const visible = S.photos.filter(p => !$("#favOnly").checked || p.favorite);
+  S.sel = new Set(visible.map(p => p.id));
+  paintSelection();
+}
+function selectFavoritePhotos(){
+  S.sel = new Set(S.photos.filter(p => p.favorite).map(p => p.id));
+  paintSelection();
 }
 
 // deletePhoto moves a photo to the Recycle Bin / Trash after a confirmation
@@ -688,6 +772,8 @@ function selectPhoto(id){
   if (!p) return;
   const first = !S.photo; // the photo restored at start-up: keep folders as left
   S.photo = p; store.set("photo", p.id);
+  if (!S.sel.size){ S.sel.add(p.id); S.selAnchor = p.id; }
+  paintSelection();
   sppButton(); exportButtons();
   document.querySelectorAll(".ph").forEach(e => e.classList.toggle("sel", e.dataset.id === p.id));
   const phEl = document.querySelector(`.ph[data-id="${p.id}"]`);
@@ -1821,33 +1907,100 @@ function cropInit(){
   window.addEventListener("resize", () => { if (CROP.on) cropLayout(); });
 }
 
+// ---------- saved edits, one photo at a time ----------
+// "Remember" keeps the sliders of the photo you are looking at in this
+// browser. Batch export can then either use one look for all, or keep each
+// photo's own remembered settings.
+function savedEdit(id){
+  try { const v = localStorage.getItem("fl.edit." + id); return v ? JSON.parse(v) : null; } catch { return null; }
+}
+function savePhotoEdits(){
+  if (!S.photo || !S.params) return;
+  store.set("edit." + S.photo.id, {params: {...S.params}});
+  toast("These settings are remembered for this photo. Batch export can keep them.", 5000);
+}
+function hasSavedEdit(id){ return !!savedEdit(id); }
+
 // ---------- batch export ----------
-const BATCH = {ctl: null};
-function batchOpen(){
-  const p = current();
+const BATCH = {ctl: null, ids: []};
+
+function batchIds(scope){
+  const ok = x => !x.unsupported;
+  if (scope === "all") return S.photos.filter(ok).map(x => x.id);
+  if (scope === "folder") return S.photos.filter(x => ok(x) && x.folder === S.photo.folder).map(x => x.id);
+  const inList = S.photos.filter(ok).map(x => x.id);
+  return inList.filter(id => S.sel.has(id));
+}
+
+function batchOpen(scope){
+  if (!S.photo){ toast("Pick a photo first.", 4000); return; }
+  scope = scope || (S.sel.size > 1 ? "selected" : "folder");
+  BATCH.ids = [];
   const folder = S.photos.filter(x => x.folder === S.photo.folder && !x.unsupported);
-  $("#bPreset").textContent = "Preset: " + (dirty() ? (p ? p.name + " (tuned)" : "tuned settings") : (p ? p.name : "Neutral"));
-  $("#bFolderLab").textContent = `This folder — ${S.photo.folder} (${folder.length} photos)`;
-  $("#bAllLab").textContent = `All listed photos (${S.photos.filter(x => !x.unsupported).length})`;
+  const all = S.photos.filter(x => !x.unsupported);
+  const p = current();
+  const tuned = !!S.params && $("#detail").classList.contains("on") && dirty();
+  $("#bSelectedLab").textContent = `The selected photos (${batchIds("selected").length})`;
+  $("#bFolderLab").textContent = `This folder: ${S.photo.folder} (${folder.length} photos)`;
+  $("#bAllLab").textContent = `All listed photos (${all.length})`;
+  const r = document.querySelector(`input[name=bScope][value="${scope}"]`);
+  if (r) r.checked = true;
+  $("#bPreset").textContent = tuned ? "Look: the current settings" : "Look: " + (p ? p.name : "Neutral");
+  // Every preset the app has, including your own, plus the current tuning.
+  const opts = [`<option value="">Neutral</option>`];
+  if (tuned) opts.push(`<option value="__current">Current settings (tuned)</option>`);
+  const byName = [...S.presets].sort((a, b) => (a.source + a.name).localeCompare(b.source + b.name));
+  opts.push(byName.map(x => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(x.source)}</option>`).join(""));
+  $("#bPresetSel").innerHTML = opts.join("");
+  $("#bPresetSel").value = tuned && !p ? "__current" : (p ? p.id : "");
+  const ids = batchIds(scope);
+  const edits = ids.filter(hasSavedEdit);
+  $("#bEditChoice").style.display = edits.length ? "" : "none";
+  $("#bEditChoice").firstElementChild.textContent = `${edits.length} selected photo${edits.length > 1 ? "s have" : " has"} saved edits.`;
+  document.querySelector('input[name=bEdits][value="preset"]').checked = true;
+  const dest = store.get("exportFolder", "");
+  $("#bDest").value = dest ? "chosen" : "";
+  $("#bDestPath").value = dest;
+  $("#bDestRow").style.display = dest ? "flex" : "none";
+  const photosOn = !!(CARD.settings?.photosApp && CARD.settings?.platform === "darwin");
+  $("#bPhotosRow").style.display = photosOn ? "" : "none";
+  $("#bPhotos").checked = photosOn;
   $("#bProg div").style.width = "0"; $("#bMsg").textContent = "";
-  $("#bStart").disabled = false;
+  $("#bStart").disabled = false; $("#bStop").style.display = "none";
+  $("#bStart").textContent = photosOn && $("#bPhotos").checked ? "Export to Photos" : "Export";
   $("#batch").classList.add("on");
 }
 
 async function batchStart(){
-  const p = current();
   const scope = document.querySelector('input[name=bScope]:checked').value;
-  const ids = S.photos.filter(x => !x.unsupported && (scope === "all" || x.folder === S.photo.folder)).map(x => x.id);
-  const body = {ids, format: $("#bFormat").value, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2, denoise: +$("#nr").value, space: $("#cspace").value};
-  $("#bStart").disabled = true;
+  const ids = batchIds(scope);
+  if (!ids.length){ $("#bMsg").textContent = "No photos to export. Select some first."; return; }
+  const look = $("#bPresetSel").value;
+  const keep = $("#bEditChoice").style.display !== "none" &&
+    document.querySelector('input[name=bEdits]:checked').value === "keep";
+  const paramsById = {};
+  if (keep) for (const id of ids){ const e = savedEdit(id); if (e?.params) paramsById[id] = e.params; }
+  const destMode = $("#bDest").value;
+  const destination = destMode === "chosen" ? $("#bDestPath").value.trim() : "";
+  if (destMode === "chosen" && !destination){ $("#bMsg").textContent = "Choose a folder to save into."; return; }
+  if (destination) store.set("exportFolder", destination);
+  const photos = $("#bPhotosRow").style.display !== "none" && $("#bPhotos").checked;
+  const body = {
+    ids, format: $("#bFormat").value,
+    preset: look === "__current" ? "" : look,
+    params: look === "__current" ? S.params : null,
+    paramsById, comp: comp() === "1",
+    denoise: +$("#nr").value, space: $("#cspace").value, destination, photos,
+  };
+  $("#bStart").disabled = true; $("#bStop").style.display = "";
   BATCH.ctl = new AbortController();
   let res;
   try {
     res = await fetch("/api/export/batch", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body), signal: BATCH.ctl.signal});
-  } catch { return; }
-  if (!res.ok){ $("#bMsg").textContent = await res.text(); $("#bStart").disabled = false; return; }
+  } catch { $("#bStart").disabled = false; $("#bStop").style.display = "none"; return; }
+  if (!res.ok){ $("#bMsg").textContent = await res.text(); $("#bStart").disabled = false; $("#bStop").style.display = "none"; return; }
   const reader = res.body.getReader(), dec = new TextDecoder();
-  let buf = "", errors = [], last = "";
+  let buf = "", errors = [], last = "", doneLine = null;
   try {
     for (;;){
       const {value, done} = await reader.read();
@@ -1856,12 +2009,8 @@ async function batchStart(){
       let nl;
       while ((nl = buf.indexOf(String.fromCharCode(10))) >= 0){
         const line = JSON.parse(buf.slice(0, nl)); buf = buf.slice(nl + 1);
-        if (line.done){
-          $("#bMsg").innerHTML = `Done: ${line.ok} exported${line.failed ? `, ${line.failed} failed` : ""}.` +
-            (last ? ` <a id="bReveal">Show in folder</a>` : "") +
-            (errors.length ? `<br>${errors.slice(0, 3).map(esc).join("<br>")}` : "");
-          if ($("#bReveal")) $("#bReveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(last));
-        } else {
+        if (line.done){ doneLine = line; }
+        else {
           $("#bProg div").style.width = (100 * line.i / line.n) + "%";
           $("#bMsg").textContent = `${line.i}/${line.n} ${line.name || ""}`;
           if (line.error) errors.push(`${line.name || "?"}: ${line.error}`);
@@ -1871,11 +2020,172 @@ async function batchStart(){
     }
   } catch {}
   BATCH.ctl = null;
+  $("#bStart").disabled = false; $("#bStop").style.display = "none";
+  if (doneLine){
+    let msg = `Done: ${doneLine.ok} exported${doneLine.failed ? `, ${doneLine.failed} failed` : ""}.`;
+    if (doneLine.photos) msg += ` ${doneLine.photos} added to Apple Photos (${esc(doneLine.photosAlbum)}).`;
+    if (doneLine.photosError) msg += `<br>Photos: ${esc(doneLine.photosError)}`;
+    if (last) msg += ` <a id="bReveal">Show in folder</a>`;
+    if (errors.length) msg += `<br>${errors.slice(0, 3).map(esc).join("<br>")}`;
+    $("#bMsg").innerHTML = msg;
+    if ($("#bReveal")) $("#bReveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(last));
+    $("#bProg div").style.width = "100%";
+  }
 }
 
 function batchClose(){
-  if (BATCH.ctl){ BATCH.ctl.abort(); BATCH.ctl = null; toast("Batch export stopped."); }
+  if (BATCH.ctl){ BATCH.ctl.abort(); BATCH.ctl = null; toast("Export stopped. Files already finished are kept.", 5000); }
   $("#batch").classList.remove("on");
+}
+
+// ---------- import from card ----------
+const CARD = {settings: null, cards: [], root: "", scan: null, ctl: null};
+
+async function cardDetect(){
+  try {
+    const d = await (await fetch("/api/card/detect")).json();
+    CARD.settings = d.settings || null;
+    CARD.cards = d.cards || [];
+  } catch { CARD.settings = null; CARD.cards = []; }
+  paintSelection();
+  return CARD.settings;
+}
+
+function fmtBytes(n){
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + " GB";
+  if (n >= 1e6) return Math.round(n / 1e6) + " MB";
+  if (n >= 1e3) return Math.round(n / 1e3) + " KB";
+  return n + " bytes";
+}
+
+// The header button: after the one-time setup, one click starts the copy.
+async function importFromCard(){
+  await cardDetect();
+  const ready = CARD.settings?.library && CARD.cards.length === 1 && CARD.cards[0].new > 0;
+  if (ready){
+    CARD.root = CARD.cards[0].root;
+    openCardDialog();
+    cardStart();
+    return;
+  }
+  openCardDialog();
+}
+
+async function openCardDialog(){
+  await cardDetect();
+  const s = CARD.settings || {};
+  const darwin = s.platform === "darwin";
+  $("#cardPhotosRow").style.display = darwin ? "" : "none";
+  $("#cardICloudRow").style.display = darwin ? "" : "none";
+  $("#cardPhotos").checked = !!s.photosApp && darwin;
+  $("#cardICloud").checked = !!s.icloud && darwin;
+  $("#cardLibrary").value = s.library || s.suggested || "";
+  $("#cardLibrary").placeholder = s.suggested || "Where the originals are copied";
+  $("#cardLibNote").textContent = "Your card is only read. The originals are copied once into a folder named by the day they were taken. A file already in the library is skipped, never replaced.";
+  const roots = CARD.cards.map(c => c.root);
+  if (CARD.root && !roots.includes(CARD.root)) roots.push(CARD.root);
+  $("#cardRoot").innerHTML = roots.length
+    ? roots.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join("")
+    : `<option value="">Choose a card or a folder…</option>`;
+  for (const c of CARD.cards){
+    const o = [...$("#cardRoot").options].find(x => x.value === c.root);
+    if (o) o.textContent = `${c.root} (${c.new} new)`;
+  }
+  $("#cardRoot").value = CARD.root || roots[0] || "";
+  $("#cardStatus").textContent = CARD.cards.length
+    ? `Card found: ${CARD.cards[0].root}`
+    : "No card found. Choose the card or a folder that holds a DCIM folder.";
+  $("#cardProg div").style.width = "0";
+  $("#cardMsg").textContent = "";
+  $("#cardStart").disabled = false;
+  $("#cardStop").style.display = "none";
+  $("#cardDlg").classList.add("on");
+  if ($("#cardRoot").value) await cardScan();
+  else $("#cardScan").textContent = "Choose a card or a folder to see what is new.";
+}
+
+async function cardScan(){
+  const root = $("#cardRoot").value;
+  if (!root){ $("#cardScan").textContent = "Choose a card or a folder first."; return; }
+  CARD.root = root;
+  $("#cardScan").textContent = "Looking at the card…";
+  try {
+    const res = await fetch("/api/card/scan", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({root})});
+    if (!res.ok){ $("#cardScan").textContent = await res.text(); return; }
+    CARD.scan = await res.json();
+    const s = CARD.scan;
+    $("#cardScan").textContent = `${s.new} new photo${s.new === 1 ? "" : "s"} (${fmtBytes(s.bytes)})` +
+      (s.already ? `, ${s.already} already in the library` : "") +
+      (s.names.length ? `: ${s.names.join(", ")}${s.new > s.names.length ? " …" : ""}` : ".");
+    $("#cardStart").textContent = s.new ? `Import ${s.new} photo${s.new === 1 ? "" : "s"}` : "Nothing new to import";
+    $("#cardStart").disabled = s.new === 0;
+    if ($("#cardICloud").checked) $("#cardLibNote").textContent = `iCloud Drive may keep these ${fmtBytes(s.bytes)} in the cloud: they are downloaded as they are copied.`;
+  } catch (e) { $("#cardScan").textContent = "Could not read the card: " + e.message; }
+}
+
+async function cardSaveSettings(){
+  const library = $("#cardLibrary").value.trim();
+  const body = {library, photosApp: $("#cardPhotos").checked, icloud: $("#cardICloud").checked};
+  const res = await fetch("/api/card/settings", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+  if (!res.ok) throw new Error(await res.text());
+  CARD.settings = await res.json();
+}
+
+async function cardStart(){
+  try { await cardSaveSettings(); } catch (e) { $("#cardMsg").textContent = "Could not save the settings: " + e.message; return; }
+  const root = $("#cardRoot").value, library = CARD.settings.library;
+  if (!root || !library){ $("#cardMsg").textContent = "Choose a card and a library folder first."; return; }
+  $("#cardStart").disabled = true; $("#cardStop").style.display = "";
+  $("#cardProg div").style.width = "0"; $("#cardMsg").textContent = "Copying…";
+  CARD.ctl = new AbortController();
+  let res;
+  try {
+    res = await fetch("/api/card/import", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({root, library}), signal: CARD.ctl.signal});
+  } catch { $("#cardStart").disabled = false; $("#cardStop").style.display = "none"; return; }
+  if (!res.ok){ $("#cardMsg").textContent = await res.text(); $("#cardStart").disabled = false; $("#cardStop").style.display = "none"; return; }
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = "", errors = [], doneLine = null;
+  try {
+    for (;;){
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      let nl;
+      while ((nl = buf.indexOf(String.fromCharCode(10))) >= 0){
+        const line = JSON.parse(buf.slice(0, nl)); buf = buf.slice(nl + 1);
+        if (line.done) doneLine = line;
+        else {
+          $("#cardProg div").style.width = line.n ? (100 * line.i / line.n) + "%" : "0";
+          $("#cardMsg").textContent = `${line.i}/${line.n} ${line.name || ""}`;
+          if (line.error) errors.push(`${line.name || "?"}: ${line.error}`);
+        }
+      }
+    }
+  } catch {}
+  CARD.ctl = null;
+  $("#cardStart").disabled = false; $("#cardStop").style.display = "none";
+  if (doneLine){
+    let msg = `${doneLine.copied} copied${doneLine.failed ? `, ${doneLine.failed} failed` : ""}${doneLine.skipped ? `, ${doneLine.skipped} already there` : ""}.`;
+    if (doneLine.cancelled) msg = `Stopped. ${doneLine.copied} complete cop${doneLine.copied === 1 ? "y" : "ies"} kept.`;
+    if (errors.length) msg += `<br>${errors.slice(0, 3).map(esc).join("<br>")}`;
+    $("#cardMsg").innerHTML = msg;
+    if (doneLine.copied > 0){
+      await loadPhotos();
+      const ids = (doneLine.ids || []).filter(id => S.photos.some(p => p.id === id));
+      if (ids.length){
+        S.sel = new Set(ids); S.selAnchor = ids[0];
+        selectPhoto(ids[0]);
+        paintSelection();
+        toast(`${ids.length} photo${ids.length === 1 ? "" : "s"} copied and selected. Choose a look, then press Export.`, 8000);
+        setTimeout(() => batchOpen("selected"), 400);
+      }
+    }
+  }
+}
+
+function cardClose(){
+  if (CARD.ctl){ CARD.ctl.abort(); CARD.ctl = null; }
+  $("#cardDlg").classList.remove("on");
 }
 
 // ---------- before/after, histogram, clipping ----------
@@ -2544,6 +2854,11 @@ function bind(){
   $("#redoBtn").onclick = () => { redoStep(); $("#redoBtn").blur(); };
   paintUndo();
   $("#save").onclick = savePreset;
+  $("#saveEdits").onclick = savePhotoEdits;
+  $("#exportSel").onclick = () => batchOpen("selected");
+  $("#selAll").onclick = selectAllPhotos;
+  $("#selFav").onclick = selectFavoritePhotos;
+  $("#selClear").onclick = () => { if (S.photo){ S.sel = new Set([S.photo.id]); S.selAnchor = S.photo.id; paintSelection(); } };
   $("#export").onclick = () => exportImage("jpeg");
   $("#exportTiff").onclick = () => exportImage("tiff");
   $("#exportDng").onclick = () => exportImage("rawdng");
@@ -2570,7 +2885,49 @@ function bind(){
     const a = document.createElement("a"); a.href = "/api/lut?" + u; a.download = ""; document.body.appendChild(a); a.click(); a.remove();
   };
   $("#bStart").onclick = batchStart;
+  $("#bStop").onclick = () => { if (BATCH.ctl) BATCH.ctl.abort(); };
   $("#bClose").onclick = batchClose;
+  $("#bDest").onchange = () => {
+    $("#bDestRow").style.display = $("#bDest").value === "chosen" ? "flex" : "none";
+  };
+  $("#bDestPick").onclick = async () => {
+    const r = await fetch("/api/pickfolder");
+    if (!r.ok){ toast("Could not open the folder dialog", 6000); return; }
+    const {path} = await r.json();
+    if (path){ $("#bDestPath").value = path; store.set("exportFolder", path); $("#bDest").value = "chosen"; $("#bDestRow").style.display = "flex"; }
+  };
+  $("#bPhotos").onchange = () => { $("#bStart").textContent = $("#bPhotos").checked ? "Export to Photos" : "Export"; };
+  document.querySelectorAll('input[name=bScope]').forEach(r => r.onchange = () => {
+    const ids = batchIds(r.value);
+    $("#bSelectedLab").textContent = `The selected photos (${batchIds("selected").length})`;
+    const edits = ids.filter(hasSavedEdit);
+    $("#bEditChoice").style.display = edits.length ? "" : "none";
+  });
+  $("#cardBtn").onclick = importFromCard;
+  $("#cardStart").onclick = cardStart;
+  $("#cardStop").onclick = () => { if (CARD.ctl) CARD.ctl.abort(); };
+  $("#cardClose").onclick = cardClose;
+  $("#cardRoot").onchange = cardScan;
+  $("#cardICloud").onchange = () => {
+    if ($("#cardICloud").checked && !$("#cardLibrary").value.trim()){
+      $("#cardLibrary").value = CARD.settings?.icloudDir || "";
+    }
+  };
+  $("#cardPick").onclick = async () => {
+    const r = await fetch("/api/pickfolder");
+    if (!r.ok){ toast("Could not open the folder dialog", 6000); return; }
+    const {path} = await r.json();
+    if (!path) return;
+    if (![...$("#cardRoot").options].some(o => o.value === path)) $("#cardRoot").insertAdjacentHTML("beforeend", `<option value="${esc(path)}">${esc(path)}</option>`);
+    $("#cardRoot").value = path;
+    await cardScan();
+  };
+  $("#cardLibPick").onclick = async () => {
+    const r = await fetch("/api/pickfolder");
+    if (!r.ok){ toast("Could not open the folder dialog", 6000); return; }
+    const {path} = await r.json();
+    if (path) $("#cardLibrary").value = path;
+  };
   $("#splitBtn").onclick = () => { VIEW.split = !VIEW.split; setView(); $("#splitBtn").blur(); };
   $("#clipBtn").onclick = () => { VIEW.clip = !VIEW.clip; setView(); $("#clipBtn").blur(); };
   $("#stage").addEventListener("mousemove", e => {
@@ -2629,7 +2986,7 @@ function bind(){
 (async function init(){
   bind();
   zoomInit();
-  await Promise.all([loadPhotos(), loadPresets(false), aiInit(), sppInit(), capsInit(), allImagesInit(), accInit()]);
+  await Promise.all([loadPhotos(), loadPresets(false), aiInit(), sppInit(), capsInit(), allImagesInit(), accInit(), cardDetect()]);
   $("#favOnly").checked = !!store.get("favOnly", false);
   $("#favOnly").onchange = e => { store.set("favOnly", e.target.checked); applyFavFilter(); };
   applyFavFilter();

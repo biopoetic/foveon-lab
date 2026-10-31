@@ -840,6 +840,23 @@ func safeName(s string) string {
 	return s
 }
 
+// uniquePath never replaces a file that is already there. A second export of
+// the same photo and preset gets " (2)" (or the next free number), so an
+// earlier export is never silently lost.
+func uniquePath(dir, stem, ext string) string {
+	p := filepath.Join(dir, stem+ext)
+	for i := 2; ; i++ {
+		_, err := os.Stat(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			return p
+		}
+		if err != nil {
+			return p
+		}
+		p = filepath.Join(dir, fmt.Sprintf("%s (%d)%s", stem, i, ext))
+	}
+}
+
 // handleExport renders the full-size preview and saves it next to the shot
 // in a "foveon-lab" sub-folder.
 func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
@@ -855,6 +872,9 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		// Space: the export colour space (render.ColourSpaces; "" = sRGB),
 		// for JPEG and TIFF.
 		Space string `json:"space"`
+		// Destination: a chosen folder; empty means next to each photo in a
+		// "foveon-lab" folder.
+		Destination string `json:"destination"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpErr(w, 400, err)
@@ -869,7 +889,10 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 404, errors.New("unknown photo"))
 		return
 	}
-	dir := filepath.Join(filepath.Dir(ph.path), "foveon-lab")
+	dir := strings.TrimSpace(req.Destination)
+	if dir == "" {
+		dir = filepath.Join(filepath.Dir(ph.path), "foveon-lab")
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		httpErr(w, 500, err)
 		return
@@ -888,7 +911,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		s.exportDNG(w, ph, dir, stem, p, label, req.Denoise)
 		return
 	}
-	path, err := s.exportImage(ph, p, label, req.Comp, req.Format, req.Denoise, req.Space)
+	path, err := s.exportImage(ph, p, label, req.Comp, req.Format, req.Denoise, req.Space, dir)
 	if err != nil {
 		httpErr(w, 500, err)
 		return
@@ -909,7 +932,7 @@ func rawExportColor(dn *int) string {
 	return "sRGB-dn" + strconv.Itoa(*dn)
 }
 
-func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool, format string, denoise *int, space string) (string, error) {
+func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool, format string, denoise *int, space, destDir string) (string, error) {
 	cs, ok := render.ColourSpaceByID(space)
 	if !ok {
 		return "", errors.New("unknown colour space " + space)
@@ -917,7 +940,10 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	if cs.ID != "srgb" && format != "dng" {
 		label += "_" + cs.ID // e.g. _prophoto: the file says what it is
 	}
-	dir := filepath.Join(filepath.Dir(ph.path), "foveon-lab")
+	dir := strings.TrimSpace(destDir)
+	if dir == "" {
+		dir = filepath.Join(filepath.Dir(ph.path), "foveon-lab")
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
@@ -971,7 +997,7 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 		ext = ".dng"
 	}
 	stem := strings.TrimSuffix(ph.Name, filepath.Ext(ph.Name))
-	path := filepath.Join(dir, stem+"_"+safeName(label)+ext)
+	path := uniquePath(dir, stem+"_"+safeName(label), ext)
 	f, err := os.Create(path)
 	if err != nil {
 		return "", err
@@ -1048,14 +1074,13 @@ func (s *server) exportDNG(w http.ResponseWriter, ph *Photo, dir, stem string, p
 		httpErr(w, 500, fmt.Errorf("x3f_extract: %v %s", err, trimOutput(out)))
 		return
 	}
-	path := filepath.Join(dir, stem+".dng")
-	os.Remove(path)
+	path := uniquePath(dir, stem, ".dng")
 	if err := os.Rename(produced, path); err != nil {
 		httpErr(w, 500, err)
 		return
 	}
 	log.Printf("exported %s (DNG, %v)", path, time.Since(start).Round(100*time.Millisecond))
-	cube := filepath.Join(dir, stem+"_"+safeName(label)+".cube")
+	cube := uniquePath(dir, stem+"_"+safeName(label), ".cube")
 	if f, err := os.Create(cube); err == nil {
 		err = render.WriteCube(f, label, p, 33)
 		if cerr := f.Close(); err == nil {
@@ -1075,8 +1100,12 @@ func (s *server) exportDNG(w http.ResponseWriter, ph *Photo, dir, stem string, p
 func (s *server) handleReveal(w http.ResponseWriter, r *http.Request) {
 	p := filepath.Clean(r.URL.Query().Get("path"))
 	ext := strings.ToLower(filepath.Ext(p))
-	if filepath.Base(filepath.Dir(p)) != "foveon-lab" || (ext != ".jpg" && ext != ".tif" && ext != ".dng") {
+	if ext != ".jpg" && ext != ".tif" && ext != ".dng" {
 		httpErr(w, 403, errors.New("only allowed for exported images"))
+		return
+	}
+	if st, err := os.Stat(p); err != nil || st.IsDir() {
+		httpErr(w, 404, errors.New("that file is not there"))
 		return
 	}
 	if runtime.GOOS == "windows" {
@@ -1567,6 +1596,10 @@ func main() {
 	mux.HandleFunc("/api/pickfolder", s.handlePickFolder)
 	mux.HandleFunc("/api/critique", s.handleCritique)
 	mux.HandleFunc("/api/allimages", s.handleAllImages)
+	mux.HandleFunc("/api/card/detect", s.handleCardDetect)
+	mux.HandleFunc("/api/card/scan", s.handleCardScan)
+	mux.HandleFunc("/api/card/import", s.handleCardImport)
+	mux.HandleFunc("/api/card/settings", s.handleCardSettings)
 	mux.HandleFunc("/api/looks", s.handleLooks)
 	mux.HandleFunc("/api/export/batch", s.handleExportBatch)
 	mux.HandleFunc("/api/lut", s.handleLUT)

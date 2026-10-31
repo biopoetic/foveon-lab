@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"github.com/biopoetic/foveon-lab/render"
 )
@@ -21,18 +22,30 @@ func (s *server) handleLUT(w http.ResponseWriter, r *http.Request) {
 	render.WriteCube(w, label, p, 33)
 }
 
-// handleExportBatch exports several photos with one preset (or tuned
-// parameters), streaming one JSON line per photo so the page can show
-// progress; closing the page stops it after the current photo.
+// handleExportBatch exports several photos with one preset (or one preset
+// per photo, when the user asked to keep their saved edits), streaming one
+// JSON line per photo so the page can show progress; closing the page stops
+// it after the current photo. Exported files are complete before a line is
+// sent, and an existing file is never replaced.
+//
+// With Photos set on macOS, the finished files are handed to Apple Photos in
+// one step at the end; iCloud Photos then syncs them by itself.
 func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		IDs     []string        `json:"ids"`
-		Preset  string          `json:"preset"`
-		Params  json.RawMessage `json:"params"`
-		Comp    bool            `json:"comp"`
-		Format  string          `json:"format"`  // "jpeg", "tiff" or "dng" (rendered)
-		Denoise *int            `json:"denoise"` // raw-based exports: 0-10, nil = 10
-		Space   string          `json:"space"`   // export colour space, "" = sRGB
+		IDs        []string                   `json:"ids"`
+		Preset     string                     `json:"preset"`
+		Params     json.RawMessage            `json:"params"`
+		ParamsByID map[string]json.RawMessage `json:"paramsById"`
+		Comp       bool                       `json:"comp"`
+		Format     string                     `json:"format"`  // "jpeg", "tiff" or "dng" (rendered)
+		Denoise    *int                       `json:"denoise"` // raw-based exports: 0-10, nil = 10
+		Space      string                     `json:"space"`   // export colour space, "" = sRGB
+		// Destination: a chosen folder; empty means next to each photo in a
+		// "foveon-lab" folder.
+		Destination string `json:"destination"`
+		// Photos: add the finished files to Apple Photos (macOS only).
+		Photos bool   `json:"photos"`
+		Album  string `json:"album"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpErr(w, 400, err)
@@ -66,6 +79,7 @@ func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	ok, failed := 0, 0
 	folders := map[string]bool{}
+	var exported []string
 	for i, id := range req.IDs {
 		if r.Context().Err() != nil {
 			return
@@ -79,10 +93,19 @@ func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 			line["name"], line["error"] = ph.Name, ph.Unsupported
 		default:
 			line["name"] = ph.Name
-			if path, err := s.exportImage(ph, p, label, req.Comp, req.Format, req.Denoise, req.Space); err != nil {
+			useP, useLabel := p, label
+			if raw, ok := req.ParamsByID[id]; ok && len(raw) > 0 && string(raw) != "null" {
+				if err := json.Unmarshal(raw, &useP); err != nil {
+					line["error"] = "this photo's saved edits could not be read: " + err.Error()
+					break
+				}
+				useLabel = "edited"
+			}
+			if path, err := s.exportImage(ph, useP, useLabel, req.Comp, req.Format, req.Denoise, req.Space, req.Destination); err != nil {
 				line["error"] = err.Error()
 			} else {
 				line["path"] = path
+				exported = append(exported, path)
 				folders[filepath.Dir(path)] = true
 			}
 		}
@@ -97,5 +120,25 @@ func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 	for d := range folders {
 		dirs = append(dirs, d)
 	}
-	send(map[string]any{"done": true, "ok": ok, "failed": failed, "folders": dirs})
+	done := map[string]any{"done": true, "ok": ok, "failed": failed, "folders": dirs}
+	if req.Photos {
+		album := req.Album
+		if album == "" {
+			album = photosAlbumName(time.Now())
+		}
+		switch {
+		case !photosSupported:
+			done["photosError"] = "adding photos to Apple Photos is only available on macOS"
+		case len(exported) == 0:
+			done["photosError"] = "nothing was exported, so nothing was added to Photos"
+		default:
+			if err := photosImport(exported, album); err != nil {
+				done["photosError"] = err.Error()
+			} else {
+				done["photos"] = len(exported)
+				done["photosAlbum"] = album
+			}
+		}
+	}
+	send(done)
 }

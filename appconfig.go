@@ -26,6 +26,15 @@ type appConfig struct {
 	Accurate *bool `json:"accurate,omitempty"`
 	// Favorites: the photos marked with a star (file paths).
 	Favorites []string `json:"favorites,omitempty"`
+	// Library: where Import from card copies originals (chosen once).
+	Library string `json:"library,omitempty"`
+	// PhotosApp: on macOS, also add batch exports to Apple Photos (off by default).
+	PhotosApp bool `json:"photosApp,omitempty"`
+	// ICloud: keep the card library in iCloud Drive (off by default).
+	ICloud bool `json:"icloud,omitempty"`
+	// ExportFolder: the folder Finish and batch export save into; empty means
+	// next to each photo in a "foveon-lab" folder.
+	ExportFolder string `json:"exportFolder,omitempty"`
 }
 
 func configPath() string {
