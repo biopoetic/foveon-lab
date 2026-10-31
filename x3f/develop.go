@@ -148,12 +148,12 @@ func CameraLinear(raw *RawImage, c *CAMF, sg *SpatialGain, wb string) (*CamImage
 }
 
 // ClipHighlights makes clipped highlights neutral. Where a layer reaches
-// its white level the sensor stopped counting, so its ratio to the other
+// output white the sensor stopped counting, or its ratio to the other
 // layers (the colour) is wrong; the top layer clips first and a white sky
 // or lamp comes out yellow-red (blue-green in black and white). Pixels
-// with a layer from 0.9 to 1 of white are blended towards a neutral at the
-// brightest white-balanced layer (Sigma Photo Pro renders them white).
-// gain is the white balance (WBTransform's).
+// whose brightest white-balanced layer is from 0.9 to 1 of white are
+// blended towards a neutral at that layer (Sigma Photo Pro renders them
+// white). gain is the white balance (WBTransform's).
 func ClipHighlights(img *CamImage, gain [3]float64) {
 	ClipHighlightsTo(img, gain, [3]float64{1, 1, 1})
 }
@@ -169,19 +169,33 @@ func ClipHighlightsTo(img *CamImage, gain, white [3]float64) {
 		gain[k] /= white[k]
 	}
 	g := [3]float32{float32(gain[0]), float32(gain[1]), float32(gain[2])}
+	// The white balance is normally near 1 (the camera's gains are absolute,
+	// so a neutral frame may still use 2-3); when it is far above 1 the
+	// raw white point is many stops from the rendered one. Only those
+	// frames need the white-balanced threshold; on the rest the old raw
+	// threshold is kept bit-for-bit, so normal rendering does not move.
+	useQ := max(gain[0], max(gain[1], gain[2])) > 6
 	parallel(len(img.Pix)/3, func(i0, i1 int) {
 		for i := i0 * 3; i < i1*3; i += 3 {
 			p := img.Pix[i : i+3]
-			m := max(p[0], p[1], p[2])
+			// On a far-from-unity gain, judge the clip on the white-balanced
+			// value: a layer at 0.03 of its own white is already at output
+			// white when its gain is 36 (an SD14 Auto frame under tungsten),
+			// and holding those ratios produced magenta speculars (task 19).
+			q0, q1, q2 := p[0]*g[0], p[1]*g[1], p[2]*g[2]
+			m := max(q0, max(q1, q2))
+			if !useQ {
+				m = max(p[0], max(p[1], p[2]))
+			}
 			if m <= lo {
 				continue
 			}
 			h := min(1, (m-lo)/(hi-lo))
 			h = h * h * (3 - 2*h)
-			l := max(p[0]*g[0], p[1]*g[1], p[2]*g[2])
-			for k := 0; k < 3; k++ {
-				p[k] += h * (l/g[k] - p[k])
-			}
+			l := max(q0, max(q1, q2))
+			p[0] += h * (l/g[0] - p[0])
+			p[1] += h * (l/g[1] - p[1])
+			p[2] += h * (l/g[2] - p[2])
 		}
 	})
 }

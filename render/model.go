@@ -377,11 +377,16 @@ func (f *fillOp) bake(mean float64) *fillLUT {
 		// surroundings are equally bright. The frame-mean term included
 		// above is global, and on a dark frame it turns a positive Fill
 		// Light into a large darkening of every bright pixel (a bright sky
-		// in a dark alley went to a flat grey). Whatever the fit does, a
-		// flat region may be lifted by a positive Fill Light, never dimmed
-		// (and the reverse for a cut). The B/C local terms stay free.
-		if (f.sign > 0 && a < 0) || (f.sign < 0 && a > 0) {
-			a = 0
+		// in a dark alley went to a flat grey). Task 18 removed that
+		// darkening everywhere, which cost SPP's own Fill +1 match at
+		// encoded 0.7-0.9. Task 19 keeps the darkening SPP really does
+		// there and fades the flat shift to zero only over the top of the
+		// range, so white stays white: a flat region may still be dimmed in
+		// the upper midtones, never at 1.
+		if f.sign*a < 0 {
+			if u := smoothstep(0.88, 1.0, x); u > 0 {
+				a *= 1 - u
+			}
 		}
 		t.a[i], t.b[i], t.c[i], t.k[i] = float32(a), float32(b), float32(c), float32(k)
 	}

@@ -453,6 +453,9 @@ func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
 		if mode == "raw" {
 			return rawLinear(ph, sourceW, "sRGB")
 		}
+		if mode == "rawmaxdetail" {
+			return rawMaxDetail(ph, sourceW, defaultNR)
+		}
 		if f, ok := strings.CutPrefix(mode, "rawlayers:"); ok {
 			return rawLinearFor(ph, sourceW, "sRGB", f)
 		}
@@ -495,6 +498,8 @@ func (s *server) fullGeo(ph *Photo, mode string, g render.Geometry) (*render.Lin
 			src, err = rawLinearFor(ph, 0, "sRGB", irFilter)
 		case wb:
 			src, err = rawLinearFor(ph, 0, "sRGB", wbFilter)
+		case mode == "rawmaxdetail":
+			src, err = rawMaxDetail(ph, 0, defaultNR)
 		case mode == "raw", mode == "rawfast":
 			src, err = rawLinear(ph, 0, "sRGB")
 		default:
@@ -598,6 +603,13 @@ func (s *server) photo(r *http.Request) (*Photo, error) {
 	return ph, nil
 }
 
+// isMaxDetail reports whether a preset name is the Max Detail development
+// mode (task 19). The mode is a name, not slider values: it runs from the
+// raw layers, and the preset's SPP numbers are only its JPEG fallback.
+func isMaxDetail(name string) bool {
+	return strings.EqualFold(strings.TrimSpace(name), "[FL] Max Detail")
+}
+
 // params resolves render parameters: a preset id, optionally overridden by
 // a full JSON parameter set in "p".
 func (s *server) params(presetID, pJSON string) (preset.Params, string, error) {
@@ -611,6 +623,7 @@ func (s *server) params(presetID, pJSON string) (preset.Params, string, error) {
 			return p, "", errors.New("unknown preset")
 		}
 		p, label = pr.Params, pr.Name
+		p.MaxDetail = isMaxDetail(pr.Name)
 	}
 	if pJSON != "" {
 		if err := json.Unmarshal([]byte(pJSON), &p); err != nil {
@@ -652,6 +665,10 @@ func (s *server) renderBase(w http.ResponseWriter, r *http.Request) (*render.Bas
 	mode := s.sourceMode(ph)
 	if q.Get("src") == "camera" && !ph.jpegBroken.Load() {
 		mode = "jpg"
+	} else if p.MaxDetail && maxDetailAvailable(ph) {
+		// The mode is the raw development; no slider bundle to apply on top.
+		mode = "rawmaxdetail"
+		p = maxDetailRenderParams(p)
 	} else if lf, ok := layersSource(ph, p); ok {
 		mode = "rawlayers:" + lf
 	} else if wf, ok := wbSource(ph, p); ok && mode == "raw" {
@@ -686,7 +703,11 @@ func (s *server) renderBase(w http.ResponseWriter, r *http.Request) (*render.Bas
 		httpErr(w, 500, err)
 		return nil, p, comp, false
 	}
-	comp = s.compensation(ph, q.Get("comp") == "1")
+	if mode == "rawmaxdetail" {
+		comp = rawCompensation(ph)
+	} else {
+		comp = s.compensation(ph, q.Get("comp") == "1")
+	}
 	if strings.HasPrefix(mode, "rawlayers:") {
 		comp = layerCompensation(comp)
 	}
@@ -984,8 +1005,16 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	defer func() { <-s.sem }()
 	var src *render.Linear
 	wbDeveloped := false
+	md := p.MaxDetail && maxDetailAvailable(ph)
 	lf, ir := layersSource(ph, p)
-	if ir {
+	if md {
+		l, err := rawMaxDetail(ph, 0, goStrength(rawExportColor(denoise)))
+		if err != nil {
+			return "", err
+		}
+		src = l
+		p = maxDetailRenderParams(p)
+	} else if ir {
 		l, err := rawLinearFor(ph, 0, rawExportColor(denoise), lf)
 		if err != nil {
 			return "", err
@@ -1015,7 +1044,12 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 		src = balanceJPEG(ph, render.FromImage(img, 0, ph.rotation))
 	}
 	base := render.NewBase(render.ApplyGeometry(src, geometryOf(ph)))
-	c := s.compensation(ph, comp)
+	var c render.Compensation
+	if md {
+		c = rawCompensation(ph)
+	} else {
+		c = s.compensation(ph, comp)
+	}
 	if ir {
 		c = layerCompensation(c)
 	}

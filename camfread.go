@@ -98,6 +98,10 @@ func noiseAwareFix(group string) bool { return group == "DPM" || group == "Quatt
 // (FOVEON_DN_NOSPECK=1), for before/after crops.
 var noDespeckle = os.Getenv("FOVEON_DN_NOSPECK") != ""
 
+// noChromaSpeck is the research switch that keeps the pre-task-19 path
+// (FOVEON_DN_NOSPECKCHROMA=1), for before/after crops.
+var noChromaSpeck = os.Getenv("FOVEON_DN_NOSPECKCHROMA") != ""
+
 // noShadowChroma switches the low-frequency shadow colour fix off
 // (FOVEON_DN_NOSC=1), for isolating the stage that paints a colour patch.
 var noShadowChroma = os.Getenv("FOVEON_DN_NOSC") != ""
@@ -302,6 +306,80 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 		for i := range l.Pix {
 			l.Pix[i] *= g
 		}
+	}
+	return l, nil
+}
+
+// maxDetailAvailable reports whether ph can be developed from raw layers
+// for the Max Detail mode. It does not depend on Accurate mode: the mode is
+// its own reason to decode the raw data.
+func maxDetailAvailable(ph *Photo) bool {
+	return ph != nil && ph.Kind == "x3f" && ph.Unsupported == "" && rawAvailable() && rawDecodable(ph.props) && nativeRaw(ph)
+}
+
+// maxDetailRenderParams removes the SPP slider values the raw development
+// has already applied, so the mode is not tone-mapped twice. Colour adjust,
+// white balance, sharpness and the film/lens settings stay: they act after
+// the development and are what a photographer may still tune.
+func maxDetailRenderParams(p preset.Params) preset.Params {
+	p.MaxDetail = true
+	p.Exposure = 0
+	p.Contrast = 0
+	p.Blackness = 0
+	p.Highlight = 0
+	p.FillLight = 0
+	p.Saturation = 0
+	return p
+}
+
+// rawMaxDetail develops ph for the Max Detail mode from the sensor's own
+// layers: recover what the clipped layers still imply, neutralise real
+// clipping, denoise, map onto SPP's neutral colour (clamped, so the normal
+// look is the base), then the mode's highlight shoulder and noise-gated
+// shadow lift (render.MaxDetailDevelop). It costs more than a normal
+// preview because it always decodes raw data, as the mode promises.
+func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
+	fullW := 0
+	img, t, err := goDevelopFor(ph, false, false, "")
+	if err != nil {
+		return nil, err
+	}
+	fullW = img.W
+	st := x3f.RecoverHighlights(img, t.Gain, 0.995)
+	if os.Getenv("FOVEON_MD_DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "maxdetail %s: recovered %v lost %d partial %d\n", ph.Name, st.Recovered, st.Lost, st.Partial)
+	}
+	// Real clipping is colourless: keep the recovered luminance, drop the
+	// layer ratio that clipping made meaningless (the SD14 magenta specks).
+	x3f.ClipHighlights(img, t.Gain)
+	bx := 1
+	if maxW > 0 && maxW < img.W {
+		bx = max(1, img.W/maxW)
+		img = binCam2(img, bx, bx)
+	}
+	if strength > 0 {
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph), Grey: greyOf(t), NoiseAware: noiseAwareFix(calibGroup(ph)), Quattro: calibGroup(ph) == "Quattro"})
+	}
+	l := render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t)
+	l.ISO, _ = strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
+	l.Sensor = render.SharpKey(calibGroup(ph))
+	if strength > 0 && !noShadowChroma {
+		render.ShadowChromaFix(l, fullW, t.Colour)
+	}
+	if strength > 0 && mottleFix && calibGroup(ph) == "Quattro" && photoISO(ph) >= 6400 {
+		render.MottleChroma(l, render.MottleSigma(fullW, l.W), 0.02, 0.10)
+	}
+	if g := render.ModelExposure(modelOf(ph)); g != 1 {
+		for i := range l.Pix {
+			l.Pix[i] *= g
+		}
+	}
+	if c := rawCorrectionFor(ph); c != nil {
+		c.Apply(l)
+	}
+	render.MaxDetailDevelop(l, render.MaxDetailOptions{ISO: photoISO(ph)})
+	if !noChromaSpeck {
+		render.ChromaDespeckle(l, photoISO(ph))
 	}
 	return l, nil
 }

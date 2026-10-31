@@ -110,6 +110,11 @@ type Params struct {
 	GNDAngle float64 `json:"gndAngle,omitempty"`
 	GNDPos   float64 `json:"gndPos,omitempty"`
 	GNDSoft  float64 `json:"gndSoft,omitempty"`
+	// MaxDetail (Foveon Lab only; not in SPP's XML): the [FL] Max Detail
+	// preset is a raw-development mode, not a slider bundle. The server sets
+	// this from the preset's name; the XML's slider values are then only the
+	// mode's fallback for sources with no raw data.
+	MaxDetail bool `json:"maxDetail,omitempty"`
 }
 
 const (
