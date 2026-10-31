@@ -304,6 +304,10 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 			render.ApplySPPAdobeRGB(l)
 		}
 	}
+	// Single-pixel impulse dots that survived the denoiser are removed on
+	// the finished frame in render.ImpulseClean (render/render.go), where
+	// the per-photo raw correction has already lifted them out of the
+	// near-black neighbourhood and the tone curve has made them visible.
 	return l, nil
 }
 

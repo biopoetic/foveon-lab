@@ -528,6 +528,9 @@ func RenderOpt(b *Base, p preset.Params, c Compensation, sharp bool) *image.RGBA
 	if p.Sharpness != 0 && sharp {
 		sharpen(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale()))))
 	}
+	if !noImpulse && b.ISO >= 800 && (b.Sensor == "DPM" || b.Sensor == "Quattro") {
+		impulseClean8(out, 80, 12)
+	}
 	return out
 }
 
@@ -548,6 +551,9 @@ func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 	}
 	if p.Sharpness != 0 {
 		sharpen16(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale()))))
+	}
+	if !noImpulse && b.ISO >= 800 && (b.Sensor == "DPM" || b.Sensor == "Quattro") {
+		impulseClean16(out, 80*257, 12*257)
 	}
 	return out
 }
