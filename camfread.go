@@ -269,6 +269,11 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 	// and colour film (its layers, fixed through the colour they make);
 	// not the IR looks, which model the layers themselves.
 	lap("develop+bin")
+	// ISO before the shadow fix: that filter uses the high-ISO ratio formula
+	// only from ISO 800 (render/shadowchroma.go), so low ISO stays
+	// bit-identical.
+	l.ISO, _ = strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
+	l.Sensor = render.SharpKey(calibGroup(ph))
 	if strength > 0 && !noShadowChroma && (irWhite == nil || sceneWB) {
 		noise := render.ShadowChromaFix(l, fullW, t.Colour)
 		if os.Getenv("FOVEON_DN_DEBUG") != "" {
@@ -282,8 +287,6 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 			l.Pix[i] *= g
 		}
 	}
-	l.ISO, _ = strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
-	l.Sensor = render.SharpKey(calibGroup(ph))
 	return l, nil
 }
 

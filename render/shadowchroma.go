@@ -139,13 +139,22 @@ func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 	// floor, the plane is bounded by the chroma the shadow actually has and a
 	// black neighbour contributes almost nothing; above the floor this is
 	// exactly the old Y-relative chroma.
+	// The floor is for the high-ISO regime the patch came from. Below ISO
+	// 800 the old ratio (and its exact arithmetic) stays, so base ISO output
+	// is bit-identical; the two paths only differ where a window reaches a
+	// near-black pixel, which at low ISO is a few pixels of sensor noise.
+	legacy := l.ISO < 800
 	floor := float32(shadowChromaLo)
 	var ratio [3][]float32
 	for k := 0; k < 3; k++ {
 		c := make([]float32, n)
 		parallelRows(n, func(i0, i1 int) {
 			for i := i0; i < i1; i++ {
-				c[i] = (l.Pix[i*3+k] - Y[i]) / max(Y[i], floor)
+				if legacy {
+					c[i] = l.Pix[i*3+k] / (Y[i] + 1e-4)
+				} else {
+					c[i] = (l.Pix[i*3+k] - Y[i]) / max(Y[i], floor)
+				}
 			}
 		})
 		ratio[k] = guidedGauss(G, c, w, h, sigma, shadowChromaEps)
@@ -158,10 +167,17 @@ func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 				continue
 			}
 			t = min(t, 1) * a
-			yy := max(Y[i], floor)
+			yy := Y[i] + 1e-4
+			if !legacy {
+				yy = max(Y[i], floor)
+			}
 			var v [3]float32
 			for k := 0; k < 3; k++ {
-				v[k] = l.Pix[i*3+k]*(1-t) + (Y[i]+ratio[k][i]*yy)*t
+				if legacy {
+					v[k] = l.Pix[i*3+k]*(1-t) + ratio[k][i]*yy*t
+				} else {
+					v[k] = l.Pix[i*3+k]*(1-t) + (Y[i]+ratio[k][i]*yy)*t
+				}
 			}
 			// SPP also mutes noisy shadows, but only their magenta side
 			// (green below the luminance): dark greens stay green.
@@ -228,9 +244,30 @@ func guidedGauss(I, p []float32, w, h int, sigma, eps float64) []float32 {
 			ii[i] = I[i] * I[i]
 		}
 	})
-	mI, mp := GaussBlur(I, w, h, sigma), GaussBlur(p, w, h, sigma)
-	mIp, mII := GaussBlur(ip, w, h, sigma), GaussBlur(ii, w, h, sigma)
-	a, b := ip, ii // reuse
+	mI, mII := GaussBlur(I, w, h, sigma), GaussBlur(ii, w, h, sigma)
+	return guidedGaussPre(I, p, w, h, sigma, eps, mI, mII, ip)
+}
+
+// guideStats returns the guide's blurred mean and mean square, shared by
+// every plane filtered against the same guide (the chroma mottle pass
+// filters three).
+func guideStats(I []float32, w, h int, sigma float64) (mI, mII []float32) {
+	ii := make([]float32, len(I))
+	parallelRows(len(I), func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			ii[i] = I[i] * I[i]
+		}
+	})
+	return GaussBlur(I, w, h, sigma), GaussBlur(ii, w, h, sigma)
+}
+
+// guidedGaussPre is guidedGauss with the guide's statistics and I*p already
+// computed: three chroma planes filtered against one guide share them.
+func guidedGaussPre(I, p []float32, w, h int, sigma, eps float64, mI, mII, ip []float32) []float32 {
+	n := len(I)
+	mp := GaussBlur(p, w, h, sigma)
+	mIp := GaussBlur(ip, w, h, sigma)
+	a, b := ip, make([]float32, n)
 	parallelRows(n, func(i0, i1 int) {
 		for i := i0; i < i1; i++ {
 			// He et al.'s 0 <= a <= 1 is what makes this an edge-preserving
