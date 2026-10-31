@@ -102,11 +102,13 @@ var noDespeckle = os.Getenv("FOVEON_DN_NOSPECK") != ""
 // (FOVEON_DN_NOSC=1), for isolating the stage that paints a colour patch.
 var noShadowChroma = os.Getenv("FOVEON_DN_NOSC") != ""
 
-// mottleFix enables the experimental large-radius Quattro chroma pass
-// (FOVEON_DN_MOTTLE=1). It is off by default: measured on dp2 Quattro it
-// removed ~5% of the chroma RMS and ~5% of the 8-32 px blotch at 3200-6400
-// but made the blotch worse at 800-1600, so it did not earn a place.
-var mottleFix = os.Getenv("FOVEON_DN_MOTTLE") != ""
+// mottleFix enables the large-radius Quattro chroma pass (on by default;
+// FOVEON_DN_MOTTLE=0 renders without it). It is applied from ISO 6400 only:
+// at 800-1600 it made the 8-32 px blotch worse (2.48 -> 3.03 at 800) and at
+// 3200 sd Quattro H's rose 16%, so it earns a place only at the top ISO,
+// where on dp2 Quattro it now takes the dark-block spread 8.68 -> 7.39, the
+// dark b* 4.9 -> 4.2 and the blotch 5.60 -> 5.36 against SPP's 4.91.
+var mottleFix = os.Getenv("FOVEON_DN_MOTTLE") != "0"
 
 // identity33 is the 3×3 identity.
 var identity33 = [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
@@ -254,7 +256,7 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 			}
 			img.Pix = lin.Pix
 		}
-		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph), Grey: greyOf(t), NoiseAware: noiseAwareFix(calibGroup(ph))})
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph), Grey: greyOf(t), NoiseAware: noiseAwareFix(calibGroup(ph)), Quattro: calibGroup(ph) == "Quattro"})
 	}
 	lap("denoise")
 	if dw == 0 && bx > 1 {
@@ -287,11 +289,11 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 		}
 	}
 	// Quattro chroma mottle: the per-layer denoiser removes the fine chroma
-	// noise, but 8-32 px blotches survive and SPP's band is 1.5-2.5x lower
-	// at 3200-6400. A wide, edge-aware pass on low-chroma pixels only
-	// (render/mottle.go), guided by the luminance, which on Quattro is
-	// dominated by the clean top layer. Both paths run it, at their scale.
-	if strength > 0 && mottleFix && calibGroup(ph) == "Quattro" && photoISO(ph) >= 800 {
+	// noise, but 8-32 px blotches survive and SPP's band is lower. A wide,
+	// edge-aware pass on low-chroma pixels only (render/mottle.go), guided by
+	// the luminance, which on Quattro is dominated by the clean top layer.
+	// Both paths run it, at their scale; ISO 6400 only (see mottleFix).
+	if strength > 0 && mottleFix && calibGroup(ph) == "Quattro" && photoISO(ph) >= 6400 {
 		render.MottleChroma(l, render.MottleSigma(fullW, l.W), 0.02, 0.10)
 	}
 	// The body's brightness relative to its calibration group (not for the
@@ -366,7 +368,7 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 		nr = float64(max(0, min(10, *denoise))) / 10
 	}
 	if nr > 0 {
-		x3f.Denoise(img, x3f.DenoiseOptions{Strength: nr, Scale: 1, ISO: photoISO(ph), Grey: greyOf(t), NoiseAware: noiseAwareFix(calibGroup(ph))})
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: nr, Scale: 1, ISO: photoISO(ph), Grey: greyOf(t), NoiseAware: noiseAwareFix(calibGroup(ph)), Quattro: calibGroup(ph) == "Quattro"})
 	}
 	path := filepath.Join(dir, stem+".dng")
 	f, err := os.Create(path)

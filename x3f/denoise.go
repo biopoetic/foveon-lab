@@ -62,6 +62,10 @@ type DenoiseOptions struct {
 	// previous restore until their own ladders are measured: on the SD14
 	// and DP2x high-ISO photos it cost up to 0.47 in spp-check.
 	NoiseAware bool
+	// Quattro marks the sensor generation: its two low layers are quarter
+	// resolution, so the same pixel radius covers twice the scene area in
+	// the chroma planes, and its dark-tone pepper needs its own threshold.
+	Quattro bool
 }
 
 // colourRadius is the colour filter's radius at full sensor resolution for
@@ -98,7 +102,58 @@ var debugNoise = os.Getenv("FOVEON_DN_DEBUG") != ""
 var (
 	dnK    = envFloat("FOVEON_DN_K", 1.0)
 	dnEpsC = envFloat("FOVEON_DN_EPSC", 3.0)
+	// dnRadius overrides the colour filter's radius (research switch
+	// FOVEON_DN_R), so the radius can be measured apart from ISO.
+	dnRadius = envFloat("FOVEON_DN_R", 0)
+	// chromaSmooth puts the patch-scale chroma the wide filter removed back
+	// into saturated areas (default on for Quattro; FOVEON_DN_NOCS=1
+	// renders without it). csA2/csB2 are the absolute layer chroma where it
+	// fades in; csResid is the radius of the residual low-pass.
+	chromaSmooth = os.Getenv("FOVEON_DN_NOCS") == ""
+	csMode       = int(envFloat("FOVEON_DN_CS", 2))
+	csAbs        = float32(envFloat("FOVEON_DN_CSA", 0.0015))
+	csA2         = float32(envFloat("FOVEON_DN_CSA2", 0.0010))
+	csB2         = float32(envFloat("FOVEON_DN_CSB2", 0.0060))
+	csResid      = int(envFloat("FOVEON_DN_CSR", 24))
+	csLo         = float32(envFloat("FOVEON_DN_CSLO", 0.08))
+	csHi         = float32(envFloat("FOVEON_DN_CSHI", 0.30))
+	// darkBoost raises the wavelet threshold in the darkest tones
+	// (FOVEON_DN_DARK, 1 = off) between local luminances darkLo and darkHi,
+	// where the eye sees the coarse "pepper" and the read noise is largest.
+	dnDark   = envFloat("FOVEON_DN_DARK", 2)
+	dnDarkLo = envFloat("FOVEON_DN_DARKLO", 0.004)
+	dnDarkHi = envFloat("FOVEON_DN_DARKHI", 0.006)
+	// darkLev: the coarsest wavelet level (0 = 1 px) the boost applies to.
+	// The pepper is the fine grain; boosting the coarse levels as well eats
+	// the low-contrast lettering.
+	darkLev = int(envFloat("FOVEON_DN_DARKLV", 3))
+	// levFin scales the boost on the finest level only: the 1 px band is
+	// where the books' texture lives, the pepper is coarser.
+	levFin = envFloat("FOVEON_DN_LEVFIN", 0.25)
 )
+
+// darkBoost is the per-pixel factor multiplying the luminance wavelet
+// threshold: 1 above darkHi, dnDark at and below darkLo, smooth between.
+// nil when no boost is asked for.
+func darkBoost(local []float32, mult, lo, hi float64) []float32 {
+	if mult <= 1 || hi <= lo {
+		return nil
+	}
+	out := make([]float32, len(local))
+	for i, v := range local {
+		f := float64(v)
+		switch {
+		case f <= lo:
+			out[i] = float32(mult)
+		case f >= hi:
+			out[i] = 1
+		default:
+			u := (f - lo) / (hi - lo)
+			out[i] = float32(1 + (mult-1)*(1-u*u*(3-2*u)))
+		}
+	}
+	return out
+}
 
 func envFloat(name string, def float64) float64 {
 	if v, err := strconv.ParseFloat(os.Getenv(name), 64); err == nil {
@@ -181,7 +236,11 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 			sig[i] = s
 		}
 	})
-	Yd := atrous(Y, w, h, sig, dnK, 5)
+	var boost []float32
+	if o.Quattro && o.ISO >= 800 {
+		boost = darkBoost(local, dnDark, dnDarkLo, dnDarkHi)
+	}
+	Yd := atrous(Y, w, h, sig, dnK, 5, boost)
 	lap("atrous")
 	var mean float64
 	for _, v := range Yd {
@@ -211,12 +270,27 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		scale = 1
 	}
 	r := max(2, int(math.Round(colourRadius(o.ISO)*scale)))
+	if dnRadius > 0 {
+		r = max(2, int(math.Round(dnRadius*scale)))
+	}
 	if debugNoise {
 		fmt.Fprintf(os.Stderr, "denoise: wf %.9g %.9g %.9g mean %.9g eps %.9g r %d\n",
 			wf[0], wf[1], wf[2], mean, eps, r)
 	}
 	// The guide does not change per layer: its blurs are shared.
 	mI, mII := boxBlur(G, w, h, r), boxBlurSq(G, w, h, r)
+	// A wide chroma filter averages each layer over a window larger than a
+	// colour chart's patch, so a patch smaller than the window is pulled
+	// towards its surroundings and pales (the dp2 Quattro chart at ISO 6400
+	// lost a third of its chroma at radius 32). The wide filter's residual,
+	// low-passed at a patch-scale radius, is added back where the pixel
+	// holds real colour (measured on the layer chroma, so neutral grain is
+	// not restored). That keeps the patch and leaves the wide filter's
+	// mottle removal; FOVEON_DN_NOCS=1 renders without it.
+	rFine := min(r, 8)
+	csFix := chromaSmooth && csMode > 0 && o.Quattro && o.ISO >= 800 && r > rFine
+	rResid := max(2, int(math.Round(float64(csResid)*scale)))
+	var outF [3][]float32
 	var out [3][]float32
 	var wg sync.WaitGroup
 	for k := 0; k < 3; k++ {
@@ -228,6 +302,21 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 				p[i] /= m
 			}
 			out[k] = guidedPre(G, p, w, h, r, eps, mI, mII)
+			if csFix {
+				if csMode == 2 {
+					// The wide filter's residual, low-passed at a patch
+					// radius: the colour it removed at the chart's scale,
+					// with the 8-32 px grain largely smoothed out.
+					res := getPlane(n)
+					for i := range res {
+						res[i] = p[i] - out[k][i]
+					}
+					outF[k] = boxBlur(res, w, h, rResid)
+					putPlane(res)
+				} else {
+					outF[k] = guidedPre(G, p, w, h, rFine, eps, mI, mII)
+				}
+			}
 			putPlane(p)
 		}(k)
 	}
@@ -235,6 +324,50 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	parallel(n, func(i0, i1 int) {
 		for i := i0; i < i1; i++ {
 			a, b, c := out[0][i]*m, out[1][i]*m, out[2][i]*m
+			if csFix && csMode == 2 {
+				// The 16 px chroma residual is added back in proportion to
+				// how saturated the pixel is, so a patch keeps its level and
+				// near-neutral noise keeps the wide filter's smooth plane.
+				hR, lR := max(out[0][i]+outF[0][i], max(out[1][i]+outF[1][i], out[2][i]+outF[2][i])),
+					min(out[0][i]+outF[0][i], min(out[1][i]+outF[1][i], out[2][i]+outF[2][i]))
+				t := (hR - lR) * m
+				var alpha float32
+				switch {
+				case t >= csB2:
+					alpha = 1
+				case t > csA2:
+					u := (t - csA2) / (csB2 - csA2)
+					alpha = u * u * (3 - 2*u)
+				}
+				a += alpha * outF[0][i] * m
+				b += alpha * outF[1][i] * m
+				c += alpha * outF[2][i] * m
+			} else if csFix {
+				// Absolute layer chroma after the fine and the wide pass. A
+				// patch keeps its level in the fine one; a large flat colour
+				// keeps it in both. Where the wide pass removed a real step
+				// (a patch smaller than its window) the fine pass takes over;
+				// where the two agree the wide one's cleaner plane stays. The
+				// gate keeps the fine plane out of near-neutral chroma, which
+				// is noise.
+				hF, lF := max(outF[0][i], max(outF[1][i], outF[2][i])), min(outF[0][i], min(outF[1][i], outF[2][i]))
+				hW, lW := max(out[0][i], max(out[1][i], out[2][i])), min(out[0][i], min(out[1][i], out[2][i]))
+				tF, tW := (hF-lF)*m, (hW-lW)*m
+				var ww float32 = 1
+				if tF >= csAbs {
+					loss := (tF - tW) / tF
+					switch {
+					case loss >= csHi:
+						ww = 0
+					case loss > csLo:
+						u := (loss - csLo) / (csHi - csLo)
+						ww = 1 - u*u*(3-2*u)
+					}
+				}
+				a = ww*a + (1-ww)*outF[0][i]*m
+				b = ww*b + (1-ww)*outF[1][i]*m
+				c = ww*c + (1-ww)*outF[2][i]*m
+			}
 			y := wf[0]*a + wf[1]*b + wf[2]*c
 			// Put the denoised luminance back: scaling the layers keeps colour
 			// best where the signal is clear of the noise; near black the scale
@@ -797,7 +930,7 @@ func guidedPre(I, p []float32, w, h, r int, eps float32, mI, mII []float32) []fl
 
 // atrous soft-thresholds an à-trous B3-spline wavelet decomposition at k
 // times each level's noise (sigma: the plane's noise at each pixel).
-func atrous(p []float32, w, h int, sigma []float32, k float64, levels int) []float32 {
+func atrous(p []float32, w, h int, sigma []float32, k float64, levels int, boost []float32) []float32 {
 	cur := append([]float32(nil), p...)
 	out := make([]float32, len(p))
 	kern := [5]float32{1.0 / 16, 4.0 / 16, 6.0 / 16, 4.0 / 16, 1.0 / 16}
@@ -861,6 +994,13 @@ func atrous(p []float32, w, h int, sigma []float32, k float64, levels int) []flo
 		parallel(len(cur), func(a, b int) {
 			for i := a; i < b; i++ {
 				t := lk * sigma[i]
+				if boost != nil && l < darkLev {
+					b := boost[i]
+					if l == 0 {
+						b = 1 + (b-1)*float32(levFin)
+					}
+					t *= b
+				}
 				d := cur[i] - next[i]
 				switch {
 				case d > t:
