@@ -211,7 +211,28 @@ func guidedGauss(I, p []float32, w, h int, sigma, eps float64) []float32 {
 	a, b := ip, ii // reuse
 	parallelRows(n, func(i0, i1 int) {
 		for i := i0; i < i1; i++ {
-			a[i] = (mIp[i] - mI[i]*mp[i]) / (mII[i] - mI[i]*mI[i] + float32(eps))
+			// He et al.'s 0 <= a <= 1 is what makes this an edge-preserving
+			// filter. A colour-ratio plane does vary with brightness, so a
+			// wider bound can be argued, but it must be a bound: left free, a
+			// near-clipped highlight beside deep shadow produced coefficients
+			// of tens and painted a saturated red/cyan patch at the tonal
+			// boundary (DP1 Merrill ISO 6400 beside the clipped lamp; also on
+			// dp2 Quattro). Bound it to [0,1] and hold the estimate at the
+			// local mean where the window is flatter than eps (the guard
+			// x3f.Denoise's guided filter already has).
+			mi, mpf := float64(mI[i]), float64(mp[i])
+			varI := float64(mII[i]) - mi*mi
+			ai := 0.0
+			if varI > 0.5*float64(eps) {
+				ai = (float64(mIp[i]) - mi*mpf) / (varI + float64(eps))
+				if ai > 1 {
+					ai = 1
+				}
+				if ai < 0 {
+					ai = 0
+				}
+			}
+			a[i] = float32(ai)
 			b[i] = mp[i] - a[i]*mI[i]
 		}
 	})
