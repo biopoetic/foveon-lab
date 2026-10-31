@@ -74,6 +74,15 @@ const (
 // spp-check DPM over 32 photos: 6.846 -> 6.835; all 172 photos: 7.229 ->
 // 7.206 (Quattro 6.053 -> 5.945, SD10 8.826 -> 8.888). So the reach stays
 // at the deep shadows at every strength; only the radius grows.
+//
+// 31 October 2026 (task 14): the plane that is smoothed is the channel's
+// chroma relative to max(Y, shadowChromaLo), not relative to Y as before.
+// The old form was unbounded next to black, where all three channels are
+// camera noise: a near-black pixel's ratio could be hundreds, and the guided
+// filter spread it over its window, so a 95x93 px patch on DP1 Merrill ISO
+// 6400's fan edge turned red or cyan depending on the sign of a neighbour's
+// noise. The floor bounds the plane by the chroma the shadow actually has;
+// above shadowChromaLo it is algebraically the old filter.
 const (
 	shadowNoiseLo = 0.02
 	shadowNoiseHi = 0.10
@@ -118,12 +127,25 @@ func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 	if !any.Load() {
 		return
 	}
+	// The plane that is smoothed is each channel's chroma relative to the
+	// luminance, but relative to max(Y, shadowChromaLo), not to Y itself.
+	// Dividing by Y made the plane explode next to black: at DP1 Merrill ISO
+	// 6400 a near-black pixel (linear Y ~1e-4, all three channels camera
+	// noise) has ratios of hundreds, and the guided filter spread that ratio
+	// over its ~10 px window, painting a saturated red/cyan patch on a
+	// neighbouring pixel at Y = 0.026 (the fan's edge). Whether that pixel's
+	// noise was positive or negative decided the patch's sign, so a handful
+	// of despeckled samples elsewhere flipped it from red to cyan. With the
+	// floor, the plane is bounded by the chroma the shadow actually has and a
+	// black neighbour contributes almost nothing; above the floor this is
+	// exactly the old Y-relative chroma.
+	floor := float32(shadowChromaLo)
 	var ratio [3][]float32
 	for k := 0; k < 3; k++ {
 		c := make([]float32, n)
 		parallelRows(n, func(i0, i1 int) {
 			for i := i0; i < i1; i++ {
-				c[i] = l.Pix[i*3+k] / (Y[i] + 1e-4)
+				c[i] = (l.Pix[i*3+k] - Y[i]) / max(Y[i], floor)
 			}
 		})
 		ratio[k] = guidedGauss(G, c, w, h, sigma, shadowChromaEps)
@@ -136,10 +158,10 @@ func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 				continue
 			}
 			t = min(t, 1) * a
-			yy := Y[i] + 1e-4
+			yy := max(Y[i], floor)
 			var v [3]float32
 			for k := 0; k < 3; k++ {
-				v[k] = l.Pix[i*3+k]*(1-t) + ratio[k][i]*yy*t
+				v[k] = l.Pix[i*3+k]*(1-t) + (Y[i]+ratio[k][i]*yy)*t
 			}
 			// SPP also mutes noisy shadows, but only their magenta side
 			// (green below the luminance): dark greens stay green.
@@ -217,9 +239,7 @@ func guidedGauss(I, p []float32, w, h int, sigma, eps float64) []float32 {
 			// near-clipped highlight beside deep shadow produced coefficients
 			// of tens and painted a saturated red/cyan patch at the tonal
 			// boundary (DP1 Merrill ISO 6400 beside the clipped lamp; also on
-			// dp2 Quattro). Bound it to [0,1] and hold the estimate at the
-			// local mean where the window is flatter than eps (the guard
-			// x3f.Denoise's guided filter already has).
+			// dp2 Quattro). Bound it to [0,1].
 			mi, mpf := float64(mI[i]), float64(mp[i])
 			varI := float64(mII[i]) - mi*mi
 			ai := 0.0
