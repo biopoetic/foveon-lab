@@ -50,7 +50,18 @@ type nrMetric struct {
 	NoiseY [4]float64 `json:"noiseY"` // 8-bit sRGB luminance, sigma
 	NoiseA [4]float64 `json:"noiseA"` // CIELAB a*, sigma
 	NoiseB [4]float64 `json:"noiseB"` // CIELAB b*, sigma
-	Detail [4]float64 `json:"detail"` // slope of this band on the ISO 100 band
+	Detail [4]float64 `json:"detail"` // slope of this band on this pipeline's ISO 100
+	// DetailBasis is the same band-by-band slope, but on one fixed reference
+	// per ladder: the ISO 100 frame rendered with noise reduction off (the
+	// tools/sharpfit -gain basis). It does not move with the pipeline under
+	// test, so ours before/after/off and SPP can be compared on one axis.
+	DetailBasis [4]float64 `json:"detailBasis"`
+	// Impulse is single-pixel impulse dots per megapixel in the flat blocks:
+	// a pixel 80 or more 8-bit levels from the median of its eight neighbours
+	// while those neighbours span less than 12. Black and white dust, not
+	// texture or ordinary noise (80 levels is 8-10 sigma at ISO 6400 and 20
+	// at ISO 800; a 48-level test counted 2,000/MP of grain at 6400).
+	Impulse float64 `json:"impulse"`
 	// Blotch is the 8-32 px band of a*/b* in flat areas: the low-frequency
 	// chroma mottling SPP removes and a per-pixel filter does not.
 	BlotchA float64 `json:"blotchA"`
@@ -307,8 +318,18 @@ func scoreLadder(l *nrLadder, nr float64, crop nrCrop) ([]nrRecord, error) {
 		return nil, fmt.Errorf("%s: %v", l.refEx, err)
 	}
 	refOurs, refSPP = matchSize(refOurs, refSPP)
+	// The fixed detail basis: the ISO 100 frame without noise reduction (the
+	// same raw data, app settings and size as ours), so the reference does
+	// not get softer when a pipeline's restore is switched off.
+	refBasis, _, err := ourFullRender(l.ref, 0)
+	if err != nil {
+		return nil, err
+	}
+	refBasis, _ = matchSize(refBasis, refSPP)
+	refBasisLab := toLab8(refBasis)
 	refOursLab, refSPPLab := toLab8(refOurs), toLab8(refSPP)
 	refOurs, refSPP = nil, nil
+	refBasis = nil
 	fmt.Printf("%s: ref %s ISO %g %.2fs\n", l.key, l.ref.Name, l.refISO, time.Since(t0).Seconds())
 
 	var out []nrRecord
@@ -334,17 +355,21 @@ func scoreLadder(l *nrLadder, nr float64, crop nrCrop) ([]nrRecord, error) {
 		// frames are compared at their own size, so the ISO 100 reference is
 		// reduced to it too.
 		rO, rS := refOursLab, refSPPLab
+		rB := refBasisLab
 		if rO.w != ours.W || rO.h != ours.H {
 			rO = refOursLab.resize(ours.W, ours.H)
 		}
 		if rS.w != ours.W || rS.h != ours.H {
 			rS = refSPPLab.resize(ours.W, ours.H)
 		}
+		if rB.w != ours.W || rB.h != ours.H {
+			rB = refBasisLab.resize(ours.W, ours.H)
+		}
 		selO, blocks := flatMask(rO)
 		selS := selO // the same scene blocks for both pipelines
 		oLab, sLab := toLab8(ours), toLab8(spp)
-		om := measureNR(oLab, rO, selO)
-		sm := measureNR(sLab, rS, selS)
+		om := measureNR(oLab, rO, rB, selO)
+		sm := measureNR(sLab, rS, rB, selS)
 		om.Blocks, sm.Blocks = blocks, blocks
 		out = append(out, nrRecord{
 			Ladder: l.key, Ref: l.ref.Name, Name: it.ph.Name,
@@ -612,8 +637,10 @@ var nrBands = [5]int{0, 1, 2, 4, 8} // band k: box(r[k]) - box(r[k+1])
 // measureNR computes one pipeline's metrics for target against its own
 // ISO 100 reference, over the shared flat-block selection. Noise is the
 // band-passed target-minus-reference in the flat blocks, so the scene (and
-// the reference's own small noise) is not counted as noise.
-func measureNR(target, ref *lab8, sel []bool) nrMetric {
+// the reference's own small noise) is not counted as noise. The detail
+// slopes are also measured on basis, the same no-NR ISO 100 frame for every
+// pipeline, so they do not move when the pipeline under test changes.
+func measureNR(target, ref, basis *lab8, sel []bool) nrMetric {
 	var m nrMetric
 	w, h := target.w, target.h
 	dy := make([]float32, len(target.y))
@@ -632,8 +659,9 @@ func measureNR(target, ref *lab8, sel []bool) nrMetric {
 	for b := 0; b < 4; b++ {
 		tb := bandPlane(target.y, w, h, nrBands[b], nrBands[b+1])
 		rb := bandPlane(ref.y, w, h, nrBands[b], nrBands[b+1])
+		bb := bandPlane(basis.y, w, h, nrBands[b], nrBands[b+1])
 		nb := bandPlane(dy, w, h, nrBands[b], nrBands[b+1])
-		var ss, sxy, sxx float64
+		var ss, sxy, sxx, bxy, bxx float64
 		var n float64
 		for i := range tb {
 			if sel[i] {
@@ -645,12 +673,19 @@ func measureNR(target, ref *lab8, sel []bool) nrMetric {
 				sxy += x * y
 				sxx += x * x
 			}
+			if basis.y[i] > 4 && basis.y[i] < 251 {
+				bxy += float64(bb[i]) * float64(tb[i])
+				bxx += float64(bb[i]) * float64(bb[i])
+			}
 		}
 		if n > 0 {
 			m.NoiseY[b] = math.Sqrt(ss / n)
 		}
 		if sxx > 1e-9 {
 			m.Detail[b] = sxy / sxx
+		}
+		if bxx > 1e-9 {
+			m.DetailBasis[b] = bxy / bxx
 		}
 	}
 	// Chroma noise per band.
@@ -735,7 +770,55 @@ func measureNR(target, ref *lab8, sel []bool) nrMetric {
 	}
 	m.RowBand = stdFloat(rows)
 	m.ColBand = stdFloat(cols)
+	// Impulse dots: a pixel far from the median of its eight neighbours
+	// while those neighbours are themselves flat. A real single-pixel star
+	// or specular point also counts; the point is to compare that number
+	// with SPP's and not to reward erasing either.
+	var dots, npix float64
+	ring := make([]float32, 8)
+	for y := 1; y+1 < h; y++ {
+		for x := 1; x+1 < w; x++ {
+			i := y*w + x
+			if !sel[i] {
+				continue
+			}
+			npix++
+			j := 0
+			for yy := y - 1; yy <= y+1; yy++ {
+				for xx := x - 1; xx <= x+1; xx++ {
+					if xx == x && yy == y {
+						continue
+					}
+					ring[j] = target.y[yy*w+xx]
+					j++
+				}
+			}
+			lo, hi := ring[0], ring[0]
+			for _, v := range ring[1:] {
+				lo, hi = min(lo, v), max(hi, v)
+			}
+			med := median8(ring)
+			if hi-lo < 12 && math.Abs(float64(target.y[i]-med)) > 80 {
+				dots++
+			}
+		}
+	}
+	if npix > 0 {
+		m.Impulse = dots / (npix / 1e6)
+	}
 	return m
+}
+
+// median8 is the median of eight values (the mean of the middle two).
+func median8(v []float32) float32 {
+	var a [8]float32
+	copy(a[:], v)
+	for i := 1; i < len(a); i++ {
+		for j := i; j > 0 && a[j] < a[j-1]; j-- {
+			a[j], a[j-1] = a[j-1], a[j]
+		}
+	}
+	return (a[3] + a[4]) / 2
 }
 
 // bandPlane is box(r1) - box(r2): the spatial band between the two radii.
@@ -864,7 +947,9 @@ func printNRSummary(recs []nrRecord) {
 		oy, sy   float64 // luma noise
 		oc, sc   float64 // chroma noise
 		od, sd   [4]float64
+		oBs, sBs [4]float64
 		ob, sb   float64 // blotch
+		oi, si   float64 // impulse dots / MP
 		oda, odb float64 // drift vector
 		orb, srb float64 // row banding
 		ocb, scb float64 // col banding
@@ -886,9 +971,13 @@ func printNRSummary(recs []nrRecord) {
 		for b := 0; b < 4; b++ {
 			a.od[b] += r.Ours.Detail[b]
 			a.sd[b] += r.SPP.Detail[b]
+			a.oBs[b] += r.Ours.DetailBasis[b]
+			a.sBs[b] += r.SPP.DetailBasis[b]
 		}
 		a.ob += r.Ours.BlotchA + r.Ours.BlotchB
 		a.sb += r.SPP.BlotchA + r.SPP.BlotchB
+		a.oi += r.Ours.Impulse
+		a.si += r.SPP.Impulse
 		a.oda += math.Hypot(r.Ours.DriftA, r.Ours.DriftB)
 		a.odb += math.Hypot(r.SPP.DriftA, r.SPP.DriftB)
 		a.orb += r.Ours.RowBand
@@ -908,12 +997,12 @@ func printNRSummary(recs []nrRecord) {
 		return ks[i].iso < ks[j].iso
 	})
 	fmt.Println("\nNoise in flat areas (lower is better), ours / SPP; chroma is CIELAB dE units:")
-	fmt.Printf("%-24s %5s %3s  %13s %13s %13s %13s %13s\n", "body", "ISO", "n", "luma", "chroma", "blotch 8-32", "row band", "col band")
+	fmt.Printf("%-24s %5s %3s  %13s %13s %13s %13s %13s %13s\n", "body", "ISO", "n", "luma", "chroma", "blotch 8-32", "row band", "col band", "dots/MP")
 	for _, k := range ks {
 		a := by[k]
 		n := float64(a.n)
-		fmt.Printf("%-24s %5g %3d  %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f\n",
-			k.body, k.iso, a.n, a.oy/n, a.sy/n, a.oc/n, a.sc/n, a.ob/n, a.sb/n, a.orb/n, a.srb/n, a.ocb/n, a.scb/n)
+		fmt.Printf("%-24s %5g %3d  %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.1f/%5.1f\n",
+			k.body, k.iso, a.n, a.oy/n, a.sy/n, a.oc/n, a.sc/n, a.ob/n, a.sb/n, a.orb/n, a.srb/n, a.ocb/n, a.scb/n, a.oi/n, a.si/n)
 	}
 	fmt.Println("\nRetained detail per band (slope on each pipeline's own ISO 100; 1 = all kept) and mean |drift| a*b*:")
 	fmt.Printf("%-24s %5s %3s  %13s %13s %13s %13s %9s %9s\n", "body", "ISO", "n", "0-1 px", "1-2 px", "2-4 px", "4-8 px", "drift", "ours s/frame")
@@ -923,6 +1012,14 @@ func printNRSummary(recs []nrRecord) {
 		fmt.Printf("%-24s %5g %3d  %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %4.1f/%4.1f %8.1fs\n",
 			k.body, k.iso, a.n, a.od[0]/n, a.sd[0]/n, a.od[1]/n, a.sd[1]/n, a.od[2]/n, a.sd[2]/n, a.od[3]/n, a.sd[3]/n,
 			a.oda/n, a.odb/n, a.oursMS/n/1000)
+	}
+	fmt.Println("\nDetail on one fixed basis per ladder (ISO 100 rendered with NR off; 1 = the no-NR band, ours / SPP):")
+	fmt.Printf("%-24s %5s %3s  %13s %13s %13s %13s\n", "body", "ISO", "n", "0-1 px", "1-2 px", "2-4 px", "4-8 px")
+	for _, k := range ks {
+		a := by[k]
+		n := float64(a.n)
+		fmt.Printf("%-24s %5g %3d  %6.3f/%5.3f %6.3f/%5.3f %6.3f/%5.3f %6.3f/%5.3f\n",
+			k.body, k.iso, a.n, a.oBs[0]/n, a.sBs[0]/n, a.oBs[1]/n, a.sBs[1]/n, a.oBs[2]/n, a.sBs[2]/n, a.oBs[3]/n, a.sBs[3]/n)
 	}
 	// Where SPP wins, averaged over the high-ISO rows.
 	var n, wy, wc, wb int
@@ -949,6 +1046,7 @@ func writeNRCSV(path string, recs []nrRecord) error {
 		"o_noiseA0,o_noiseA1,o_noiseA2,o_noiseA3,s_noiseA0,s_noiseA1,s_noiseA2,s_noiseA3," +
 		"o_noiseB0,o_noiseB1,o_noiseB2,o_noiseB3,s_noiseB0,s_noiseB1,s_noiseB2,s_noiseB3," +
 		"o_detail0,o_detail1,o_detail2,o_detail3,s_detail0,s_detail1,s_detail2,s_detail3," +
+		"o_basis0,o_basis1,o_basis2,o_basis3,s_basis0,s_basis1,s_basis2,s_basis3,o_impulse,s_impulse," +
 		"o_blotchA,o_blotchB,s_blotchA,s_blotchB,o_driftA,o_driftB,s_driftA,s_driftB," +
 		"o_rowBand,o_colBand,s_rowBand,s_colBand\n")
 	f := func(v float64) string { return strconv.FormatFloat(v, 'f', 4, 64) }
@@ -976,6 +1074,12 @@ func writeNRCSV(path string, recs []nrRecord) error {
 				vals = append(vals, f(v))
 			}
 		}
+		for _, m := range []nrMetric{r.Ours, r.SPP} {
+			for _, v := range m.DetailBasis {
+				vals = append(vals, f(v))
+			}
+		}
+		vals = append(vals, f(r.Ours.Impulse), f(r.SPP.Impulse))
 		vals = append(vals, f(r.Ours.BlotchA), f(r.Ours.BlotchB), f(r.SPP.BlotchA), f(r.SPP.BlotchB),
 			f(r.Ours.DriftA), f(r.Ours.DriftB), f(r.SPP.DriftA), f(r.SPP.DriftB),
 			f(r.Ours.RowBand), f(r.Ours.ColBand), f(r.SPP.RowBand), f(r.SPP.ColBand))
