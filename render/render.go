@@ -937,6 +937,23 @@ func (op *pixOp) unstyle(r, g, bl float32) (float32, float32, float32) {
 	return r, g, bl
 }
 
+// highlightDesat is how much a pixel's chroma is faded because it is clipping
+// towards white: 0 below linear 0.9, 1 at 1. A pixel whose darkest channel is
+// still nearly white is a clipped white, whatever tint the channels picked up
+// on the way (raw base curves, JPEG clipping); keeping that tint would draw a
+// coloured rim around every clipped patch.
+func highlightDesat(r, g, b float32) float32 {
+	mn := min(r, min(g, b))
+	if mn <= 0.9 {
+		return 0
+	}
+	if mn >= 1 {
+		return 1
+	}
+	u := (mn - 0.9) / 0.1
+	return u * u * (3 - 2*u)
+}
+
 // applyMeasured is apply for the measured model: tone steps work on
 // perceptual brightness and scale colourfulness by their measured ratio.
 func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, float32) {
@@ -947,6 +964,7 @@ func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, f
 		r, g, bl = op.modeMap.Pixel(r, g, bl)
 	}
 	r, g, bl = r*op.tint[0], g*op.tint[1], bl*op.tint[2]
+	desat := highlightDesat(r, g, bl)
 	Y := 0.2126*r + 0.7152*g + 0.0722*bl
 	cr, cg, cb := r-Y, g-Y, bl-Y
 	x, chroma := op.preL.at(enc(Y))
@@ -963,7 +981,7 @@ func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, f
 	if op.mono {
 		return Y2, Y2, Y2
 	}
-	f := chroma * float32(op.satMeasure)
+	f := chroma * float32(op.satMeasure) * (1 - desat)
 	return Y2 + cr*f, Y2 + cg*f, Y2 + cb*f
 }
 
@@ -993,6 +1011,7 @@ func (op *pixOp) apply(r, g, bl, m, da, db float32) (float32, float32, float32) 
 	}
 
 	Y := 0.2126*r + 0.7152*g + 0.0722*bl
+	desat := highlightDesat(r, g, bl)
 	if op.tone != nil && Y > 1e-6 {
 		// The film: the exposure (above) is the camera's, the tone steps
 		// (below) the print's.
@@ -1003,7 +1022,12 @@ func (op *pixOp) apply(r, g, bl, m, da, db float32) (float32, float32, float32) 
 	if Y > 1e-6 {
 		Y2 := Y
 		if op.hl < 0 {
-			Y2 = Y / (1 - op.hl*Y*Y)
+			// A shoulder, not a scale: SPP's Highlight darkens the upper
+			// midtones and returns to white (its measured -1 curve has a
+			// -0.03 peak and ends ~0 at 1), while the old Y/(1-hl·Y²) took
+			// 26% off white and left clipped white a flat grey. This form is
+			// monotonic over the slider's range and leaves 1 at 1.
+			Y2 = Y * (1 + 2*op.hl*Y*(1-Y))
 		} else if op.hl > 0 {
 			Y2 = Y * (1 + op.hl*Y*Y)
 		}
@@ -1022,7 +1046,7 @@ func (op *pixOp) apply(r, g, bl, m, da, db float32) (float32, float32, float32) 
 		Y = Y3
 	}
 
-	f := op.satF
+	f := op.satF * (1 - float64(desat))
 	if op.mode == preset.ModePortrait || op.mode == preset.ModeLandscape {
 		hx := float64(r) - 0.5*float64(g+bl)
 		hy := 0.8660254 * float64(g-bl)

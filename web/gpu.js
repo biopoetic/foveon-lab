@@ -71,6 +71,15 @@ float filmTone(float y){
   return a + (b - a) * (x - float(i));
 }
 float hueWeight(float h, float c, float half_){ float d = abs(h - c); if (d > 180.) d = 360. - d; return max(0., 1. - d / half_); }
+// A pixel whose darkest channel is nearly white is a clipped white; fade its
+// chroma so uneven channel clipping cannot draw a coloured rim.
+float hlDesat(vec3 c){
+  float mn = min(c.r, min(c.g, c.b));
+  if (mn <= 0.9) return 0.;
+  if (mn >= 1.) return 1.;
+  float u = (mn - 0.9) / 0.1;
+  return u * u * (3. - 2. * u);
+}
 float bilerp8(float s, float p){
   float fs = clamp(s * 8. - 0.5, 0., 7.), fp = clamp(p * 8. - 0.5, 0., 7.);
   int s0 = min(int(fs), 6), p0 = min(int(fp), 6);
@@ -127,6 +136,7 @@ void main(){
     if (uWB) c = corr(c, uWBM, uWBTaste, uWBSat, 9);
     if (uMM) c = corr(c, uMMM, uMMTaste, uMMSat, 13);
     c *= uTint;
+    float des = hlDesat(c);
     float Y = dot(LUMA, c);
     vec3 ch = c - Y;
     float x = enc(Y);
@@ -142,7 +152,7 @@ void main(){
     }
     chroma *= lut(3, x); x = lut(2, x);
     float Y2 = dec(x);
-    c = uMono ? vec3(Y2) : Y2 + ch * (chroma * uSatMeasure);
+    c = uMono ? vec3(Y2) : Y2 + ch * (chroma * uSatMeasure * (1. - des));
   } else {
     c *= uGain;
     if (uCF) c = colorFilm(c);
@@ -150,18 +160,20 @@ void main(){
       float m = min(1., aux.r * uMaskScale), wt = (1. - m) * (1. - m);
       c *= exp2(uFill * wt);
     }
+    float des = hlDesat(c);
     float Y = dot(LUMA, c);
     if (uFilmTone && Y > 1e-6){ float Yf = filmTone(Y); c *= Yf / Y; Y = Yf; }
     if (Y > 1e-6){
       float Y2 = Y;
-      if (uHL < 0.) Y2 = Y / (1. - uHL * Y * Y); else if (uHL > 0.) Y2 = Y * (1. + uHL * Y * Y);
+      // A shoulder, not a scale (render.go apply): white stays white.
+      if (uHL < 0.) Y2 = Y * (1. + 2. * uHL * Y * (1. - Y)); else if (uHL > 0.) Y2 = Y * (1. + uHL * Y * Y);
       float v = enc(Y2);
       if (uBlk != 0.) v = max(0., (v - uBlk) / (1. - uBlk));
       if (uCT != 0.){ v = clamp(v, 0., 1.); float s = v * v * (3. - 2. * v); v += uCT * (s - v); }
       float Y3 = dec(v);
       c *= Y3 / Y; Y = Y3;
     }
-    float f = uSatF;
+    float f = uSatF * (1. - des);
     if (uMode == 6 || uMode == 7){
       float hx = c.r - 0.5 * (c.g + c.b), hy = 0.8660254 * (c.g - c.b);
       float hue = degrees(atan(hy, hx)); if (hue < 0.) hue += 360.;

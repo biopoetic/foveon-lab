@@ -104,6 +104,8 @@ func init() {
 			sort.Slice(m.Tone[k], func(a, b int) bool { return m.Tone[k][a].Value < m.Tone[k][b].Value })
 		}
 		sort.Slice(m.Fill, func(a, b int) bool { return m.Fill[a].Value < m.Fill[b].Value })
+		m.sanitizeFill()
+		m.sanitizeHighlight()
 		fam := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(e.Name(), "model"), "_"), ".json")
 		models[fam] = &m
 	}
@@ -220,15 +222,82 @@ func (f *fillOp) usesMean() bool {
 	return false
 }
 
+// sanitizeFill fixes the one part of the measured Fill Light model that the
+// calibration cannot observe: what it does in a flat, bright patch. The fit's
+// constant term (the shift where the surround and the pixel are equally
+// bright) is positive through the midtones for a positive Fill Light — as it
+// must be — but the top brightness bin came out negative, by up to -0.32
+// (Fill +1). Its few unclipped near-white pixels are a mix of clipped white
+// (shift 0) and SPP's own highlight recovery, so the fit there is noise, and a
+// negative constant turns a flat clipped white into a flat grey plateau
+// (task 18: [FL] Max Detail, DP3 Merrill). A flat region can only be lifted by
+// Fill Light, never dimmed; the same holds with the signs reversed for a
+// negative Fill Light. The local (surround) terms are left alone: they are
+// what makes Fill Light local.
+func (m *Model) sanitizeFill() {
+	for i := range m.Fill {
+		s := &m.Fill[i]
+		if s.Value == 0 {
+			continue
+		}
+		pos := s.Value > 0
+		for b := range s.Coef {
+			if (pos && s.Coef[b][0] < 0) || (!pos && s.Coef[b][0] > 0) {
+				s.Coef[b][0] = 0
+			}
+		}
+		// The one-scale model has no constant term; its top pixel bin is the
+		// same flat-white case.
+		for l := 0; l < 8; l++ {
+			if (pos && s.Local[l][7] < 0) || (!pos && s.Local[l][7] > 0) {
+				s.Local[l][7] = 0
+			}
+		}
+	}
+}
+
+// sanitizeHighlight makes a negative Highlight a real shoulder: its measured
+// brightness change must return to zero at white. SPP's own -1 export leaves
+// a few percent of white gone on some bodies (the SD15 fit ends -0.061, the
+// SD14 -0.084); reproducing that exactly would keep a flat grey where a
+// photographer expects clipped white, and the task's rule is that white wins
+// over matching SPP. The measured curve is kept below x=0.7; above it the
+// endpoint's darkening is faded out with a smoothstep, so the curve ends at
+// exactly zero and the shoulder into white stays smooth.
+func (m *Model) sanitizeHighlight() {
+	for i := range m.Tone["Highlight"] {
+		s := &m.Tone["Highlight"][i]
+		if s.Value >= 0 {
+			continue
+		}
+		d1 := knot(&s.Delta, 1)
+		if d1 >= 0 {
+			continue
+		}
+		for k := 0; k <= Knots-1; k++ {
+			x := float64(k) / float64(Knots-1)
+			u := (x - 0.7) / 0.3
+			u = math.Max(0, math.Min(1, u))
+			w := u * u * (3 - 2*u)
+			s.Delta[k] -= d1 * w
+		}
+	}
+}
+
 // fillOp is Fill Light at a value: a weighted blend of measured settings.
 type fillOp struct {
 	steps   []*FillStep
 	weights []float64
+	sign    float64 // +1 for a lift, -1 for a cut
 }
 
 func (md *Model) newFillOp(v float64) *fillOp {
 	if md == nil || v == 0 || len(md.Fill) == 0 {
 		return nil
+	}
+	sign := 1.0
+	if v < 0 {
+		sign = -1
 	}
 	var side []*FillStep // measured settings with v's sign, by size
 	for i := range md.Fill {
@@ -243,7 +312,7 @@ func (md *Model) newFillOp(v float64) *fillOp {
 				s = &md.Fill[i]
 			}
 		}
-		return &fillOp{steps: []*FillStep{s}, weights: []float64{v / s.Value}}
+		return &fillOp{steps: []*FillStep{s}, weights: []float64{v / s.Value}, sign: sign}
 	}
 	sort.Slice(side, func(a, b int) bool { return math.Abs(side[a].Value) < math.Abs(side[b].Value) })
 	a := math.Abs(v)
@@ -252,17 +321,17 @@ func (md *Model) newFillOp(v float64) *fillOp {
 		if a > math.Abs(s.Value) {
 			s = side[len(side)-1]
 		}
-		return &fillOp{steps: []*FillStep{s}, weights: []float64{v / s.Value}}
+		return &fillOp{steps: []*FillStep{s}, weights: []float64{v / s.Value}, sign: sign}
 	}
 	for k := 1; k < len(side); k++ {
 		lo, hi := side[k-1], side[k]
 		if a <= math.Abs(hi.Value) {
 			t := (a - math.Abs(lo.Value)) / (math.Abs(hi.Value) - math.Abs(lo.Value))
-			return &fillOp{steps: []*FillStep{lo, hi}, weights: []float64{1 - t, t}}
+			return &fillOp{steps: []*FillStep{lo, hi}, weights: []float64{1 - t, t}, sign: sign}
 		}
 	}
 	far := side[len(side)-1] // beyond the largest: scale it
-	return &fillOp{steps: []*FillStep{far}, weights: []float64{v / far.Value}}
+	return &fillOp{steps: []*FillStep{far}, weights: []float64{v / far.Value}, sign: sign}
 }
 
 func bilerp8(t *[8][8]float64, s, p float64) float64 {
@@ -303,6 +372,16 @@ func (f *fillOp) bake(mean float64) *fillLUT {
 			b += (fillCoef(&s.Coef, x, 1, 0) - a0) * w
 			c += (fillCoef(&s.Coef, x, 0, 1) - a0) * w
 			k += (knot(&s.Chroma, x) - 1) * math.Abs(w)
+		}
+		// A(x) is the shift of a flat region, where the pixel and its
+		// surroundings are equally bright. The frame-mean term included
+		// above is global, and on a dark frame it turns a positive Fill
+		// Light into a large darkening of every bright pixel (a bright sky
+		// in a dark alley went to a flat grey). Whatever the fit does, a
+		// flat region may be lifted by a positive Fill Light, never dimmed
+		// (and the reverse for a cut). The B/C local terms stay free.
+		if (f.sign > 0 && a < 0) || (f.sign < 0 && a > 0) {
+			a = 0
 		}
 		t.a[i], t.b[i], t.c[i], t.k[i] = float32(a), float32(b), float32(c), float32(k)
 	}
