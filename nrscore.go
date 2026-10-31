@@ -122,6 +122,8 @@ func nrScoreCommand(desk string) {
 	cropDir := fs.String("cropdir", "", "write a centre crop of ours and of SPP for the crop ISO into this folder")
 	cropISO := fs.Float64("cropiso", 6400, "with -cropdir: the ISO to crop")
 	cropSize := fs.Int("cropsize", 480, "with -cropdir: crop side in pixels")
+	cropX := fs.Int("cropx", -1, "with -cropdir: crop centre x (-1 = frame centre)")
+	cropY := fs.Int("cropy", -1, "with -cropdir: crop centre y (-1 = frame centre)")
 	cropOnly := fs.Bool("croponly", false, "with -cropdir: only render the crop ISO frames (no metrics)")
 	fs.Parse(os.Args[2:])
 
@@ -159,7 +161,7 @@ func nrScoreCommand(desk string) {
 	}
 
 	var recs []nrRecord
-	crop := nrCrop{dir: *cropDir, iso: *cropISO, size: *cropSize, only: *cropOnly}
+	crop := nrCrop{dir: *cropDir, iso: *cropISO, size: *cropSize, x: *cropX, y: *cropY, only: *cropOnly}
 	for _, l := range ladders {
 		rs, err := scoreLadder(l, *nr, crop)
 		if err != nil {
@@ -279,6 +281,7 @@ type nrCrop struct {
 	dir  string
 	iso  float64
 	size int
+	x, y int // crop centre; -1 = frame centre
 	only bool
 }
 
@@ -415,6 +418,9 @@ func saveNRCrops(c nrCrop, ladder, name string, ours, spp *render.Linear) {
 	}{{"ours", ours}, {"spp", spp}} {
 		cs := min(c.size, min(it.l.W, it.l.H))
 		x0, y0 := (it.l.W-cs)/2, (it.l.H-cs)/2
+		if c.x >= 0 && c.y >= 0 {
+			x0, y0 = max(0, min(it.l.W-cs, c.x-cs/2)), max(0, min(it.l.H-cs, c.y-cs/2))
+		}
 		img := image.NewRGBA(image.Rect(0, 0, cs, cs))
 		for y := 0; y < cs; y++ {
 			for x := 0; x < cs; x++ {
