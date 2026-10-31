@@ -642,7 +642,7 @@ async function loadPhotos(){
   $("#bar").style.display = empty ? "none" : "";
   $("#grid").style.display = empty ? "none" : "";
   $("#gridNote").style.display = empty ? "none" : "";
-  if (empty){ box.innerHTML = '<div class="empty">No photos yet. Use <b>Import from card…</b> or <b>Folders…</b> to choose where they are.</div>'; paintSelection(); return; }
+  if (empty){ box.innerHTML = '<div class="empty">No photos yet. Your photos will appear here after you choose a folder.</div>'; paintSelection(); return; }
   // One collapsible group per folder; collapsed folders are remembered.
   const collapsed = new Set(store.get("collapsedFolders", []));
   const counts = {};
@@ -1024,7 +1024,7 @@ function drawFilmGrid(g){
     ["Black and white", f => f.bw && filmUsable(f)],
   ];
   let items = [], html = "";
-  html += `<div class="head">Films on this photo <span class="dim" style="font-weight:400">(brightness matched for comparison; click one to use it)</span></div>`;
+  html += `<div class="head">Films on this photo <span class="dim" style="font-weight:400">(brightness matched, highlights protected; click one to use it)</span></div>`;
   items.push(null);
   const cur = S.params?.film || "";
   html += `<div class="tile ref${cur ? "" : " cur"}" data-i="0"><div class="img"><img loading="lazy" src="${renderURL({w, params: {...NEUTRAL, film: "", grain: 0}})}"></div><div class="cap">No film<small>the photo without a film</small></div></div>`;
@@ -1524,6 +1524,9 @@ function syncDev(f){
 }
 
 function syncSliders(){
+  // With no photo open there is nothing to show: filtersInit runs before the
+  // first photo and used to reach this with S.params still null.
+  if (!S.params) return;
   for (const row of document.querySelectorAll("#panel .row[data-k]")){
     const k = row.dataset.k, v = S.params[k] ?? NEUTRAL[k];
     row.querySelector("input").value = v;
@@ -2073,7 +2076,29 @@ function savePhotoEdits(){
 function hasSavedEdit(id){ return !!savedEdit(id); }
 
 // ---------- batch export ----------
-const BATCH = {ctl: null, ids: []};
+const BATCH = {ctl: null, ids: [], running: false, done: false, run: 0};
+
+// batchLookName is the plain name of the look the batch will use.
+function batchLookName(look){
+  if (look === "__current"){
+    const p = current();
+    return dirty() ? (p ? p.name + " Edited" : "Edited") : (p ? p.name : "Neutral");
+  }
+  if (!look) return "Neutral";
+  return S.presets.find(x => x.id === look)?.name || "Edited";
+}
+function batchButtonText(){
+  const photosOn = CARD.settings?.platform === "darwin";
+  return photosOn && $("#bPhotos").checked ? "Export to Photos" : "Export";
+}
+// batchArm brings the Export button back after a finished batch, when the
+// user changes a setting: a finished "Done" is never a second run by accident.
+function batchArm(){
+  if (BATCH.running || !BATCH.done) return;
+  BATCH.done = false;
+  $("#bStart").disabled = false;
+  $("#bStart").textContent = batchButtonText();
+}
 
 function batchIds(scope){
   const ok = x => !x.unsupported;
@@ -2117,12 +2142,15 @@ function batchOpen(scope){
   $("#bPhotosRow").style.display = photosOn ? "" : "none";
   $("#bPhotos").checked = photosOn && !!CARD.settings?.photosApp;
   $("#bProg div").style.width = "0"; $("#bMsg").textContent = "";
+  BATCH.running = false; BATCH.done = false;
   $("#bStart").disabled = false; $("#bStop").style.display = "none";
-  $("#bStart").textContent = photosOn && $("#bPhotos").checked ? "Export to Photos" : "Export";
+  $("#bStart").textContent = batchButtonText();
   $("#batch").classList.add("on");
 }
 
 async function batchStart(){
+  if (BATCH.running || BATCH.done) return;
+  const run = ++BATCH.run;
   const scope = document.querySelector('input[name=bScope]:checked').value;
   const ids = batchIds(scope);
   if (!ids.length){ $("#bMsg").textContent = "No photos to export. Select some first."; return; }
@@ -2142,14 +2170,30 @@ async function batchStart(){
     params: look === "__current" ? S.params : null,
     paramsById, comp: comp() === "1",
     denoise: +$("#nr").value, space: $("#cspace").value, destination, photos,
+    look: batchLookName(look),
   };
-  $("#bStart").disabled = true; $("#bStop").style.display = "";
+  BATCH.running = true;
+  $("#bStart").disabled = true; $("#bStart").textContent = "Exporting…";
+  $("#bStop").style.display = "";
   BATCH.ctl = new AbortController();
   let res;
   try {
     res = await fetch("/api/export/batch", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body), signal: BATCH.ctl.signal});
-  } catch { $("#bStart").disabled = false; $("#bStop").style.display = "none"; return; }
-  if (!res.ok){ $("#bMsg").textContent = await res.text(); $("#bStart").disabled = false; $("#bStop").style.display = "none"; return; }
+  } catch {
+    if (run !== BATCH.run) return;
+    BATCH.running = false; BATCH.ctl = null;
+    $("#bStart").disabled = false; $("#bStart").textContent = batchButtonText();
+    $("#bStop").style.display = "none";
+    return;
+  }
+  if (!res.ok){
+    if (run !== BATCH.run) return;
+    $("#bMsg").textContent = await res.text();
+    BATCH.running = false; BATCH.ctl = null;
+    $("#bStart").disabled = false; $("#bStart").textContent = batchButtonText();
+    $("#bStop").style.display = "none";
+    return;
+  }
   const reader = res.body.getReader(), dec = new TextDecoder();
   let buf = "", errors = [], last = "", doneLine = null;
   try {
@@ -2170,8 +2214,9 @@ async function batchStart(){
       }
     }
   } catch {}
-  BATCH.ctl = null;
-  $("#bStart").disabled = false; $("#bStop").style.display = "none";
+  if (run !== BATCH.run) return; // the dialog was closed meanwhile
+  BATCH.ctl = null; BATCH.running = false;
+  $("#bStop").style.display = "none";
   if (doneLine){
     let msg = `Done: ${doneLine.ok} exported${doneLine.failed ? `, ${doneLine.failed} failed` : ""}.`;
     if (doneLine.photos) msg += ` ${doneLine.photos} added to Apple Photos (${esc(doneLine.photosAlbum)}).`;
@@ -2181,11 +2226,17 @@ async function batchStart(){
     $("#bMsg").innerHTML = msg;
     if ($("#bReveal")) $("#bReveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(last));
     $("#bProg div").style.width = "100%";
+    BATCH.done = true;
+    $("#bStart").disabled = false; $("#bStart").textContent = "Done";
+  } else {
+    $("#bStart").disabled = false; $("#bStart").textContent = batchButtonText();
   }
 }
 
 function batchClose(){
   if (BATCH.ctl){ BATCH.ctl.abort(); BATCH.ctl = null; toast("Export stopped. Files already finished are kept.", 5000); }
+  BATCH.run++;
+  BATCH.running = false; BATCH.done = false;
   $("#batch").classList.remove("on");
 }
 
@@ -2447,19 +2498,39 @@ function exportButtons(){
   $("#nrLab").style.display = CAPS.rawTool && ACC.on && S.photo?.accurate ? "" : "none";
 }
 
+// lookName is the plain name of the look on screen, for export file names:
+// the preset's own name, or Neutral / Edited / Original when no preset names
+// the result. "nr3" and "(tuned)" belong to the app's internals, not to a
+// file the owner has to recognize later.
+function lookName(){
+  const p = current();
+  if (S.idx === -2) return "Original";
+  if (dirty()) return p ? p.name + " Edited" : "Edited";
+  return p ? p.name : "Neutral";
+}
+
 async function exportImage(format, destination, space){
   const p = current();
   toast(format === "rawdng" ? "Converting the raw data to DNG (can take up to about 30 seconds on Merrill and Quattro files)…"
                          : `Saving full-size ${format === "tiff" ? "16-bit TIFF" : format === "dng" ? "16-bit DNG" : "JPEG"}…`, 60000);
-  const body = {format, id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2, denoise: +$("#nr").value, space: space || $("#cspace").value, destination: destination || ""};
-  const res = await fetch("/api/export", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
-  if (!res.ok){ toast("Could not save the picture: " + esc(await res.text()), 9000); return; }
+  const body = {format, id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2, denoise: +$("#nr").value, space: space || $("#cspace").value, destination: destination || "", look: lookName()};
+  let res;
+  try {
+    res = await fetch("/api/export", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+  } catch {
+    toast("Could not reach the app to save the picture.", 9000);
+    return null;
+  }
+  if (!res.ok){ toast("Could not save the picture: " + esc(await res.text()), 9000); return null; }
   const {path, lut} = await res.json();
   toast(`Saved: ${esc(path)}${lut ? `<br>+ the look as a LUT for your raw editor: ${esc(lut.split(/[\\/]/).pop())}` : ""} <a id="reveal">Show in folder</a>`, 9000);
   $("#reveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(path));
+  return {path, lut};
 }
 
 // ---------- Finish: one obvious save ----------
+const FIN = {busy: false, closed: 0};
+
 function openExportGroup(){
   const grp = document.querySelector('#panel .grp[data-g="export"]');
   if (!grp) return;
@@ -2478,21 +2549,39 @@ function finishOpen(){
   $("#finishDestRow").style.display = dest ? "flex" : "none";
   $("#finishFormat").value = "jpeg";
   $("#finishSpace").value = "srgb";
-  $("#finishMsg").textContent = "JPEG at high quality. A file that is already there is never replaced; the new one gets a number.";
-  $("#finishGo").disabled = false;
+  $("#finishMsg").textContent = FIN.busy ? "Saving the picture…"
+    : "JPEG at high quality. A file that is already there is never replaced; the new one gets a number.";
+  $("#finishGo").textContent = FIN.busy ? "Saving…" : "Save";
+  $("#finishGo").disabled = FIN.busy;
   $("#finishDlg").classList.add("on");
 }
+function finishClose(){
+  FIN.closed++;
+  $("#finishDlg").classList.remove("on");
+}
 async function finishSave(){
+  if (FIN.busy) return; // a double click must not start a second export
   const format = $("#finishFormat").value, space = $("#finishSpace").value;
   const chosen = $("#finishDest").value === "chosen";
   const dest = chosen ? $("#finishDestPath").value.trim() : "";
   if (chosen && !dest){ $("#finishMsg").textContent = "Choose a folder to save into."; return; }
   if (dest) store.set("exportFolder", dest);
-  $("#finishGo").disabled = true;
+  FIN.busy = true;
+  const closedAtStart = FIN.closed;
+  $("#finishGo").disabled = true; $("#finishGo").textContent = "Saving…";
   try {
-    await exportImage(format, dest, space);
-    $("#finishDlg").classList.remove("on");
-  } finally { $("#finishGo").disabled = false; }
+    const saved = await exportImage(format, dest, space);
+    // If the dialog was closed while saving, do not close or reword a newer
+    // one: the picture is saved and the toast already says where.
+    if (FIN.closed !== closedAtStart) return;
+    if (saved) finishClose();
+    else $("#finishMsg").textContent = "Not saved. The reason is shown at the bottom of the window.";
+  } finally {
+    FIN.busy = false;
+    $("#finishGo").disabled = false; $("#finishGo").textContent = "Save";
+    if ($("#finishDlg").classList.contains("on") && $("#finishMsg").textContent === "Saving the picture…")
+      $("#finishMsg").textContent = "JPEG at high quality. A file that is already there is never replaced; the new one gets a number.";
+  }
 }
 
 // ---------- blind A/B ----------
@@ -3182,8 +3271,8 @@ function bind(){
   $("#exportDng").onclick = () => exportImage("rawdng");
   $("#exportDngR").onclick = () => exportImage("dng");
   $("#finishBtn").onclick = finishOpen;
-  $("#finishClose").onclick = () => $("#finishDlg").classList.remove("on");
-  $("#finishMore").onclick = () => { $("#finishDlg").classList.remove("on"); openExportGroup(); };
+  $("#finishClose").onclick = finishClose;
+  $("#finishMore").onclick = () => { finishClose(); openExportGroup(); };
   $("#finishGo").onclick = finishSave;
   $("#finishDest").onchange = () => { $("#finishDestRow").style.display = $("#finishDest").value === "chosen" ? "flex" : "none"; };
   $("#finishDestPick").onclick = async () => {
@@ -3207,6 +3296,9 @@ function bind(){
   $("#abAgain").onclick = abRestart;
   $("#abClose").onclick = abClose;
   $("#abClose2").onclick = abClose;
+  // Clicking the dark backdrop of a small dialog closes it, like Cancel.
+  for (const [id, close] of [["#finishDlg", finishClose], ["#batch", batchClose], ["#cardDlg", cardClose], ["#abDlg", abClose]])
+    $(id).addEventListener("click", e => { if (e.target.id === id.slice(1)) close(); });
   cropInit();
   try { const v = localStorage.getItem("fl.nr"); if (v !== null) $("#nr").value = v; } catch {}
   $("#nr").onchange = e => { try { localStorage.setItem("fl.nr", e.target.value); } catch {} };
@@ -3228,9 +3320,11 @@ function bind(){
     if (p && !dirty()) u.set("preset", p.id); else u.set("p", JSON.stringify(S.params));
     const a = document.createElement("a"); a.href = "/api/lut?" + u; a.download = ""; document.body.appendChild(a); a.click(); a.remove();
   };
-  $("#bStart").onclick = batchStart;
+  $("#bStart").onclick = () => { if (BATCH.done){ batchClose(); return; } batchStart(); };
   $("#bStop").onclick = () => { if (BATCH.ctl) BATCH.ctl.abort(); };
   $("#bClose").onclick = batchClose;
+  $("#batch").addEventListener("change", batchArm);
+  $("#batch").addEventListener("input", batchArm);
   $("#bDest").onchange = () => {
     $("#bDestRow").style.display = $("#bDest").value === "chosen" ? "flex" : "none";
   };
@@ -3240,7 +3334,10 @@ function bind(){
     const {path} = await r.json();
     if (path){ $("#bDestPath").value = path; store.set("exportFolder", path); $("#bDest").value = "chosen"; $("#bDestRow").style.display = "flex"; }
   };
-  $("#bPhotos").onchange = () => { $("#bStart").textContent = $("#bPhotos").checked ? "Export to Photos" : "Export"; };
+  $("#bPhotos").onchange = () => {
+    if (!BATCH.done) $("#bStart").textContent = $("#bPhotos").checked ? "Export to Photos" : "Export";
+    batchArm();
+  };
   document.querySelectorAll('input[name=bScope]').forEach(r => r.onchange = () => {
     const ids = batchIds(r.value);
     $("#bSelectedLab").textContent = `The selected photos (${batchIds("selected").length})`;
@@ -3283,6 +3380,11 @@ function bind(){
   window.addEventListener("resize", () => { layoutSplit(); fitOver($("#clipCv")); });
   let origDown = false;
   document.addEventListener("keydown", e => {
+    // Esc closes the small dialogs, whatever control inside them has focus.
+    if (e.key === "Escape"){
+      for (const [id, close] of [["#finishDlg", finishClose], ["#batch", batchClose], ["#cardDlg", cardClose], ["#abDlg", abClose]])
+        if ($(id).classList.contains("on")){ e.preventDefault(); close(); return; }
+    }
     if ($("#foldersDlg").classList.contains("on") && e.key === "Escape"){ e.preventDefault(); $("#foldersDlg").classList.remove("on"); return; }
     if (e.target.matches("input[type=text],input[type=password],input[type=search],select,textarea,input[type=range]")) return;
     // Undo / redo of the editor's own state (not the browser's).

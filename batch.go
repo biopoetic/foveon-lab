@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/biopoetic/foveon-lab/render"
@@ -40,6 +41,9 @@ func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 		Format     string                     `json:"format"`  // "jpeg", "tiff" or "dng" (rendered)
 		Denoise    *int                       `json:"denoise"` // raw-based exports: 0-10, nil = 10
 		Space      string                     `json:"space"`   // export colour space, "" = sRGB
+		// Look: the plain name of the look for the file names (see
+		// exportLookName); empty falls back to the preset label.
+		Look string `json:"look"`
 		// Destination: a chosen folder; empty means next to each photo in a
 		// "foveon-lab" folder.
 		Destination string `json:"destination"`
@@ -67,6 +71,9 @@ func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httpErr(w, 400, err)
 		return
+	}
+	if strings.TrimSpace(req.Look) != "" {
+		label = req.Look
 	}
 	fl, _ := w.(http.Flusher)
 	w.Header().Set("Content-Type", "application/x-ndjson")
@@ -99,7 +106,7 @@ func (s *server) handleExportBatch(w http.ResponseWriter, r *http.Request) {
 					line["error"] = "this photo's saved edits could not be read: " + err.Error()
 					break
 				}
-				useLabel = "edited"
+				useLabel = label + " Edited"
 			}
 			if path, err := s.exportImage(ph, useP, useLabel, req.Comp, req.Format, req.Denoise, req.Space, req.Destination); err != nil {
 				line["error"] = err.Error()

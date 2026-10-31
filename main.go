@@ -730,11 +730,11 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	}
 	t1 := time.Now()
 	out := render.RenderOpt(b, p, comp, q.Get("fast") != "1")
-	// norm=1: match the average brightness to mid-grey, for the film
-	// comparison, where different films (and the un-filmed render) land at
-	// different densities and the point is colour and tone, not exposure.
+	// norm=1: match the upper-midtones to 128, for the film comparison,
+	// where different films (and the un-filmed render) land at different
+	// densities and the point is colour and tone, not exposure.
 	if q.Get("norm") == "1" {
-		normalizeMean(out, 128)
+		normalizeBrightness(out, 128)
 	}
 	t2 := time.Now()
 	var buf bytes.Buffer
@@ -840,6 +840,35 @@ func safeName(s string) string {
 	return s
 }
 
+// exportLookName is the look part of an export's file name: the preset's own
+// name when one names the result, and a plain word for the starting points.
+// "(tuned)" and "nr3" described the app's internals, not the picture, and no
+// longer reach a file the owner has to recognise later.
+func exportLookName(label string) string {
+	label = strings.TrimSpace(label)
+	for strings.HasSuffix(label, " (tuned)") {
+		label = strings.TrimSpace(strings.TrimSuffix(label, " (tuned)"))
+	}
+	switch label {
+	case "", "original", "neutral", "Neutral":
+		return "Neutral"
+	case "tuned", "edited":
+		return "Edited"
+	}
+	return label
+}
+
+// exportFileStem is the photo plus the look; a colour space is added only
+// when it is not sRGB, because two files that differ only in that need to be
+// told apart.
+func exportFileStem(photoName, label, space, format string) string {
+	look := exportLookName(label)
+	if space != "" && space != "srgb" && format != "dng" {
+		look += "_" + space
+	}
+	return strings.TrimSuffix(photoName, filepath.Ext(photoName)) + "_" + safeName(look)
+}
+
 // uniquePath never replaces a file that is already there. A second export of
 // the same photo and preset gets " (2)" (or the next free number), so an
 // earlier export is never silently lost.
@@ -872,6 +901,10 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		// Space: the export colour space (render.ColourSpaces; "" = sRGB),
 		// for JPEG and TIFF.
 		Space string `json:"space"`
+		// Look: the plain name of the look, from the page (Neutral, Edited,
+		// Original, or the preset's name). Empty falls back to the preset
+		// label the server has.
+		Look string `json:"look"`
 		// Destination: a chosen folder; empty means next to each photo in a
 		// "foveon-lab" folder.
 		Destination string `json:"destination"`
@@ -907,6 +940,9 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, err)
 		return
 	}
+	if strings.TrimSpace(req.Look) != "" {
+		label = req.Look
+	}
 	if req.Format == "rawdng" {
 		s.exportDNG(w, ph, dir, stem, p, label, req.Denoise)
 		return
@@ -936,9 +972,6 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	cs, ok := render.ColourSpaceByID(space)
 	if !ok {
 		return "", errors.New("unknown colour space " + space)
-	}
-	if cs.ID != "srgb" && format != "dng" {
-		label += "_" + cs.ID // e.g. _prophoto: the file says what it is
 	}
 	dir := strings.TrimSpace(destDir)
 	if dir == "" {
@@ -972,8 +1005,6 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 			s.rawMu.Lock()
 			s.rawState[ph.ID] = rawReady
 			s.rawMu.Unlock()
-		} else {
-			label += "_nr" + strconv.Itoa(max(0, *denoise)) // e.g. _nr0, _nr5
 		}
 		src = l
 	} else {
@@ -996,8 +1027,8 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	case "dng":
 		ext = ".dng"
 	}
-	stem := strings.TrimSuffix(ph.Name, filepath.Ext(ph.Name))
-	path := uniquePath(dir, stem+"_"+safeName(label), ext)
+	stem := exportFileStem(ph.Name, label, cs.ID, format)
+	path := uniquePath(dir, stem, ext)
 	f, err := os.Create(path)
 	if err != nil {
 		return "", err
