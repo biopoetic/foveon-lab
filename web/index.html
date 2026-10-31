@@ -136,6 +136,22 @@ button.on{border-color:var(--accent);color:var(--accent)}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#2a2a2a;border:1px solid #444;padding:8px 14px;border-radius:8px;display:none;z-index:9;max-width:80vw}
 #toast a{color:var(--accent2);cursor:pointer;margin-left:8px}
 .empty{padding:40px;color:var(--dim);text-align:center}
+.tabs{display:flex;gap:4px;margin-right:4px}
+.tab{padding:3px 10px;border-radius:12px}
+.tab.on{background:var(--accent);color:#1a1300;border-color:var(--accent)}
+#welcome{display:none;max-width:560px;margin:12vh auto 0;padding:0 22px;text-align:center;color:var(--dim)}
+#welcome p{font-size:17px;line-height:1.5;color:var(--text);margin:0 0 18px}
+#welcome button{font-size:15px;padding:8px 18px}
+body.film #camSel,body.film #srcSel,body.film #q,body.film #chips,body.film #looksSel,body.film #count,body.film #aiOpen{display:none}
+body.empty header label.chk,body.empty header #folders,body.empty header #cardBtn,body.empty header #updateCheck,body.empty header #updateBox{display:none}
+#filmGrid .head{grid-column:1/-1;color:var(--accent);font-weight:600;margin:8px 0 0}
+#grid.filmgrid .head{grid-column:1/-1;color:var(--accent);font-weight:600;margin:8px 0 0}
+#abDlg .box{width:min(980px,96vw);max-height:94vh;overflow:auto}
+.abrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.abcell{min-width:0;text-align:center;overflow:auto}
+.abcell canvas{width:100%;height:auto;display:block;background:#000;border:1px solid var(--line)}
+.ablabel{font-weight:700;color:var(--accent);margin:4px}
+body.abzoom .abcell canvas{width:auto;max-width:none}
 button.ai{border-color:var(--accent2);color:#cfe6fa}
 #aiPanel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:100vw;background:var(--panel);border-left:1px solid var(--line);z-index:8;display:none;flex-direction:column;box-shadow:-8px 0 24px #0008}
 #aiPanel.on{display:flex}
@@ -200,14 +216,14 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 <div id="app">
   <header>
     <h1>FOVEON <span>LAB</span> <small id="appVersion" style="font-size:11px;font-weight:400;opacity:.6;letter-spacing:0"></small></h1>
-    <div><span id="photoTitle">—</span> <span id="photoInfo"></span></div>
+    <div><span id="photoTitle">No photo</span> <span id="photoInfo"></span></div>
     <div class="spacer"></div>
-    <label class="chk" title="Undo the Vivid mode / contrast / saturation the camera baked into its JPEG preview, so presets start from a more neutral base (closer to SPP)"><input type="checkbox" id="comp" checked> Compensate camera JPEG</label>
+    <label class="chk" title="Undo the Vivid mode, contrast and saturation the camera baked into its JPEG preview, so a look starts from a more neutral base"><input type="checkbox" id="comp" checked> Undo camera JPEG look</label>
     <label class="chk">Size <input type="range" id="tileSize" min="220" max="560" step="20" value="340"></label>
     <span id="updateBox" style="display:none"></span>
     <button id="updateCheck" title="Check for a new version now">⟳ Check for updates</button>
-    <label class="chk" id="accLab" title="Accurate previews: start from the raw data mapped onto SPP's own neutral rendering instead of the camera's JPEG (measured ~3x closer to SPP on SD1 Merrill files; the camera JPEG carries the in-camera colour mode). The first view of a photo decodes its raw data in the background: a quick version in ~2-5 s, then the full, denoised one (~10-30 s)."><input type="checkbox" id="accurate"> Accurate</label>
-    <label class="chk" title="Also list ordinary JPEG, TIFF and PNG files (e.g. your SPP exports or other cameras). Presets only imitate the look on them — they are not Foveon raw data and SPP can't open them."><input type="checkbox" id="allImages"> All images</label>
+    <label class="chk" id="accLab" title="Start from the sensor's raw data and a neutral colour balance instead of the camera's JPEG preview. The first view decodes in the background: a quick version in about 2 to 5 seconds, then the full, denoised one in about 10 to 30 seconds."><input type="checkbox" id="accurate"> Accurate preview</label>
+    <label class="chk" title="Also list ordinary JPEG, TIFF and PNG files, such as exports from other cameras or other programs. Presets only change their look; they are not Foveon raw data."><input type="checkbox" id="allImages"> All images</label>
     <label class="chk" title="Show only the photos you starred (☆ next to each photo, or the F key)"><input type="checkbox" id="favOnly"> ★ Favorites</label>
     <button id="folders" title="Choose where your photos are">Folders…</button>
     <button id="cardBtn" class="primary" title="Copy new photos off a camera card into your library">Import from card…</button>
@@ -225,6 +241,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
   <main id="main">
     <section id="gridView">
       <div id="bar">
+        <div class="tabs"><button id="tabLooks" class="tab on" title="Browse looks for this photo">Looks</button><button id="tabFilm" class="tab" title="Browse film stocks for this photo">Film</button></div>
         <select id="camSel" title="Which camera the presets are for">
           <option value="auto">Camera: auto</option><option value="SD1">SD1</option><option value="SD15">SD15</option><option value="all">All presets</option>
         </select>
@@ -238,7 +255,12 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <button class="ai" id="aiOpen" title="Let an AI agent pick and tune the best preset for this photo">✦ AI pick</button>
         <button id="exportSel" class="primary" title="Export the selected photos with one look">Export…</button>
       </div>
-      <div class="note">The preview is an <b>emulation</b> of SPP settings on the JPEG embedded in the X3F (Sigma's algorithms are not public). Use it to pick and compare presets; develop the final image in SPP. White Balance / ColorTemp are not emulated.</div>
+      <div class="note" id="gridNote">Pick a look to compare it on your photo, then press <b>Finish</b> to save the full-size picture.</div>
+      <div id="welcome">
+        <p>Choose the folder where your Sigma photos live and they will appear here.</p>
+        <button id="welcomePick" class="primary">Choose photo folder</button>
+        <div class="src" style="margin-top:14px"><a id="welcomeCard" style="cursor:pointer;color:var(--accent2)">Import from card instead</a></div>
+      </div>
       <div id="grid"></div>
     </section>
     <section id="detail">
@@ -253,7 +275,9 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="splitBtn" title="Before / after: move the mouse over the photo (S)">Split</button>
           <button id="clipBtn" title="Mark clipped highlights (red) and crushed shadows (blue) (C)">Clipping</button>
           <button id="zoomBtn" title="100% view (Z, or double-click the image where you want to look); drag to move around">1:1</button>
-          <button id="cropBtn" title="Straighten and crop this photo (R) — applies to the preview and every export">Crop</button>
+          <button id="cropBtn" title="Straighten and crop this photo (R). Applies to the preview and every export">Crop</button>
+          <button id="finishBtn" class="primary" title="Save the finished picture with the usual settings">Finish…</button>
+          <button id="abBtn" title="Compare your photo with a version you made in another program, without knowing which is which">A/B…</button>
           <button class="sideBtn" id="listBtn" title="Show / hide the photo list (Tab hides or shows both side panels)">◧</button>
           <button class="sideBtn" id="panelBtn" title="Show / hide the settings panel (Tab hides or shows both side panels)">◨</button>
           <button id="fullBtn" title="Full screen: only the photo (Shift+F or F11; Esc to leave)">⛶</button>
@@ -277,19 +301,19 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
             <option value="4">Standard (4)</option><option value="6">Portrait (6)</option><option value="7">Landscape (7)</option><option value="0">Unknown (0) → as Standard</option>
           </select>
         </div>
-        <div class="row"><label class="chk" title="Black & white: rendered monochrome here and opened in SPP's Monochrome mode. Pack B&W presets (Saturation -1) have it on."><input type="checkbox" id="mono"> Monochrome (SPP B&amp;W mode)</label></div>
+        <div class="row"><label class="chk" title="Black and white: shown in monochrome here and saved as a black and white picture."><input type="checkbox" id="mono"> Monochrome</label></div>
           <div class="src" id="wbNote"></div>
           </div>
         </div>
         <div class="grp" data-g="detail"><div class="gh"><span class="chev">▾</span><span class="gt">Detail &amp; noise</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
           <div class="gb" id="g-detail">
           <div class="row" id="nrRow"><label class="chk" id="nrLab" title="Foveon noise reduction for previews and exports made from the raw data (Accurate mode, high-ISO files, raw DNG). Low is the default (it calms colour noise and keeps the grain and fine detail); Full smooths more.">Noise reduction <select id="nr"><option value="10">Full</option><option value="6">Medium</option><option value="3" selected>Low</option><option value="0">Off</option></select></label></div>
-          <div class="row" id="csRow"><label class="chk" title="The colour space of JPEG and TIFF exports, as Sigma Photo Pro offers them. Like SPP, the image is rendered in sRGB and re-encoded into the space you pick, with its colour profile embedded — a wider space here does not add colours (checked against SPP's own exports). DNG keeps its own colour data.">Colour space <select id="cspace"><option value="srgb" selected>sRGB</option><option value="apple">Apple RGB</option><option value="adobe">Adobe RGB (1998)</option><option value="colormatch">ColorMatch RGB</option><option value="prophoto">ProPhoto RGB</option></select></label></div>
+          <div class="row" id="csRow"><label class="chk" title="The colour space of JPEG and TIFF exports. sRGB is right for the web and most screens; a wider space keeps more colour for further editing. The profile is embedded, so every viewer reads the colours right. DNG keeps its own colour data.">Colour space <select id="cspace"><option value="srgb" selected>sRGB</option><option value="apple">Apple RGB</option><option value="adobe">Adobe RGB (1998)</option><option value="colormatch">ColorMatch RGB</option><option value="prophoto">ProPhoto RGB</option></select></label></div>
           </div>
         </div>
         <div class="grp" data-g="layer"><div class="gh"><span class="chev">▾</span><span class="gt">Layer filter</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
           <div class="gb" id="g-layer">
-        <div class="row"><div class="lab">Lens filter or layer mix <span class="dim" title="Foveon Lab only. Lens filters are simulated from first principles: each sensor generation's layer sensitivities are modelled from silicon's light absorption and fitted to the camera's own colour matrix, and the filter's transmission spectrum is applied to them. The layer sliders set a gain per sensor layer (in Monochrome: how the three layers mix into grey; the top layer alone is the cleanest at high ISO). Not saved into SPP presets or .cube LUTs.">ⓘ</span></div>
+        <div class="row"><div class="lab">Lens filter or layer mix <span class="dim" title="Foveon Lab only. Lens filters are simulated from first principles: each sensor generation's layer sensitivities are modelled from silicon's light absorption and fitted to the camera's own colour matrix, and the filter's transmission spectrum is applied to them. The layer sliders set a gain per sensor layer (in Monochrome: how the three layers mix into grey; the top layer alone is the cleanest at high ISO). Not saved into presets or .cube LUTs.">ⓘ</span></div>
           <select id="layerPreset" style="width:100%">
             <option value="">None</option>
             <optgroup label="Full spectrum (IR filter removed)"><option value="lens:ir-fs-aerochrome">False colour, no lens filter</option><option value="lens:ir-aerochrome">Aerochrome (Wratten 12)</option><option value="lens:ir-ir590">Colour infrared (OG590)</option><option value="lens:ir-ir720">Infrared B&amp;W (RG715)</option>
@@ -310,14 +334,14 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="filmCmpBtn" title="This photo, with your settings, in every film side by side (colour and tone only, without grain): colour slides, colour negatives on each colour paper, and black-and-white films. Click one to use it. Needs a raw-decodable X3F." style="margin-top:6px">Compare films…</button>
         </div>
         <div class="row" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky. The full-spectrum infrared looks are for converted cameras (the IR-cut protector removed)."><div class="lab">Filter on the lens <span class="dim">(search below)</span></div>
-          <input id="lensSearch" type="search" placeholder="Search filters — name, glass, brand, nm" style="width:100%;margin-bottom:4px" title="Filters the list below. Matches the physical name, the glass or Wratten number, a wavelength, the brand, and measured/documented.">
+          <input id="lensSearch" type="search" placeholder="Search filters: name, glass, brand, nm" style="width:100%;margin-bottom:4px" title="Filters the list below. Matches the physical name, the glass or Wratten number, a wavelength, the brand, and measured/documented.">
           <select id="lensSel" style="width:100%"></select>
         </div>
         <div class="row" title="A neutral-density filter costs exposure, not colour: a density of d attenuates every wavelength by 10^-d. &quot;As metered&quot; shows the frame at the same settings with the filter on (darker by exactly its stops); with it off the photographer has opened up by the filter factor, so the frame is unchanged and only the exposure time grew."><div class="lab">Neutral density <span class="dim" id="ndNote"></span></div>
           <select id="ndSel" style="width:100%"></select>
           <label class="chk" style="margin-top:4px"><input type="checkbox" id="ndMetered"> As metered (show the underexposure)</label>
         </div>
-        <div class="row" id="gndRow" title="A graduated ND filter: the same density across a gradient in the frame — the sky darkened, the foreground left alone. The makers publish the density and call the transition soft or hard; its width and position are not published, so they are the controls below."><div class="lab">Graduated ND <span class="dim" id="gndNote"></span></div>
+        <div class="row" id="gndRow" title="A graduated ND filter: the same density across a gradient in the frame, the sky darkened and the foreground left alone. The makers publish the density and call the transition soft or hard; its width and position are not published, so they are the controls below."><div class="lab">Graduated ND <span class="dim" id="gndNote"></span></div>
           <select id="gndSel" style="width:100%"></select>
           <div id="gndCtl" style="display:none">
             <div class="lab" style="margin-top:4px"><span>Angle</span><b id="gndAngleVal"></b></div>
@@ -328,7 +352,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
             <input type="range" id="gndSoft" min="0" max="1" step="0.01" value="0.5">
           </div>
         </div>
-        <div class="row"><div class="lab">Film format <span class="dim" title="The film frame the grain and halation are sized on: the same emulsion on a larger frame shows finer grain at the same print size. Only the sizes the selected film was sold in are offered — the format is a physical fact about the stock, not a free choice.">(grain, halation)</span></div>
+        <div class="row"><div class="lab">Film format <span class="dim" title="The film frame the grain and halation are sized on: the same emulsion on a larger frame shows finer grain at the same print size. Only the sizes the selected film was sold in are offered; the format is a physical fact about the stock, not a free choice.">(grain, halation)</span></div>
           <select id="filmWidth" style="width:100%"></select>
           <div class="src" id="filmFormatNote"></div>
         </div>
@@ -375,12 +399,12 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <div class="gb" id="g-export">
         <div class="btns">
           <button id="export" title="Full-resolution JPEG with the preset applied">Export JPEG</button>
-          <button id="exportTiff" title="Full-resolution 16-bit TIFF with the preset applied — no 8-bit rounding, for further editing">Export TIFF 16-bit</button>
+          <button id="exportTiff" title="Full-size 16-bit TIFF with the look applied, with no 8-bit rounding">Export TIFF 16-bit</button>
           <button id="lutBtn" title="Download this look as a 3D LUT (.cube) for darktable, Photoshop, Camera Raw / Lightroom profiles, DaVinci Resolve, Affinity…">Export LUT (.cube)</button>
           <button id="batchBtn" title="Apply this preset to many photos and export them all">Batch export…</button>
           <button id="exportDngR" title="Full-resolution 16-bit linear DNG of this render: opens in Lightroom / Capture One / darktable / Apple Photos looking like the preview, with white balance and exposure still editable">Export DNG</button>
-          <button id="exportDng" title="The raw sensor data as DNG for Lightroom / Capture One / darktable (presets are not applied — it's raw)" style="display:none">Export raw DNG</button>
-          <button id="sppOpen" title="Put this preset into Sigma Photo Pro's list as its current setting, then open the photo in SPP (SPP must be closed)" style="display:none">Open in SPP ↗</button>
+          <button id="exportDng" title="The raw sensor data as DNG for Lightroom, Capture One or darktable. Presets are not applied." style="display:none">Export raw DNG</button>
+          <button id="sppOpen" title="Open this photo in Sigma Photo Pro with these settings as the starting point. Sigma Photo Pro must be closed first." style="display:none">Open in Sigma Photo Pro ↗</button>
         </div>
           </div>
         </div>
@@ -415,7 +439,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
   <div class="ctl">
     <div id="aiConf"></div>
     <textarea id="aiDir" placeholder="Direction (optional): e.g. warm film look, moody, natural skin, punchy landscape…"></textarea>
-    <label class="chk" title="The AI judges a contact sheet of up to 6 photos from this folder and picks one look that suits them all — for a consistent set"><input type="checkbox" id="aiSeries"> Whole folder — one look for the series</label>
+    <label class="chk" title="The AI judges a contact sheet of up to 6 photos from this folder and picks one look that suits them all, for a consistent set"><input type="checkbox" id="aiSeries"> Whole folder, one look for the series</label>
     <div class="priv" id="aiPriv"></div>
     <button class="primary" id="aiStart">Pick &amp; tune for this photo</button>
     <button id="aiRate" title="Ask the AI to rate this photo as edited and say where it could be better">✦ Rate &amp; critique</button>
@@ -456,7 +480,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <div id="folderList"></div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button id="folderAddPhoto">Add this folder</button>
-      <button id="folderSetPresets" title="Use the folder shown above for your SPP preset XML files">Use for presets</button>
+      <button id="folderSetPresets" title="Use the folder shown above for preset files (.xml)">Use for presets</button>
       <span class="dim" id="folderPresets"></span>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -504,6 +528,43 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
   </div>
 </div>
 <div id="toast"></div>
+<div id="finishDlg" class="modal">
+  <div class="box">
+    <b>Finish this photo</b>
+    <div class="src" id="finishLook"></div>
+    <label class="chk">Save as <select id="finishFormat"><option value="jpeg">JPEG, full size</option><option value="tiff">TIFF 16-bit, full size</option><option value="dng">DNG 16-bit, full size</option></select></label>
+    <label class="chk">Colour <select id="finishSpace"><option value="srgb">sRGB (recommended)</option><option value="adobe">Adobe RGB (1998)</option><option value="apple">Apple RGB</option><option value="colormatch">ColorMatch RGB</option><option value="prophoto">ProPhoto RGB</option></select></label>
+    <label class="chk">Save to <select id="finishDest"><option value="">Next to the photo (foveon-lab folder)</option><option value="chosen">A folder I choose</option></select></label>
+    <div id="finishDestRow" style="display:none;gap:6px;align-items:center"><input id="finishDestPath" type="text" style="flex:1"><button id="finishDestPick">Choose…</button></div>
+    <div class="src" id="finishMsg">JPEG at high quality. A file that is already there is never replaced; the new one gets a number.</div>
+    <div class="btns"><button class="primary" id="finishGo">Save</button><button id="finishMore">More export options</button><button id="finishClose">Cancel</button></div>
+  </div>
+</div>
+<div id="abDlg" class="modal">
+  <div class="box">
+    <b>Blind A/B</b>
+    <div class="src" id="abIntro">Choose a picture of the same frame that you made in another program. Foveon Lab develops its own version, then shows the two as A and B in random order at the same size. You are not told which is which until you answer.</div>
+    <div id="abSetup">
+      <div class="btns"><button id="abPick" class="primary">Choose the other version…</button></div>
+      <div class="src" id="abFile"></div>
+      <div class="src" id="abMsg"></div>
+    </div>
+    <div id="abView" style="display:none">
+      <div class="abrow">
+        <div class="abcell"><div class="ablabel">A</div><canvas id="abA"></canvas></div>
+        <div class="abcell"><div class="ablabel">B</div><canvas id="abB"></canvas></div>
+      </div>
+      <label class="chk" style="margin-top:6px"><input type="checkbox" id="abMatch" checked> Match overall brightness, so you judge colour and detail rather than a level difference</label>
+      <div class="btns"><button id="abAbtn" class="primary">A looks better</button><button id="abBbtn" class="primary">B looks better</button><button id="abTie">No preference</button><button id="abZoom">1:1</button><button id="abRestart">Choose another</button><button id="abClose">Close</button></div>
+      <div class="src" id="abInfo"></div>
+    </div>
+    <div id="abResult" style="display:none">
+      <div class="src" id="abReveal"></div>
+      <div class="src" id="abTally"></div>
+      <div class="btns"><button id="abAgain" class="primary">Another photo</button><button id="abClose2">Close</button></div>
+    </div>
+  </div>
+</div>
 <script src="/gpu.js"></script>
 <script>
 "use strict";
@@ -531,7 +592,7 @@ const SLIDERS = [
 ];
 // Film grain is a film's published RMS granularity (sizes on the film, so
 // a crop or 100% view shows it larger, a reduced view finer).
-const GRAIN_TIPS = "Film grain as the RMS granularity of the final image (Selwyn's law sizes it on the film, so it depends on the film format below). With a film selected, the grain is that film's own published data — a slide's RMS, a negative's x 2.3 for the print — and is not set by hand; with no film selected it is yours to set.";
+const GRAIN_TIPS = "Film grain as the RMS granularity of the final image (Selwyn's law sizes it on the film, so it depends on the film format below). With a film selected, the grain is that film's own published data: a slide's RMS, a negative's x 2.3 for the print. It is not set by hand; with no film selected it is yours to set.";
 // Layer mix presets, in stops per sensor layer (bottom, middle, top).
 const LAYER_MIX = { top: [-6,-6,0] };
 // The colour filters on the lens (Film & Darkroom); the IR looks and layer
@@ -545,7 +606,7 @@ const S = {
   cam: store.get("cam","auto"), src: store.get("src",""), q: "",
   list: [], idx: -1, params: null, base: null,
   looks: store.get("looks", ""), lookKey: "", lookGroups: null, lookOpen: null,
-  sel: new Set(), selAnchor: null,
+  sel: new Set(), selAnchor: null, filmTab: false,
 };
 
 function toast(html, ms=4000){
@@ -572,8 +633,16 @@ function renderURL(opts){
 // ---------- photos ----------
 async function loadPhotos(){
   S.photos = (await (await fetch("/api/photos")).json()) || [];
+  const ids = new Set(S.photos.map(p => p.id));
+  S.sel = new Set([...S.sel].filter(id => ids.has(id)));
   const box = $("#photoList"); box.innerHTML = "";
-  if (!S.photos.length){ box.innerHTML = '<div class="empty">No photos found yet. Use <b>Import from card…</b> or <b>Folders…</b> to choose where they are.</div>'; paintSelection(); return; }
+  const empty = !S.photos.length;
+  document.body.classList.toggle("empty", empty);
+  $("#welcome").style.display = empty ? "block" : "none";
+  $("#bar").style.display = empty ? "none" : "";
+  $("#grid").style.display = empty ? "none" : "";
+  $("#gridNote").style.display = empty ? "none" : "";
+  if (empty){ box.innerHTML = '<div class="empty">No photos yet. Use <b>Import from card…</b> or <b>Folders…</b> to choose where they are.</div>'; paintSelection(); return; }
   // One collapsible group per folder; collapsed folders are remembered.
   const collapsed = new Set(store.get("collapsedFolders", []));
   const counts = {};
@@ -610,7 +679,30 @@ async function loadPhotos(){
   paintSelection();
 }
 
-// ---------- choosing several photos ----------
+// chooseFirstFolder is the welcome screen's one button: pick the folder,
+// show its photos, and open the first one so there is a picture on screen.
+async function chooseFirstFolder(){
+  const b = $("#welcomePick"), old = b.textContent;
+  b.disabled = true; b.textContent = "Waiting for the folder dialog…";
+  try {
+    const r = await fetch("/api/pickfolder");
+    if (!r.ok){ toast("Could not open the folder dialog: " + esc(await r.text()), 8000); return; }
+    const {path} = await r.json();
+    if (!path) return;
+    const res = await fetch("/api/folders", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({photos:[path]})});
+    if (!res.ok){ toast("Could not use that folder: " + esc(await res.text()), 8000); return; }
+    await Promise.all([loadPhotos(), loadPresets(false)]);
+    if (!S.photos.length){ toast("No photos in that folder. Choose another one.", 6000); return; }
+    S.sel = new Set([S.photos[0].id]); S.selAnchor = S.photos[0].id;
+    selectPhoto(S.photos[0].id);
+    let i = S.list.findIndex(p => /standard/i.test(p.name));
+    openDetail(i >= 0 ? i : -1);
+  } finally {
+    b.disabled = false; b.textContent = old;
+  }
+}
+
+
 // A plain click opens one photo; ctrl/cmd-click adds or removes one; a
 // shift-click adds everything between the last click and this one. The
 // selection is what "Export…" uses.
@@ -638,7 +730,7 @@ function paintSelection(){
   document.querySelectorAll("#photoList .ph").forEach(el => el.classList.toggle("pick", S.sel.has(el.dataset.id)));
   const photo = S.photos.find(p => p.id === S.photo?.id);
   if (!n && photo){ S.sel = new Set([photo.id]); S.selAnchor = photo.id; }
-  $("#exportSel").textContent = CARD.settings?.photosApp && CARD.settings?.platform === "darwin" ? "Export to Photos…" : "Export…";
+  $("#exportSel").textContent = CARD.settings?.platform === "darwin" ? "Export to Photos…" : "Export…";
   $("#exportSel").disabled = n === 0;
 }
 
@@ -720,9 +812,9 @@ const ACC = {on: false, available: false, mode: {}, state: {}, timer: null};
 function accLabel(p){
   if (!ACC.on || !p.accurate) return "";
   const st = ACC.state[p.id];
-  if (st === "ready") return "ACCURATE PREVIEW (raw data → SPP neutral)";
-  if (st === "fast") return "ACCURATE PREVIEW (quick version — the full, denoised one follows)";
-  if (st === "failed") return "accurate preview failed — camera JPEG";
+  if (st === "ready") return "ACCURATE PREVIEW (from the raw data)";
+  if (st === "fast") return "ACCURATE PREVIEW (quick version, the full one follows)";
+  if (st === "failed") return "accurate preview failed, showing the camera JPEG";
   return "decoding raw data for the accurate preview… (the camera JPEG is shown meanwhile)";
 }
 async function accInit(){
@@ -764,7 +856,7 @@ function accWatch(){
 
 function photoInfoText(p){
   const i = p.info;
-  return [accLabel(p), p.lowRes && "LOW-RES PREVIEW (567 px — no full-size preview in SD9/SD10 files)", p.rawDecoded && "RAW-DECODED (from the raw data — no in-camera look)", p.kind === "image" && "NOT A FOVEON FILE — the presets only imitate the look; SPP can't open it", i.REPAIRED && "REPAIRED: " + i.REPAIRED, i.CAMMODEL, i.LENS && "lens " + i.LENS, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.TIME].filter(Boolean).join(" · ");
+  return [accLabel(p), p.lowRes && "LOW-RES PREVIEW (567 px, no full-size preview in SD9/SD10 files)", p.rawDecoded && "RAW-DECODED (from the raw data, no in-camera look)", p.kind === "image" && "NOT A FOVEON FILE: the presets only change its look", i.REPAIRED && "REPAIRED: " + i.REPAIRED, i.CAMMODEL, i.LENS && "lens " + i.LENS, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.TIME].filter(Boolean).join(" · ");
 }
 
 function selectPhoto(id){
@@ -889,13 +981,18 @@ async function ensureLooks(){
 // ---------- grid ----------
 function drawGrid(){
   const g = $("#grid");
+  g.classList.toggle("filmgrid", S.filmTab);
+  document.body.classList.toggle("film", S.filmTab);
+  $("#tabLooks").classList.toggle("on", !S.filmTab);
+  $("#tabFilm").classList.toggle("on", S.filmTab);
+  if (S.filmTab){ drawFilmGrid(g); return; }
   if (!S.photo){ g.innerHTML = '<div class="empty">Pick a photo on the left.</div>'; return; }
   if (S.photo.unsupported){ g.innerHTML = `<div class="empty">${esc(S.photo.unsupported)}</div>`; return; }
   g.style.gridTemplateColumns = `repeat(auto-fill,minmax(${$("#tileSize").value}px,1fr))`;
   const w = tileW();
   const tiles = [
     `<div class="tile ref" data-i="-2"><div class="img"><img src="${renderURL({w, comp:"0", camera: true})}"></div><div class="cap">Original${S.photo.kind === "image" ? "" : " (camera JPEG)"}<small>no processing at all</small></div></div>`,
-    `<div class="tile ref" data-i="-1"><div class="img"><img src="${renderURL({w})}"></div><div class="cap">Neutral${(ACC.mode[S.photo.id] || "").startsWith("raw") ? " (accurate: raw → SPP)" : comp()==="1"?" (compensated)":""}<small>starting point for presets</small></div></div>`,
+    `<div class="tile ref" data-i="-1"><div class="img"><img src="${renderURL({w})}"></div><div class="cap">Neutral${(ACC.mode[S.photo.id] || "").startsWith("raw") ? " (accurate: from raw data)" : comp()==="1"?" (compensated)":""}<small>starting point for presets</small></div></div>`,
   ];
   if (S.looks && S.lookOpen && S.lookKey) tiles.unshift(`<div class="lookbar">Presets that look like <b>${esc(S.list[0]?.name || "")}</b> on this photo · <a id="lookBack">← all looks</a></div>`);
   S.list.forEach((p, i) => {
@@ -908,6 +1005,60 @@ function drawGrid(){
   if ($("#lookBack")) $("#lookBack").onclick = () => { S.lookOpen = null; refreshList(); drawGrid(); };
   ensureLooks();
 }
+
+// drawFilmGrid makes the film library a first-class place in the main
+// window: every film the app can render, on this photo, grouped by kind.
+// The controls in Film & Darkroom keep their behaviour and refine the film
+// once it is chosen.
+function filmUsable(f){
+  return f.color && (f.kind === "slide" || f.kind === "cn") ||
+    f.bw && (f.curve || (f.mono && Object.keys(f.mono).length));
+}
+function drawFilmGrid(g){
+  if (!S.photo){ g.innerHTML = '<div class="empty">Pick a photo on the left.</div>'; return; }
+  g.style.gridTemplateColumns = `repeat(auto-fill,minmax(${$("#tileSize").value}px,1fr))`;
+  const w = tileW();
+  const sections = [
+    ["Colour slides", f => f.color && f.kind === "slide"],
+    ["Colour negatives", f => f.color && f.kind === "cn"],
+    ["Black and white", f => f.bw && filmUsable(f)],
+  ];
+  let items = [], html = "";
+  html += `<div class="head">Films on this photo <span class="dim" style="font-weight:400">(brightness matched for comparison; click one to use it)</span></div>`;
+  items.push(null);
+  const cur = S.params?.film || "";
+  html += `<div class="tile ref${cur ? "" : " cur"}" data-i="0"><div class="img"><img loading="lazy" src="${renderURL({w, params: {...NEUTRAL, film: "", grain: 0}})}"></div><div class="cap">No film<small>the photo without a film</small></div></div>`;
+  for (const [title, keep] of sections){
+    const list = FILMS.filter(f => keep(f) && filmUsable(f));
+    if (!list.length) continue;
+    html += `<div class="head">${esc(title)}</div>`;
+    for (const f of list){
+      const key = f.maker + " " + f.name;
+      const p = {...NEUTRAL, film: key, mono: !!f.bw};
+      if (f.rms) p.grain = Math.round(f.grain * 2) / 2;
+      items.push(f);
+      const i = items.length - 1;
+      html += `<div class="tile${key === cur ? " cur" : ""}" data-i="${i}"><div class="img"><img loading="lazy" src="${renderURL({w, params: p, norm: true})}"></div>` +
+        `<div class="cap">${esc(f.name)}<small>${esc(f.maker)}${f.iso ? " · ISO " + f.iso : ""}${f.rms ? " · RMS " + f.rms : ""}</small></div></div>`;
+    }
+  }
+  g.innerHTML = html;
+  g.querySelectorAll(".tile").forEach(el => el.onclick = () => {
+    const f = items[+el.dataset.i];
+    openDetail(-1);
+    if (f){ useFilm(f); openFilmGroup(); }
+  });
+}
+
+// openFilmGroup shows the Film & Darkroom controls after a film is picked.
+function openFilmGroup(){
+  const grp = document.querySelector('#panel .grp[data-g="film"]');
+  if (!grp || !grp.classList.contains("closed")) return;
+  grp.classList.remove("closed");
+  GROUPS_CLOSED.delete("film");
+  store.set("groupsClosed", [...GROUPS_CLOSED]);
+}
+
 
 // ---------- detail ----------
 // Panel groups: the preset keys each one holds (for its changed dot and
@@ -1239,7 +1390,7 @@ function syncFormats(f){
   }
   note.textContent = f
     ? (f.formats && f.formats.length
-        ? `${sizes.join(", ")} — from the film's data sheet`
+        ? `${sizes.join(", ")}: from the film's data sheet`
         : "sizes not verified for this film; 35 mm shown")
     : "";
 }
@@ -1250,12 +1401,12 @@ function syncFilm(){
   $("#filmCmpBtn").style.display = S.photo?.kind === "x3f" ? "" : "none";
   $("#filmSrc").innerHTML = f ? (f.rms ? `RMS ${f.rms} (${esc(f.kind === "slide" ? "on the slide" : "on the negative, ×2.3 on the print")}) · <a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.src)}</a>` : esc(f.src))
     + (f.bw ? (f.mono ? ` · black and white through its spectral sensitivity (${esc(f.spectral_src)})` : " · black and white") : "") : "";
-  // A preset named after a film imitates it with SPP settings: offer the
-  // real film's physical emulation on top.
+  // A preset named after a film was made to look like it: offer the
+  // real film's own rendering on top.
   const p = current(), link = p && p.film && p.film !== S.params?.film ? FILMS.find(x => x.maker + " " + x.name === p.film) : null;
   const box = $("#filmLink");
   if (link){
-    box.innerHTML = `This preset imitates <b>${esc(link.name)}</b> with SPP settings. <button id="useLinked">Use the real film</button>`;
+    box.innerHTML = `This preset was made to look like <b>${esc(link.name)}</b>. <button id="useLinked">Use the real film</button>`;
     $("#useLinked").onclick = () => useFilm(link);
     box.style.display = "";
   } else box.style.display = "none";
@@ -1418,7 +1569,7 @@ function syncSliders(){
   const m = S.params.colorMode;
   $("#mode").value = [4,6,7].includes(m) ? m : 0;
   $("#modeNote").textContent = [4,6,7].includes(m) ? "" : `(code ${m})`;
-  $("#wbNote").textContent = `WhiteBalance ${S.params.whiteBalance} · ColorTemp ${S.params.colorTemp || "—"} (saved, not emulated)`;
+  $("#wbNote").textContent = `WhiteBalance ${S.params.whiteBalance} · ColorTemp ${S.params.colorTemp || "none"} (saved with the preset, not used in the preview)`;
 }
 
 function current(){ return S.idx >= 0 ? S.list[S.idx] : null; }
@@ -1962,9 +2113,9 @@ function batchOpen(scope){
   $("#bDest").value = dest ? "chosen" : "";
   $("#bDestPath").value = dest;
   $("#bDestRow").style.display = dest ? "flex" : "none";
-  const photosOn = !!(CARD.settings?.photosApp && CARD.settings?.platform === "darwin");
+  const photosOn = CARD.settings?.platform === "darwin";
   $("#bPhotosRow").style.display = photosOn ? "" : "none";
-  $("#bPhotos").checked = photosOn;
+  $("#bPhotos").checked = photosOn && !!CARD.settings?.photosApp;
   $("#bProg div").style.width = "0"; $("#bMsg").textContent = "";
   $("#bStart").disabled = false; $("#bStop").style.display = "none";
   $("#bStart").textContent = photosOn && $("#bPhotos").checked ? "Export to Photos" : "Export";
@@ -2273,7 +2424,7 @@ async function savePreset(){
   const p = current();
   const cam = S.photo.camera || "";
   const suggested = p ? p.name.replace(/\s*\(FL\)$/, "") + " (FL)" : `[MY]${cam ? "["+cam+"]" : ""} New preset`;
-  const name = prompt("Preset name (as it will appear in SPP):", suggested);
+  const name = prompt("Preset name (the name shown in the preset list):", suggested);
   if (!name) return;
   const res = await fetch("/api/presets", {method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({name, camera: (p && p.camera) || cam, params: S.params})});
@@ -2281,7 +2432,7 @@ async function savePreset(){
   const data = await res.json();
   S.presets = data.presets; await loadPresets(false); refreshList();
   const i = S.list.findIndex(x => x.name === name);
-  toast(`Saved to <b>${esc(data.savedTo)}</b> — import that file into SPP.`, 7000);
+  toast(`Saved to <b>${esc(data.savedTo)}</b>`, 7000);
   if (i >= 0) openDetail(i);
 }
 
@@ -2296,16 +2447,179 @@ function exportButtons(){
   $("#nrLab").style.display = CAPS.rawTool && ACC.on && S.photo?.accurate ? "" : "none";
 }
 
-async function exportImage(format){
+async function exportImage(format, destination, space){
   const p = current();
-  toast(format === "rawdng" ? "Converting the raw data to DNG (can take up to ~30 s on Merrill/Quattro files)…"
-                         : `Exporting full-resolution ${format === "tiff" ? "16-bit TIFF" : format === "dng" ? "16-bit DNG" : "JPEG"}…`, 60000);
-  const body = {format, id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2, denoise: +$("#nr").value, space: $("#cspace").value};
+  toast(format === "rawdng" ? "Converting the raw data to DNG (can take up to about 30 seconds on Merrill and Quattro files)…"
+                         : `Saving full-size ${format === "tiff" ? "16-bit TIFF" : format === "dng" ? "16-bit DNG" : "JPEG"}…`, 60000);
+  const body = {format, id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) && S.idx !== -2 ? S.params : null, comp: comp() === "1" && S.idx !== -2, denoise: +$("#nr").value, space: space || $("#cspace").value, destination: destination || ""};
   const res = await fetch("/api/export", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
-  if (!res.ok){ toast("Export failed: " + esc(await res.text())); return; }
+  if (!res.ok){ toast("Could not save the picture: " + esc(await res.text()), 9000); return; }
   const {path, lut} = await res.json();
-  toast(`Saved: ${esc(path)}${lut ? `<br>+ the preset as a LUT for your raw editor: ${esc(lut.split(/[\\/]/).pop())}` : ""} <a id="reveal">Show in folder</a>`, 9000);
+  toast(`Saved: ${esc(path)}${lut ? `<br>+ the look as a LUT for your raw editor: ${esc(lut.split(/[\\/]/).pop())}` : ""} <a id="reveal">Show in folder</a>`, 9000);
   $("#reveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(path));
+}
+
+// ---------- Finish: one obvious save ----------
+function openExportGroup(){
+  const grp = document.querySelector('#panel .grp[data-g="export"]');
+  if (!grp) return;
+  grp.classList.remove("closed");
+  GROUPS_CLOSED.delete("export");
+  store.set("groupsClosed", [...GROUPS_CLOSED]);
+  grp.scrollIntoView({block: "start"});
+}
+function finishOpen(){
+  if (!S.photo || !S.params) return;
+  const p = current(), tuned = dirty();
+  $("#finishLook").textContent = "Look: " + (tuned ? "your current settings" : (p ? p.name : "Neutral"));
+  const dest = store.get("exportFolder", "");
+  $("#finishDest").value = dest ? "chosen" : "";
+  $("#finishDestPath").value = dest;
+  $("#finishDestRow").style.display = dest ? "flex" : "none";
+  $("#finishFormat").value = "jpeg";
+  $("#finishSpace").value = "srgb";
+  $("#finishMsg").textContent = "JPEG at high quality. A file that is already there is never replaced; the new one gets a number.";
+  $("#finishGo").disabled = false;
+  $("#finishDlg").classList.add("on");
+}
+async function finishSave(){
+  const format = $("#finishFormat").value, space = $("#finishSpace").value;
+  const chosen = $("#finishDest").value === "chosen";
+  const dest = chosen ? $("#finishDestPath").value.trim() : "";
+  if (chosen && !dest){ $("#finishMsg").textContent = "Choose a folder to save into."; return; }
+  if (dest) store.set("exportFolder", dest);
+  $("#finishGo").disabled = true;
+  try {
+    await exportImage(format, dest, space);
+    $("#finishDlg").classList.remove("on");
+  } finally { $("#finishGo").disabled = false; }
+}
+
+// ---------- blind A/B ----------
+// Both pictures are drawn into canvases, so no file name, EXIF tag or
+// address is on screen. The server decides the order with a random bit and
+// keeps the answer until one is given.
+const AB = {token: null, w: 0, h: 0, a: null, b: null, answered: false, zoom: false};
+
+function abOpen(){
+  if (!S.photo || !S.params){ toast("Open a photo first.", 4000); return; }
+  AB.token = null; AB.a = AB.b = null; AB.answered = false;
+  $("#abSetup").style.display = ""; $("#abView").style.display = "none"; $("#abResult").style.display = "none";
+  $("#abFile").textContent = ""; $("#abMsg").textContent = "";
+  $("#abInfo").textContent = "";
+  $("#abMatch").checked = true;
+  $("#abDlg").classList.add("on");
+}
+function abLoadImage(url){
+  return new Promise((resolve, reject) => {
+    fetch(url).then(r => { if (!r.ok) throw new Error("The comparison expired."); return r.blob(); })
+      .then(blob => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("A picture could not be shown."));
+        img.src = URL.createObjectURL(blob);
+      }).catch(reject);
+  });
+}
+function abMean(img){
+  const w = 64, h = Math.max(1, Math.round(64 * img.naturalHeight / img.naturalWidth));
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+  const cx = cv.getContext("2d", {willReadFrequently: true});
+  cx.drawImage(img, 0, 0, w, h);
+  const p = cx.getImageData(0, 0, w, h).data;
+  let s = 0;
+  for (let i = 0; i < p.length; i += 4) s += 0.2126 * p[i] + 0.7152 * p[i+1] + 0.0722 * p[i+2];
+  return s / (p.length / 4);
+}
+function abDraw(){
+  if (!AB.a || !AB.b) return;
+  const ca = $("#abA"), cb = $("#abB");
+  ca.width = AB.w; ca.height = AB.h; cb.width = AB.w; cb.height = AB.h;
+  const ma = abMean(AB.a), mb = abMean(AB.b);
+  let ga = 1, gb = 1;
+  if ($("#abMatch").checked && ma > 1 && mb > 1){
+    const t = (ma + mb) / 2;
+    ga = Math.max(0.5, Math.min(2, t / ma));
+    gb = Math.max(0.5, Math.min(2, t / mb));
+  }
+  for (const [cv, img, g] of [[ca, AB.a, ga], [cb, AB.b, gb]]){
+    const cx = cv.getContext("2d");
+    cx.clearRect(0, 0, cv.width, cv.height);
+    cx.filter = g === 1 ? "none" : `brightness(${g})`;
+    cx.drawImage(img, 0, 0, cv.width, cv.height);
+    cx.filter = "none";
+  }
+  ca.style.width = AB.zoom ? AB.w + "px" : "100%";
+  cb.style.width = AB.zoom ? AB.w + "px" : "100%";
+  const diff = Math.abs(ma - mb) / Math.max(1, (ma + mb) / 2) * 100;
+  let note = "Same size, same zoom. Which do you prefer?";
+  if (diff > 4){
+    note += $("#abMatch").checked
+      ? ` Their brightness differed by ${diff.toFixed(0)}%; it is matched here.`
+      : ` Their brightness differs by ${diff.toFixed(0)}%; turn on brightness matching for a fairer look.`;
+  }
+  $("#abInfo").textContent = note;
+}
+async function abPickOther(){
+  const r = await fetch("/api/pickfile");
+  if (!r.ok){ $("#abMsg").textContent = "Could not open the file dialog."; return; }
+  const {path} = await r.json();
+  if (!path) return;
+  $("#abFile").textContent = "Picture chosen.";
+  $("#abMsg").textContent = "Developing both versions at the same size…";
+  const p = current();
+  const body = {id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) ? S.params : null, comp: comp() === "1", path};
+  let res;
+  try {
+    res = await fetch("/api/ab/prepare", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+  } catch { $("#abMsg").textContent = "Could not reach the app."; return; }
+  if (!res.ok){ $("#abMsg").textContent = await res.text(); return; }
+  const data = await res.json();
+  AB.token = data.token; AB.w = data.width; AB.h = data.height; AB.answered = false;
+  try {
+    [AB.a, AB.b] = await Promise.all([abLoadImage(data.a), abLoadImage(data.b)]);
+  } catch (e) { $("#abMsg").textContent = e.message; return; }
+  $("#abSetup").style.display = "none";
+  $("#abResult").style.display = "none";
+  $("#abView").style.display = "";
+  $("#abMsg").textContent = "";
+  $("#abAbtn").disabled = false; $("#abBbtn").disabled = false; $("#abTie").disabled = false;
+  abDraw();
+}
+async function abAnswer(choice){
+  if (AB.answered || !AB.token) return;
+  AB.answered = true;
+  $("#abAbtn").disabled = true; $("#abBbtn").disabled = true; $("#abTie").disabled = true;
+  let data;
+  try {
+    const r = await fetch("/api/ab/reveal?token=" + AB.token);
+    if (!r.ok) throw new Error("The comparison expired.");
+    data = await r.json();
+  } catch (e) { $("#abInfo").textContent = e.message; return; }
+  const ours = data.ours;
+  const pick = choice === "tie" ? "tie" : (choice === ours ? "ours" : "theirs");
+  const t = store.get("abTally", {ours: 0, theirs: 0, tie: 0});
+  t[pick]++;
+  store.set("abTally", t);
+  const who = side => side === ours ? "Foveon Lab" : "your other version";
+  $("#abReveal").innerHTML = `A was <b>${who("a")}</b>. B was <b>${who("b")}</b>.<br>` +
+    (choice === "tie" ? "You had no preference." : `You chose <b>${choice.toUpperCase()}</b>.`);
+  $("#abTally").textContent = `Your tally, kept on this computer only: Foveon Lab ${t.ours}, the other version ${t.theirs}, no preference ${t.tie}. Nothing leaves this machine.`;
+  $("#abView").style.display = "none";
+  $("#abResult").style.display = "";
+}
+function abRestart(){
+  AB.token = null; AB.a = AB.b = null; AB.answered = false;
+  $("#abSetup").style.display = ""; $("#abView").style.display = "none"; $("#abResult").style.display = "none";
+  $("#abFile").textContent = ""; $("#abMsg").textContent = ""; $("#abInfo").textContent = "";
+  $("#abMatch").checked = true;
+  document.body.classList.remove("abzoom");
+  AB.zoom = false;
+}
+function abClose(){
+  AB.token = null; AB.a = AB.b = null;
+  document.body.classList.remove("abzoom"); AB.zoom = false;
+  $("#abDlg").classList.remove("on");
 }
 
 // ---------- folders & quit ----------
@@ -2452,10 +2766,10 @@ async function updateInit(){
   if (!u.available){ box.style.display = "none"; return; }
   const link = `<a href="https://github.com/biopoetic/foveon-lab/releases/tag/${esc(u.latest)}" target="_blank" rel="noopener">${esc(u.latest)}</a>`;
   if (u.canInstall){
-    box.innerHTML = `New version ${link}${u.notes ? ` <span style="opacity:.8">— ${esc(u.notes)}</span>` : ""} <button class="primary" id="updateBtn">Update &amp; restart</button>`;
+    box.innerHTML = `New version ${link}${u.notes ? ` <span style="opacity:.8">: ${esc(u.notes)}</span>` : ""} <button class="primary" id="updateBtn">Update &amp; restart</button>`;
     $("#updateBtn").onclick = () => installUpdate(u.latest);
   } else {
-    box.innerHTML = `<span title="${esc(u.reason || "")}">New version ${link} — download it from GitHub</span>`;
+    box.innerHTML = `<span title="${esc(u.reason || "")}">New version ${link}. Download it from GitHub</span>`;
   }
   box.style.display = "";
 }
@@ -2471,7 +2785,7 @@ async function checkNow(){
     await updateInit();
     if (!u.enabled) toast("This copy is not an installed release build, so it cannot update itself.", 7000);
     else if (u.error) toast("Could not check for updates: " + esc(u.error), 8000);
-    else if (u.available) toast(`Version ${esc(u.latest)} is available — the header has the button.`, 7000);
+    else if (u.available) toast(`Version ${esc(u.latest)} is available. The header has the button.`, 7000);
     else toast(`You are on the latest version (${esc(u.current || "dev")}).`, 4000);
   } catch (e) {
     toast(e.name === "AbortError" ? "The update check timed out." : "Could not check for updates.", 6000);
@@ -2525,7 +2839,7 @@ async function installUpdate(latest){
       if (c.version === latest){ location.reload(); return; }
     } catch {}
   }
-  toast("Foveon Lab did not come back — start it again.", 15000);
+  toast("Foveon Lab did not come back. Start it again.", 15000);
 }
 
 async function allImagesInit(){
@@ -2575,12 +2889,12 @@ async function openInSPP(restart){
   if (res.status === 409){
     if (restart){ toast(esc(text), 10000); return; }
     // SPP is open: it holds these settings in memory and rewrites them on exit.
-    if (confirm("Sigma Photo Pro is open.\n\nClose it and reopen this photo with the preset?\n\nSPP is closed normally (like clicking X), so it can ask about anything unsaved — it is never force-closed.")) openInSPP(true);
+    if (confirm("Sigma Photo Pro is open.\n\nClose it and reopen this photo with the preset?\n\nIt is closed normally, the same as clicking its close button, so it can ask about anything unsaved. It is never force-closed.")) openInSPP(true);
     return;
   }
-  if (!res.ok){ toast("Could not open in SPP: " + esc(text), 8000); return; }
+  if (!res.ok){ toast("Could not open the photo in Sigma Photo Pro: " + esc(text), 8000); return; }
   const r = JSON.parse(text);
-  toast(`Opening in SPP with <b>${esc(r.name)}</b> as the current setting. Backup of SPP's settings: ${esc(r.backup)}`, 9000);
+  toast(`Opening this photo in Sigma Photo Pro with <b>${esc(r.name)}</b>. A copy of its settings is saved in <b>${esc(r.backup)}</b>.`, 9000);
 }
 
 // ---------- AI agent ----------
@@ -2757,7 +3071,7 @@ async function aiCritique(){
     const cropTxt = crop
       ? `Crop: keep ${Math.round(crop.w * 100)}% × ${Math.round(crop.h * 100)}% from ${Math.round(crop.x * 100)}%, ${Math.round(crop.y * 100)}%${crop.angle ? `, straighten ${crop.angle}°` : ""}`
       : "";
-    const d = aiLog(`<div class="critique">${cached ? '<div class="src">Same settings as the last critique — not sent again.</div>' : ""}${mdLite(text)}${keys.length
+    const d = aiLog(`<div class="critique">${cached ? '<div class="src">Same settings as the last critique, not sent again.</div>' : ""}${mdLite(text)}${keys.length
       ? `<div class="adj">${esc(list)}</div><button class="primary" data-apply>Apply these settings</button>`
       : ""}${crop ? `<div class="adj">${esc(cropTxt)}</div><button class="primary" data-crop>Apply crop</button>` : ""}</div>`, "say");
     const btn = d.querySelector("[data-apply]");
@@ -2774,7 +3088,7 @@ async function aiCritique(){
 async function applyCrop(c, btn){
   const before = {...(GEO[S.photo.id] || {})};
   if (!await saveGeometry({turn: before.turn || 0, angle: c.angle || 0, x: c.x, y: c.y, w: c.w, h: c.h})) return;
-  toast("Crop applied — Undo puts the frame back.", 5000);
+  toast("Crop applied. Undo puts the frame back.", 5000);
   if (!btn) return;
   btn.textContent = "Undo crop";
   btn.onclick = async () => {
@@ -2859,10 +3173,40 @@ function bind(){
   $("#selAll").onclick = selectAllPhotos;
   $("#selFav").onclick = selectFavoritePhotos;
   $("#selClear").onclick = () => { if (S.photo){ S.sel = new Set([S.photo.id]); S.selAnchor = S.photo.id; paintSelection(); } };
+  $("#tabLooks").onclick = () => { S.filmTab = false; drawGrid(); };
+  $("#tabFilm").onclick = () => { S.filmTab = true; drawGrid(); };
+  $("#welcomePick").onclick = chooseFirstFolder;
+  $("#welcomeCard").onclick = importFromCard;
   $("#export").onclick = () => exportImage("jpeg");
   $("#exportTiff").onclick = () => exportImage("tiff");
   $("#exportDng").onclick = () => exportImage("rawdng");
   $("#exportDngR").onclick = () => exportImage("dng");
+  $("#finishBtn").onclick = finishOpen;
+  $("#finishClose").onclick = () => $("#finishDlg").classList.remove("on");
+  $("#finishMore").onclick = () => { $("#finishDlg").classList.remove("on"); openExportGroup(); };
+  $("#finishGo").onclick = finishSave;
+  $("#finishDest").onchange = () => { $("#finishDestRow").style.display = $("#finishDest").value === "chosen" ? "flex" : "none"; };
+  $("#finishDestPick").onclick = async () => {
+    const r = await fetch("/api/pickfolder");
+    if (!r.ok){ toast("Could not open the folder dialog", 6000); return; }
+    const {path} = await r.json();
+    if (path){ $("#finishDestPath").value = path; store.set("exportFolder", path); $("#finishDest").value = "chosen"; $("#finishDestRow").style.display = "flex"; }
+  };
+  $("#abBtn").onclick = abOpen;
+  $("#abPick").onclick = abPickOther;
+  $("#abAbtn").onclick = () => abAnswer("a");
+  $("#abBbtn").onclick = () => abAnswer("b");
+  $("#abTie").onclick = () => abAnswer("tie");
+  $("#abMatch").onchange = abDraw;
+  $("#abZoom").onclick = () => {
+    AB.zoom = !AB.zoom;
+    document.body.classList.toggle("abzoom", AB.zoom);
+    abDraw();
+  };
+  $("#abRestart").onclick = abRestart;
+  $("#abAgain").onclick = abRestart;
+  $("#abClose").onclick = abClose;
+  $("#abClose2").onclick = abClose;
   cropInit();
   try { const v = localStorage.getItem("fl.nr"); if (v !== null) $("#nr").value = v; } catch {}
   $("#nr").onchange = e => { try { localStorage.setItem("fl.nr", e.target.value); } catch {} };
@@ -2991,7 +3335,7 @@ function bind(){
   $("#favOnly").onchange = e => { store.set("favOnly", e.target.checked); applyFavFilter(); };
   applyFavFilter();
   sidesInit();
-  filmsInit(); papersInit(); filtersInit();
+  filmsInit().then(() => { if (S.filmTab) drawGrid(); }); papersInit(); filtersInit();
   updateInit();
   setInterval(updateInit, 6 * 3600 * 1000);
   // Deep link: ?photo=<id or file name>&groups=SLIDE,BW&q=velvia&tile=400

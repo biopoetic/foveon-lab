@@ -27,7 +27,7 @@ var automation embed.FS
 // openPath, when set, is the X3F to (re)open in SPP first.
 func AutoExport(photo, openPath string, codes []string, outDir string, log io.Writer) error {
 	if runtime.GOOS != "windows" {
-		return errors.New("automatic export drives Sigma Photo Pro, which is Windows-only here")
+		return errors.New("automatic export drives Sigma Photo Pro, which is available on Windows only")
 	}
 	dir, err := os.MkdirTemp("", "foveon-spp-auto-")
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/biopoetic/foveon-lab/preset"
 )
@@ -70,12 +71,33 @@ func TestImportCopiesAndResumesWithoutDuplicates(t *testing.T) {
 		"SDIM0001.X3F": "first raw",
 		"SDIM0002.X3F": "second raw",
 	})
+	cardBefore := map[string]string{}
+	cardMod := map[string]time.Time{}
+	for name := range map[string]bool{"SDIM0001.X3F": true, "SDIM0002.X3F": true} {
+		p := filepath.Join(root, "DCIM", "100SIGMA", name)
+		sum, err := hashFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st, _ := os.Stat(p)
+		cardBefore[name], cardMod[name] = sum, st.ModTime()
+	}
 	library := filepath.Join(t.TempDir(), "library")
 	s := &server{byID: map[string]*Photo{}, sem: make(chan struct{}, 1)}
 
 	lines := runImport(t, s, root, library)
 	if got := lines[len(lines)-1].Copied; got != 2 {
 		t.Fatalf("copied %d, want 2: %+v", got, lines)
+	}
+	for name, sum := range cardBefore {
+		p := filepath.Join(root, "DCIM", "100SIGMA", name)
+		after, err := hashFile(p)
+		if err != nil || after != sum {
+			t.Fatalf("%s changed on the card", name)
+		}
+		if st, _ := os.Stat(p); !st.ModTime().Equal(cardMod[name]) {
+			t.Fatalf("%s has a new date on the card", name)
+		}
 	}
 	m, err := loadManifest(library)
 	if err != nil {
@@ -236,6 +258,25 @@ func TestCopyCardFileStopsWhenCancelled(t *testing.T) {
 	}
 }
 
+func TestRenameNoReplace(t *testing.T) {
+	dir := t.TempDir()
+	old := filepath.Join(dir, "tmp")
+	dst := filepath.Join(dir, "taken")
+	if err := os.WriteFile(old, []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := renameNoReplace(old, dst); err == nil {
+		t.Fatal("rename replaced a file that was already there")
+	}
+	got, _ := os.ReadFile(dst)
+	if string(got) != "old" {
+		t.Fatal("the existing file changed")
+	}
+}
+
 func TestExportNeverOverwrites(t *testing.T) {
 	useTemporaryConfig(t)
 	// A plain picture is enough to exercise the export path.
@@ -319,6 +360,52 @@ func TestBatchExportCallsPhotosImporter(t *testing.T) {
 	}
 	if len(got) != 1 || album != "2026-10-16" {
 		t.Fatalf("importer got %v in album %q", got, album)
+	}
+}
+
+func TestBatchExportUsesEachPhotosSavedEdits(t *testing.T) {
+	useTemporaryConfig(t)
+	dir := t.TempDir()
+	var photos []*Photo
+	byID := map[string]*Photo{}
+	for i, name := range []string{"one.png", "two.png"} {
+		p := filepath.Join(dir, name)
+		f, _ := os.Create(p)
+		img := image.NewRGBA(image.Rect(0, 0, 8, 6))
+		for y := 0; y < 6; y++ {
+			for x := 0; x < 8; x++ {
+				img.Set(x, y, color.RGBA{uint8(x * 20), uint8(y*20 + i*30), 90, 255})
+			}
+		}
+		png.Encode(f, img)
+		f.Close()
+		ph := &Photo{ID: "p" + name, Name: name, Kind: "image", path: p, Info: map[string]string{}}
+		photos = append(photos, ph)
+		byID[ph.ID] = ph
+	}
+	s := &server{byID: byID, sem: make(chan struct{}, 1)}
+	body, _ := json.Marshal(map[string]any{
+		"ids": []string{photos[0].ID, photos[1].ID}, "format": "jpeg", "space": "srgb",
+		"destination": t.TempDir(),
+		"paramsById": map[string]any{
+			photos[0].ID: map[string]any{"saturation": 1.5},
+			photos[1].ID: map[string]any{"saturation": -1.5},
+		},
+	})
+	rr := httptest.NewRecorder()
+	s.handleExportBatch(rr, httptest.NewRequest("POST", "/api/export/batch", bytes.NewReader(body)))
+	var done map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(rr.Body.String()), "\n") {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			t.Fatalf("bad progress line %q: %v", line, err)
+		}
+		if m["done"] == true {
+			done = m
+		}
+	}
+	if done == nil || done["ok"].(float64) != 2 || done["failed"].(float64) != 0 {
+		t.Fatalf("batch with saved edits: %v", done)
 	}
 }
 

@@ -1192,7 +1192,7 @@ func (s *server) handleSPPOpen(w http.ResponseWriter, r *http.Request) {
 	}
 	ph := s.lookup(req.ID)
 	if ph == nil || ph.Kind != "x3f" {
-		httpErr(w, 400, errors.New("only X3F photos can be opened in SPP"))
+		httpErr(w, 400, errors.New("only X3F photos can be opened in Sigma Photo Pro"))
 		return
 	}
 	name := strings.TrimSpace(req.Name)
@@ -1222,7 +1222,7 @@ func (s *server) handleSPPOpen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := in.Launch(ph.path); err != nil {
-		httpErr(w, 500, fmt.Errorf("settings written, but SPP did not start: %w", err))
+		httpErr(w, 500, fmt.Errorf("settings were saved, but Sigma Photo Pro did not start: %w", err))
 		return
 	}
 	log.Printf("SPP: preset %q applied (backup %s), opened %s", name, backup, ph.path)
@@ -1594,6 +1594,10 @@ func main() {
 	mux.HandleFunc("/api/folders", s.handleFolders)
 	mux.HandleFunc("/api/browse", s.handleBrowse)
 	mux.HandleFunc("/api/pickfolder", s.handlePickFolder)
+	mux.HandleFunc("/api/pickfile", s.handlePickFile)
+	mux.HandleFunc("/api/ab/prepare", s.handleABPrepare)
+	mux.HandleFunc("/api/ab/reveal", s.handleABReveal)
+	mux.HandleFunc("/api/ab/img", s.handleABImg)
 	mux.HandleFunc("/api/critique", s.handleCritique)
 	mux.HandleFunc("/api/allimages", s.handleAllImages)
 	mux.HandleFunc("/api/card/detect", s.handleCardDetect)

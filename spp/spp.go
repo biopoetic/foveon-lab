@@ -37,7 +37,7 @@ const (
 const PresetPrefix = "[FL] "
 
 // ErrRunning means SPP is open, so its files must not be touched.
-var ErrRunning = errors.New("Sigma Photo Pro is running — close it first (it rewrites its settings when it exits)")
+var ErrRunning = errors.New("Sigma Photo Pro is running. Close it first; it rewrites its settings when it exits.")
 
 // Install locates SPP's program and settings.
 type Install struct {
@@ -63,7 +63,7 @@ func Detect() (*Install, error) {
 	}
 	for _, f := range []string{settingsFile, prefsFile} {
 		if _, err := os.Stat(filepath.Join(in.Dir, f)); err != nil {
-			return nil, fmt.Errorf("SPP settings not found (%s) — start SPP once so it creates them", f)
+			return nil, fmt.Errorf("Sigma Photo Pro settings not found (%s). Start Sigma Photo Pro once so it creates them", f)
 		}
 	}
 	return in, nil
@@ -189,7 +189,7 @@ func (in *Install) AddPresets(names []string, ps []preset.Params) (backup string
 
 // ErrStillOpen means SPP did not exit after being asked to close — it is
 // probably showing a dialog. It is never force-killed.
-var ErrStillOpen = errors.New("Sigma Photo Pro did not close — it may be asking something (unsaved work?). Answer it or close SPP yourself, then try again")
+var ErrStillOpen = errors.New("Sigma Photo Pro did not close. It may be asking something (unsaved work?). Answer it or close Sigma Photo Pro yourself, then try again")
 
 // Close asks SPP to exit the normal way (a window close, like clicking X —
 // never a forced kill) and waits for it, so SPP can save its own settings
@@ -395,7 +395,7 @@ func SetCurrent(text, name string, p preset.Params) (string, error) {
 	for _, kv := range set {
 		nt, ok := setTag(text, kv[0], kv[1])
 		if !ok && required[kv[0]] {
-			return "", fmt.Errorf("SPhotoPro.xml has no <%s> — unknown SPP version, not touching it", kv[0])
+			return "", fmt.Errorf("SPhotoPro.xml has no <%s>: unknown Sigma Photo Pro version, not touching it", kv[0])
 		}
 		text = nt
 	}
