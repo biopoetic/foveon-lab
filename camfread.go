@@ -88,6 +88,12 @@ func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
 	return goDevelopFor(ph, false, false, "")
 }
 
+// noiseAwareFix: the noise-aware detail restore is fitted and held out on
+// the DPM and Quattro sensor families. Other generations keep the old
+// restore until their own ladders are measured (SD14/DP2x high ISO lost up
+// to 0.47 in spp-check with it).
+func noiseAwareFix(group string) bool { return group == "DPM" || group == "Quattro" }
+
 // identity33 is the 3×3 identity.
 var identity33 = [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
 
@@ -215,7 +221,7 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 			img = binCam2(img, bx, by)
 		}
 		lap(fmt.Sprintf("bin %dx%d -> %dx%d", bx, by, img.W, img.H))
-		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph), Grey: greyOf(t)})
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph), Grey: greyOf(t), NoiseAware: noiseAwareFix(calibGroup(ph))})
 	}
 	lap("denoise")
 	if dw == 0 && bx > 1 {
@@ -316,7 +322,7 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 		nr = float64(max(0, min(10, *denoise))) / 10
 	}
 	if nr > 0 {
-		x3f.Denoise(img, x3f.DenoiseOptions{Strength: nr, Scale: 1, ISO: photoISO(ph), Grey: greyOf(t)})
+		x3f.Denoise(img, x3f.DenoiseOptions{Strength: nr, Scale: 1, ISO: photoISO(ph), Grey: greyOf(t), NoiseAware: noiseAwareFix(calibGroup(ph))})
 	}
 	path := filepath.Join(dir, stem+".dng")
 	f, err := os.Create(path)

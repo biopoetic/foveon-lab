@@ -57,6 +57,11 @@ type DenoiseOptions struct {
 	// near black (DP1 Merrill still life ISO 6400 vs its own ISO 100:
 	// a* -8.0, green).
 	Grey [3]float64
+	// NoiseAware enables the noise-aware restore fitted on the DPM and
+	// Quattro sensor families (restoreRamp). Other generations keep the
+	// previous restore until their own ladders are measured: on the SD14
+	// and DP2x high-ISO photos it cost up to 0.47 in spp-check.
+	NoiseAware bool
 }
 
 // colourRadius is the colour filter's radius at full sensor resolution for
@@ -246,7 +251,10 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		}
 	})
 	lap("guided")
-	ramp := restoreRamp(rel, o.ISO)
+	ramp := 0.0
+	if o.NoiseAware {
+		ramp = restoreRamp(rel, o.ISO)
+	}
 	if !noRestore {
 		if perLayerRestore {
 			restoreDetail(img, orig, rel, o.Strength)
