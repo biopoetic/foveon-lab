@@ -248,21 +248,8 @@ func guidedGauss(I, p []float32, w, h int, sigma, eps float64) []float32 {
 	return guidedGaussPre(I, p, w, h, sigma, eps, mI, mII, ip)
 }
 
-// guideStats returns the guide's blurred mean and mean square, shared by
-// every plane filtered against the same guide (the chroma mottle pass
-// filters three).
-func guideStats(I []float32, w, h int, sigma float64) (mI, mII []float32) {
-	ii := make([]float32, len(I))
-	parallelRows(len(I), func(i0, i1 int) {
-		for i := i0; i < i1; i++ {
-			ii[i] = I[i] * I[i]
-		}
-	})
-	return GaussBlur(I, w, h, sigma), GaussBlur(ii, w, h, sigma)
-}
-
 // guidedGaussPre is guidedGauss with the guide's statistics and I*p already
-// computed: three chroma planes filtered against one guide share them.
+// computed: the guide's blurs are shared instead of rebuilt.
 func guidedGaussPre(I, p []float32, w, h int, sigma, eps float64, mI, mII, ip []float32) []float32 {
 	n := len(I)
 	mp := GaussBlur(p, w, h, sigma)
