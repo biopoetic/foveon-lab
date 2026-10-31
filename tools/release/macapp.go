@@ -49,11 +49,22 @@ func infoPlist(version string) string {
 	<key>NSDocumentsFolderUsageDescription</key><string>Foveon Lab reads X3F photos and SPP preset files from folders you choose.</string>
 	<key>NSDownloadsFolderUsageDescription</key><string>Foveon Lab reads X3F photos and SPP preset files from folders you choose.</string>
 	<key>NSRemovableVolumesUsageDescription</key><string>Foveon Lab reads X3F photos straight from your camera's memory card.</string>
+	<key>NSAppleEventsUsageDescription</key><string>Foveon Lab adds the photos you export to an album in Apple Photos.</string>
 	<key>NSHumanReadableCopyright</key><string>© 2026 Saša Peršić. MIT License.</string>
 </dict>
 </plist>
 `
 }
+
+// appEntitlements lets the hardened app ask Apple Photos to import exports.
+const appEntitlements = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.automation.apple-events</key><true/>
+</dict>
+</plist>
+`
 
 // drawIcon draws the app icon: three offset translucent layers (blue,
 // green, red top to bottom) on a dark rounded square — the Foveon sensor's
@@ -214,7 +225,12 @@ func buildMacApp(dist, version, fooArm, fooAmd, x3fArm, x3fAmd string) (string, 
 		}
 	}
 
-	args := []string{"sign", "--p12-file", p12, "--code-signature-flags", "runtime"}
+	entitlements := filepath.Join(filepath.Dir(app), "entitlements.plist")
+	if err := os.WriteFile(entitlements, []byte(appEntitlements), 0o644); err != nil {
+		return "", err
+	}
+	defer os.Remove(entitlements)
+	args := []string{"sign", "--p12-file", p12, "--code-signature-flags", "runtime", "--entitlements-xml-file", entitlements}
 	if x3fArm != "" {
 		args = append(args, "--code-signature-flags", "Contents/MacOS/x3f_extract:runtime")
 	}
