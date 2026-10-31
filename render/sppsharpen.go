@@ -194,9 +194,31 @@ func usmPlanes(v []float32, w, h, n int, a float32, k [7]float32) []float32 {
 	return out
 }
 
+// sppSharpenScaleFor is the sharpening multiplier a render asks for. Max
+// Detail asks for more on TRUEII: the table's amount was fitted on the SD15,
+// and the SD14's own SPP exports keep about 1.5x the 1-px detail of our
+// render (feet 0.425 against 0.366 on the fixed basis, under the bridge 1.65
+// against 1.18), while the DPM bodies already match or exceed SPP there.
+// The default render is unchanged (1).
+func sppSharpenScaleFor(sensor string, maxDetail bool) float64 {
+	if maxDetail && sensor == "TRUEII" {
+		return 1.6
+	}
+	return 1
+}
+
 // sppSharpen8 applies SPP's sharpening to an 8-bit image at view scale s.
 func sppSharpen8(img *image.RGBA, s, iso float64, sensor string) {
+	sppSharpen8Scale(img, s, iso, sensor, 1)
+}
+
+// sppSharpen8Scale is sppSharpen8 with the fitted amount multiplied by
+// scale. Max Detail uses a little more on the TRUEII bodies (see
+// sppSharpenScaleFor), where the fitted SD15 amount leaves the SD14 short of
+// SPP's own sharpening (task 20, part 3).
+func sppSharpen8Scale(img *image.RGBA, s, iso float64, sensor string, scale float64) {
 	a, k := sppView(s, iso, sensor)
+	a *= float32(scale)
 	if a == 0 {
 		return
 	}
@@ -219,7 +241,14 @@ func sppSharpen8(img *image.RGBA, s, iso float64, sensor string) {
 
 // sppSharpen16 is sppSharpen8 for 16-bit images (big-endian samples).
 func sppSharpen16(img *image.RGBA64, s, iso float64, sensor string) {
+	sppSharpen16Scale(img, s, iso, sensor, 1)
+}
+
+// sppSharpen16Scale is sppSharpen16 with the fitted amount multiplied by
+// scale (see sppSharpen8Scale).
+func sppSharpen16Scale(img *image.RGBA64, s, iso float64, sensor string, scale float64) {
 	a, k := sppView(s, iso, sensor)
+	a *= float32(scale)
 	if a == 0 {
 		return
 	}

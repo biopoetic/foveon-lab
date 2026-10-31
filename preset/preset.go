@@ -112,9 +112,16 @@ type Params struct {
 	GNDSoft  float64 `json:"gndSoft,omitempty"`
 	// MaxDetail (Foveon Lab only; not in SPP's XML): the [FL] Max Detail
 	// preset is a raw-development mode, not a slider bundle. The server sets
-	// this from the preset's name; the XML's slider values are then only the
-	// mode's fallback for sources with no raw data.
+	// this from the preset's name. The preset's own sliders are then the
+	// user's adjustments ON TOP of the development and start at zero;
+	// SPPFallback holds the SPP slider values the pack's entry carries, which
+	// the mode's development already includes. The SPP hand-off writes the
+	// fallback plus the user's adjustments, so a tuned mode still opens in
+	// Sigma Photo Pro with a sensible approximation.
 	MaxDetail bool `json:"maxDetail,omitempty"`
+	// SPPFallback (Foveon Lab only; not in SPP's XML) is the mode's SPP
+	// slider bundle, as above. Nil for an ordinary preset.
+	SPPFallback *Params `json:"sppFallback,omitempty"`
 }
 
 const (

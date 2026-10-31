@@ -523,7 +523,7 @@ func RenderOpt(b *Base, p preset.Params, c Compensation, sharp bool) *image.RGBA
 		o[3] = 255
 	})
 	if b.Raw && sharp {
-		sppSharpen8(out, b.scale(), b.ISO, b.Sensor)
+		sppSharpen8Scale(out, b.scale(), b.ISO, b.Sensor, sppSharpenScaleFor(b.Sensor, p.MaxDetail))
 	}
 	if p.Sharpness != 0 && sharp {
 		sharpen(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale()))))
@@ -547,7 +547,7 @@ func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 		o[6], o[7] = 0xff, 0xff
 	})
 	if b.Raw {
-		sppSharpen16(out, b.scale(), b.ISO, b.Sensor)
+		sppSharpen16Scale(out, b.scale(), b.ISO, b.Sensor, sppSharpenScaleFor(b.Sensor, p.MaxDetail))
 	}
 	if p.Sharpness != 0 {
 		sharpen16(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale()))))

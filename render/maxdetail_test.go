@@ -1,9 +1,6 @@
 package render
 
-import (
-	"math"
-	"testing"
-)
+import "testing"
 
 // Task 19: the Max Detail tone map must keep black, lift shadows above the
 // noise, stay monotonic and end at white.
@@ -56,16 +53,5 @@ func TestMaxDetailHighISO(t *testing.T) {
 	MaxDetailDevelop(hi, MaxDetailOptions{ISO: 6400})
 	if hi.Pix[0] >= lo.Pix[0] {
 		t.Fatalf("ISO 6400 lifted a flat shadow as much as ISO 100 (%g vs %g)", hi.Pix[0], lo.Pix[0])
-	}
-}
-
-func TestShoulderEndsAtWhite(t *testing.T) {
-	for _, x := range []float64{1.2, 1.5, 2, 4} {
-		if v := shoulder(x, maxDetailShoulderKnee, maxDetailHighlight); v > 1 || v < 0.99 {
-			t.Fatalf("shoulder(%g)=%g, want in [0.99,1]", x, v)
-		}
-	}
-	if math.Abs(shoulder(0.5, maxDetailShoulderKnee, maxDetailHighlight)-0.5) > 1e-9 {
-		t.Fatal("shoulder changed a tone below the knee")
 	}
 }

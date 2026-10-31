@@ -346,6 +346,9 @@ func (s *server) loadPresets() {
 	ps, errs := preset.Load(srcs...)
 	for i := range ps {
 		ps[i].Film = render.FilmFor(ps[i].Name)
+		if isMaxDetail(ps[i].Name) {
+			maxDetailPreset(&ps[i])
+		}
 	}
 	// The film stocks first: each simulated film is a preset (filmpresets.go),
 	// then the camera's own colour modes, the white balance presets and the
@@ -605,9 +608,52 @@ func (s *server) photo(r *http.Request) (*Photo, error) {
 
 // isMaxDetail reports whether a preset name is the Max Detail development
 // mode (task 19). The mode is a name, not slider values: it runs from the
-// raw layers, and the preset's SPP numbers are only its JPEG fallback.
+// raw layers, and the preset's SPP numbers are its fallback for sources with
+// no raw data and for the SPP hand-off.
 func isMaxDetail(name string) bool {
 	return strings.EqualFold(strings.TrimSpace(name), "[FL] Max Detail")
+}
+
+// maxDetailPreset turns a loaded [FL] Max Detail preset into the mode: its
+// tone sliders become the SPP fallback (what the pack's entry carried, and
+// what the raw development includes), and the preset's own sliders start at
+// zero so the panel and "Reset" are honest. The user's moves are then
+// adjustments on top of the development (task 20, part 4).
+func maxDetailPreset(p *preset.Preset) {
+	fb := p.Params
+	fb.MaxDetail = false
+	fb.SPPFallback = nil
+	p.Params.SPPFallback = &fb
+	p.Params.MaxDetail = true
+	p.Params.Exposure = 0
+	p.Params.Contrast = 0
+	p.Params.Blackness = 0
+	p.Params.Highlight = 0
+	p.Params.FillLight = 0
+	p.Params.Saturation = 0
+}
+
+// maxDetailSPPParams is what the SPP hand-off should write for p: for the
+// mode, its SPP fallback plus the user's adjustments (the mode's sliders are
+// zero-based); otherwise p unchanged.
+func maxDetailSPPParams(p preset.Params) preset.Params {
+	if !p.MaxDetail || p.SPPFallback == nil {
+		p.MaxDetail = false
+		p.SPPFallback = nil
+		return p
+	}
+	fb := *p.SPPFallback
+	out := p // colour adjust, WB, sharpness, film and the rest
+	out.Exposure = fb.Exposure + p.Exposure
+	out.Contrast = fb.Contrast + p.Contrast
+	out.Blackness = fb.Blackness + p.Blackness
+	out.Highlight = fb.Highlight + p.Highlight
+	out.FillLight = fb.FillLight + p.FillLight
+	out.Saturation = fb.Saturation + p.Saturation
+	out.Mono = p.Mono || fb.Mono
+	out.MaxDetail = false
+	out.SPPFallback = nil
+	return out
 }
 
 // params resolves render parameters: a preset id, optionally overridden by
@@ -665,10 +711,24 @@ func (s *server) renderBase(w http.ResponseWriter, r *http.Request) (*render.Bas
 	mode := s.sourceMode(ph)
 	if q.Get("src") == "camera" && !ph.jpegBroken.Load() {
 		mode = "jpg"
+		if p.MaxDetail && p.SPPFallback != nil {
+			// No raw development for the camera's own JPEG: the mode's old
+			// SPP slider bundle is its documented fallback look.
+			fb := *p.SPPFallback
+			fb.MaxDetail = false
+			p = fb
+		}
 	} else if p.MaxDetail && maxDetailAvailable(ph) {
-		// The mode is the raw development; no slider bundle to apply on top.
+		// The Base is the raw development; p's sliders are adjustments on
+		// top of it and start at zero (task 20, part 4).
 		mode = "rawmaxdetail"
 		p = maxDetailRenderParams(p)
+	} else if p.MaxDetail && p.SPPFallback != nil {
+		// A source with no raw data: the mode's SPP fallback, as before.
+		fb := *p.SPPFallback
+		fb.MaxDetail = false
+		p = fb
+		mode = s.sourceMode(ph)
 	} else if lf, ok := layersSource(ph, p); ok {
 		mode = "rawlayers:" + lf
 	} else if wf, ok := wbSource(ph, p); ok && mode == "raw" {
@@ -1006,6 +1066,13 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	var src *render.Linear
 	wbDeveloped := false
 	md := p.MaxDetail && maxDetailAvailable(ph)
+	if !md && p.MaxDetail && p.SPPFallback != nil {
+		// No raw development for this source: export the mode's SPP
+		// fallback look, as the preview does.
+		fb := *p.SPPFallback
+		fb.MaxDetail = false
+		p = fb
+	}
 	lf, ir := layersSource(ph, p)
 	if md {
 		l, err := rawMaxDetail(ph, 0, goStrength(rawExportColor(denoise)))
@@ -1212,14 +1279,18 @@ func (s *server) handlePresets(w http.ResponseWriter, r *http.Request) {
 			cam = "ALL"
 		}
 		path := filepath.Join(s.presetsDir, "FoveonLab_"+cam+".xml")
-		if err := preset.Append(path, req.Name, req.Params); err != nil {
+		// A saved Max Detail preset is written as its SPP fallback plus the
+		// user's adjustments: SPP's XML has no raw-development mode, and a
+		// zeroed slider bundle would save a neutral look.
+		save := maxDetailSPPParams(req.Params)
+		if err := preset.Append(path, req.Name, save); err != nil {
 			httpErr(w, 500, err)
 			return
 		}
 		// The film, push, paper and darkroom fields have no SPP XML
 		// equivalent: keep them beside the file and merge them back on load
 		// (presetsidecar.go).
-		if err := saveFLParams(s.presetsDir, filepath.Base(path), req.Name, req.Params); err != nil {
+		if err := saveFLParams(s.presetsDir, filepath.Base(path), req.Name, save); err != nil {
 			httpErr(w, 500, err)
 			return
 		}
@@ -1277,7 +1348,9 @@ func (s *server) handleSPPOpen(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	backup, err := in.Apply(name, req.Params)
+	// A Max Detail preset hands SPP its fallback bundle plus the user's
+	// adjustments; SPP has no raw-development mode of its own.
+	backup, err := in.Apply(name, maxDetailSPPParams(req.Params))
 	if errors.Is(err, spp.ErrRunning) {
 		httpErr(w, 409, err)
 		return

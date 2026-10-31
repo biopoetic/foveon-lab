@@ -64,6 +64,8 @@ main{overflow:auto;position:relative}
 .tile .cap{padding:5px 8px}
 .tile .cap small{display:block;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile.ref{border-color:#444;border-style:dashed}
+.tile.mode{border-color:var(--accent)}
+.tile .modeTag{font-size:9px;letter-spacing:.08em;color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:0 3px;margin-right:3px;vertical-align:1px}
 #detail{display:none;height:100%;grid-template-columns:1fr 300px}
 #detail.on{display:grid}
 body.noList #app{grid-template-columns:1fr}
@@ -997,7 +999,9 @@ function drawGrid(){
   if (S.looks && S.lookOpen && S.lookKey) tiles.unshift(`<div class="lookbar">Presets that look like <b>${esc(S.list[0]?.name || "")}</b> on this photo · <a id="lookBack">← all looks</a></div>`);
   S.list.forEach((p, i) => {
     const more = S.lookMore?.[p.id];
-    tiles.push(`<div class="tile" data-i="${i}"><div class="img"><img loading="lazy" src="${renderURL({w, preset:p.id})}"></div><div class="cap">${esc(p.name)}<small>${esc(p.source)}${p.dupes?` · +${p.dupes} copies`:""}${more ? ` · <a class="more" data-id="${esc(p.id)}">+${more} similar</a>` : ""}</small></div></div>`);
+    const mode = p.params?.maxDetail ? `<b class="modeTag" title="A raw-development mode, not a slider bundle. The sliders start at zero and adjust the development.">RAW MODE</b> ` : "";
+    const sub = p.params?.maxDetail ? `raw development · sliders start at 0${p.dupes?` · +${p.dupes} copies`:""}` : `${esc(p.source)}${p.dupes?` · +${p.dupes} copies`:""}${more ? ` · <a class="more" data-id="${esc(p.id)}">+${more} similar</a>` : ""}`;
+    tiles.push(`<div class="tile${p.params?.maxDetail ? " mode" : ""}" data-i="${i}"><div class="img"><img loading="lazy" src="${renderURL({w, preset:p.id})}"></div><div class="cap">${mode}${esc(p.name)}<small>${sub}</small></div></div>`);
   });
   g.innerHTML = tiles.join("");
   g.querySelectorAll(".tile").forEach(t => t.onclick = () => openDetail(+t.dataset.i));
@@ -1584,7 +1588,9 @@ function openDetail(i){
   S.base = {...NEUTRAL, ...(p ? p.params : {})};
   S.params = {...S.base};
   $("#pName").textContent = p ? p.name : (i === -2 ? "Original (camera JPEG)" : "Neutral");
-  $("#pSrc").textContent = p ? p.source : "Start from zero and tune with the sliders.";
+  $("#pSrc").textContent = p && p.params?.maxDetail
+    ? "Max Detail develops the raw sensor layers. The sliders below start at zero and adjust that development; Reset returns them to zero."
+    : p ? p.source : "Start from zero and tune with the sliders.";
   $("#dName").textContent = p ? `${i+1}/${S.list.length} · ${p.name}` : $("#pName").textContent;
   $("#gridView").style.display = "none";
   $("#detail").classList.add("on");
@@ -1646,7 +1652,9 @@ async function applySnap(s){
         const p = current();
         S.base = {...NEUTRAL, ...(p.params || {})};
         $("#pName").textContent = p.name;
-        $("#pSrc").textContent = p.source || "";
+        $("#pSrc").textContent = p.params?.maxDetail
+          ? "Max Detail develops the raw sensor layers. The sliders below start at zero and adjust that development; Reset returns them to zero."
+          : (p.source || "");
         $("#dName").textContent = `${i+1}/${S.list.length} · ${p.name}`;
       }
     }

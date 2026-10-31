@@ -317,27 +317,23 @@ func maxDetailAvailable(ph *Photo) bool {
 	return ph != nil && ph.Kind == "x3f" && ph.Unsupported == "" && rawAvailable() && rawDecodable(ph.props) && nativeRaw(ph)
 }
 
-// maxDetailRenderParams removes the SPP slider values the raw development
-// has already applied, so the mode is not tone-mapped twice. Colour adjust,
-// white balance, sharpness and the film/lens settings stay: they act after
-// the development and are what a photographer may still tune.
+// maxDetailRenderParams marks p as the Max Detail mode and leaves its
+// sliders alone: they are the user's adjustments on top of the development
+// and start at zero because the preset's own values were moved into
+// SPPFallback when it was loaded (main.go, maxDetailPreset). Task 19 zeroed
+// them here, which made moving a slider do nothing.
 func maxDetailRenderParams(p preset.Params) preset.Params {
 	p.MaxDetail = true
-	p.Exposure = 0
-	p.Contrast = 0
-	p.Blackness = 0
-	p.Highlight = 0
-	p.FillLight = 0
-	p.Saturation = 0
 	return p
 }
 
 // rawMaxDetail develops ph for the Max Detail mode from the sensor's own
 // layers: recover what the clipped layers still imply, neutralise real
-// clipping, denoise, map onto SPP's neutral colour (clamped, so the normal
-// look is the base), then the mode's highlight shoulder and noise-gated
-// shadow lift (render.MaxDetailDevelop). It costs more than a normal
-// preview because it always decodes raw data, as the mode promises.
+// clipping, denoise, map onto SPP's neutral colour and its white ramp (task
+// 20: the base now reaches white instead of stopping at 0.93 linear), then
+// the mode's noise-gated shadow lift and hard white point
+// (render.MaxDetailDevelop). It costs more than a normal preview because it
+// always decodes raw data, as the mode promises.
 func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
 	fullW := 0
 	img, t, err := goDevelopFor(ph, false, false, "")

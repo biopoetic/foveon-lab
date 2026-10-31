@@ -201,7 +201,27 @@ func (c *RawCorrection) matrixCurves(r, g, b float32) (float32, float32, float32
 	v := [3]float64{m[0]*fr + m[1]*fg + m[2]*fb, m[3]*fr + m[4]*fg + m[5]*fb, m[6]*fr + m[7]*fg + m[8]*fb}
 	var o [3]float32
 	for k := 0; k < 3; k++ {
-		o[k] = dec(float32(c.curve(k, float64(enc(float32(max(0, min(1, v[k]))))))))
+		// The fitted curve is defined on 0..1, but the native raw path's
+		// white-balanced value goes past 1 wherever the sensor is above
+		// output white. SPP keeps rising there (measured against its neutral
+		// exports in task 20: a smooth climb to white over roughly 1.4-2.2
+		// depending on the frame); the old clamp to 1 flattened all of that
+		// to the curve's top, 0.93 linear, which is why our whites stopped
+		// at 0.93 and the top of the range lost its local contrast. Extend
+		// the curve linearly to white at rawBaseWhite and hold it there.
+		u := v[k]
+		if u > 1 {
+			u = 1
+		}
+		o[k] = dec(float32(c.curve(k, float64(enc(float32(max(0, u)))))))
+		if v[k] > 1 {
+			t := (v[k] - 1) / (rawBaseWhite - 1)
+			if t >= 1 {
+				o[k] = 1
+			} else {
+				o[k] = o[k] + (1-o[k])*float32(t)
+			}
+		}
 	}
 	return o[0], o[1], o[2]
 }
@@ -215,6 +235,14 @@ func (c *RawCorrection) Apply(l *Linear) {
 		}
 	})
 }
+
+// rawBaseWhite is the white-balanced value at which the raw base reaches
+// white, past the fitted curve's 0..1 domain. The curve's output at 1 is
+// ~0.93 linear; SPP's neutral exports keep rising from there and are white
+// by about 1.5-2 (task 20). 1.8 was the best of 1.4/1.5/1.6/1.8 on the
+// 57-photo SD14+DPM subset of spp-check; every one of those was better than
+// the old clamp (7.502 at 1.8 against 7.579).
+const rawBaseWhite = 1.8
 
 const hueBins = 12
 

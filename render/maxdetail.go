@@ -1,11 +1,13 @@
 package render
 
 // Max Detail (task 19): a development mode for the raw layers, not a set of
-// SPP sliders. It runs on the linear output of the sensor's own layers,
-// keeps the highlight range the layers still hold, lifts shadow signal and
-// stops at the noise, and leaves clipped white white. The SPP neutral base
-// is deliberately not applied here: its channel curves clamp at 1, which
-// would throw away exactly the signal above white this mode exists to keep.
+// SPP sliders. The raw development in camfread.go has already rebuilt what
+// the clipped layers imply, put the SPP neutral colour on it and taken its
+// white ramp to white (task 20: the old base stopped at 0.93 linear, which
+// made the mode's whites grey). Here the mode lifts shadow signal and stops
+// at the noise, keeps the Foveon colour, and maps the top to a hard white:
+// an 8-bit display cannot show more than white, and the earlier extra
+// shoulder only moved the mode's white down to 0.959 (task 20, part 1).
 
 import (
 	"math"
@@ -16,19 +18,16 @@ import (
 type MaxDetailOptions struct {
 	ISO        float64
 	Shadow     float64 // shadow lift in stops at the shadow knee (0 = default)
-	Highlight  float64 // highlight compression (0 = default)
 	Saturation float64 // chroma gain after tone mapping (0 = default)
 }
 
 // maxDetail defaults: enough to show the range, gentle enough not to look
 // like an HDR composite.
 const (
-	maxDetailShadow       = 1.20
-	maxDetailHighlight    = 0.18
-	maxDetailSaturation   = 1.06
-	maxDetailShoulderKnee = 0.84
-	maxDetailContrast     = 0.10
-	mdToneN               = 4096
+	maxDetailShadow     = 1.20
+	maxDetailSaturation = 1.06
+	maxDetailContrast   = 0.10
+	mdToneN             = 4096
 )
 
 // MaxDetailDevelop maps a linear image with sensor headroom (values may
@@ -41,9 +40,6 @@ func MaxDetailDevelop(l *Linear, opt MaxDetailOptions) {
 	}
 	if opt.Shadow == 0 {
 		opt.Shadow = maxDetailShadow
-	}
-	if opt.Highlight == 0 {
-		opt.Highlight = maxDetailHighlight
 	}
 	if opt.Saturation == 0 {
 		opt.Saturation = maxDetailSaturation
@@ -71,7 +67,16 @@ func MaxDetailDevelop(l *Linear, opt MaxDetailOptions) {
 		if maxDetailContrast > 0 && y2 < 1 {
 			y2 += maxDetailContrast * (smoothstep(0, 1, y2) - y2)
 		}
-		y3 := shoulder(y2, maxDetailShoulderKnee, opt.Highlight)
+		// White stays white. An earlier shoulder compressed everything above
+		// 0.84 and left the mode's white at 0.959 linear (250 in 8-bit)
+		// while the default render reached 255: the mode's skies were
+		// visibly grey and its top stop lost the local contrast the raw
+		// data holds (task 20, part 1). The recovered headroom still has to
+		// land somewhere, and 8-bit output white is the limit, so values at
+		// and above it are white; the win is the base's smooth 0.93-1.0
+		// ramp, which the default render now has too, plus the layers
+		// rebuilt from unclipped siblings below it.
+		y3 := min(1, y2)
 		if y3 < prev {
 			y3 = prev
 		}
@@ -105,34 +110,52 @@ func MaxDetailDevelop(l *Linear, opt MaxDetailOptions) {
 			// Chroma fades as the brightest channel approaches white: a
 			// recovered highlight keeps its brightness, not a magenta rim.
 			mx := math.Max(r, math.Max(g, b))
-			if mx > 0.9 {
-				d := smoothstep(0.9, 1.25, mx) * 0.85
+			if mx > 1.0 {
+				d := smoothstep(1.0, 1.3, mx) * 0.85
 				r = r + (y3-r)*d
 				g = g + (y3-g)*d
 				b = b + (y3-b)*d
 			}
-			// Keep the Foveon colour, gently, in the tones that are not white.
+			// Keep the Foveon colour, gently, in the tones that are not
+			// white. The gain fades out as the pixel approaches white, so a
+			// bright, slightly coloured cloud is not pushed over 1 by the
+			// saturation itself (which would read as a clipped channel).
 			if opt.Saturation != 1 && mx < 1.2 {
-				r = y3 + (r-y3)*opt.Saturation
-				g = y3 + (g-y3)*opt.Saturation
-				b = y3 + (b-y3)*opt.Saturation
+				sat := 1 + (opt.Saturation-1)*(1-smoothstep(0.85, 1.0, y3))
+				r = y3 + (r-y3)*sat
+				g = y3 + (g-y3)*sat
+				b = y3 + (b-y3)*sat
+			}
+			// A saturated highlight can gain a channel over white through
+			// that saturation (or the tone curve). Pull back only as much
+			// chroma as needed for the brightest channel to reach 1, so the
+			// extra does not turn a bright colour into a flat clipped patch.
+			mx = math.Max(r, math.Max(g, b))
+			if mx > 1 && mx > y3 {
+				t := (mx - 1) / (mx - y3)
+				r += (y3 - r) * t
+				g += (y3 - g) * t
+				b += (y3 - b) * t
+			}
+			// Bright near-neutral areas (sky, cloud, white walls) keep the
+			// cast the neutral base gives them: on the SD14 bridge sky that
+			// is about +1.5 a* against SPP's own neutral export, which shows
+			// as pink/cyan pastel blotches along the cloud edges. Pull only
+			// the low-chroma bright pixels towards neutral; saturated skin
+			// and water (C above ~10) are left alone so the mode does not
+			// cost colour where SPP keeps it.
+			if y3 > 0.55 {
+				c := chromaOf(r, g, b)
+				if c < 10 {
+					w := smoothstep(0.55, 0.8, y3) * (1 - smoothstep(4, 10, c)) * 0.6
+					r += (y3 - r) * w
+					g += (y3 - g) * w
+					b += (y3 - b) * w
+				}
 			}
 			p[0], p[1], p[2] = float32(clamp01f(r)), float32(clamp01f(g)), float32(clamp01f(b))
 		}
 	})
-}
-
-// shoulder maps x >= 0 into [0,1): identity below knee, then an exponential
-// shoulder whose steepness is set by strength (larger = softer).
-func shoulder(x, knee, strength float64) float64 {
-	if x <= knee {
-		return x
-	}
-	if strength <= 0 {
-		strength = maxDetailHighlight
-	}
-	s := (1 - knee) / (1 + 2*strength)
-	return knee + (1-knee)*(1-math.Exp(-(x-knee)/s))
 }
 
 // smoothstep is the usual Hermite ramp.
@@ -149,6 +172,24 @@ func smoothstep(a, b, x float64) float64 {
 }
 
 func clamp01f(v float64) float64 { return max(0, min(1, v)) }
+
+// chromaOf is the CIELAB chroma of a linear sRGB pixel (D65), for the
+// near-neutral gate on the highlight cast clean-up.
+func chromaOf(r, g, b float64) float64 {
+	x := 0.4124*r + 0.3576*g + 0.1805*b
+	y := 0.2126*r + 0.7152*g + 0.0722*b
+	z := 0.0193*r + 0.1192*g + 0.9505*b
+	f := func(v float64) float64 {
+		if v > 216.0/24389 {
+			return math.Cbrt(v)
+		}
+		return (24389.0/27*v + 16) / 116
+	}
+	fx, fy, fz := f(x/0.9505), f(y/1.0), f(z/1.089)
+	a := 500 * (fx - fy)
+	bb := 200 * (fy - fz)
+	return math.Hypot(a, bb)
+}
 
 // linearNoise estimates the image's luminance noise from the dark tones:
 // the median absolute Laplacian residual, scaled to a Gaussian sigma. The
