@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/biopoetic/foveon-lab/preset"
@@ -123,6 +124,59 @@ var identity33 = [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
 // wbName, when set, is the camera white balance to develop with instead
 // (a preset's WhiteBalance code: SPP develops its codes with the camera's
 // own balance for that light — checked against SPP's exports).
+// cachedRaw holds one photo's decoded, bad-pixel-fixed sensor data. The
+// preset grid develops the same file several times (one per infrared filter,
+// a colour-film base, a Max Detail base), and each development used to
+// decode the raw data again — 2 s a time for the same 15 MP. The raw pixels
+// are read-only after FixBadPixels; CameraLinear applies white balance and
+// gains to its own output, so every development still sees exactly the same
+// data it did before. One entry only: the grid is for one photo.
+type devRawEntry struct {
+	key string
+	raw *x3f.RawImage
+}
+
+var devRawMu sync.Mutex
+var devRawOne *devRawEntry
+var devRawBuild = map[string]chan struct{}{}
+
+func cachedRaw(ph *Photo, f *x3f.File, c *x3f.CAMF) (*x3f.RawImage, error) {
+	st, err := os.Stat(ph.path)
+	if err != nil {
+		return nil, err
+	}
+	key := fmt.Sprintf("%s|%d|%d", ph.path, st.Size(), st.ModTime().UnixNano())
+	for {
+		devRawMu.Lock()
+		if devRawOne != nil && devRawOne.key == key {
+			e := devRawOne
+			devRawMu.Unlock()
+			return e.raw, nil
+		}
+		if ch, ok := devRawBuild[key]; ok {
+			devRawMu.Unlock()
+			<-ch // another request is already decoding this file
+			continue
+		}
+		ch := make(chan struct{})
+		devRawBuild[key] = ch
+		devRawMu.Unlock()
+
+		raw, derr := f.DecodeRaw()
+		if derr == nil {
+			x3f.FixBadPixels(raw, c)
+		}
+		devRawMu.Lock()
+		if derr == nil {
+			devRawOne = &devRawEntry{key: key, raw: raw}
+		}
+		delete(devRawBuild, key)
+		close(ch)
+		devRawMu.Unlock()
+		return raw, derr
+	}
+}
+
 func goDevelopFor(ph *Photo, layers, sceneWB bool, wbName string) (*x3f.CamImage, render.CamTransform, error) {
 	var t render.CamTransform
 	f, err := x3f.Open(ph.path)
@@ -133,11 +187,10 @@ func goDevelopFor(ph *Photo, layers, sceneWB bool, wbName string) (*x3f.CamImage
 	if err != nil {
 		return nil, t, err
 	}
-	raw, err := f.DecodeRaw()
+	raw, err := cachedRaw(ph, f, c)
 	if err != nil {
 		return nil, t, err
 	}
-	x3f.FixBadPixels(raw, c)
 	wb := developWB(c, ph)
 	if layers && !sceneWB {
 		wb = "Sunlight"

@@ -204,18 +204,30 @@ func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *co
 			return nil
 		}
 		colorFilmMu.Lock()
-		defer colorFilmMu.Unlock()
 		k := key + "|" + paper + "|" + sensor + "|" + strconv.FormatFloat(push, 'g', -1, 64)
 		f, ok := colorFilmCache[k]
+		colorFilmMu.Unlock()
 		if !ok {
+			// Building a negative fits its layer map (about half a second);
+			// hold no lock across it, so the preset grid's distinct films
+			// build on different cores instead of one after another. A
+			// duplicate build for the same key is harmless.
 			f = newColorNeg(n, pp, sensor, push)
-			colorFilmCache[k] = f
+			colorFilmMu.Lock()
+			if old, ok := colorFilmCache[k]; ok {
+				f = old
+			} else {
+				colorFilmCache[k] = f
+			}
+			colorFilmMu.Unlock()
 		}
 		if f == nil || cp == (ColorPrint{}) {
 			return f
 		}
 		// The darkroom's filtration: its own table (the last one kept per
 		// film, paper and sensor, so a slider drag doesn't pile them up).
+		colorFilmMu.Lock()
+		defer colorFilmMu.Unlock()
 		kc := k + "|" + cp.key()
 		if g, ok := colorFilmCache[kc]; ok {
 			return g
@@ -239,12 +251,19 @@ func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *co
 		return nil
 	}
 	colorFilmMu.Lock()
-	defer colorFilmMu.Unlock()
-	if f, ok := colorFilmCache[key+"|"+sensor]; ok {
+	f, ok := colorFilmCache[key+"|"+sensor]
+	colorFilmMu.Unlock()
+	if ok {
 		return f
 	}
-	f := newColorFilm(d, sensor)
-	colorFilmCache[key+"|"+sensor] = f
+	f = newColorFilm(d, sensor)
+	colorFilmMu.Lock()
+	if old, ok := colorFilmCache[key+"|"+sensor]; ok {
+		f = old
+	} else {
+		colorFilmCache[key+"|"+sensor] = f
+	}
+	colorFilmMu.Unlock()
 	return f
 }
 
