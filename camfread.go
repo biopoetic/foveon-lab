@@ -98,10 +98,6 @@ func noiseAwareFix(group string) bool { return group == "DPM" || group == "Quatt
 // (FOVEON_DN_NOSPECK=1), for before/after crops.
 var noDespeckle = os.Getenv("FOVEON_DN_NOSPECK") != ""
 
-// noChromaSpeck is the research switch that keeps the pre-task-19 path
-// (FOVEON_DN_NOSPECKCHROMA=1), for before/after crops.
-var noChromaSpeck = os.Getenv("FOVEON_DN_NOSPECKCHROMA") != ""
-
 // noShadowChroma switches the low-frequency shadow colour fix off
 // (FOVEON_DN_NOSC=1), for isolating the stage that paints a colour patch.
 var noShadowChroma = os.Getenv("FOVEON_DN_NOSC") != ""
@@ -174,13 +170,14 @@ func goDevelopFor(ph *Photo, layers, sceneWB bool, wbName string) (*x3f.CamImage
 // that scale (binning already averages noise; the denoiser measures what
 // is left).
 func goLinear(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
-	return goLinearFor(ph, maxW, strength, nil, false, "")
+	return goLinearFor(ph, maxW, strength, nil, false, "", false)
 }
 
 // goLinearFor is goLinear, as the sensor's layers when irWhite is set
 // (clipped highlights then go to that white): Sunlight-balanced, or with
-// sceneWB balanced like the photo itself (goDevelopFor).
-func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string) (*render.Linear, error) {
+// sceneWB balanced like the photo itself (goDevelopFor). rebuild restores
+// clipped layers from the ones still holding signal first (Max Detail).
+func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string, rebuild bool) (*render.Linear, error) {
 	rawDecodeCount.Add(1)
 	timing := os.Getenv("FOVEON_TIMING") != ""
 	mark := time.Now()
@@ -195,6 +192,12 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 		return nil, err
 	}
 	lap("develop")
+	if rebuild {
+		st := x3f.RecoverHighlights(img, t.Gain, 0.995)
+		if os.Getenv("FOVEON_MD_DEBUG") != "" {
+			fmt.Fprintf(os.Stderr, "maxdetail %s: recovered %v lost %d partial %d\n", ph.Name, st.Recovered, st.Lost, st.Partial)
+		}
+	}
 	// Before the denoiser: its chroma filter would spread the clipped
 	// highlights' false colour into their neighbours.
 	if irWhite != nil {
@@ -333,65 +336,20 @@ func maxDetailRenderParams(p preset.Params) preset.Params {
 	return p
 }
 
-// rawMaxDetail develops ph for the Max Detail mode from the sensor's own
-// layers: recover what the clipped layers still imply, neutralise real
-// clipping, denoise, map onto SPP's neutral colour and its white ramp (task
-// 20: the base now reaches white instead of stopping at 0.93 linear), then
-// the mode's noise-gated shadow lift and hard white point
-// (render.MaxDetailDevelop). It costs more than a normal preview because it
+// rawMaxDetail develops ph for the Max Detail mode: the normal raw development
+// with the clipped layers rebuilt first and the shadows opened last
+// (render.MaxDetailDevelop). It runs the same stages as rawLinearFor on
+// purpose: a separate copy of them lost the frame shape and the rotation, and
+// drifted to other colours. It costs more than a normal preview because it
 // always decodes raw data, as the mode promises.
 func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
-	fullW := 0
-	img, t, err := goDevelopFor(ph, false, false, "")
+	l, err := goLinearFor(ph, maxW, strength, nil, false, "", true)
 	if err != nil {
 		return nil, err
 	}
-	fullW = img.W
-	st := x3f.RecoverHighlights(img, t.Gain, 0.995)
-	if os.Getenv("FOVEON_MD_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "maxdetail %s: recovered %v lost %d partial %d\n", ph.Name, st.Recovered, st.Lost, st.Partial)
-	}
-	// Real clipping is colourless: keep the recovered luminance, drop the
-	// layer ratio that clipping made meaningless (the SD14 magenta specks).
-	x3f.ClipHighlights(img, t.Gain)
-	dw, dh, bx, by := reducedView(ph, img.W, img.H, maxW)
-	if maxW > 0 && maxW >= img.W {
-		bx, by = 1, 1
-	}
-	if bx > 1 || by > 1 {
-		img = binCam2(img, bx, by)
-	}
-	if strength > 0 {
-		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph), Grey: greyOf(t), NoiseAware: noiseAwareFix(calibGroup(ph)), Quattro: calibGroup(ph) == "Quattro"})
-	}
-	var l *render.Linear
-	if dw > 0 {
-		l = render.FromCamLinearSize(img.Pix, img.W, img.H, dw, dh, 0, t)
-	} else {
-		l = render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t)
-	}
-	l.ISO, _ = strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
-	l.Sensor = render.SharpKey(calibGroup(ph))
-	if strength > 0 && !noShadowChroma {
-		render.ShadowChromaFix(l, fullW, t.Colour)
-	}
-	if strength > 0 && mottleFix && calibGroup(ph) == "Quattro" && photoISO(ph) >= 6400 {
-		render.MottleChroma(l, render.MottleSigma(fullW, l.W), 0.02, 0.10)
-	}
-	if g := render.ModelExposure(modelOf(ph)); g != 1 {
-		for i := range l.Pix {
-			l.Pix[i] *= g
-		}
-	}
 	l = uprightRaw(ph, l)
-	if c := rawCorrectionFor(ph); c != nil {
-		c.Apply(l)
-		render.BrightChromaDenoiseFor(l, calibGroup(ph))
-	}
+	rawCorrect(ph, l)
 	render.MaxDetailDevelop(l, render.MaxDetailOptions{ISO: photoISO(ph)})
-	if !noChromaSpeck {
-		render.ChromaDespeckle(l, photoISO(ph))
-	}
 	return l, nil
 }
 

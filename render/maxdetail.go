@@ -2,12 +2,12 @@ package render
 
 // Max Detail (task 19): a development mode for the raw layers, not a set of
 // SPP sliders. The raw development in camfread.go has already rebuilt what
-// the clipped layers imply, put the SPP neutral colour on it and taken its
-// white ramp to white (task 20: the old base stopped at 0.93 linear, which
-// made the mode's whites grey). Here the mode lifts shadow signal and stops
-// at the noise, keeps the Foveon colour, and maps the top to a hard white:
-// an 8-bit display cannot show more than white, and the earlier extra
-// shoulder only moved the mode's white down to 0.959 (task 20, part 1).
+// the clipped layers imply. Here the mode opens the shadows, gently and only
+// down to the noise, and otherwise leaves the picture as the normal
+// development made it: same colour, same contrast, same white. Earlier
+// versions added saturation, an S-curve, a stronger lift and a chroma fade
+// near white, and the result looked artificial: hot reds, flat highlights
+// and a washed night sky.
 
 import (
 	"math"
@@ -16,33 +16,25 @@ import (
 
 // MaxDetailOptions are the mode's strengths. Zero values take the defaults.
 type MaxDetailOptions struct {
-	ISO        float64
-	Shadow     float64 // shadow lift in stops at the shadow knee (0 = default)
-	Saturation float64 // chroma gain after tone mapping (0 = default)
+	ISO    float64
+	Shadow float64 // gain added at the shadow knee, 0.45 = ×1.45 (0 = default)
 }
 
-// maxDetail defaults: enough to show the range, gentle enough not to look
-// like an HDR composite.
 const (
-	maxDetailShadow     = 1.20
-	maxDetailSaturation = 1.06
-	maxDetailContrast   = 0.10
-	mdToneN             = 4096
+	maxDetailShadow = 0.45
+	mdToneN         = 4096
 )
 
-// MaxDetailDevelop maps a linear image with sensor headroom (values may
-// exceed 1) into display-linear [0,1]. It changes luminance only (so hue is
-// kept), fades chroma into white so recovered highlights have no coloured
-// rim, and gates the shadow lift on the image's own measured noise.
+// MaxDetailDevelop opens the shadows of a linear image and clips it to
+// [0,1]. The curve runs on each channel, as film and a tone curve do, so a
+// lifted colour loses a little chroma instead of glowing, and it is gated on
+// the image's own measured noise.
 func MaxDetailDevelop(l *Linear, opt MaxDetailOptions) {
 	if l == nil || l.W < 1 || l.H < 1 {
 		return
 	}
 	if opt.Shadow == 0 {
 		opt.Shadow = maxDetailShadow
-	}
-	if opt.Saturation == 0 {
-		opt.Saturation = maxDetailSaturation
 	}
 	// High ISO gets less lift: the same stops would only amplify pepper.
 	isoScale := 1.0
@@ -53,38 +45,20 @@ func MaxDetailDevelop(l *Linear, opt MaxDetailOptions) {
 	sigma := linearNoise(l)
 	floor := math.Max(2.5*sigma, 0.0006)
 	hi := math.Max(floor*8, 0.012)
-	// The tonal part is one monotonic curve, baked once: the shadow gain,
-	// the S-curve and the shoulder in that order, with the running maximum
-	// taken so no numerical wrinkle can make a brighter input darker. Above
-	// the top sample the shoulder is white.
-	const lutMax = 4.0
+	// One monotonic curve, baked once; the running maximum keeps a numerical
+	// wrinkle from making a brighter input darker. It ends at the identity,
+	// so midtones and highlights are the normal development's.
 	var lut [mdToneN + 1]float32
 	prev := 0.0
 	for i := 0; i <= mdToneN; i++ {
-		x := lutMax * float64(i) / mdToneN
-		w := smoothstep(floor, hi, x) * (1 - smoothstep(0.04, 0.28, x))
-		y2 := x * (1 + lift*w)
-		if maxDetailContrast > 0 && y2 < 1 {
-			y2 += maxDetailContrast * (smoothstep(0, 1, y2) - y2)
-		}
-		// White stays white. An earlier shoulder compressed everything above
-		// 0.84 and left the mode's white at 0.959 linear (250 in 8-bit)
-		// while the default render reached 255: the mode's skies were
-		// visibly grey and its top stop lost the local contrast the raw
-		// data holds (task 20, part 1). The recovered headroom still has to
-		// land somewhere, and 8-bit output white is the limit, so values at
-		// and above it are white; the win is the base's smooth 0.93-1.0
-		// ramp, which the default render now has too, plus the layers
-		// rebuilt from unclipped siblings below it.
-		y3 := min(1, y2)
-		if y3 < prev {
-			y3 = prev
-		}
-		prev = y3
-		lut[i] = float32(y3)
+		x := float64(i) / mdToneN
+		w := smoothstep(floor, hi, x) * (1 - smoothstep(0.03, 0.40, x))
+		y := max(prev, min(1, x*(1+lift*w)))
+		prev = y
+		lut[i] = float32(y)
 	}
-	at := func(y float64) float64 {
-		f := y * mdToneN / lutMax
+	at := func(v float32) float32 {
+		f := v * mdToneN
 		if f <= 0 {
 			return 0
 		}
@@ -92,56 +66,12 @@ func MaxDetailDevelop(l *Linear, opt MaxDetailOptions) {
 			return 1
 		}
 		i := int(f)
-		t := f - float64(i)
-		return float64(lut[i])*(1-t) + float64(lut[i+1])*t
+		t := f - float32(i)
+		return lut[i]*(1-t) + lut[i+1]*t
 	}
 	parallelRows(l.H, func(y0, y1 int) {
-		for i := y0 * l.W; i < y1*l.W; i++ {
-			p := l.Pix[i*3 : i*3+3]
-			r, g, b := float64(p[0]), float64(p[1]), float64(p[2])
-			y := 0.2126*r + 0.7152*g + 0.0722*b
-			if y <= 1e-7 {
-				p[0], p[1], p[2] = 0, 0, 0
-				continue
-			}
-			y3 := at(y)
-			k := y3 / y
-			r, g, b = r*k, g*k, b*k
-			// Chroma fades as the brightest channel approaches white: a
-			// recovered highlight keeps its brightness, not a magenta rim.
-			mx := math.Max(r, math.Max(g, b))
-			if mx > 1.0 {
-				d := smoothstep(1.0, 1.3, mx) * 0.85
-				r = r + (y3-r)*d
-				g = g + (y3-g)*d
-				b = b + (y3-b)*d
-			}
-			// Keep the Foveon colour, gently, in the tones that are not
-			// white. The gain fades out as the pixel approaches white, so a
-			// bright, slightly coloured cloud is not pushed over 1 by the
-			// saturation itself (which would read as a clipped channel).
-			if opt.Saturation != 1 && mx < 1.2 {
-				sat := 1 + (opt.Saturation-1)*(1-smoothstep(0.85, 1.0, y3))
-				r = y3 + (r-y3)*sat
-				g = y3 + (g-y3)*sat
-				b = y3 + (b-y3)*sat
-			}
-			// A saturated highlight can gain a channel over white through
-			// that saturation (or the tone curve). Pull back only as much
-			// chroma as needed for the brightest channel to reach 1, so the
-			// extra does not turn a bright colour into a flat clipped patch.
-			mx = math.Max(r, math.Max(g, b))
-			if mx > 1 && mx > y3 {
-				t := (mx - 1) / (mx - y3)
-				r += (y3 - r) * t
-				g += (y3 - g) * t
-				b += (y3 - b) * t
-			}
-			// The bright near-neutral sky mottling this mode used to pull
-			// towards grey is handled at the source now, by the chroma
-			// low-pass every raw development gets (brightchroma.go), so the
-			// mode keeps the colour it was given instead of desaturating it.
-			p[0], p[1], p[2] = float32(clamp01f(r)), float32(clamp01f(g)), float32(clamp01f(b))
+		for i := y0 * l.W * 3; i < y1*l.W*3; i++ {
+			l.Pix[i] = at(l.Pix[i])
 		}
 	})
 }
@@ -158,8 +88,6 @@ func smoothstep(a, b, x float64) float64 {
 	u = max(0, min(1, u))
 	return u * u * (3 - 2*u)
 }
-
-func clamp01f(v float64) float64 { return max(0, min(1, v)) }
 
 // linearNoise estimates the image's luminance noise from the dark tones:
 // the median absolute Laplacian residual, scaled to a Gaussian sigma. The

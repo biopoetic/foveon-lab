@@ -307,7 +307,7 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 	layers := irWhite != nil
 	if goRaw {
 		var err error
-		if l, err = goLinearFor(ph, maxW, goStrength(color), irWhite, irFilter == "film", wbName); err != nil {
+		if l, err = goLinearFor(ph, maxW, goStrength(color), irWhite, irFilter == "film", wbName, false); err != nil {
 			return nil, err
 		}
 	} else {
@@ -318,23 +318,32 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 		l = render.FromImage(img, maxW, 0)
 	}
 	l = uprightRaw(ph, l)
-	if c := rawCorrectionFor(ph); c != nil && !layers {
-		c.Apply(l)
-		// SPP's chroma noise reduction also removes the bright near-neutral
-		// low-frequency mottling the per-pixel denoiser leaves; do it here so
-		// every raw-based render (default, Max Detail, exports) has it.
-		render.BrightChromaDenoiseFor(l, calibGroup(ph))
-		// SPP renders a Merrill file marked AdobeRGB differently even in
-		// sRGB (render/adobergb.go).
-		if ph.props["EXIF_COLORSPACE"] == "AdobeRGB" && render.SensorGeneration(calibGroup(ph)) == "Merrill" {
-			render.ApplySPPAdobeRGB(l)
-		}
+	if !layers {
+		rawCorrect(ph, l)
 	}
 	// Single-pixel impulse dots that survived the denoiser are removed on
 	// the finished frame in render.ImpulseClean (render/render.go), where
 	// the per-photo raw correction has already lifted them out of the
 	// near-black neighbourhood and the tone curve has made them visible.
 	return l, nil
+}
+
+// rawCorrect applies the per-body correction to a colour raw development.
+func rawCorrect(ph *Photo, l *render.Linear) {
+	c := rawCorrectionFor(ph)
+	if c == nil {
+		return
+	}
+	c.Apply(l)
+	// SPP's chroma noise reduction also removes the bright near-neutral
+	// low-frequency mottling the per-pixel denoiser leaves; do it here so
+	// every raw-based render (default, Max Detail, exports) has it.
+	render.BrightChromaDenoiseFor(l, calibGroup(ph))
+	// SPP renders a Merrill file marked AdobeRGB differently even in
+	// sRGB (render/adobergb.go).
+	if ph.props["EXIF_COLORSPACE"] == "AdobeRGB" && render.SensorGeneration(calibGroup(ph)) == "Merrill" {
+		render.ApplySPPAdobeRGB(l)
+	}
 }
 
 // uprightRaw gives a raw development its frame: the embedded preview's shape
