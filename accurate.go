@@ -353,6 +353,7 @@ func rawCorrect(ph *Photo, l *render.Linear) {
 		return
 	}
 	c.Apply(l)
+	rawJPEGBalance(ph, l)
 	// SPP's chroma noise reduction also removes the bright near-neutral
 	// low-frequency mottling the per-pixel denoiser leaves; do it here so
 	// every raw-based render (default, Max Detail, exports) has it.
@@ -362,6 +363,90 @@ func rawCorrect(ph *Photo, l *render.Linear) {
 	if ph.props["EXIF_COLORSPACE"] == "AdobeRGB" && render.SensorGeneration(calibGroup(ph)) == "Merrill" {
 		render.ApplySPPAdobeRGB(l)
 	}
+}
+
+// rawJPEGBalance corrects a body whose raw white balance disagrees with the
+// camera's own as-shot JPEG. The DP2 (original) stores an Auto white balance
+// that matches neither the camera JPEG nor SPP: its render is far too red,
+// while the DP2X (same calibration group) is neutral. The JPEG is the
+// camera's own per-shot balance, so matching the two images' channel means
+// restores the colour without a fitted table. Frames too dark or too clipped
+// for a reliable mean are left alone.
+func rawJPEGBalance(ph *Photo, l *render.Linear) {
+	if ph.Kind != "x3f" || modelOf(ph) != "SIGMA DP2" || l == nil {
+		return
+	}
+	img, err := stillPreview(ph)
+	if err != nil {
+		return
+	}
+	jp := render.FromImage(img, 1200, 0)
+	var mo, mj [3]float64
+	var no, nj, clipO, clipJ int
+	var sumY float64
+	for i := 0; i+2 < len(l.Pix); i += 3 {
+		if max(l.Pix[i], l.Pix[i+1], l.Pix[i+2]) > 0.95 {
+			clipO++
+			continue
+		}
+		for k := 0; k < 3; k++ {
+			mo[k] += float64(l.Pix[i+k])
+		}
+		sumY += float64(0.2126*l.Pix[i] + 0.7152*l.Pix[i+1] + 0.0722*l.Pix[i+2])
+		no++
+	}
+	for i := 0; i+2 < len(jp.Pix); i += 3 {
+		if max(jp.Pix[i], jp.Pix[i+1], jp.Pix[i+2]) > 0.95 {
+			clipJ++
+			continue
+		}
+		for k := 0; k < 3; k++ {
+			mj[k] += float64(jp.Pix[i+k])
+		}
+		nj++
+	}
+	n := no + clipO
+	if no == 0 || nj == 0 || n == 0 {
+		return
+	}
+	g, ok := jpegBalanceGains(mo, mj, sumY/float64(no), float64(clipO)/float64(n), float64(clipJ)/float64(nj+clipJ))
+	if !ok {
+		return
+	}
+	for i := 0; i < len(l.Pix); i += 3 {
+		l.Pix[i] *= g[0]
+		l.Pix[i+1] *= g[1]
+		l.Pix[i+2] *= g[2]
+	}
+}
+
+// jpegBalanceGains is the DP2 balance's numeric half: the luminance-preserving
+// per-channel gains that put l's mean colour on the camera JPEG's. Frames too
+// dark or too clipped for a reliable mean are refused, as are implausible
+// gains.
+func jpegBalanceGains(mo, mj [3]float64, meanY, clipO, clipJ float64) ([3]float32, bool) {
+	var g [3]float32
+	if meanY < 0.01 || clipO > 0.05 || clipJ > 0.05 {
+		return g, false
+	}
+	var lum float64
+	for k := 0; k < 3; k++ {
+		if mo[k] <= 0 || mj[k] <= 0 {
+			return g, false
+		}
+		g[k] = float32(mj[k] / mo[k])
+		lum += float64(g[k]) * [3]float64{0.2126, 0.7152, 0.0722}[k]
+	}
+	if lum <= 0 {
+		return g, false
+	}
+	for k := 0; k < 3; k++ {
+		g[k] /= float32(lum)
+		if g[k] < 0.5 || g[k] > 1.6 {
+			return g, false
+		}
+	}
+	return g, true
 }
 
 // rawCorrectApply is the per-body matrix and curves without the bright-chroma
@@ -376,6 +461,7 @@ func rawCorrectApply(ph *Photo, l *render.Linear) {
 		return
 	}
 	c.Apply(l)
+	rawJPEGBalance(ph, l)
 	if ph.props["EXIF_COLORSPACE"] == "AdobeRGB" && render.SensorGeneration(calibGroup(ph)) == "Merrill" {
 		render.ApplySPPAdobeRGB(l)
 	}
