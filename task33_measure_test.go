@@ -482,6 +482,7 @@ func TestTask33(t *testing.T) {
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		var lat []time.Duration
+		var waitSum, baseSum, renderSum, encSum time.Duration
 		t0 := time.Now()
 		for k := 0; k < 6; k++ {
 			wg.Add(1)
@@ -498,6 +499,10 @@ func TestTask33(t *testing.T) {
 					srv2.handleRender(rec, r)
 					mu.Lock()
 					lat = append(lat, time.Since(t1))
+					waitSum += t33timing(rec, "wait")
+					baseSum += t33timing(rec, "base")
+					renderSum += t33timing(rec, "render")
+					encSum += t33timing(rec, "encode")
 					mu.Unlock()
 				}
 			}()
@@ -509,28 +514,31 @@ func TestTask33(t *testing.T) {
 		wg.Wait()
 		wall := time.Since(t0)
 		sort.Slice(lat, func(i, j int) bool { return lat[i] < lat[j] })
-		fmt.Printf("GRID concurrent 6: %d tiles in %s (p50 %s p95 %s max %s)\n",
+		fmt.Printf("GRID concurrent 6: %d tiles in %s (p50 %s p95 %s max %s) | stages incl. waiting: wait %s base %s render %s encode %s\n",
 			len(ids), wall.Round(time.Millisecond), lat[len(lat)/2].Round(time.Millisecond),
-			lat[len(lat)*95/100].Round(time.Millisecond), lat[len(lat)-1].Round(time.Millisecond))
+			lat[len(lat)*95/100].Round(time.Millisecond), lat[len(lat)-1].Round(time.Millisecond),
+			waitSum.Round(time.Millisecond), baseSum.Round(time.Millisecond),
+			renderSum.Round(time.Millisecond), encSum.Round(time.Millisecond))
 	})
 }
 
 func t33serverTiming(w *httptest.ResponseRecorder) (base, rnd, enc time.Duration) {
+	return t33timing(w, "base"), t33timing(w, "render"), t33timing(w, "encode")
+}
+
+func t33timing(w *httptest.ResponseRecorder, key string) time.Duration {
 	h := w.Header().Get("Server-Timing")
-	parse := func(key string) time.Duration {
-		i := strings.Index(h, key+";dur=")
-		if i < 0 {
-			return 0
-		}
-		s := h[i+len(key)+5:]
-		j := strings.IndexAny(s, ", ")
-		if j < 0 {
-			j = len(s)
-		}
-		v, _ := strconv.ParseFloat(s[:j], 64)
-		return time.Duration(v * float64(time.Millisecond))
+	i := strings.Index(h, key+";dur=")
+	if i < 0 {
+		return 0
 	}
-	return parse("base"), parse("render"), parse("encode")
+	s := h[i+len(key)+5:]
+	j := strings.IndexAny(s, ", ")
+	if j < 0 {
+		j = len(s)
+	}
+	v, _ := strconv.ParseFloat(s[:j], 64)
+	return time.Duration(v * float64(time.Millisecond))
 }
 
 type t33stage struct {

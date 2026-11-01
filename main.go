@@ -943,8 +943,10 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	s.renderActive.Add(1)
 	defer s.renderActive.Add(-1)
+	tWait := time.Now()
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
+	wait := time.Since(tWait)
 	t0 := time.Now()
 	b, p, comp, ok := s.renderBase(w, r)
 	if !ok {
@@ -971,8 +973,8 @@ func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Where the time goes (browser devtools show it; the editor measures it).
-	w.Header().Set("Server-Timing", fmt.Sprintf("base;dur=%.1f, render;dur=%.1f, encode;dur=%.1f",
-		t1.Sub(t0).Seconds()*1000, t2.Sub(t1).Seconds()*1000, time.Since(t2).Seconds()*1000))
+	w.Header().Set("Server-Timing", fmt.Sprintf("wait;dur=%.1f, base;dur=%.1f, render;dur=%.1f, encode;dur=%.1f",
+		wait.Seconds()*1000, t1.Sub(t0).Seconds()*1000, t2.Sub(t1).Seconds()*1000, time.Since(t2).Seconds()*1000))
 	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Cache-Control", "private, max-age=600")
 	w.Write(buf.Bytes())
