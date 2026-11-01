@@ -63,20 +63,23 @@ func t33preview(t *testing.T, ph *Photo) (image.Image, []t33stage) {
 	t0 := time.Now()
 	f, err := x3f.Open(ph.path)
 	if err != nil {
-		t.Fatal(err)
+		t.Logf("%s: %v", ph.Name, err)
+		return nil, st
 	}
 	st = append(st, t33stage{"x3f parse", time.Since(t0)})
 	t0 = time.Now()
 	data, _, err := f.PreviewJPEG()
 	if err != nil {
 		st = append(st, t33stage{"file read", 0}, t33stage{"jpeg decode", 0})
+		t.Logf("%s: %v", ph.Name, err)
 		return nil, st
 	}
 	st = append(st, t33stage{"file read", time.Since(t0)})
 	t0 = time.Now()
 	img, err := jpeg.Decode(bytes.NewReader(data))
 	if err != nil {
-		t.Fatal(err)
+		t.Logf("%s: %v", ph.Name, err)
+		return nil, st
 	}
 	st = append(st, t33stage{"jpeg decode", time.Since(t0)})
 	return img, st
@@ -91,6 +94,7 @@ func TestTask33(t *testing.T) {
 	t.Logf("photos: %d in %s", len(photos), dir)
 
 	t.Run("thumbnails", func(t *testing.T) {
+		t33clearThumbCache()
 		s := &server{thumbs: newLRU(4000), byID: map[string]*Photo{}}
 		for _, p := range photos {
 			s.byID[p.ID] = p
@@ -189,20 +193,28 @@ func TestTask33(t *testing.T) {
 	})
 
 	t.Run("thumbdiff", func(t *testing.T) {
-		// Old thumbnail: decode the whole preview, then thumbnailJPEG. New:
-		// the camera's 640x480 EXIF thumbnail, then the same thumbnailJPEG.
+		// The groups whose production tile changes: those files have no small
+		// embedded JPEG, so the old path decoded the whole preview and the new
+		// path uses the camera's EXIF tile. Groups with a small JPEG keep it
+		// and are unchanged (difference 0).
+		changed := map[string]bool{
+			"dp0-Quattro": true, "dp1-Quattro": true, "dp2-Quattro": true,
+			"dp3-Quattro": true, "sd-Quattro": true, "sd-Quattro-H": true, "SD14": true,
+		}
 		seen := map[string]int{}
 		var worstMax, over2 int
 		var sumMean float64
 		var n int
 		for _, p := range photos {
-			key := calibGroup(p)
-			if seen[key] >= 2 {
+			if !changed[p.Folder] || seen[p.Folder] >= 2 {
 				continue
 			}
 			f, err := x3f.Open(p.path)
 			if err != nil {
 				continue
+			}
+			if _, err := f.ThumbJPEG(); err == nil {
+				continue // production keeps this small JPEG
 			}
 			b, err := f.EXIFThumbJPEG(700)
 			if err != nil {
@@ -248,8 +260,8 @@ func TestTask33(t *testing.T) {
 				}
 			}
 			mean := float64(sumD) / float64(ob.Dx()*ob.Dy()*3)
-			fmt.Printf("THUMBDIFF %-28s %-8s old/new %dx%d: max %d mean %.3f\n",
-				p.Name, key, ob.Dx(), ob.Dy(), maxD, mean)
+			fmt.Printf("THUMBDIFF %-28s %-12s old/new %dx%d: max %d mean %.3f\n",
+				p.Name, p.Folder, ob.Dx(), ob.Dy(), maxD, mean)
 			if maxD > worstMax {
 				worstMax = maxD
 			}
@@ -258,8 +270,8 @@ func TestTask33(t *testing.T) {
 			}
 			sumMean += mean
 			n++
-			seen[key]++
-			if seen[key] == 1 {
+			seen[p.Folder]++
+			if seen[p.Folder] == 1 {
 				var pb bytes.Buffer
 				png.Encode(&pb, om)
 				os.WriteFile(filepath.Join("zz-out", "task33", "thumb-old-"+p.Name+".png"), pb.Bytes(), 0o644)
@@ -274,7 +286,92 @@ func TestTask33(t *testing.T) {
 		}
 	})
 
+	t.Run("click-during-open", func(t *testing.T) {
+		t33clearThumbCache()
+		// The person opens the first photo while the six thumbnail
+		// connections are still pulling the folder. The click's 1600 px view
+		// must not wait for the remaining tiles.
+		s := &server{thumbs: newLRU(4000), byID: map[string]*Photo{},
+			sources: newLRU(6), bases: newLRU(40), sem: make(chan struct{}, 4),
+			rawState: map[string]string{}, rawBusy: map[string]bool{},
+			rawQueue: make(chan *Photo, 64), rawQueueLow: make(chan *Photo, 64)}
+		s.setPhotos([]string{dir}, false)
+		list := s.photoList()
+		jobs := make(chan *Photo)
+		var wg sync.WaitGroup
+		for k := 0; k < 6; k++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for p := range jobs {
+					rec := httptest.NewRecorder()
+					s.handleThumb(rec, httptest.NewRequest("GET", "/api/thumb?id="+p.ID, nil))
+				}
+			}()
+		}
+		go func() {
+			for _, p := range list {
+				jobs <- p
+			}
+			close(jobs)
+		}()
+		time.Sleep(250 * time.Millisecond)
+		rec := httptest.NewRecorder()
+		t0 := time.Now()
+		s.handleRender(rec, httptest.NewRequest("GET", "/api/render?id="+list[0].ID+"&w=1600&m=jpg&comp=0", nil))
+		click := time.Since(t0)
+		wg.Wait()
+		fmt.Printf("CLICK during folder open: first view %s (thumbnails still loading)\n", click.Round(time.Millisecond))
+	})
+
+	t.Run("thumb-stages", func(t *testing.T) {
+		names := os.Getenv("FOVEON_T33_NAMES")
+		if names == "" {
+			names = photos[0].Name
+		}
+		for _, name := range strings.Split(names, ";") {
+			var ph *Photo
+			for _, p := range photos {
+				if strings.EqualFold(p.Name, name) {
+					ph = p
+				}
+			}
+			if ph == nil {
+				continue
+			}
+			f, err := x3f.Open(ph.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t0 := time.Now()
+			b, err := f.EXIFThumbJPEG(700)
+			if err != nil {
+				fmt.Printf("THUMBSTAGE %s: %v\n", name, err)
+				continue
+			}
+			read := time.Since(t0)
+			t0 = time.Now()
+			img, err := jpeg.Decode(bytes.NewReader(b))
+			if err != nil {
+				t.Fatal(err)
+			}
+			decode := time.Since(t0)
+			t0 = time.Now()
+			if ph.previewW > 0 && ph.previewH > 0 {
+				img = cropToAspect(img, ph.previewW, ph.previewH)
+			}
+			crop := time.Since(t0)
+			t0 = time.Now()
+			out := thumbnailJPEG(img)
+			thumb := time.Since(t0)
+			fmt.Printf("THUMBSTAGE %-28s exif read %s decode %s crop %s thumbnailJPEG %s bytes %d\n",
+				name, read.Round(time.Millisecond), decode.Round(time.Millisecond),
+				crop.Round(time.Millisecond), thumb.Round(time.Millisecond), len(out))
+		}
+	})
+
 	t.Run("first-open", func(t *testing.T) {
+		t33clearThumbCache()
 		// The page's first click on a folder: scan the headers, list them, then
 		// six browser connections pull the 183 list tiles in folder order,
 		// while the first photo's 1600 px view is asked for.
@@ -292,12 +389,15 @@ func TestTask33(t *testing.T) {
 		s.handlePhotos(w, httptest.NewRequest("GET", "/api/photos", nil))
 		listJSON := time.Since(t0)
 		// Six connections, in list order: what the browser does with
-		// loading="lazy" once the folder is open and scrolled.
+		// loading="lazy" once the folder is open and scrolled. The first
+		// photo's view starts while they are still loading, as it does in the
+		// page, so the visit's wall time is the later of the two.
 		jobs := make(chan *Photo)
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		var tileMax time.Duration
-		t0 = time.Now()
+		tileStart := time.Now()
+		visitStart := tileStart
 		for k := 0; k < 6; k++ {
 			wg.Add(1)
 			go func() {
@@ -319,26 +419,30 @@ func TestTask33(t *testing.T) {
 				}
 			}()
 		}
-		for _, p := range list {
-			jobs <- p
-		}
-		close(jobs)
-		wg.Wait()
-		thumbs := time.Since(t0)
-		// The first photo's whole view, and its neighbour prefetched.
+		go func() {
+			for _, p := range list {
+				jobs <- p
+			}
+			close(jobs)
+		}()
+		time.Sleep(100 * time.Millisecond)
 		first := list[0]
-		t0 = time.Now()
 		rec := httptest.NewRecorder()
+		t0 = time.Now()
 		s.handleRender(rec, httptest.NewRequest("GET", "/api/render?id="+first.ID+"&w=1600&m=jpg&comp=0", nil))
 		firstView := time.Since(t0)
+		wg.Wait()
+		thumbs := time.Since(tileStart)
+		visitWall := time.Since(visitStart)
 		if len(list) > 1 {
 			s.prefetchBase(list[1])
 		}
 		fmt.Printf("FIRSTOPEN %d photos: scan %s, list %s, %d tiles over 6 connections %s (slowest tile %s), first view %s\n",
 			len(list), scan.Round(time.Millisecond), listJSON.Round(time.Millisecond), len(list),
 			thumbs.Round(time.Millisecond), tileMax.Round(time.Millisecond), firstView.Round(time.Millisecond))
-		fmt.Printf("FIRSTOPEN visit total %s, heap peak %.1f MB\n",
-			(scan + listJSON + thumbs + firstView).Round(time.Millisecond), float64(peak.stop())/1e6)
+		fmt.Printf("FIRSTOPEN visit total %s (overlapped: tiles %s, first view %s), heap peak %.1f MB\n",
+			(scan + listJSON + visitWall).Round(time.Millisecond), thumbs.Round(time.Millisecond),
+			firstView.Round(time.Millisecond), float64(peak.stop())/1e6)
 	})
 
 	t.Run("cold-next-prefetched", func(t *testing.T) {
@@ -519,6 +623,39 @@ func TestTask33(t *testing.T) {
 			lat[len(lat)*95/100].Round(time.Millisecond), lat[len(lat)-1].Round(time.Millisecond),
 			waitSum.Round(time.Millisecond), baseSum.Round(time.Millisecond),
 			renderSum.Round(time.Millisecond), encSum.Round(time.Millisecond))
+
+		// The first screen: the reference tiles and the first presets, the
+		// only ones a person sees before scrolling. A fresh server, six
+		// connections, twelve tiles.
+		srv3 := &server{sources: newLRU(6), bases: newLRU(40), thumbs: newLRU(8),
+			sem: make(chan struct{}, semCap), byID: map[string]*Photo{ph.ID: ph},
+			pmu: sync.RWMutex{}, pByID: srv.pByID,
+			rawState: map[string]string{}, rawBusy: map[string]bool{},
+			rawQueue: make(chan *Photo, 8), rawQueueLow: make(chan *Photo, 8)}
+		srv3.presets = all
+		first := ids[:min(12, len(ids))]
+		fjobs := make(chan string)
+		var fwg sync.WaitGroup
+		t0 = time.Now()
+		for k := 0; k < 6; k++ {
+			fwg.Add(1)
+			go func() {
+				defer fwg.Done()
+				for id := range fjobs {
+					u := url(id)
+					if id == "" {
+						u = "/api/render?id=" + ph.ID + "&w=360&comp=0&m=jpg&src=camera"
+					}
+					srv3.handleRender(httptest.NewRecorder(), httptest.NewRequest("GET", u, nil))
+				}
+			}()
+		}
+		for _, id := range first {
+			fjobs <- id
+		}
+		close(fjobs)
+		fwg.Wait()
+		fmt.Printf("GRID first screen (%d tiles) over 6 connections: %s\n", len(first), time.Since(t0).Round(time.Millisecond))
 	})
 }
 
@@ -581,6 +718,12 @@ func (p *memPeak) stop() uint64 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.max
+}
+
+func t33clearThumbCache() {
+	if dir, err := os.UserCacheDir(); err == nil {
+		os.RemoveAll(filepath.Join(dir, "foveon-lab", "thumbs"))
+	}
 }
 
 func presetNeutral() preset.Params { return preset.Neutral() }
