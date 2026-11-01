@@ -148,12 +148,6 @@ body.film #camSel,body.film #srcSel,body.film #q,body.film #chips,body.film #loo
 body.empty header label.chk,body.empty header #folders,body.empty header #cardBtn,body.empty header #updateCheck,body.empty header #updateBox{display:none}
 #filmGrid .head{grid-column:1/-1;color:var(--accent);font-weight:600;margin:8px 0 0}
 #grid.filmgrid .head{grid-column:1/-1;color:var(--accent);font-weight:600;margin:8px 0 0}
-#abDlg .box{width:min(980px,96vw);max-height:94vh;overflow:auto}
-.abrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.abcell{min-width:0;text-align:center;overflow:auto}
-.abcell canvas{width:100%;height:auto;display:block;background:#000;border:1px solid var(--line)}
-.ablabel{font-weight:700;color:var(--accent);margin:4px}
-body.abzoom .abcell canvas{width:auto;max-width:none}
 button.ai{border-color:var(--accent2);color:#cfe6fa}
 #aiPanel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:100vw;background:var(--panel);border-left:1px solid var(--line);z-index:8;display:none;flex-direction:column;box-shadow:-8px 0 24px #0008}
 #aiPanel.on{display:flex}
@@ -359,7 +353,6 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="zoomBtn" title="100% view (Z, or double-click the image where you want to look); drag to move around">1:1</button>
           <button id="cropBtn" title="Straighten and crop this photo (R). Applies to the preview and every export">Crop</button>
           <button id="finishBtn" class="primary" title="Save the finished picture with the usual settings">Finish…</button>
-          <button id="abBtn" title="Compare your photo with a version you made in another program, without knowing which is which">A/B…</button>
           <button class="sideBtn" id="listBtn" title="Show / hide the photo list (Tab hides or shows both side panels)">◧</button>
           <button class="sideBtn" id="panelBtn" title="Show / hide the settings panel (Tab hides or shows both side panels)">◨</button>
           <button id="fullBtn" title="Full screen: only the photo (Shift+F or F11; Esc to leave)">⛶</button>
@@ -643,31 +636,6 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <div id="finishDestRow" style="display:none;gap:6px;align-items:center"><input id="finishDestPath" type="text" style="flex:1"><button id="finishDestPick">Choose…</button></div>
     <div class="src" id="finishMsg">JPEG at high quality. A file that is already there is never replaced; the new one gets a number.</div>
     <div class="btns"><button class="primary" id="finishGo">Save</button><button id="finishMore">More export options</button><button id="finishClose">Cancel</button></div>
-  </div>
-</div>
-<div id="abDlg" class="modal">
-  <div class="box">
-    <b>Blind A/B</b>
-    <div class="src" id="abIntro">Choose a picture of the same frame that you made in another program. Foveon Lab develops its own version, then shows the two as A and B in random order at the same size. You are not told which is which until you answer.</div>
-    <div id="abSetup">
-      <div class="btns"><button id="abPick" class="primary">Choose the other version…</button></div>
-      <div class="src" id="abFile"></div>
-      <div class="src" id="abMsg"></div>
-    </div>
-    <div id="abView" style="display:none">
-      <div class="abrow">
-        <div class="abcell"><div class="ablabel">A</div><canvas id="abA"></canvas></div>
-        <div class="abcell"><div class="ablabel">B</div><canvas id="abB"></canvas></div>
-      </div>
-      <label class="chk" style="margin-top:6px"><input type="checkbox" id="abMatch" checked> Match overall brightness, so you judge colour and detail rather than a level difference</label>
-      <div class="btns"><button id="abAbtn" class="primary">A looks better</button><button id="abBbtn" class="primary">B looks better</button><button id="abTie">No preference</button><button id="abZoom">1:1</button><button id="abRestart">Choose another</button><button id="abClose">Close</button></div>
-      <div class="src" id="abInfo"></div>
-    </div>
-    <div id="abResult" style="display:none">
-      <div class="src" id="abReveal"></div>
-      <div class="src" id="abTally"></div>
-      <div class="btns"><button id="abAgain" class="primary">Another photo</button><button id="abClose2">Close</button></div>
-    </div>
   </div>
 </div>
 <script src="/gpu.js"></script>
@@ -2990,133 +2958,6 @@ async function finishSave(){
 // One export path, one place where scope, format, colour and destination are
 // chosen, so nobody has to learn a second dialog to act on a filtered set.
 
-// ---------- blind A/B ----------
-// Both pictures are drawn into canvases, so no file name, EXIF tag or
-// address is on screen. The server decides the order with a random bit and
-// keeps the answer until one is given.
-const AB = {token: null, w: 0, h: 0, a: null, b: null, answered: false, zoom: false};
-
-function abOpen(){
-  if (!S.photo || !S.params){ toast("Open a photo first.", 4000); return; }
-  AB.token = null; AB.a = AB.b = null; AB.answered = false;
-  $("#abSetup").style.display = ""; $("#abView").style.display = "none"; $("#abResult").style.display = "none";
-  $("#abFile").textContent = ""; $("#abMsg").textContent = "";
-  $("#abInfo").textContent = "";
-  $("#abMatch").checked = true;
-  $("#abDlg").classList.add("on");
-}
-function abLoadImage(url){
-  return new Promise((resolve, reject) => {
-    fetch(url).then(r => { if (!r.ok) throw new Error("The comparison expired."); return r.blob(); })
-      .then(blob => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error("A picture could not be shown."));
-        img.src = URL.createObjectURL(blob);
-      }).catch(reject);
-  });
-}
-function abMean(img){
-  const w = 64, h = Math.max(1, Math.round(64 * img.naturalHeight / img.naturalWidth));
-  const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
-  const cx = cv.getContext("2d", {willReadFrequently: true});
-  cx.drawImage(img, 0, 0, w, h);
-  const p = cx.getImageData(0, 0, w, h).data;
-  let s = 0;
-  for (let i = 0; i < p.length; i += 4) s += 0.2126 * p[i] + 0.7152 * p[i+1] + 0.0722 * p[i+2];
-  return s / (p.length / 4);
-}
-function abDraw(){
-  if (!AB.a || !AB.b) return;
-  const ca = $("#abA"), cb = $("#abB");
-  ca.width = AB.w; ca.height = AB.h; cb.width = AB.w; cb.height = AB.h;
-  const ma = abMean(AB.a), mb = abMean(AB.b);
-  let ga = 1, gb = 1;
-  if ($("#abMatch").checked && ma > 1 && mb > 1){
-    const t = (ma + mb) / 2;
-    ga = Math.max(0.5, Math.min(2, t / ma));
-    gb = Math.max(0.5, Math.min(2, t / mb));
-  }
-  for (const [cv, img, g] of [[ca, AB.a, ga], [cb, AB.b, gb]]){
-    const cx = cv.getContext("2d");
-    cx.clearRect(0, 0, cv.width, cv.height);
-    cx.filter = g === 1 ? "none" : `brightness(${g})`;
-    cx.drawImage(img, 0, 0, cv.width, cv.height);
-    cx.filter = "none";
-  }
-  ca.style.width = AB.zoom ? AB.w + "px" : "100%";
-  cb.style.width = AB.zoom ? AB.w + "px" : "100%";
-  const diff = Math.abs(ma - mb) / Math.max(1, (ma + mb) / 2) * 100;
-  let note = "Same size, same zoom. Which do you prefer?";
-  if (diff > 4){
-    note += $("#abMatch").checked
-      ? ` Their brightness differed by ${diff.toFixed(0)}%; it is matched here.`
-      : ` Their brightness differs by ${diff.toFixed(0)}%; turn on brightness matching for a fairer look.`;
-  }
-  $("#abInfo").textContent = note;
-}
-async function abPickOther(){
-  const r = await fetch("/api/pickfile");
-  if (!r.ok){ $("#abMsg").textContent = "Could not open the file dialog."; return; }
-  const {path} = await r.json();
-  if (!path) return;
-  $("#abFile").textContent = "Picture chosen.";
-  $("#abMsg").textContent = "Developing both versions at the same size…";
-  const p = current();
-  const body = {id: S.photo.id, preset: p && !dirty() ? p.id : "", params: (!p || dirty()) ? S.params : null, comp: comp() === "1", path};
-  let res;
-  try {
-    res = await fetch("/api/ab/prepare", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
-  } catch { $("#abMsg").textContent = "Could not reach the app."; return; }
-  if (!res.ok){ $("#abMsg").textContent = await res.text(); return; }
-  const data = await res.json();
-  AB.token = data.token; AB.w = data.width; AB.h = data.height; AB.answered = false;
-  try {
-    [AB.a, AB.b] = await Promise.all([abLoadImage(data.a), abLoadImage(data.b)]);
-  } catch (e) { $("#abMsg").textContent = e.message; return; }
-  $("#abSetup").style.display = "none";
-  $("#abResult").style.display = "none";
-  $("#abView").style.display = "";
-  $("#abMsg").textContent = "";
-  $("#abAbtn").disabled = false; $("#abBbtn").disabled = false; $("#abTie").disabled = false;
-  abDraw();
-}
-async function abAnswer(choice){
-  if (AB.answered || !AB.token) return;
-  AB.answered = true;
-  $("#abAbtn").disabled = true; $("#abBbtn").disabled = true; $("#abTie").disabled = true;
-  let data;
-  try {
-    const r = await fetch("/api/ab/reveal?token=" + AB.token);
-    if (!r.ok) throw new Error("The comparison expired.");
-    data = await r.json();
-  } catch (e) { $("#abInfo").textContent = e.message; return; }
-  const ours = data.ours;
-  const pick = choice === "tie" ? "tie" : (choice === ours ? "ours" : "theirs");
-  const t = store.get("abTally", {ours: 0, theirs: 0, tie: 0});
-  t[pick]++;
-  store.set("abTally", t);
-  const who = side => side === ours ? "Foveon Lab" : "your other version";
-  $("#abReveal").innerHTML = `A was <b>${who("a")}</b>. B was <b>${who("b")}</b>.<br>` +
-    (choice === "tie" ? "You had no preference." : `You chose <b>${choice.toUpperCase()}</b>.`);
-  $("#abTally").textContent = `Your tally, kept on this computer only: Foveon Lab ${t.ours}, the other version ${t.theirs}, no preference ${t.tie}. Nothing leaves this machine.`;
-  $("#abView").style.display = "none";
-  $("#abResult").style.display = "";
-}
-function abRestart(){
-  AB.token = null; AB.a = AB.b = null; AB.answered = false;
-  $("#abSetup").style.display = ""; $("#abView").style.display = "none"; $("#abResult").style.display = "none";
-  $("#abFile").textContent = ""; $("#abMsg").textContent = ""; $("#abInfo").textContent = "";
-  $("#abMatch").checked = true;
-  document.body.classList.remove("abzoom");
-  AB.zoom = false;
-}
-function abClose(){
-  AB.token = null; AB.a = AB.b = null;
-  document.body.classList.remove("abzoom"); AB.zoom = false;
-  $("#abDlg").classList.remove("on");
-}
-
 // ---------- folders & quit ----------
 // The folder browser: navigate to a folder instead of typing a ; list.
 let FB = {path: "", parent: "", photos: [], presets: ""};
@@ -3714,23 +3555,8 @@ function bind(){
     const {path} = await r.json();
     if (path){ $("#finishDestPath").value = path; store.set("exportFolder", path); $("#finishDest").value = "chosen"; $("#finishDestRow").style.display = "flex"; }
   };
-  $("#abBtn").onclick = abOpen;
-  $("#abPick").onclick = abPickOther;
-  $("#abAbtn").onclick = () => abAnswer("a");
-  $("#abBbtn").onclick = () => abAnswer("b");
-  $("#abTie").onclick = () => abAnswer("tie");
-  $("#abMatch").onchange = abDraw;
-  $("#abZoom").onclick = () => {
-    AB.zoom = !AB.zoom;
-    document.body.classList.toggle("abzoom", AB.zoom);
-    abDraw();
-  };
-  $("#abRestart").onclick = abRestart;
-  $("#abAgain").onclick = abRestart;
-  $("#abClose").onclick = abClose;
-  $("#abClose2").onclick = abClose;
   // Clicking the dark backdrop of a small dialog closes it, like Cancel.
-  for (const [id, close] of [["#finishDlg", finishClose], ["#batch", batchClose], ["#cardDlg", cardClose], ["#abDlg", abClose], ["#settingsDlg", () => $("#settingsDlg").classList.remove("on")]])
+  for (const [id, close] of [["#finishDlg", finishClose], ["#batch", batchClose], ["#cardDlg", cardClose], ["#settingsDlg", () => $("#settingsDlg").classList.remove("on")]])
     $(id).addEventListener("click", e => { if (e.target.id === id.slice(1)) close(); });
   cropInit();
   try { const v = localStorage.getItem("fl.nr"); if (v !== null) $("#nr").value = v; } catch {}
@@ -3815,7 +3641,7 @@ function bind(){
   document.addEventListener("keydown", e => {
     // Esc closes the small dialogs, whatever control inside them has focus.
     if (e.key === "Escape"){
-      for (const [id, close] of [["#finishDlg", finishClose], ["#batch", batchClose], ["#cardDlg", cardClose], ["#abDlg", abClose]])
+      for (const [id, close] of [["#finishDlg", finishClose], ["#batch", batchClose], ["#cardDlg", cardClose]])
         if ($(id).classList.contains("on")){ e.preventDefault(); close(); return; }
     }
     if ($("#foldersDlg").classList.contains("on") && e.key === "Escape"){ e.preventDefault(); $("#foldersDlg").classList.remove("on"); return; }
