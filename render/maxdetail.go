@@ -2,9 +2,10 @@ package render
 
 // Max Detail (task 19): a development mode for the raw layers, not a set of
 // SPP sliders. The raw development in camfread.go has already rebuilt what
-// the clipped layers imply. Here the mode opens the shadows, gently and only
-// down to the noise, and otherwise leaves the picture as the normal
-// development made it: same colour, same contrast, same white. Earlier
+// the clipped layers imply. MaxDetailHighlights keeps the top of the frame
+// out of the correction's ramp to white, and MaxDetailDevelop opens the
+// shadows, gently and only down to the noise. Otherwise the picture stays as
+// the normal development made it: same colour, same contrast. Earlier
 // versions added saturation, an S-curve, a stronger lift and a chroma fade
 // near white, and the result looked artificial: hot reds, flat highlights
 // and a washed night sky.
@@ -120,4 +121,68 @@ func linearNoise(l *Linear) float64 {
 	med := float64(res[len(res)/2])
 	s := med / 0.6745 / math.Sqrt(1.25)
 	return max(s, 1e-4)
+}
+
+// Max Detail's highlight shoulder: above this fraction of the top, the
+// brightest channel is compressed so the frame's top lands at the top. Colour
+// is untouched because all three channels share one gain, and everything
+// under the knee is left alone.
+const maxDetailKnee = 0.60
+
+// MaxDetailHighlights brings what the frame holds above white back into
+// range. Run it before the per-body correction: that correction ends in a
+// ramp that turns the sensor's top stop into flat white.
+func MaxDetailHighlights(l *Linear, top float32) {
+	ceil := highlightCeiling(l)
+	if ceil <= top {
+		return
+	}
+	k, o := maxDetailKnee*top, top
+	// Exponential approach to the top with slope 1 at the knee, so there is
+	// no visible seam: solve its rate for this frame's ceiling.
+	span := float64(ceil - k)
+	room := float64(o - k)
+	lo, hi := 1e-3, 100.0
+	for range 50 {
+		a := (lo + hi) / 2
+		if room*a/(1-math.Exp(-a*span)) > 1 {
+			hi = a
+		} else {
+			lo = a
+		}
+	}
+	a := (lo + hi) / 2
+	scale := room / (1 - math.Exp(-a*span))
+	parallelRows(l.H, func(y0, y1 int) {
+		for i := y0 * l.W; i < y1*l.W; i++ {
+			p := l.Pix[i*3 : i*3+3]
+			m := max(p[0], p[1], p[2])
+			if m <= k {
+				continue
+			}
+			t := min(float64(m-k), span)
+			g := (k + float32(scale*(1-math.Exp(-a*t)))) / m
+			p[0], p[1], p[2] = p[0]*g, p[1]*g, p[2]*g
+		}
+	})
+}
+
+// highlightCeiling is the frame's top level, ignoring the few brightest
+// pixels so one specular doesn't darken the rest.
+func highlightCeiling(l *Linear) float32 {
+	var hist [2048]int
+	n := l.W * l.H
+	for i := 0; i < n; i++ {
+		p := l.Pix[i*3 : i*3+3]
+		m := max(p[0], p[1], p[2])
+		hist[max(0, min(len(hist)-1, int(m*512)))]++
+	}
+	left := n / 2000
+	for b := len(hist) - 1; b >= 0; b-- {
+		left -= hist[b]
+		if left <= 0 {
+			return float32(b+1) / 512
+		}
+	}
+	return 0
 }

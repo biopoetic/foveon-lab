@@ -55,3 +55,38 @@ func TestMaxDetailHighISO(t *testing.T) {
 		t.Fatalf("ISO 6400 lifted a flat shadow as much as ISO 100 (%g vs %g)", hi.Pix[0], lo.Pix[0])
 	}
 }
+
+// The shoulder brings the frame's top under the white the correction would
+// clip, leaves everything below the knee alone and keeps each pixel's colour.
+func TestMaxDetailHighlights(t *testing.T) {
+	const n, top = 4096, float32(0.5)
+	l := &Linear{W: n, H: 1, Pix: make([]float32, n*3)}
+	for i := 0; i < n; i++ {
+		v := 2 * float32(i) / (n - 1)
+		l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2] = v, v*0.8, v*0.5
+	}
+	MaxDetailHighlights(l, top)
+	low := l.Pix[(n/20)*3] // input 0.1, under the knee
+	if want := 2 * float32(n/20) / (n - 1); low != want {
+		t.Errorf("below the knee: %g, want %g", low, want)
+	}
+	prev := float32(-1)
+	for i := 0; i < n; i++ {
+		p := l.Pix[i*3 : i*3+3]
+		if p[0] < prev {
+			t.Fatalf("not monotonic at %d: %g after %g", i, p[0], prev)
+		}
+		prev = p[0]
+		if p[0] > top+1e-4 {
+			t.Fatalf("%d is over the top: %g", i, p[0])
+		}
+		if p[0] > 0 {
+			if g := p[1] / p[0]; g < 0.799 || g > 0.801 {
+				t.Fatalf("colour moved at %d: green/red %g", i, g)
+			}
+		}
+	}
+	if prev < top*0.98 {
+		t.Errorf("the frame's top lands at %g, want near %g", prev, top)
+	}
+}

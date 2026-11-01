@@ -348,9 +348,28 @@ func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error)
 		return nil, err
 	}
 	l = uprightRaw(ph, l)
+	render.MaxDetailHighlights(l, whiteInput(ph))
 	rawCorrect(ph, l)
 	render.MaxDetailDevelop(l, render.MaxDetailOptions{ISO: photoISO(ph)})
 	return l, nil
+}
+
+// whiteInput is the grey level the per-body correction brings to just under
+// white: the most a raw frame can carry through it and still hold detail.
+func whiteInput(ph *Photo) float32 {
+	const n = 256
+	l := &render.Linear{W: n, H: 1, Pix: make([]float32, n*3)}
+	for i := 0; i < n; i++ {
+		v := float32(i) / (n - 1) * 1.8
+		l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2] = v, v, v
+	}
+	rawCorrect(ph, l)
+	for i := 0; i < n; i++ {
+		if l.Pix[i*3+1] >= 0.97 {
+			return float32(i) / (n - 1) * 1.8
+		}
+	}
+	return 1.8
 }
 
 // binCam averages b×b blocks of camera RGB.
