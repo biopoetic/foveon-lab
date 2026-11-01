@@ -173,8 +173,13 @@ func (s *server) rawMode(ph *Photo) string {
 }
 
 // requestRaw queues ph's raw decode (quick, then full) if accurate mode
-// wants it; the photo on screen goes before prefetched neighbours.
-func (s *server) requestRaw(ph *Photo) { s.queueRaw(ph, true) }
+// wants it; the photo on screen goes before prefetched neighbours. A click
+// also drops prefetches the user has moved past, so they never delay the
+// photo now on screen.
+func (s *server) requestRaw(ph *Photo) {
+	s.drainRawLow()
+	s.queueRaw(ph, true)
+}
 
 // queueRaw: urgent = the photo on screen (quick then full decode);
 // otherwise a neighbour prefetch (quick decode only).
@@ -185,6 +190,9 @@ func (s *server) queueRaw(ph *Photo, urgent bool) {
 	st := s.rawStateOf(ph)
 	s.rawMu.Lock()
 	defer s.rawMu.Unlock()
+	if s.rawBusy[ph.ID] {
+		return
+	}
 	switch {
 	case st == rawReady || st == rawFailed:
 		return
@@ -229,56 +237,66 @@ func (s *server) rawWorker() {
 			s.dropQueuedRaw(ph)
 			continue
 		}
-		if goRaw {
-			// Native: one pass (seconds), straight into the source cache.
-			if _, err := s.sourceAs(ph, "raw"); err != nil {
-				log.Printf("accurate preview for %s: %v", ph.Name, err)
+		func() {
+			s.rawMu.Lock()
+			s.rawBusy[ph.ID] = true
+			s.rawMu.Unlock()
+			defer func() {
 				s.rawMu.Lock()
-				s.rawState[ph.ID] = rawFailed
+				delete(s.rawBusy, ph.ID)
 				s.rawMu.Unlock()
-				continue
+			}()
+			if goRaw {
+				// Native: one pass (seconds), straight into the source cache.
+				if _, err := s.sourceAs(ph, "raw"); err != nil {
+					log.Printf("accurate preview for %s: %v", ph.Name, err)
+					s.rawMu.Lock()
+					s.rawState[ph.ID] = rawFailed
+					s.rawMu.Unlock()
+					return
+				}
+				s.rawMu.Lock()
+				s.rawState[ph.ID] = rawReady
+				delete(rawFullQueued, ph.ID)
+				s.rawMu.Unlock()
+				return
+			}
+			if !cachedAs(ph, "sRGB") && !cachedAs(ph, rawFastColor) {
+				if _, err := decodeRawAs(ph, rawFastColor); err != nil {
+					log.Printf("accurate preview for %s: %v", ph.Name, err)
+					s.rawMu.Lock()
+					s.rawState[ph.ID] = rawFailed
+					s.rawMu.Unlock()
+					return
+				}
+				s.rawMu.Lock()
+				s.rawState[ph.ID] = rawFast
+				s.rawMu.Unlock()
 			}
 			s.rawMu.Lock()
-			s.rawState[ph.ID] = rawReady
-			delete(rawFullQueued, ph.ID)
+			full := urgent || rawFullQueued[ph.ID]
 			s.rawMu.Unlock()
-			continue
-		}
-		if !cachedAs(ph, "sRGB") && !cachedAs(ph, rawFastColor) {
-			if _, err := decodeRawAs(ph, rawFastColor); err != nil {
-				log.Printf("accurate preview for %s: %v", ph.Name, err)
-				s.rawMu.Lock()
-				s.rawState[ph.ID] = rawFailed
-				s.rawMu.Unlock()
-				continue
+			if !full {
+				return
 			}
-			s.rawMu.Lock()
-			s.rawState[ph.ID] = rawFast
-			s.rawMu.Unlock()
-		}
-		s.rawMu.Lock()
-		full := urgent || rawFullQueued[ph.ID]
-		s.rawMu.Unlock()
-		if !full {
-			continue
-		}
-		if s.cullActive.Load() {
-			// The quick decode is cached and enough for a rating; do not start
-			// the full pass while the user is culling.
+			if s.cullActive.Load() {
+				// The quick decode is cached and enough for a rating; do not
+				// start the full pass while the user is culling.
+				s.rawMu.Lock()
+				delete(rawFullQueued, ph.ID)
+				s.rawMu.Unlock()
+				return
+			}
+			_, err := decodeRaw(ph)
 			s.rawMu.Lock()
 			delete(rawFullQueued, ph.ID)
+			if err != nil {
+				log.Printf("accurate preview (full) for %s: %v", ph.Name, err)
+			} else {
+				s.rawState[ph.ID] = rawReady
+			}
 			s.rawMu.Unlock()
-			continue
-		}
-		_, err := decodeRaw(ph)
-		s.rawMu.Lock()
-		delete(rawFullQueued, ph.ID)
-		if err != nil {
-			log.Printf("accurate preview (full) for %s: %v", ph.Name, err)
-		} else {
-			s.rawState[ph.ID] = rawReady
-		}
-		s.rawMu.Unlock()
+		}()
 	}
 }
 
@@ -421,12 +439,30 @@ func layerCompensation(c render.Compensation) render.Compensation {
 // handleRawPrefetch queues the raw decode of the given photos (the ones
 // next to the selected one), so stepping to them is instant.
 func (s *server) handleRawPrefetch(w http.ResponseWriter, r *http.Request) {
+	// The page sends the neighbours after every selection. Drop the previous
+	// selection's prefetches first: the user has moved on, and decoding a
+	// photo nobody is looking at keeps the one they are looking at waiting.
+	s.drainRawLow()
 	for _, id := range strings.Split(r.URL.Query().Get("ids"), ",") {
 		if ph := s.lookup(id); ph != nil {
 			s.queueRaw(ph, false)
 		}
 	}
 	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// drainRawLow drops every queued neighbour prefetch, without starting it.
+// One already inside a decode has no cancellation point and is allowed to
+// finish into the source cache (as in the cull).
+func (s *server) drainRawLow() {
+	for {
+		select {
+		case ph := <-s.rawQueueLow:
+			s.dropQueuedRaw(ph)
+		default:
+			return
+		}
+	}
 }
 
 // handleRawState: GET ?id= → {"state": "", "decoding", "ready" or "failed",

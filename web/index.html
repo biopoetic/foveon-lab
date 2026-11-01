@@ -958,7 +958,7 @@ function expandFolderOf(el){
 }
 
 // ---------- accurate (raw-based) previews ----------
-const ACC = {on: false, available: false, mode: {}, state: {}, timer: null};
+const ACC = {on: false, available: false, mode: {}, state: {}, timer: null, prefetchTimer: null};
 function accLabel(p){
   if (!ACC.on || !p.accurate) return "";
   const st = ACC.state[p.id];
@@ -981,12 +981,15 @@ async function accInit(){
 // accWatch polls the selected photo's raw decode and swaps the views in.
 function accWatch(){
   clearTimeout(ACC.timer);
+  clearTimeout(ACC.prefetchTimer);
   const p = S.photo;
   if (!p || !p.accurate || (!ACC.on && !p.rawDecoded)) return;
-  // Decode the neighbours too, so stepping with the arrow keys is instant.
+  // Decode the neighbours too, so stepping with the arrow keys is instant —
+  // but only once this photo's own decode is done. Prefetching while it is
+  // still developing stole the cores from the picture being looked at, and a
+  // click could wait behind a neighbour nobody was looking at.
   const i = S.photos.indexOf(p);
-  const near = [i + 1, i - 1, i + 2, i - 2].map(k => S.photos[k]).filter(x => x && x.accurate).map(x => x.id);
-  if (near.length) fetch("/api/rawprefetch?ids=" + near.join(",")).catch(() => {});
+  const near = [i + 1, i - 1].map(k => S.photos[k]).filter(x => x && x.accurate).map(x => x.id);
   const id = p.id;
   ACC.timer = setTimeout(async () => {
     let r; try { r = await (await fetch("/api/rawstate?id=" + id)).json(); } catch { return; }
@@ -1000,7 +1003,13 @@ function accWatch(){
       $("#photoInfo").textContent = photoInfoText(p);
       if (changed && mode !== "jpg"){ $("#detail").classList.contains("on") ? renderBig() : drawGrid(); S.lookKey = ""; }
     }
-    if (r.state !== "ready" && r.state !== "failed") accWatch();
+    if (r.state === "ready" || r.state === "failed"){
+      if (near.length) ACC.prefetchTimer = setTimeout(() => {
+        if (S.photo?.id === id) fetch("/api/rawprefetch?ids=" + near.join(",")).catch(() => {});
+      }, 250);
+    } else {
+      accWatch();
+    }
   }, ACC.state[id] ? 2000 : 300);
 }
 

@@ -346,6 +346,9 @@ type server struct {
 	accurate atomic.Bool
 	rawMu    sync.Mutex
 	rawState map[string]string
+	// rawBusy: a worker is developing this photo right now. An urgent request
+	// for the same file must not start a second decode behind it.
+	rawBusy  map[string]bool
 	rawQueue chan *Photo
 	// rawQueueLow: prefetches of the neighbours, decoded when nothing is urgent.
 	rawQueueLow chan *Photo
@@ -952,6 +955,12 @@ func (s *server) handleThumb(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 404, err)
 		return
 	}
+	if b, ok := readThumbCache(ph); ok {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Cache-Control", "private, max-age=3600")
+		w.Write(b)
+		return
+	}
 	v, err := s.thumbs.get(ph.ID, func() (any, error) {
 		if ph.Kind == "x3f" {
 			f, err := x3f.Open(ph.path)
@@ -978,9 +987,11 @@ func (s *server) handleThumb(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 500, err)
 		return
 	}
+	b := v.([]byte)
+	saveThumbCache(ph, b)
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
-	w.Write(v.([]byte))
+	w.Write(b)
 }
 
 func thumbnailJPEG(img image.Image) []byte {
@@ -1815,6 +1826,7 @@ func main() {
 	}
 	// AI agent: what was set in the app wins over the environment variable.
 	s.rawState, s.rawQueue, s.rawQueueLow = map[string]string{}, make(chan *Photo, 256), make(chan *Photo, 256)
+	s.rawBusy = map[string]bool{}
 	s.accurate.Store(cfg.Accurate == nil || *cfg.Accurate)
 	go s.rawWorker()
 	s.ai.cfg = agent.Config{BaseURL: *aiBase, Model: *aiModel, APIKey: os.Getenv(*aiKeyEnv), MaxSteps: 12}

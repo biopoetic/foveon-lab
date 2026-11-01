@@ -149,6 +149,17 @@ func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 	// still above the filter's reach. So the bounded form is now used at
 	// every ISO.
 	floor := float32(shadowChromaLo)
+	// The guide is the same luminance plane for all three channels, so its
+	// two Gaussians are built once instead of once per channel. Same inputs,
+	// same arithmetic: every channel still sees exactly the same mI/mII.
+	mI := GaussBlur(G, w, h, sigma)
+	ii := make([]float32, n)
+	parallelRows(n, func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			ii[i] = G[i] * G[i]
+		}
+	})
+	mII := GaussBlur(ii, w, h, sigma)
 	var ratio [3][]float32
 	for k := 0; k < 3; k++ {
 		c := make([]float32, n)
@@ -157,7 +168,13 @@ func SmoothShadowChroma(l *Linear, fullW int, amount float64) {
 				c[i] = (l.Pix[i*3+k] - Y[i]) / max(Y[i], floor)
 			}
 		})
-		ratio[k] = guidedGauss(G, c, w, h, sigma, shadowChromaEps)
+		ip := make([]float32, n)
+		parallelRows(n, func(i0, i1 int) {
+			for i := i0; i < i1; i++ {
+				ip[i] = G[i] * c[i]
+			}
+		})
+		ratio[k] = guidedGaussPre(G, c, w, h, sigma, shadowChromaEps, mI, mII, ip)
 	}
 	a := float32(amount)
 	parallelRows(h, func(y0, y1 int) {
