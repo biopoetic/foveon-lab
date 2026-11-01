@@ -1591,6 +1591,10 @@ func calibCommand(desk string) bool {
 		fieldStudyCommand(desk)
 		return true
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "pixmap-study" {
+		pixmapStudyCommand(desk)
+		return true
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "fit-raw" {
 		rawTool = findRawTool("")
 		fitRawCommand(desk)
