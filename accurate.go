@@ -337,7 +337,10 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 	}
 	l = uprightRaw(ph, l)
 	if !layers {
-		rawCorrect(ph, l)
+		// wbName: the user chose this camera white balance. The DP2 balance
+		// corrects the as-shot Auto development; applying it here would pull
+		// the chosen balance back towards the camera JPEG.
+		rawCorrectWith(ph, l, wbName == "")
 	}
 	// Single-pixel impulse dots that survived the denoiser are removed on
 	// the finished frame in render.ImpulseClean (render/render.go), where
@@ -346,14 +349,25 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 	return l, nil
 }
 
-// rawCorrect applies the per-body correction to a colour raw development.
+// rawCorrect applies the per-body correction to a colour raw development, as
+// the camera shot it.
 func rawCorrect(ph *Photo, l *render.Linear) {
+	rawCorrectWith(ph, l, true)
+}
+
+// rawCorrectWith: balance=false leaves out the DP2 camera-JPEG balance. A
+// development made with an explicit camera white balance (the preset's
+// WhiteBalance code) is the user's balance, and the camera-JPEG correction
+// must not pull it back to the as-shot colour.
+func rawCorrectWith(ph *Photo, l *render.Linear, balance bool) {
 	c := rawCorrectionFor(ph)
 	if c == nil {
 		return
 	}
 	c.Apply(l)
-	rawJPEGBalance(ph, l)
+	if balance {
+		rawJPEGBalance(ph, l)
+	}
 	// SPP's chroma noise reduction also removes the bright near-neutral
 	// low-frequency mottling the per-pixel denoiser leaves; do it here so
 	// every raw-based render (default, Max Detail, exports) has it.
@@ -365,51 +379,26 @@ func rawCorrect(ph *Photo, l *render.Linear) {
 	}
 }
 
-// rawJPEGBalance corrects a body whose raw white balance disagrees with the
-// camera's own as-shot JPEG. The DP2 (original) stores an Auto white balance
-// that matches neither the camera JPEG nor SPP: its render is far too red,
-// while the DP2X (same calibration group) is neutral. The JPEG is the
-// camera's own per-shot balance, so matching the two images' channel means
-// restores the colour without a fitted table. Frames too dark or too clipped
-// for a reliable mean are left alone.
+// balanceRefW is the width of the one reference the DP2 balance is measured
+// at. A single fixed width makes its gains a property of the photo, not of
+// the view: fit, 100%, a tile, Max Detail and an export all apply the same
+// three numbers.
+const balanceRefW = 1200
+
+// balanceMeasures counts DP2 reference measurements (one per photo), so a
+// regression test can prove the per-call measurement is gone.
+var balanceMeasures atomic.Int64
+
+// rawJPEGBalance applies the DP2 camera-JPEG balance to a developed raw
+// image. The gains are measured once per photo from a fixed reference
+// (measureJPEGBalance) and cached on the Photo; l's own size or content is
+// never measured, so every path gets one answer and a refused frame is
+// refused everywhere.
 func rawJPEGBalance(ph *Photo, l *render.Linear) {
-	if ph.Kind != "x3f" || modelOf(ph) != "SIGMA DP2" || l == nil {
+	if l == nil {
 		return
 	}
-	img, err := stillPreview(ph)
-	if err != nil {
-		return
-	}
-	jp := render.FromImage(img, 1200, 0)
-	var mo, mj [3]float64
-	var no, nj, clipO, clipJ int
-	var sumY float64
-	for i := 0; i+2 < len(l.Pix); i += 3 {
-		if max(l.Pix[i], l.Pix[i+1], l.Pix[i+2]) > 0.95 {
-			clipO++
-			continue
-		}
-		for k := 0; k < 3; k++ {
-			mo[k] += float64(l.Pix[i+k])
-		}
-		sumY += float64(0.2126*l.Pix[i] + 0.7152*l.Pix[i+1] + 0.0722*l.Pix[i+2])
-		no++
-	}
-	for i := 0; i+2 < len(jp.Pix); i += 3 {
-		if max(jp.Pix[i], jp.Pix[i+1], jp.Pix[i+2]) > 0.95 {
-			clipJ++
-			continue
-		}
-		for k := 0; k < 3; k++ {
-			mj[k] += float64(jp.Pix[i+k])
-		}
-		nj++
-	}
-	n := no + clipO
-	if no == 0 || nj == 0 || n == 0 {
-		return
-	}
-	g, ok := jpegBalanceGains(mo, mj, sumY/float64(no), float64(clipO)/float64(n), float64(clipJ)/float64(nj+clipJ))
+	g, ok := jpegBalanceFor(ph)
 	if !ok {
 		return
 	}
@@ -418,6 +407,75 @@ func rawJPEGBalance(ph *Photo, l *render.Linear) {
 		l.Pix[i+1] *= g[1]
 		l.Pix[i+2] *= g[2]
 	}
+}
+
+// jpegBalanceFor is the photo's cached DP2 balance (ok=false for every other
+// body and for a refused frame). The DP2 (original) stores an Auto white
+// balance that matches neither the camera JPEG nor SPP: its render is far
+// too red, while the DP2X (same calibration group) is neutral. The JPEG is
+// the camera's own per-shot balance, so matching channel means restores the
+// colour without a fitted table.
+func jpegBalanceFor(ph *Photo) ([3]float32, bool) {
+	if ph.Kind != "x3f" || modelOf(ph) != "SIGMA DP2" {
+		return [3]float32{}, false
+	}
+	ph.balanceOnce.Do(func() {
+		balanceMeasures.Add(1)
+		ph.balanceG, ph.balanceOK = measureJPEGBalance(ph)
+	})
+	return ph.balanceG, ph.balanceOK
+}
+
+// measureJPEGBalance computes the DP2 balance from one fixed reference: the
+// camera JPEG at balanceRefW, and the raw development the app's preview and
+// spp-check start from (sourceW, the default noise reduction) reduced to
+// balanceRefW and mapped through the raw base. Nothing here depends on the
+// image a caller happens to hold.
+func measureJPEGBalance(ph *Photo) ([3]float32, bool) {
+	c := rawCorrectionFor(ph)
+	if c == nil {
+		return [3]float32{}, false
+	}
+	img, err := stillPreview(ph)
+	if err != nil {
+		return [3]float32{}, false
+	}
+	jp := render.FromImage(img, balanceRefW, 0)
+	l, err := goLinearFor(ph, sourceW, defaultNR, nil, false, "", false)
+	if err != nil {
+		return [3]float32{}, false
+	}
+	l = l.Downscale(balanceRefW)
+	c.Apply(l)
+	mo, meanY, clipO := balanceMeans(l)
+	mj, _, clipJ := balanceMeans(jp)
+	return jpegBalanceGains(mo, mj, meanY, clipO, clipJ)
+}
+
+// balanceMeans is the unclipped channel mean, the mean luminance of those
+// pixels, and the share above 0.95 (too dark or too clipped is not a colour
+// measurement).
+func balanceMeans(l *render.Linear) (m [3]float64, meanY, clip float64) {
+	var n, c int
+	var sumY float64
+	for i := 0; i+2 < len(l.Pix); i += 3 {
+		if max(l.Pix[i], l.Pix[i+1], l.Pix[i+2]) > 0.95 {
+			c++
+			continue
+		}
+		for k := 0; k < 3; k++ {
+			m[k] += float64(l.Pix[i+k])
+		}
+		sumY += float64(0.2126*l.Pix[i] + 0.7152*l.Pix[i+1] + 0.0722*l.Pix[i+2])
+		n++
+	}
+	if n == 0 {
+		return m, 0, 1
+	}
+	for k := range m {
+		m[k] /= float64(n)
+	}
+	return m, sumY / float64(n), float64(c) / float64(n+c)
 }
 
 // jpegBalanceGains is the DP2 balance's numeric half: the luminance-preserving

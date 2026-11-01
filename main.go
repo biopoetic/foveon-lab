@@ -82,6 +82,12 @@ type Photo struct {
 	camfCC    *[9]float64
 	layerOnce sync.Once // layerCC: the colour matrix for the layer filter
 	layerCC   *[9]float64
+	// balanceOnce caches the DP2 camera-JPEG balance: three gains measured
+	// once from one fixed reference, so every render path applies the same
+	// numbers (accurate.go).
+	balanceOnce sync.Once
+	balanceG    [3]float32
+	balanceOK   bool
 	// Size of the embedded full preview (for the raw decode's aspect).
 	previewW, previewH int
 	// jpegBroken: the embedded JPEG is damaged; shown from the raw data.
