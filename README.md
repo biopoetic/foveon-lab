@@ -75,6 +75,16 @@ go install github.com/biopoetic/foveon-lab@latest
 
 or clone and `go build -o foveon-lab.exe .` (Go 1.25+).
 
+### Try it without a camera
+
+The app can offer one demo photo on the empty start screen. No photo ships with the source: put a
+maintainer-owned X3F at `demo/demo.X3F` next to the program (or pass `-demo PATH`, or set
+`FOVEON_DEMO`), and the welcome screen shows **Try it with a demo photo**. The file is copied into the
+user's cache for that run only, never into their library or the saved folder list. Without such a file
+the mechanism is dormant and the main download is unchanged. If the demo is put in the main archive it
+adds the X3F's own compressed size; a 2.3 MB SD10 file made a 2.3 MB addition in the test. Keeping it
+as a separate download adds 0 bytes to the main one.
+
 ## Usage
 
 ```
@@ -87,17 +97,24 @@ Photos are found up to 4 levels below each `-photos` folder.
 ## Cull, then finish the keepers
 
 **Cull** (or `K`) opens a light view of the filtered list. `1`–`5` rate, `X` rejects, `U` clears,
-`←`/`→` (or `↑`/`↓`) move; `Esc` returns to the grid. Rating and rejection advance to the next photo
-unless **Advance** is off. The cull shows the camera's own embedded JPEG, never a raw development, so a
+`←`/`→` (or `↑`/`↓`) move, `D` develops the current frame in the editor; `Esc` returns to the grid.
+Rating and rejection advance to the next photo unless **Advance** is off. The cull shows the camera's
+own embedded preview, never a raw development, and entering it stops the background raw decodes: a
 200-file folder stays quick (183 frames: mean 15 ms, p95 57 ms per preview on a warm disk; the next two
-are prefetched).
+are prefetched). Over a 100-move cull run the server started **0** raw decodes; a decode already in
+flight is allowed to finish into the cache, but no second one starts.
+
+SD9 and SD10 files carry only a 567 px preview. The cull shows it with a plain notice that it is too
+small to judge focus, and **Develop this one (D)** opens the frame in the editor, where the raw data is
+developed and `Z` gives 1:1.
 
 A **star is five stars**: a star has always meant "keep", and five stars is the cull's keeper.
 Unstarring clears the rating only when it was five. A **reject hides** a photo from the default list and
 is never a delete; nothing in the cull removes a file. **Hide rejected**, **Show all** and **Only
-rejected** in the sidebar, with **Any rating / Unrated / ★1+ … ★5**, are the filters; the list, the cull,
-**Export…** (the *filtered* scope) and **Finish** (which can save all filtered photos at once) all use
-the same set.
+rejected** in the sidebar, with **Any rating / Unrated / ★1+ … ★5**, are the filters; the list, the cull
+and **Export…** (the *filtered* scope) all use the same set. In the cull, **Finish filtered…** opens
+that same batch export dialog with *The filtered photos* already selected, so there is one export path
+and no separate Finish engine.
 
 Decisions are kept in `FoveonLab_Cull.json` in the photo's own folder, keyed by file name, written in
 one atomic step. The X3F is never touched: the sidecar moves with the folder, so the decisions survive a
@@ -112,11 +129,12 @@ checks every field (unknown fields and out-of-range values are refused), never f
 from the file, and never replaces a preset of the same name: it reports the collision and asks for
 another name. The import writes the XML and its `FoveonLab_FL.json` entry, so SPP can still open it.
 
-The calibration switches (**Undo camera JPEG look**, **Size**, **Accurate preview**, **All images**)
-live in **⚙ Settings** (or `C`); the cull filters and **★ Favorites** stay in the main window because
-they choose which photos you are looking at. The photo info also shows the body's measured gap against
-SPP from the latest `spp-check`, e.g. *SD1 Merrill 4.0/255 from Sigma Photo Pro on 2 photos*; the table
-is regenerated with `go run ./tools/sppgap -json docs/spp-check.json`.
+The calibration switches (**Undo camera JPEG look**, **Size**, **Accurate preview**) live in
+**⚙ Settings** (or `C`). **★ Favorites** and **All images** stay in the header, with the cull rating and
+rejected filters in the photo list, because they choose which photos you are looking at. The photo info
+also shows the body's measured gap against SPP from the latest `spp-check`, e.g. *SD1 Merrill 4.0/255
+from Sigma Photo Pro on 2 photos*; the table is regenerated with `go run ./tools/sppgap -json
+docs/spp-check.json`.
 
 ## Open in Sigma Photo Pro (Windows, SPP 6)
 
