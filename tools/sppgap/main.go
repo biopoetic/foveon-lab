@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,6 +25,7 @@ type score struct {
 	Model string  `json:"model"`
 	All   float64 `json:"all"`
 	Area  float64 `json:"area"`
+	EV    float64 `json:"ev"`
 }
 
 type row struct {
@@ -85,6 +87,11 @@ func main() {
 	}
 	by := map[string]*agg{}
 	for _, s := range scores {
+		// A reference this far off is another SPP setting, not our error
+		// (spp-check reports the same photos as non-neutral).
+		if math.Abs(s.EV) > 0.25 {
+			continue
+		}
 		model := strings.TrimSpace(s.Model)
 		if model == "" {
 			model = strings.TrimSpace(s.Group)

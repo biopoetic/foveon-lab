@@ -9,14 +9,13 @@ const sppGapSource = "docs/spp-check.json"
 // absolute 8-bit error over every scored photo of that body.
 var sppGaps = []sppGap{
 	{Body: "DP1 Merrill", Model: "SIGMA DP1 Merrill", Mean: 4.8161, Area: 3.4383, Photos: 15},
-	{Body: "DP1S", Model: "SIGMA DP1S", Mean: 18.0386, Area: 18.1862, Photos: 1},
-	{Body: "DP2", Model: "SIGMA DP2", Mean: 8.1401, Area: 7.9472, Photos: 9},
-	{Body: "DP2 Merrill", Model: "SIGMA DP2 Merrill", Mean: 17.3992, Area: 16.5393, Photos: 4},
+	{Body: "DP2", Model: "SIGMA DP2", Mean: 8.8568, Area: 8.6472, Photos: 8},
+	{Body: "DP2 Merrill", Model: "SIGMA DP2 Merrill", Mean: 3.7365, Area: 2.5322, Photos: 3},
 	{Body: "DP2X", Model: "SIGMA DP2X", Mean: 4.3610, Area: 3.6937, Photos: 18},
 	{Body: "DP3 Merrill", Model: "SIGMA DP3 Merrill", Mean: 5.1144, Area: 3.9435, Photos: 13},
 	{Body: "SD1 Merrill", Model: "SIGMA SD1 Merrill", Mean: 3.9611, Area: 2.9242, Photos: 2},
-	{Body: "SD10", Model: "SIGMA SD10", Mean: 8.8665, Area: 8.2359, Photos: 20},
-	{Body: "SD14", Model: "SIGMA SD14", Mean: 8.7720, Area: 8.2607, Photos: 25},
+	{Body: "SD10", Model: "SIGMA SD10", Mean: 8.8160, Area: 8.1389, Photos: 18},
+	{Body: "SD14", Model: "SIGMA SD14", Mean: 8.4752, Area: 7.9476, Photos: 24},
 	{Body: "SD15", Model: "SIGMA SD15", Mean: 10.6894, Area: 9.8219, Photos: 4},
 	{Body: "SD9", Model: "SIGMA SD9", Mean: 8.7407, Area: 8.2017, Photos: 12},
 	{Body: "dp0 Quattro", Model: "SIGMA dp0 Quattro", Mean: 5.6836, Area: 4.4271, Photos: 12},
