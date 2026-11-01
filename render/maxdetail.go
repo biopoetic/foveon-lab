@@ -298,3 +298,185 @@ func highlightCeiling(l *Linear) float32 {
 	}
 	return 0
 }
+
+// MaxDetailOpenOptions are the strengths of the open-highlight recovery.
+// Zero values take the defaults; a negative Amount turns the pass off.
+type MaxDetailOpenOptions struct {
+	Threshold float64 // a normal-development luminance at or above this is white
+	Amount    float64 // fraction of exposure removed inside the region, 0..1
+	Soft      float64 // region-finding blur, pixels (0 = from the width)
+	Feather   float64 // edge feather, pixels (0 = from the width)
+	Top       float32 // the frame's display white, in l's units (0 = no gate)
+	Gate      float64 // only recover if open tones reach this multiple of Top
+	ClipFrac  float64 // only recover if the white area is at most this clipped
+}
+
+// maxDetailOpenGate: a frame whose open tones stop barely above the display
+// white has no hidden texture worth pulling out: the correction already shows
+// what is there, and lowering those tones only draws the mask's boundary
+// through a cloud. On the SD14 bridge sky the 99th percentile of open tones is
+// 1.32 x white and the recovery painted grey cloud patches (task 30); on
+// SDIM0031 it is 2.52 x and the leaf has real hidden texture.
+const maxDetailOpenGate = 1.5
+
+// maxDetailOpenClip: a white area that is mostly clipped has lost the data the
+// recovery would show. On the Shard glass 44% of the white is clipped, and
+// pulling the open part down next to it turns the glass's own tint into
+// yellow streaks (task 30, the same fault task 29 removed). SDIM0031's white
+// area is 0.15% clipped, the waterfall's 0.98%, dp3 Merrill's 3.55%.
+const maxDetailOpenClip = 0.05
+
+// maxDetailOpenWhite: the normal development's luminance at which a pixel is
+// the display's white. The correction puts the sensor's top stop on 1.0; an
+// over-exposed open tone is one that arrives there with room to spare.
+const maxDetailOpenWhite = 0.95
+
+// MaxDetailOpenAmount is how much exposure the open-highlight recovery takes
+// out inside the region: 0.6 is about one and a third stops. It is one
+// number, not a curve: the region has to keep its internal contrast (a
+// level-dependent gain is a shoulder again), so the recovery is a uniform
+// exposure change where the display has none to spare. The threshold, the
+// region and both gates are measured per frame.
+const MaxDetailOpenAmount = 0.6
+
+// MaxDetailOpenHighlights pulls open, over-exposed tones down by a smooth
+// exposure change before the correction, so the correction's own top end does
+// not flatten them. It returns the pixels it moved.
+//
+// Task 30: on SDIM0031 the leaf crop is open in every layer, yet 44% of it is
+// white in the normal development: the per-body correction puts raw 0.42 at
+// white, and the leaf's open tones run to 1.5, so 1.1 of raw range is squeezed
+// into the last few codes. The data is there; the display has no room for it.
+// The gain is computed from a low-frequency region mask (the white area
+// found at a coarse blur, then feathered) rather than from each pixel's own
+// level, so the texture inside the region keeps its contrast instead of being
+// compressed by a shoulder. Only open pixels are eligible: a fully clipped
+// area has no texture and must stay white.
+//
+// The region is the normal development's white, measured per frame: keying
+// on the raw's brightness instead caught every saturated bright green leaf
+// (its green layer is the brightest), which the normal development shows as
+// green, not white. norm must be the corrected (display) development at l's
+// geometry.
+func MaxDetailOpenHighlights(l, norm *Linear, open []bool, opt MaxDetailOpenOptions) []bool {
+	if l == nil || norm == nil || l.W < 1 || l.H < 1 || norm.W != l.W || norm.H != l.H {
+		return nil
+	}
+	n := l.W * l.H
+	if len(open) != n {
+		return nil
+	}
+	if opt.Threshold == 0 {
+		opt.Threshold = maxDetailOpenWhite
+	}
+	if opt.Amount == 0 {
+		opt.Amount = MaxDetailOpenAmount
+	}
+	if opt.Amount < 0 {
+		return nil
+	}
+	opt.Amount = max(0, min(0.95, opt.Amount))
+	if opt.Gate == 0 {
+		opt.Gate = maxDetailOpenGate
+	}
+	if opt.Top > 0 && openHeadroom(l, open, opt.Top) < opt.Gate {
+		return nil
+	}
+	// The region: open pixels the display puts at white. The white area's
+	// clipped share decides whether a recovery can be coherent at all.
+	field := make([]float32, n)
+	white, whiteClip := 0, 0
+	for i := 0; i < n; i++ {
+		p := norm.Pix[i*3 : i*3+3]
+		y := 0.2126*float64(p[0]) + 0.7152*float64(p[1]) + 0.0722*float64(p[2])
+		if y < opt.Threshold {
+			continue
+		}
+		white++
+		if !open[i] {
+			whiteClip++
+			continue
+		}
+		field[i] = 1
+	}
+	if white == 0 || whiteClip == white {
+		return nil
+	}
+	if opt.ClipFrac == 0 {
+		opt.ClipFrac = maxDetailOpenClip
+	}
+	if float64(whiteClip)/float64(white) > opt.ClipFrac {
+		return nil
+	}
+	// Find the white *regions*: a plain blur of the indicator, thresholded,
+	// keeps a large over-exposed area whole and discards the isolated white
+	// specks (a point light must stay a point). Dilating a 0/1 field instead
+	// turned every speck into a disc and covered two thirds of the frame.
+	if opt.Soft == 0 {
+		opt.Soft = math.Max(2, float64(l.W)/160)
+	}
+	if opt.Feather == 0 {
+		opt.Feather = math.Max(1, float64(l.W)/600)
+	}
+	soft := GaussBlur(field, l.W, l.H, opt.Soft)
+	region := make([]float32, n)
+	for i := range soft {
+		u := (float64(soft[i]) - 0.25) / 0.35
+		u = max(0, min(1, u))
+		region[i] = float32(u * u * (3 - 2*u))
+	}
+	region = GaussBlur(region, l.W, l.H, opt.Feather)
+	moved := make([]bool, n)
+	for i := 0; i < n; i++ {
+		// A clipped pixel has no data behind it and must stay exactly the
+		// normal development's white, even where the region's feather
+		// reaches it.
+		if !open[i] {
+			continue
+		}
+		m := float64(region[i])
+		// The box-blur running sums leave float32 residue far from the
+		// region; below this it is under a thousandth of a code.
+		if m <= 1e-4 {
+			continue
+		}
+		g := float32(1 - opt.Amount*m)
+		if g == 1 {
+			continue
+		}
+		p := l.Pix[i*3 : i*3+3]
+		p[0], p[1], p[2] = p[0]*g, p[1]*g, p[2]*g
+		moved[i] = true
+	}
+	return moved
+}
+
+// openHeadroom is the 99th percentile of the open pixels' brightest channel,
+// in multiples of the frame's display white. It is the frame's own measure of
+// how much open tone the correction has no room for.
+func openHeadroom(l *Linear, open []bool, top float32) float64 {
+	const bins = 1024
+	var hist [bins]int
+	n := 0
+	for i := 0; i < l.W*l.H && i < len(open); i++ {
+		if !open[i] {
+			continue
+		}
+		p := l.Pix[i*3 : i*3+3]
+		m := float64(max(p[0], max(p[1], p[2])) / top)
+		hist[max(0, min(bins-1, int(m*float64(bins)/8)))]++
+		n++
+	}
+	if n == 0 {
+		return 0
+	}
+	want := n - n/100
+	seen := 0
+	for b := 0; b < bins; b++ {
+		seen += hist[b]
+		if seen >= want {
+			return float64(b) / bins * 8
+		}
+	}
+	return 8
+}

@@ -187,6 +187,15 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 // geometry, so Max Detail can shoulder those and leave open highlights
 // alone (task 29).
 func goLinearForClass(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string, rebuild bool) (*render.Linear, []bool, error) {
+	l, rebuilt, _, err := goLinearForGates(ph, maxW, strength, irWhite, sceneWB, wbName, rebuild)
+	return l, rebuilt, err
+}
+
+// goLinearForGates is goLinearForClass and also marks the pixels no layer of
+// which was clipped, at the returned image's geometry. Max Detail uses that
+// to compress open over-exposed tones only: a fully clipped area has no
+// texture to show and must stay white.
+func goLinearForGates(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string, rebuild bool) (*render.Linear, []bool, []bool, error) {
 	rawDecodeCount.Add(1)
 	timing := os.Getenv("FOVEON_TIMING") != ""
 	mark := time.Now()
@@ -198,21 +207,23 @@ func goLinearForClass(ph *Photo, maxW int, strength float64, irWhite *[3]float64
 	}
 	img, t, err := goDevelopFor(ph, irWhite != nil, sceneWB, wbName)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	lap("develop")
 	// The gate is taken at the camera image's full resolution and brought
 	// through the same binning/resampling as the image, so its entries stay
 	// aligned with the output pixels.
 	classW, classH := img.W, img.H
-	var rebuilt []bool
+	var rebuilt, clipped []bool
 	if rebuild {
 		var st x3f.RecoverStats
 		var class []x3f.HighlightClass
 		st, class = x3f.RecoverHighlightsClass(img, t.Gain, 0.995)
 		rebuilt = make([]bool, len(class))
+		clipped = make([]bool, len(class))
 		for i, c := range class {
 			rebuilt[i] = c == x3f.HLRecovered
+			clipped[i] = c != x3f.HLNone
 		}
 		if os.Getenv("FOVEON_MD_DEBUG") != "" {
 			fmt.Fprintf(os.Stderr, "maxdetail %s: recovered %v lost %d partial %d\n", ph.Name, st.Recovered, st.Lost, st.Partial)
@@ -308,13 +319,22 @@ func goLinearForClass(ph *Photo, maxW int, strength float64, irWhite *[3]float64
 	if rebuilt != nil {
 		if img.W != classW || img.H != classH {
 			rebuilt = maxPoolGate(rebuilt, classW, classH, img.W, img.H)
+			clipped = maxPoolGate(clipped, classW, classH, img.W, img.H)
 			classW, classH = img.W, img.H
 		}
 		if l.W != classW || l.H != classH {
 			rebuilt = nearestGate(rebuilt, classW, classH, l.W, l.H)
+			clipped = nearestGate(clipped, classW, classH, l.W, l.H)
 		}
 	}
-	return l, rebuilt, nil
+	var open []bool
+	if clipped != nil {
+		open = make([]bool, len(clipped))
+		for i, c := range clipped {
+			open[i] = !c
+		}
+	}
+	return l, rebuilt, open, nil
 }
 
 // maxDetailAvailable reports whether ph can be developed from raw layers
@@ -372,30 +392,65 @@ func maxDetailRenderParams(p preset.Params) preset.Params {
 // drifted to other colours. It costs more than a normal preview because it
 // always decodes raw data, as the mode promises.
 func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
-	l, rebuilt, err := goLinearForClass(ph, maxW, strength, nil, false, "", true)
+	l, rebuilt, open, err := goLinearForGates(ph, maxW, strength, nil, false, "", true)
 	if err != nil {
 		return nil, err
 	}
 	preW, preH := l.W, l.H
 	l = uprightRaw(ph, l)
 	gate := uprightGate(ph, rebuilt, preW, preH)
-	// Keep the un-shouldered development for the pixels the shoulder does
-	// not move. The shoulder itself is per-pixel and exact, but the
-	// bright-chroma denoise inside rawCorrect is spatial: without this, a
-	// recovered highlight changes the chroma of its unclipped neighbours
-	// (task 28: 87,004 below-knee pixels, up to 0.25 linear). The copied
-	// pixels are the normal development's, bit for bit.
+	openGate := uprightGate(ph, open, preW, preH)
+	top := whiteInput(ph)
+	// The normal development, kept for every pixel neither highlight pass
+	// moves. The shoulder is per-pixel and exact, but the bright-chroma
+	// denoise inside rawCorrect is spatial: without this, a moved highlight
+	// changes the chroma of its unclipped neighbours (task 28: 87,004
+	// below-knee pixels, up to 0.25 linear). The copied pixels are the normal
+	// development's, bit for bit.
 	base := &render.Linear{W: l.W, H: l.H, Pix: append([]float32(nil), l.Pix...)}
-	mask := render.MaxDetailHighlightsGate(l, whiteInput(ph), gate)
-	if mask == nil {
-		rawCorrect(ph, l)
-	} else {
-		rawCorrect(ph, base)
+	rawCorrect(ph, base)
+	// Task 30: open over-exposed tones are pulled down before the correction
+	// so it does not run them into flat white. Then the rebuilt highlights
+	// keep task 29's shoulder. The two sets are disjoint by construction.
+	movedOpen := render.MaxDetailOpenHighlights(l, base, openGate, render.MaxDetailOpenOptions{Top: top})
+	mask := render.MaxDetailHighlightsGate(l, top, gate)
+	switch {
+	case movedOpen == nil && mask == nil:
+		l = base
+	case movedOpen == nil:
+		// Task 29's path, unchanged: the rebuilt pixels keep the curves
+		// without the bright-chroma denoise, which is spatial and must see
+		// the un-shouldered development.
 		rawCorrectApply(ph, l)
 		for i, moved := range mask {
 			if !moved {
 				copy(l.Pix[i*3:i*3+3], base.Pix[i*3:i*3+3])
 			}
+		}
+	default:
+		rawCorrectApply(ph, l)
+		// The denoise may see the open gain (a smooth exposure change) but
+		// not the shoulder: keep the rebuilt pixels' pre-denoise values and
+		// put them back after it.
+		var sIdx []int
+		var sVal []float32
+		if mask != nil {
+			for i, moved := range mask {
+				if moved {
+					sIdx = append(sIdx, i)
+					sVal = append(sVal, l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2])
+				}
+			}
+		}
+		render.BrightChromaDenoiseFor(l, calibGroup(ph))
+		for j, i := range sIdx {
+			copy(l.Pix[i*3:i*3+3], sVal[j*3:j*3+3])
+		}
+		for i := 0; i < l.W*l.H; i++ {
+			if (mask != nil && mask[i]) || movedOpen[i] {
+				continue
+			}
+			copy(l.Pix[i*3:i*3+3], base.Pix[i*3:i*3+3])
 		}
 	}
 	render.MaxDetailDevelop(l, render.MaxDetailOptions{ISO: photoISO(ph)})

@@ -210,3 +210,122 @@ func TestMaxDetailHighlightsKnee(t *testing.T) {
 		}
 	}
 }
+
+// t30Block makes a white block on a dark ground: l is the pre-correction
+// development, norm the normal display, open the never-clipped gate.
+func t30Block(w, h, bx, by, bw, bh int, level float32, clipped bool) (*Linear, *Linear, []bool) {
+	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3)}
+	norm := &Linear{W: w, H: h, Pix: make([]float32, w*h*3)}
+	open := make([]bool, w*h)
+	for i := range open {
+		open[i] = true
+	}
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			i := y*w + x
+			in := x >= bx && x < bx+bw && y >= by && y < by+bh
+			if !in {
+				l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2] = 0.1, 0.08, 0.06
+				norm.Pix[i*3], norm.Pix[i*3+1], norm.Pix[i*3+2] = 0.1, 0.08, 0.06
+				continue
+			}
+			// A small repeated texture, so a level-dependent gain would
+			// compress it and a uniform gain would not.
+			tx := float32(1)
+			if (x+y)%2 == 0 {
+				tx = 1.02
+			}
+			l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2] = level*tx, level*0.9*tx, level*0.8*tx
+			norm.Pix[i*3], norm.Pix[i*3+1], norm.Pix[i*3+2] = 1, 1, 1
+			if clipped {
+				open[i] = false
+			}
+		}
+	}
+	return l, norm, open
+}
+
+// TestMaxDetailOpenHighlights pins the scope: an open, display-white area
+// with real headroom is pulled down by a uniform exposure, its texture keeps
+// its relative contrast, and every gate that has nothing to recover returns
+// nil with the image untouched.
+func TestMaxDetailOpenHighlights(t *testing.T) {
+	const w, h = 200, 200
+	const bx, by, bw, bh = 75, 75, 50, 50
+	top := float32(1)
+	// The recovering case: open, white, level 2 (2 x white).
+	l, norm, open := t30Block(w, h, bx, by, bw, bh, 2, false)
+	before := append([]float32(nil), l.Pix...)
+	m := MaxDetailOpenHighlights(l, norm, open, MaxDetailOpenOptions{Top: top})
+	if m == nil {
+		t.Fatal("no mask for an open white block with headroom")
+	}
+	at := func(x, y int) int { return (y*w + x) * 3 }
+	c := at(bx+bw/2, by+bh/2)
+	if got, want := l.Pix[c], float32(2*1.02*(1-MaxDetailOpenAmount)); got < want-1e-4 || got > want+1e-4 {
+		t.Errorf("centre %g, want %g", got, want)
+	}
+	if !m[(by+bh/2)*w+bx+bw/2] {
+		t.Error("centre not reported as moved")
+	}
+	// Same gain on the bright and dim texture samples: the relative
+	// contrast is kept.
+	bright, dim := l.Pix[c], l.Pix[c+3]
+	if r := bright / dim; r < 1.019 || r > 1.021 {
+		t.Errorf("texture compressed: bright/dim %g, want 1.02", r)
+	}
+	// The dark ground is untouched and not reported.
+	for _, p := range [][2]int{{0, 0}, {w - 1, h - 1}, {10, 100}} {
+		i := p[1]*w + p[0]
+		if m[i] {
+			t.Errorf("ground pixel %v reported moved", p)
+		}
+		for k := 0; k < 3; k++ {
+			if l.Pix[i*3+k] != before[i*3+k] {
+				t.Errorf("ground pixel %v moved: %g -> %g", p, before[i*3+k], l.Pix[i*3+k])
+			}
+		}
+	}
+
+	// No white at all: nil and bit-identical.
+	l2, norm2, open2 := t30Block(w, h, 0, 0, 0, 0, 0, false)
+	before2 := append([]float32(nil), l2.Pix...)
+	if m := MaxDetailOpenHighlights(l2, norm2, open2, MaxDetailOpenOptions{Top: top}); m != nil {
+		t.Error("mask without a white area")
+	}
+	for i := range before2 {
+		if l2.Pix[i] != before2[i] {
+			t.Fatal("image changed without a white area")
+		}
+	}
+
+	// White, open, but nearly no headroom over white: nothing to recover.
+	l3, norm3, open3 := t30Block(w, h, bx, by, bw, bh, 1.2, false)
+	before3 := append([]float32(nil), l3.Pix...)
+	if m := MaxDetailOpenHighlights(l3, norm3, open3, MaxDetailOpenOptions{Top: top}); m != nil {
+		t.Error("mask for a white area with no headroom")
+	}
+	for i := range before3 {
+		if l3.Pix[i] != before3[i] {
+			t.Fatal("image changed without headroom")
+		}
+	}
+
+	// White and deep, but clipped: the data is lost, it must stay white.
+	l4, norm4, open4 := t30Block(w, h, bx, by, bw, bh, 2, true)
+	before4 := append([]float32(nil), l4.Pix...)
+	if m := MaxDetailOpenHighlights(l4, norm4, open4, MaxDetailOpenOptions{Top: top}); m != nil {
+		t.Error("mask for a clipped white area")
+	}
+	for i := range before4 {
+		if l4.Pix[i] != before4[i] {
+			t.Fatal("image changed without open data")
+		}
+	}
+
+	// A wrong-sized gate is not trusted.
+	l5, norm5, _ := t30Block(w, h, bx, by, bw, bh, 2, false)
+	if m := MaxDetailOpenHighlights(l5, norm5, []bool{true}, MaxDetailOpenOptions{Top: top}); m != nil {
+		t.Error("mask from a wrong-sized gate")
+	}
+}
