@@ -112,9 +112,9 @@ A **star is five stars**: a star has always meant "keep", and five stars is the 
 Unstarring clears the rating only when it was five. A **reject hides** a photo from the default list and
 is never a delete; nothing in the cull removes a file. **Hide rejected**, **Show all** and **Only
 rejected** in the sidebar, with **Any rating / Unrated / ★1+ … ★5**, are the filters; the list, the cull
-and **Export…** (the *filtered* scope) all use the same set. In the cull, **Finish filtered…** opens
+and **Export…** (the *filtered* scope) all use the same set. In the cull, **Export filtered…** opens
 that same batch export dialog with *The filtered photos* already selected, so there is one export path
-and no separate Finish engine.
+and no separate finish engine.
 
 Decisions are kept in `FoveonLab_Cull.json` in the photo's own folder, keyed by file name, written in
 one atomic step. The X3F is never touched: the sidecar moves with the folder, so the decisions survive a

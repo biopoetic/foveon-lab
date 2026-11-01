@@ -320,7 +320,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <span id="cullFolder" style="color:var(--dim)"></span>
         <span class="spacer"></span>
         <label class="chk" title="After a rating or a rejection, move to the next photo in the filtered list"><input type="checkbox" id="cullAdvance" checked> Advance</label>
-        <button id="cullFinish" class="primary" title="Finish the filtered photos with the current look: one export dialog for the whole set">Finish filtered…</button>
+        <button id="cullFinish" class="primary" title="Export the filtered photos with the current look: one export dialog for the whole set">Export filtered…</button>
       </div>
       <div id="cullStage">
         <img id="cullImg" alt="">
@@ -2438,7 +2438,7 @@ function batchOpen(scope, finish){
   const all = S.photos.filter(x => !x.unsupported);
   const p = current();
   const tuned = !!S.params && (CULL.on || $("#detail").classList.contains("on")) && dirty();
-  $("#batchTitle").textContent = finish ? "Finish the filtered photos" : "Export photos";
+  $("#batchTitle").textContent = finish ? "Export the filtered photos" : "Export photos";
   $("#bSelectedLab").textContent = `The selected photos (${batchIds("selected").length})`;
   $("#bFilteredLab").textContent = `The filtered photos (${batchIds("filtered").length})`;
   $("#bFolderLab").textContent = `This folder: ${S.photo.folder} (${folder.length} filtered photos)`;
@@ -2953,8 +2953,8 @@ async function finishSave(){
   }
 }
 
-// finishFiltered is gone: Finish on the filtered set is the batch export
-// dialog, opened with the filtered scope selected (cull's Finish filtered…).
+// finishFiltered is gone: exporting the filtered set is the batch export
+// dialog, opened with the filtered scope selected (cull's Export filtered…).
 // One export path, one place where scope, format, colour and destination are
 // chosen, so nobody has to learn a second dialog to act on a filtered set.
 
