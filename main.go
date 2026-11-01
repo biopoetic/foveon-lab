@@ -1587,6 +1587,10 @@ func calibCommand(desk string) bool {
 		sppDecompCommand(desk)
 		return true
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "field-study" {
+		fieldStudyCommand(desk)
+		return true
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "fit-raw" {
 		rawTool = findRawTool("")
 		fitRawCommand(desk)

@@ -123,6 +123,7 @@ func fitRawCommand(desk string) {
 	tasteOut := fsFlags.String("tasteout", "", "print the taste (tone + saturation) learnt on all of this group's photos, as JSON for render/rawbase.json")
 	onlyGroups := fsFlags.String("groups", "", "decode only these groups (comma separated), to save time")
 	dngProfile := fsFlags.Bool("dngprofile", false, "research: held-out dE of the raw base as a DNG camera profile (ForwardMatrix + one Adobe tone curve) vs the full per-channel raw base")
+	wbStudy := fsFlags.Bool("wb", false, "research: held-out error of white-balance estimators read from the image itself (no SPP peeking)")
 	onlyRes := fsFlags.String("res", "", "research: only photos of this RESOLUTION (HI, MED), e.g. to test a separate SD1 MED base")
 	outDir := fsFlags.String("out", "", "write rawbase.json and jpegwb.json to this folder instead of the -dir folder")
 	nr := fsFlags.Float64("nr", defaultNR, "with -go: noise reduction of the training decodes (the app's own by default; 0 until v0.4.56)")
@@ -195,7 +196,7 @@ func fitRawCommand(desk string) {
 			loadPair(name, e, ph, family, group, groups, jgroups, *charts, *onlyRes, *goRaw, *camfRaw, *noSgain, *noDenoise, *nr)
 		}
 	}
-	research := *deltaE || *tasteOut != "" || *transfer != "" || *taste || *dngProfile || *local || *diagnose
+	research := *deltaE || *tasteOut != "" || *transfer != "" || *taste || *dngProfile || *local || *diagnose || *wbStudy
 	if research {
 		load(nil) // these compare groups with each other
 	}
@@ -247,6 +248,12 @@ func fitRawCommand(desk string) {
 	if *diagnose {
 		for _, f := range fams {
 			calib.DiagnoseRaw(f, groups[f], os.Stdout)
+		}
+		return
+	}
+	if *wbStudy {
+		for _, f := range fams {
+			calib.WBStudy(f, groups[f], os.Stdout)
 		}
 		return
 	}
