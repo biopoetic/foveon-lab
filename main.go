@@ -18,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"image"
+	"image/draw"
 	"image/jpeg"
 	"io/fs"
 	"log"
@@ -357,6 +358,13 @@ type server struct {
 	// already running is allowed to finish into the cache, because the raw
 	// decoder has no cancellation point inside one frame.
 	cullActive atomic.Bool
+
+	// Neighbour prefetch: while a photo is on screen, the page asks for the
+	// two beside it so a step is not a cold 2 s JPEG decode. Only one
+	// prefetch runs; a new request supersedes the old one, and it never
+	// starts while a render is waiting (the picture always wins).
+	prefetchGen  atomic.Uint64
+	renderActive atomic.Int64
 }
 
 func (s *server) loadPresets() {
@@ -876,8 +884,55 @@ func (s *server) handleGPURecipe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, render.NewGPURecipe(b, p, comp))
 }
 
+// handlePrefetch prepares the photos beside the one on screen (GET
+// /api/prefetch?ids=a,b). It answers at once and does the work in the
+// background: the page calls it when a photo has been still for a moment, so
+// a step to the next one finds its JPEG already decoded and its Base built.
+// A newer request supersedes it, and it never starts while a render is
+// waiting, so the picture the person is looking at always wins.
+func (s *server) handlePrefetch(w http.ResponseWriter, r *http.Request) {
+	ids := strings.Split(r.URL.Query().Get("ids"), ",")
+	gen := s.prefetchGen.Add(1)
+	w.WriteHeader(http.StatusNoContent)
+	go func() {
+		for _, id := range ids {
+			id = strings.TrimSpace(id)
+			if id == "" || s.prefetchGen.Load() != gen || s.renderActive.Load() > 0 || s.cullActive.Load() {
+				return
+			}
+			ph := s.lookup(id)
+			if ph == nil || ph.Unsupported != "" {
+				continue
+			}
+			if _, err := s.prefetchBase(ph); err != nil {
+				log.Printf("prefetch %s: %v", ph.Name, err)
+			}
+		}
+	}()
+}
+
+// prefetchBase is baseAs without the raw-decode request a visible photo
+// makes: a neighbour is not on screen yet, so it must not start a 15 s
+// development behind the picture being looked at.
+func (s *server) prefetchBase(ph *Photo) (*render.Base, error) {
+	g := geometryOf(ph)
+	v, err := s.bases.get(ph.ID+"|jpg|"+strconv.Itoa(sourceW)+geoKey(g), func() (any, error) {
+		src, err := s.sourceAs(ph, "jpg")
+		if err != nil {
+			return nil, err
+		}
+		return render.NewBase(render.ApplyGeometry(src, g).Downscale(sourceW)), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*render.Base), nil
+}
+
 func (s *server) handleRender(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	s.renderActive.Add(1)
+	defer s.renderActive.Add(-1)
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
 	t0 := time.Now()
@@ -970,6 +1025,20 @@ func (s *server) handleThumb(w http.ResponseWriter, r *http.Request) {
 			if b, err := f.ThumbJPEG(); err == nil {
 				return b, nil
 			}
+			// A body with only one big preview (Quattro, SD14) stores the
+			// camera's 640x480 thumbnail in that preview's EXIF. Decoding
+			// 12-18 MB of JPEG for a 72 px list tile made a first folder open
+			// take half a minute; this reads the first 256 KB instead.
+			if b, err := f.EXIFThumbJPEG(700); err == nil {
+				if img, err := jpeg.Decode(bytes.NewReader(b)); err == nil {
+					// The EXIF tile is 4:3 with the 3:2 frame letterboxed in
+					// it; keep the frame, not the black bars.
+					if ph.previewW > 0 && ph.previewH > 0 {
+						img = cropToAspect(img, ph.previewW, ph.previewH)
+					}
+					return thumbnailJPEG(img), nil
+				}
+			}
 			// SD9/SD10 thumbnails aren't JPEG. Encode their small embedded
 			// preview; never develop the raw data for a list thumbnail (that
 			// put a multi-second decode behind a scrolling list and the cull).
@@ -999,6 +1068,32 @@ func thumbnailJPEG(img image.Image) []byte {
 	var buf bytes.Buffer
 	_ = jpeg.Encode(&buf, render.Render(b, preset.Neutral(), render.Compensation{SatFactor: 1}), &jpeg.Options{Quality: 80})
 	return buf.Bytes()
+}
+
+// cropToAspect centre-crops img to aw:ah. The camera's EXIF thumbnail is
+// always 4:3, with a 3:2 frame letterboxed into it; the list tile must show
+// the frame, not two black bars.
+func cropToAspect(img image.Image, aw, ah int) image.Image {
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= 0 || h <= 0 || aw <= 0 || ah <= 0 {
+		return img
+	}
+	nw, nh := w, h
+	x0, y0 := b.Min.X, b.Min.Y
+	if w*ah > h*aw {
+		nw = (h*aw + ah/2) / ah
+		x0 += (w - nw) / 2
+	} else if w*ah < h*aw {
+		nh = (w*ah + aw/2) / aw
+		y0 += (h - nh) / 2
+	}
+	if nw <= 0 || nh <= 0 || (nw == w && nh == h) {
+		return img
+	}
+	out := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	draw.Draw(out, out.Bounds(), img, image.Pt(x0, y0), draw.Src)
+	return out
 }
 
 var reUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -1868,6 +1963,7 @@ func main() {
 	mux.HandleFunc("/api/lut", s.handleLUT)
 	mux.HandleFunc("/api/rawstate", s.handleRawState)
 	mux.HandleFunc("/api/rawprefetch", s.handleRawPrefetch)
+	mux.HandleFunc("/api/prefetch", s.handlePrefetch)
 	mux.HandleFunc("/api/accurate", s.handleAccurate)
 	mux.HandleFunc("/api/geometry", s.handleGeometry)
 	mux.HandleFunc("/api/quit", handleQuit)

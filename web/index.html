@@ -1018,6 +1018,24 @@ function photoInfoText(p){
   return [accLabel(p), p.lowRes && "LOW-RES PREVIEW (567 px, no full-size preview in SD9/SD10 files)", p.rawDecoded && ((ACC.mode[p.id] || "").startsWith("raw") ? "RAW-DECODED (from the raw data, no in-camera look)" : "DEVELOPING THE RAW DATA (the camera's small preview is shown meanwhile)"), p.kind === "image" && "NOT A FOVEON FILE: the presets only change its look", i.REPAIRED, i.CAMMODEL, i.LENS && "lens " + i.LENS, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.SPPGAP, i.TIME].filter(Boolean).join(" · ");
 }
 
+// prefetchNeighbours prepares the photos beside the one on screen once it
+// has been still for a moment: stepping to the next one otherwise starts a
+// cold 2 s JPEG decode and Base build. The server gives way to any render
+// that arrives, and a newer selection cancels the wait.
+const PF = {timer: null};
+function prefetchNeighbours(){
+  clearTimeout(PF.timer);
+  const p = S.photo;
+  if (!p) return;
+  const i = S.photos.indexOf(p);
+  const near = [i + 1, i - 1].map(k => S.photos[k]).filter(x => x && !x.unsupported).map(x => x.id);
+  if (!near.length) return;
+  PF.timer = setTimeout(() => {
+    if (S.photo?.id !== p.id || CULL.on) return;
+    fetch("/api/prefetch?ids=" + near.join(",")).catch(() => {});
+  }, 700);
+}
+
 function selectPhoto(id){
   const p = S.photos.find(x => x.id === id) || S.photos[0];
   if (!p) return;
@@ -1035,6 +1053,7 @@ function selectPhoto(id){
   const i = p.info;
   $("#photoInfo").textContent = photoInfoText(p);
   accWatch();
+  prefetchNeighbours();
   loadGeo(p.id);
   // In the editor keep the SAME preset (by id, not list position — the list
   // can change with the camera) and any slider tweaks.

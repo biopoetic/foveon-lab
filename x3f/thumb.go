@@ -192,3 +192,105 @@ func decodeHuffmanRGB(data []byte, w, h int) (*image.RGBA, error) {
 	}
 	return out, nil
 }
+
+// readJPEGPrefix reads at most n bytes of an image section's payload. The
+// EXIF thumbnails sit in the first APP1 segment, so a thumbnail never needs
+// the 12-18 MB of pixel data that follows it.
+func (f *File) readJPEGPrefix(im Image, n int) ([]byte, error) {
+	fh, err := os.Open(f.Path)
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+	length := int(im.Length) - 28
+	if length <= 0 {
+		return nil, errors.New("x3f: empty image section")
+	}
+	buf := make([]byte, min(length, n))
+	if _, err := fh.ReadAt(buf, int64(im.Offset)+28); err != nil {
+		return nil, err
+	}
+	i := bytes.Index(buf[:min(len(buf), 256)], []byte{0xFF, 0xD8})
+	if i < 0 {
+		return nil, errors.New("x3f: embedded image is not a JPEG")
+	}
+	return buf[i:], nil
+}
+
+// EXIFThumbJPEG returns the largest JPEG thumbnail stored in the EXIF block
+// of the file's largest embedded preview, at most maxW pixels wide. Every
+// body that stores only one big preview (the Quattros, the SD14) also stores
+// a 640x480 and a 160x120 EXIF thumbnail, so a list tile can use the camera's
+// own thumbnail instead of decoding the 12-18 MB preview.
+func (f *File) EXIFThumbJPEG(maxW int) ([]byte, error) {
+	js := f.jpegImages()
+	if len(js) == 0 {
+		return nil, errors.New("x3f: no embedded JPEG preview")
+	}
+	data, err := f.readJPEGPrefix(js[0], 256<<10)
+	if err != nil {
+		return nil, err
+	}
+	if b := exifThumbJPEG(data, maxW); b != nil {
+		return b, nil
+	}
+	return nil, errors.New("x3f: no EXIF thumbnail")
+}
+
+// exifThumbJPEG finds the JPEG thumbnails in a preview's EXIF APP1 and
+// returns the largest one no wider than maxW. The APP1's TIFF block is not
+// needed: every thumbnail is a complete JPEG between its own SOI and EOI.
+func exifThumbJPEG(data []byte, maxW int) []byte {
+	if len(data) < 4 || data[0] != 0xFF || data[1] != 0xD8 {
+		return nil
+	}
+	var app1 []byte
+	for p := 2; p+4 <= len(data); {
+		if data[p] != 0xFF {
+			p++
+			continue
+		}
+		m := data[p+1]
+		if m == 0xD8 || m == 0x01 || (m >= 0xD0 && m <= 0xD7) {
+			p += 2
+			continue
+		}
+		if m == 0xDA || m == 0xD9 {
+			break
+		}
+		n := int(data[p+2])<<8 | int(data[p+3])
+		if n < 2 || p+2+n > len(data) {
+			break
+		}
+		if m == 0xE1 {
+			seg := data[p+4 : p+2+n]
+			if bytes.HasPrefix(seg, []byte("Exif\x00\x00")) {
+				app1 = seg
+				break
+			}
+		}
+		p += 2 + n
+	}
+	if app1 == nil {
+		return nil
+	}
+	var best []byte
+	bestW := 0
+	for i := 0; i+1 < len(app1); i++ {
+		if app1[i] != 0xFF || app1[i+1] != 0xD8 {
+			continue
+		}
+		j := bytes.Index(app1[i+2:], []byte{0xFF, 0xD9})
+		if j < 0 {
+			continue
+		}
+		end := i + 2 + j + 2
+		cfg, err := jpeg.DecodeConfig(bytes.NewReader(app1[i:end]))
+		if err == nil && cfg.Width >= 64 && cfg.Width <= maxW && cfg.Width > bestW {
+			best = app1[i:end]
+			bestW = cfg.Width
+		}
+		i = end - 1
+	}
+	return best
+}

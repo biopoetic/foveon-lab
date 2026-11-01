@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	thumbCacheVersion = "1"
+	thumbCacheVersion = "2"
 	thumbCacheKeep    = 4000
 )
 

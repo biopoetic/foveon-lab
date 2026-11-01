@@ -1,12 +1,61 @@
 package x3f
 
 import (
+	"bytes"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+// TestEXIFThumbJPEG checks that a thumbnail in the preview's APP1 is found
+// and the largest one within the width limit is returned. The X3F samples
+// that carry one are the Quattros and the SD14; this test needs no file.
+func TestEXIFThumbJPEG(t *testing.T) {
+	small := encodeTestJPEG(t, 96, 72, 40)
+	large := encodeTestJPEG(t, 160, 120, 200)
+	main := encodeTestJPEG(t, 32, 24, 10)
+
+	payload := append([]byte("Exif\x00\x00"), small...)
+	payload = append(payload, large...)
+	seg := []byte{0xFF, 0xE1, byte((len(payload) + 2) >> 8), byte(len(payload) + 2)}
+	seg = append(seg, payload...)
+	data := append([]byte{}, main[:2]...)
+	data = append(data, seg...)
+	data = append(data, main[2:]...)
+
+	got := exifThumbJPEG(data, 700)
+	if got == nil {
+		t.Fatal("no thumbnail found")
+	}
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(got))
+	if err != nil || cfg.Width != 160 || cfg.Height != 120 {
+		t.Fatalf("got %dx%d (%v), want 160x120", cfg.Width, cfg.Height, err)
+	}
+	if got := exifThumbJPEG(data, 120); got == nil {
+		t.Fatal("no thumbnail under 120 px")
+	} else if cfg, _ := jpeg.DecodeConfig(bytes.NewReader(got)); cfg.Width != 96 {
+		t.Fatalf("under 120 px: got %d wide, want 96", cfg.Width)
+	}
+	if got := exifThumbJPEG(main, 700); got != nil {
+		t.Fatalf("thumbnail found in a JPEG without EXIF: %d bytes", len(got))
+	}
+}
+
+func encodeTestJPEG(t *testing.T, w, h, shade int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for i := range img.Pix {
+		img.Pix[i] = uint8(shade + i%37)
+	}
+	var b bytes.Buffer
+	if err := jpeg.Encode(&b, img, &jpeg.Options{Quality: 80}); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
 
 // TestSD9SD10Previews decodes the small previews of the SD9 (plain RGB) and
 // SD10 (Huffman) samples. Set X3F_DUMP_DIR to also write them as PNG for a
