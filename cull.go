@@ -262,17 +262,22 @@ func (s *server) cullPreview(ph *Photo) ([]byte, error) {
 	v, err := s.cullImgs.get(ph.ID, func() (any, error) {
 		if ph.Kind == "x3f" {
 			f, err := x3f.Open(ph.path)
-			if err == nil {
-				if b, _, err := f.PreviewJPEG(); err == nil {
-					return b, nil
-				}
-				// SD9/SD10 store a small preview that is not JPEG. Encode
-				// that preview; do not run the raw development, which is
-				// seconds per frame and is not what culling needs.
-				if img, _, err := f.Preview(); err == nil {
-					return encodeCullJPEG(img), nil
-				}
+			if err != nil {
+				return nil, errors.New("This file is damaged and cannot be shown. Nothing was changed.")
 			}
+			if b, _, err := f.PreviewJPEG(); err == nil {
+				return b, nil
+			}
+			// SD9/SD10 store a small preview that is not JPEG. Encode that
+			// preview; never run the raw development, whose seconds per frame
+			// are not what culling needs.
+			if img, _, err := f.Preview(); err == nil {
+				return encodeCullJPEG(img), nil
+			}
+			return nil, errors.New("This X3F has no embedded preview to cull from. Open it in the editor to develop its raw data.")
+		}
+		if ph.Unsupported != "" {
+			return nil, errors.New(ph.Unsupported)
 		}
 		img, err := decodePreview(ph)
 		if err != nil {

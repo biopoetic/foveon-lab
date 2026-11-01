@@ -199,8 +199,15 @@ func loadMeta(ph *Photo) bool {
 	if ph.Kind == "x3f" {
 		f, err := x3f.Open(ph.path)
 		if err != nil {
-			log.Printf("skipping %s: %v", ph.path, err)
-			return false
+			if errors.Is(err, fs.ErrNotExist) {
+				return false // gone between the walk and the read
+			}
+			// Keep it in the list: a folder whose only X3F is damaged must
+			// say so, not look like a folder with no photos.
+			ph.Unsupported = "This file is damaged or is not an X3F file. Foveon Lab did not change it."
+			ph.Info["ERROR"] = err.Error()
+			log.Printf("damaged %s: %v", ph.path, err)
+			return true
 		}
 		ph.props, ph.Camera, ph.Rotation = f.Props, f.Camera(), f.Rotation
 		for _, im := range f.Images {
@@ -210,7 +217,11 @@ func loadMeta(ph *Photo) bool {
 		}
 		switch {
 		case !f.HasPreview():
-			ph.Unsupported = "This X3F has no preview Foveon Lab can decode yet."
+			if f.Recovered != "" {
+				ph.Unsupported = "This X3F is damaged (its preview is missing). The file was not changed."
+			} else {
+				ph.Unsupported = "This X3F has no embedded preview, so Foveon Lab cannot show it."
+			}
 		case !f.HasFullPreview():
 			// SD9/SD10: only the camera's 567 px preview — decode the raw
 			// data instead (natively, or with x3f_extract).
@@ -233,7 +244,7 @@ func loadMeta(ph *Photo) bool {
 		}
 		if f.Recovered != "" {
 			// Cut short (e.g. a card pulled mid-write): read by scanning.
-			ph.Info["REPAIRED"] = "damaged file, read without its section directory"
+			ph.Info["REPAIRED"] = "DAMAGED FILE (read without its directory; parts may be missing)"
 			log.Printf("%s: damaged file (%s), sections recovered by scanning", ph.Name, f.Recovered)
 		}
 		if t, err := strconv.ParseInt(ph.Info["TIME"], 10, 64); err == nil {
@@ -247,7 +258,7 @@ func loadMeta(ph *Photo) bool {
 	if ph.Camera == "" {
 		ph.Camera = x3f.ShortModel(ph.Folder)
 	}
-	ph.Accurate = rawCorrectionFor(ph) != nil
+	ph.Accurate = ph.RawDecoded || rawCorrectionFor(ph) != nil
 	if g, ok := sppGapFor(modelOf(ph)); ok {
 		ph.Info["SPPGAP"] = g.Line()
 	}
@@ -314,6 +325,9 @@ type server struct {
 	photoRoots []string
 	allImages  bool
 	presetsDir string
+	// demo is an optional X3F supplied beside the program or with -demo; the
+	// photograph itself is never in the repository (demo.go).
+	demo string
 
 	pmu     sync.RWMutex
 	presets []preset.Preset
@@ -335,6 +349,11 @@ type server struct {
 	rawQueue chan *Photo
 	// rawQueueLow: prefetches of the neighbours, decoded when nothing is urgent.
 	rawQueueLow chan *Photo
+	// cullActive: the cull view is open. Culling reads embedded previews only,
+	// so no raw decode may start (and queued ones are dropped); a decode
+	// already running is allowed to finish into the cache, because the raw
+	// decoder has no cancellation point inside one frame.
+	cullActive atomic.Bool
 }
 
 func (s *server) loadPresets() {
@@ -423,6 +442,31 @@ func decodePreview(ph *Photo) (image.Image, error) {
 	return jpeg.Decode(bytes.NewReader(data))
 }
 
+// rawStillLinear is the SD9/SD10 raw rendering as it was before the
+// background decode: develop at full size, apply their fitted raw base, gamma,
+// then downsample. Keeping this exact path (rather than the binned rawLinear
+// used for the JPEG-based accurate previews) is what keeps their default
+// rendering bit-identical.
+func rawStillLinear(ph *Photo, maxW int) (*render.Linear, error) {
+	img, err := decodePreview(ph)
+	if err != nil {
+		return nil, err
+	}
+	return balanceJPEG(ph, render.FromImage(img, maxW, ph.Rotation)), nil
+}
+
+// stillPreview is the camera's own preview with no raw development, for the
+// bodies that have only a small one (SD9/SD10). It is what the cull and the
+// first view can show without waiting for a decode.
+func stillPreview(ph *Photo) (image.Image, error) {
+	f, err := x3f.Open(ph.path)
+	if err != nil {
+		return nil, err
+	}
+	img, _, err := f.Preview()
+	return img, err
+}
+
 // balanceJPEG applies the measured per-photo colour balance that brings a
 // camera-JPEG preview closer to SPP's neutral rendering (render.BalanceJPEG).
 func balanceJPEG(ph *Photo, l *render.Linear) *render.Linear {
@@ -434,6 +478,12 @@ func balanceJPEG(ph *Photo, l *render.Linear) *render.Linear {
 
 // sourceMode names which source a photo renders from right now: "raw" (the
 // accurate, raw-based one), else "jpg" (its preview).
+//
+// It does not queue a raw decode itself. The first view of a photo is the
+// camera JPEG, and starting a 10–25 s decode in the same request starved that
+// render of CPU (the first picture took 2–6 s instead of well under one). The
+// decode is queued once the JPEG source is in hand (baseAs), or when the page
+// polls /api/rawstate after the picture is on screen; the cull never asks.
 func (s *server) sourceMode(ph *Photo) string {
 	if ph.jpegBroken.Load() {
 		return "raw"
@@ -446,14 +496,7 @@ func (s *server) sourceMode(ph *Photo) string {
 			s.requestRaw(ph) // the full decode follows
 			return "rawfast"
 		}
-		// Nothing raw is ready yet: paint the camera's own embedded JPEG at
-		// once and let the quick and the full decode replace it (the client
-		// polls /api/rawstate and re-renders when the mode changes), so the
-		// first view of a photo does not wait for a decode at all.
-		s.requestRaw(ph)
-		return "jpg"
 	}
-	s.requestRaw(ph)
 	return "jpg"
 }
 
@@ -464,6 +507,9 @@ func (s *server) source(ph *Photo) (*render.Linear, error) {
 func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
 	v, err := s.sources.get(ph.ID+"|"+mode, func() (any, error) {
 		if mode == "raw" {
+			if ph.RawDecoded && !ph.rawFailed.Load() {
+				return rawStillLinear(ph, sourceW)
+			}
 			return rawLinear(ph, sourceW, "sRGB")
 		}
 		if mode == "rawmaxdetail" {
@@ -478,7 +524,17 @@ func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
 		if mode == "rawfast" {
 			return rawLinear(ph, sourceW, rawFastColor)
 		}
-		img, err := decodePreview(ph)
+		var img image.Image
+		var err error
+		if ph.RawDecoded && !ph.rawFailed.Load() && !ph.jpegBroken.Load() {
+			// SD9/SD10 have no full-size JPEG, only their small embedded
+			// preview. Show that at once and let the background raw decode
+			// replace it; decoding the raw data here made the first picture
+			// wait 4–10 s.
+			img, err = stillPreview(ph)
+		} else {
+			img, err = decodePreview(ph)
+		}
 		if err != nil {
 			// A damaged embedded JPEG: fall back to the raw data.
 			if ph.Kind == "x3f" && rawAvailable() {
@@ -513,6 +569,8 @@ func (s *server) fullGeo(ph *Photo, mode string, g render.Geometry) (*render.Lin
 			src, err = rawLinearFor(ph, 0, "sRGB", wbFilter)
 		case mode == "rawmaxdetail":
 			src, err = rawMaxDetail(ph, 0, defaultNR)
+		case mode == "raw" && ph.RawDecoded && !ph.rawFailed.Load():
+			src, err = rawStillLinear(ph, 0)
 		case mode == "raw", mode == "rawfast":
 			src, err = rawLinear(ph, 0, "sRGB")
 		default:
@@ -543,6 +601,11 @@ func (s *server) baseAs(ph *Photo, w int, mode string, g render.Geometry) (*rend
 		src, err := s.sourceAs(ph, mode)
 		if err != nil {
 			return nil, err
+		}
+		// Now that the JPEG source exists, the raw decode can follow without
+		// delaying the first picture (and the grid can keep painting from it).
+		if mode == "jpg" && s.wantRaw(ph) {
+			s.requestRaw(ph)
 		}
 		// Straighten + crop at source resolution, then size for the view.
 		return render.NewBase(render.ApplyGeometry(src, g).Downscale(w)), nil
@@ -895,19 +958,21 @@ func (s *server) handleThumb(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return nil, err
 			}
-			// SD9/SD10 thumbnails aren't JPEG; fall through and render one.
 			if b, err := f.ThumbJPEG(); err == nil {
 				return b, nil
+			}
+			// SD9/SD10 thumbnails aren't JPEG. Encode their small embedded
+			// preview; never develop the raw data for a list thumbnail (that
+			// put a multi-second decode behind a scrolling list and the cull).
+			if img, _, err := f.Preview(); err == nil {
+				return thumbnailJPEG(img), nil
 			}
 		}
 		img, err := decodePreview(ph)
 		if err != nil {
 			return nil, err
 		}
-		b := render.NewBase(render.FromImage(img, 240, 0))
-		var buf bytes.Buffer
-		err = jpeg.Encode(&buf, render.Render(b, preset.Neutral(), render.Compensation{SatFactor: 1}), &jpeg.Options{Quality: 80})
-		return buf.Bytes(), err
+		return thumbnailJPEG(img), nil
 	})
 	if err != nil {
 		httpErr(w, 500, err)
@@ -916,6 +981,13 @@ func (s *server) handleThumb(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	w.Write(v.([]byte))
+}
+
+func thumbnailJPEG(img image.Image) []byte {
+	b := render.NewBase(render.FromImage(img, 240, 0))
+	var buf bytes.Buffer
+	_ = jpeg.Encode(&buf, render.Render(b, preset.Neutral(), render.Compensation{SatFactor: 1}), &jpeg.Options{Quality: 80})
+	return buf.Bytes()
 }
 
 var reUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -1069,7 +1141,7 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 		dir = filepath.Join(filepath.Dir(ph.path), "foveon-lab")
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
+		return "", plainFileError(err, filepath.Join(dir, "foveon-lab"))
 	}
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
@@ -1093,6 +1165,14 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 		p = maxDetailRenderParams(p)
 	} else if ir {
 		l, err := rawLinearFor(ph, 0, rawExportColor(denoise), lf)
+		if err != nil {
+			return "", err
+		}
+		src = l
+	} else if ph.RawDecoded && !ph.rawFailed.Load() {
+		// SD9/SD10: the same full-size raw development their preview has
+		// always used (see rawStillLinear), not the binned accurate path.
+		l, err := rawStillLinear(ph, 0)
 		if err != nil {
 			return "", err
 		}
@@ -1142,7 +1222,7 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	path := uniquePath(dir, stem, ext)
 	f, err := os.Create(path)
 	if err != nil {
-		return "", err
+		return "", plainFileError(err, path)
 	}
 	switch format {
 	case "tiff":
@@ -1177,7 +1257,7 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	}
 	if err != nil {
 		os.Remove(path)
-		return "", err
+		return "", plainFileError(err, path)
 	}
 	log.Printf("exported %s", path)
 	return path, nil
@@ -1665,6 +1745,7 @@ func main() {
 	aiModel := flag.String("ai-model", "deepseek-flash", "vision model for the AI agent")
 	aiKeyEnv := flag.String("ai-key-env", "DEEPSEEK_API_KEY", "environment variable holding the AI API key")
 	rawToolPath := flag.String("x3f-extract", "", "path to x3f_extract (x3fuse-core) for SD9/SD10 raw decoding; default: next to this program or on PATH")
+	demoFile := flag.String("demo", "", "optional demo X3F to offer on the empty start screen (default: demo/demo.X3F beside the program, or FOVEON_DEMO)")
 	// Older macOS hands a Finder-launched .app a -psn_… argument.
 	args := os.Args[:1]
 	for _, a := range os.Args[1:] {
@@ -1719,6 +1800,11 @@ func main() {
 		cullImgs:   newLRU(12),
 		sem:        make(chan struct{}, max(2, runtime.NumCPU()/2)),
 	}
+	if *demoFile != "" {
+		s.demo = *demoFile
+	} else {
+		s.demo = findDemo()
+	}
 	// AI agent: what was set in the app wins over the environment variable.
 	s.rawState, s.rawQueue, s.rawQueueLow = map[string]string{}, make(chan *Photo, 256), make(chan *Photo, 256)
 	s.accurate.Store(cfg.Accurate == nil || *cfg.Accurate)
@@ -1743,6 +1829,7 @@ func main() {
 	mux.HandleFunc("/api/photos", s.handlePhotos)
 	mux.HandleFunc("/api/favorite", s.handleFavorite)
 	mux.HandleFunc("/api/cull", s.handleCull)
+	mux.HandleFunc("/api/cullmode", s.handleCullMode)
 	mux.HandleFunc("/api/cullimg", s.handleCullImg)
 	mux.HandleFunc("/api/delete", s.handleDelete)
 	mux.HandleFunc("/api/folders", s.handleFolders)
@@ -1754,6 +1841,7 @@ func main() {
 	mux.HandleFunc("/api/ab/img", s.handleABImg)
 	mux.HandleFunc("/api/critique", s.handleCritique)
 	mux.HandleFunc("/api/allimages", s.handleAllImages)
+	mux.HandleFunc("/api/demo", s.handleDemo)
 	mux.HandleFunc("/api/card/detect", s.handleCardDetect)
 	mux.HandleFunc("/api/card/scan", s.handleCardScan)
 	mux.HandleFunc("/api/card/import", s.handleCardImport)

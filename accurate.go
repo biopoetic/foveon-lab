@@ -10,16 +10,22 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/biopoetic/foveon-lab/preset"
 	"github.com/biopoetic/foveon-lab/render"
 	"github.com/biopoetic/foveon-lab/x3f"
 )
+
+// rawDecodeCount counts raw developments started (native or x3f_extract), so
+// "no raw decode behind a cull run" is a number, not a claim.
+var rawDecodeCount atomic.Int64
 
 const (
 	rawNone     = ""
@@ -73,7 +79,15 @@ func rawDecodable(props map[string]string) bool {
 }
 
 func (s *server) wantRaw(ph *Photo) bool {
-	return s.accurate.Load() && ph.Accurate && rawAvailable()
+	if !rawAvailable() {
+		return false
+	}
+	// SD9/SD10 have no full-size preview: their raw data is the picture, not
+	// an optional "accurate" extra, so the accurate switch does not hide it.
+	if ph.RawDecoded {
+		return !ph.rawFailed.Load()
+	}
+	return s.accurate.Load() && ph.Accurate
 }
 
 // goRaw: decode and develop raw data with the x3f package (no x3f_extract);
@@ -165,7 +179,7 @@ func (s *server) requestRaw(ph *Photo) { s.queueRaw(ph, true) }
 // queueRaw: urgent = the photo on screen (quick then full decode);
 // otherwise a neighbour prefetch (quick decode only).
 func (s *server) queueRaw(ph *Photo, urgent bool) {
-	if !s.wantRaw(ph) {
+	if !s.wantRaw(ph) || s.cullActive.Load() {
 		return
 	}
 	st := s.rawStateOf(ph)
@@ -205,6 +219,16 @@ func (s *server) rawWorker() {
 				urgent = false
 			}
 		}
+		if ph == nil {
+			continue
+		}
+		// A job that was queued before the user entered the cull is dropped
+		// here; it never starts a decode. (One already inside a decode is
+		// allowed to finish into the source cache: see cullActive.)
+		if s.cullActive.Load() {
+			s.dropQueuedRaw(ph)
+			continue
+		}
 		if goRaw {
 			// Native: one pass (seconds), straight into the source cache.
 			if _, err := s.sourceAs(ph, "raw"); err != nil {
@@ -236,6 +260,14 @@ func (s *server) rawWorker() {
 		full := urgent || rawFullQueued[ph.ID]
 		s.rawMu.Unlock()
 		if !full {
+			continue
+		}
+		if s.cullActive.Load() {
+			// The quick decode is cached and enough for a rating; do not start
+			// the full pass while the user is culling.
+			s.rawMu.Lock()
+			delete(rawFullQueued, ph.ID)
+			s.rawMu.Unlock()
 			continue
 		}
 		_, err := decodeRaw(ph)
@@ -372,6 +404,11 @@ func (s *server) handleRawState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st := s.rawStateOf(ph)
+	// The page polls this after the picture is on screen; that is the safe
+	// moment to start a decode without competing with the first render.
+	if s.wantRaw(ph) && st == rawNone {
+		s.requestRaw(ph)
+	}
 	mode := "jpg"
 	if s.useRaw(ph) {
 		mode = s.rawMode(ph)
@@ -415,4 +452,66 @@ func calibGroup(ph *Photo) string {
 		return ph.Camera
 	}
 	return x3f.CalibGroup(m)
+}
+
+// ---------- cull mode: embedded previews only ----------
+//
+// The cull is a decision loop over a folder. It must never compete with a
+// multi-second raw development: no decode may start while it is open, and
+// queued decodes are dropped. A decode already inside the raw decoder has no
+// cancellation point, so it finishes into the source cache (bounded, six
+// entries) and the worker does not start another; the cull is served from the
+// embedded preview throughout.
+
+// dropQueuedRaw forgets a queued job without decoding it.
+func (s *server) dropQueuedRaw(ph *Photo) {
+	s.rawMu.Lock()
+	if s.rawState[ph.ID] == rawDecoding {
+		s.rawState[ph.ID] = rawNone
+	}
+	delete(rawFullQueued, ph.ID)
+	s.rawMu.Unlock()
+}
+
+// drainRawQueues empties both queues when the cull opens. A worker already
+// blocked on a send may add one more after this; the worker's own cull check
+// drops it.
+func (s *server) drainRawQueues() {
+	for {
+		select {
+		case ph := <-s.rawQueue:
+			s.dropQueuedRaw(ph)
+		default:
+			goto low
+		}
+	}
+low:
+	for {
+		select {
+		case ph := <-s.rawQueueLow:
+			s.dropQueuedRaw(ph)
+		default:
+			return
+		}
+	}
+}
+
+// handleCullMode is POST {on}: the cull view opened or closed. GET reports
+// the mode and how many raw decodes the server has started, which is how the
+// "100 cull moves, zero raw decodes" check is counted.
+func (s *server) handleCullMode(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		var req struct {
+			On bool `json:"on"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+			httpErr(w, 400, err)
+			return
+		}
+		s.cullActive.Store(req.On)
+		if req.On {
+			s.drainRawQueues()
+		}
+	}
+	writeJSON(w, map[string]any{"on": s.cullActive.Load(), "decodes": rawDecodeCount.Load()})
 }

@@ -84,6 +84,7 @@ func decodeRaw(ph *Photo) (image.Image, error) { return decodeRawAs(ph, "sRGB") 
 // decodeRawAs decodes in x3f_extract colour mode color ("sRGB", or "none"
 // for linear camera RGB).
 func decodeRawAs(ph *Photo, color string) (image.Image, error) {
+	rawDecodeCount.Add(1)
 	cached, err := rawCachePathFor(ph, color)
 	if err != nil {
 		return nil, err

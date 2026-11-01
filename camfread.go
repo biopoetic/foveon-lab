@@ -181,6 +181,7 @@ func goLinear(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
 // (clipped highlights then go to that white): Sunlight-balanced, or with
 // sceneWB balanced like the photo itself (goDevelopFor).
 func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string) (*render.Linear, error) {
+	rawDecodeCount.Add(1)
 	timing := os.Getenv("FOVEON_TIMING") != ""
 	mark := time.Now()
 	lap := func(name string) {
