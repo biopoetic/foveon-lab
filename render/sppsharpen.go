@@ -22,6 +22,7 @@ import (
 	"image"
 	"math"
 	"os"
+	"strconv"
 )
 
 const sppSharpSigma = 1.0
@@ -37,11 +38,34 @@ const sppSharpSigma = 1.0
 // 0.0540 -> 0.0494, SD1 0.0317 -> 0.0292. FOVEON_USM_NOCLAMP=1 disables it.
 var usmClamp = os.Getenv("FOVEON_USM_NOCLAMP") == ""
 
+// sharpAmountScale is a research multiplier on the fitted amounts
+// (FOVEON_SHARP_SCALE=0.667), used to measure one amount change without a
+// second build. 1 (the environment unset) ships.
+var sharpAmountScale = func() float64 {
+	if v := os.Getenv("FOVEON_SHARP_SCALE"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+			return f
+		}
+	}
+	return 1
+}()
+
 // sppSharpByISO: the fitted amount per sharpening key (SharpKey) and ISO
 // (log2 ISO 100 = 0 … 6400 = 6); sppSharpSigmaOf gives the mask's sigma.
+//
+// Task 23: the Merrill amounts were retuned to two thirds of the task-21
+// fit as one change. On the 4 DPM/SD1 frames whose halos task 21 measured,
+// the fixed-basis 1-px slope fell toward SPP's (pine 3.570 -> 3.133 against
+// 2.423; alley 2.217 -> 1.965 against 1.561; SD1 2.225 -> 1.964 against
+// 1.433) and the residual fell (pine 0.0374 -> 0.0291, SPP 0.0396). The
+// 183-photo spp-check on the DPM and SD1 groups improved (DPM 6.510 -> 6.400,
+// SD1 3.913 -> 3.624; 20 photos better by >0.05, none worse by >0.30), and
+// the DPM ISO ladders' fine luma/chroma noise fell 5-13% with the 2-8 px
+// detail unchanged. FOVEON_SHARP_SCALE still scales these amounts for a
+// research run; the default (1) is the shipped fit.
 var sppSharpByISO = map[string][]float64{
-	"Merrill": {2.7, 2.5, 2.4, 1.4, 1.0, 0.8, 0.5},
-	"DPM":     {2.5, 3.2, 3.3, 2.9, 2.1, 1.6, 1.4},
+	"Merrill": {1.8, 1.67, 1.6, 0.93, 0.67, 0.53, 0.33},
+	"DPM":     {1.67, 2.13, 2.2, 1.93, 1.4, 1.07, 0.93},
 	"TRUEII":  {0.3, 0.2, 0.7, 0.5, 0.4, 0.2, 0.2},
 }
 
@@ -77,7 +101,7 @@ func sppFullAmount(iso float64, sensor string) float64 {
 	for i := range steps {
 		steps[i] = float64(i)
 	}
-	return interp(steps, tab, math.Log2(iso/100))
+	return interp(steps, tab, math.Log2(iso/100)) * sharpAmountScale
 }
 
 // sppAmount is the amount of a sigma-1 mask at a view of scale s that
