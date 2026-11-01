@@ -13,8 +13,14 @@ package render
 // ISO (the DP1 Merrill studio series ISO 100-6400, each frame fitted on its
 // own, October 2026). With the SD1's mask they came out ~20% oversharp at
 // ISO 100 and short of SPP's detail from ISO 800 (detail kept vs the ISO 100
-// frame at ISO 800, SPP 0.90, ours 0.68). Generations not measured yet
-// (SD9/SD10, Quattro) get none.
+// frame at ISO 800, SPP 0.90, ours 0.68). Quattro gets a gentler mask
+// (sigma 1.0, amount 0.5 flat over ISO): fitted at the 1200 px scored view on
+// the dp2 Quattro and sd Quattro H ISO ladders, then measured on all 60
+// Quattro photos (task 27): spp-check 5.862 -> 5.623, 46 better by >0.05,
+// none worse by >0.30; every one of the six bodies improves. Before that
+// fit, the 16:9 crop in fitAspect dropped Raw/Sensor/ISO, so no SPP
+// sharpening could reach a cropped Quattro frame at all.
+// Generations not measured yet (SD9/SD10) get none.
 // A reduced view gets the full-size filter's gain at its own Nyquist
 // frequency, as a sigma-1 mask at that size.
 
@@ -63,10 +69,16 @@ var sharpAmountScale = func() float64 {
 // the DPM ISO ladders' fine luma/chroma noise fell 5-13% with the 2-8 px
 // detail unchanged. FOVEON_SHARP_SCALE still scales these amounts for a
 // research run; the default (1) is the shipped fit.
+//
+// Task 27: the Quattro row is new. It is one flat amount (0.5) at every ISO,
+// fitted on the two Quattro ISO ladders at the 1200 px scored view and then
+// validated on all 60 Quattro photos, held out per body (see the file
+// comment). It runs through the same usmClamp as the other generations.
 var sppSharpByISO = map[string][]float64{
 	"Merrill": {1.8, 1.67, 1.6, 0.93, 0.67, 0.53, 0.33},
 	"DPM":     {1.67, 2.13, 2.2, 1.93, 1.4, 1.07, 0.93},
 	"TRUEII":  {0.3, 0.2, 0.7, 0.5, 0.4, 0.2, 0.2},
+	"Quattro": {0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5},
 }
 
 // sppSharpSigmaOf is the full-size mask's sigma for a sharpening key.

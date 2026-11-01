@@ -16,12 +16,12 @@ ignores fine detail). The app shows the same line in the photo info.
 | SD14 | 8.5 | 7.9 | 24 |
 | SD15 | 10.7 | 9.8 | 4 |
 | SD9 | 8.7 | 8.2 | 12 |
-| dp0 Quattro | 5.7 | 4.4 | 12 |
-| dp1 Quattro | 6.9 | 5.3 | 11 |
-| dp2 Quattro | 5.8 | 4.2 | 13 |
-| dp3 Quattro | 4.7 | 3.5 | 6 |
-| sd Quattro | 5.1 | 3.8 | 5 |
-| sd Quattro H | 6.1 | 4.5 | 13 |
+| dp0 Quattro | 5.4 | 4.4 | 12 |
+| dp1 Quattro | 6.7 | 5.2 | 11 |
+| dp2 Quattro | 5.5 | 4.1 | 13 |
+| dp3 Quattro | 4.6 | 3.4 | 6 |
+| sd Quattro | 4.6 | 3.6 | 5 |
+| sd Quattro H | 5.9 | 4.6 | 13 |
 
 Regenerate with:
 
