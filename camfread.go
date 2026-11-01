@@ -178,6 +178,15 @@ func goLinear(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
 // sceneWB balanced like the photo itself (goDevelopFor). rebuild restores
 // clipped layers from the ones still holding signal first (Max Detail).
 func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string, rebuild bool) (*render.Linear, error) {
+	l, _, err := goLinearForClass(ph, maxW, strength, irWhite, sceneWB, wbName, rebuild)
+	return l, err
+}
+
+// goLinearForClass is goLinearFor with a per-pixel flag marking the
+// highlights RecoverHighlights actually rebuilt, at the returned image's
+// geometry, so Max Detail can shoulder those and leave open highlights
+// alone (task 29).
+func goLinearForClass(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string, rebuild bool) (*render.Linear, []bool, error) {
 	rawDecodeCount.Add(1)
 	timing := os.Getenv("FOVEON_TIMING") != ""
 	mark := time.Now()
@@ -189,11 +198,22 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 	}
 	img, t, err := goDevelopFor(ph, irWhite != nil, sceneWB, wbName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	lap("develop")
+	// The gate is taken at the camera image's full resolution and brought
+	// through the same binning/resampling as the image, so its entries stay
+	// aligned with the output pixels.
+	classW, classH := img.W, img.H
+	var rebuilt []bool
 	if rebuild {
-		st := x3f.RecoverHighlights(img, t.Gain, 0.995)
+		var st x3f.RecoverStats
+		var class []x3f.HighlightClass
+		st, class = x3f.RecoverHighlightsClass(img, t.Gain, 0.995)
+		rebuilt = make([]bool, len(class))
+		for i, c := range class {
+			rebuilt[i] = c == x3f.HLRecovered
+		}
 		if os.Getenv("FOVEON_MD_DEBUG") != "" {
 			fmt.Fprintf(os.Stderr, "maxdetail %s: recovered %v lost %d partial %d\n", ph.Name, st.Recovered, st.Lost, st.Partial)
 		}
@@ -285,7 +305,16 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 			l.Pix[i] *= g
 		}
 	}
-	return l, nil
+	if rebuilt != nil {
+		if img.W != classW || img.H != classH {
+			rebuilt = maxPoolGate(rebuilt, classW, classH, img.W, img.H)
+			classW, classH = img.W, img.H
+		}
+		if l.W != classW || l.H != classH {
+			rebuilt = nearestGate(rebuilt, classW, classH, l.W, l.H)
+		}
+	}
+	return l, rebuilt, nil
 }
 
 // maxDetailAvailable reports whether ph can be developed from raw layers
@@ -343,11 +372,13 @@ func maxDetailRenderParams(p preset.Params) preset.Params {
 // drifted to other colours. It costs more than a normal preview because it
 // always decodes raw data, as the mode promises.
 func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
-	l, err := goLinearFor(ph, maxW, strength, nil, false, "", true)
+	l, rebuilt, err := goLinearForClass(ph, maxW, strength, nil, false, "", true)
 	if err != nil {
 		return nil, err
 	}
+	preW, preH := l.W, l.H
 	l = uprightRaw(ph, l)
+	gate := uprightGate(ph, rebuilt, preW, preH)
 	// Keep the un-shouldered development for the pixels the shoulder does
 	// not move. The shoulder itself is per-pixel and exact, but the
 	// bright-chroma denoise inside rawCorrect is spatial: without this, a
@@ -355,7 +386,7 @@ func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error)
 	// (task 28: 87,004 below-knee pixels, up to 0.25 linear). The copied
 	// pixels are the normal development's, bit for bit.
 	base := &render.Linear{W: l.W, H: l.H, Pix: append([]float32(nil), l.Pix...)}
-	mask := render.MaxDetailHighlightsMask(l, whiteInput(ph))
+	mask := render.MaxDetailHighlightsGate(l, whiteInput(ph), gate)
 	if mask == nil {
 		rawCorrect(ph, l)
 	} else {
@@ -369,6 +400,126 @@ func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error)
 	}
 	render.MaxDetailDevelop(l, render.MaxDetailOptions{ISO: photoISO(ph)})
 	return l, nil
+}
+
+// uprightGate brings the rebuilt-pixel gate through the same frame and
+// rotation as uprightRaw. A nil or wrong-sized gate means "no gate" and the
+// shoulder keeps its old global behaviour.
+func uprightGate(ph *Photo, gate []bool, w, h int) []bool {
+	if gate == nil || len(gate) != w*h {
+		return nil
+	}
+	if ph.previewW > 0 && ph.previewH > 0 {
+		pw := w
+		wantH := w * ph.previewH / ph.previewW
+		if d := wantH - h; d > h/30 || -d > h/30 {
+			// The crop and stretch of fitAspect, mirrored for the gate.
+			r := float64(wantH) / float64(h)
+			switch {
+			case r > 1.02 && r < 1.5:
+				cw := int(math.Round(float64(h) * float64(w) / float64(wantH)))
+				gate = cropGate(gate, w, h, (w-cw)/2, 0, cw, h)
+				w = cw
+			case r < 0.98 && r > 0.67:
+				ch := wantH
+				gate = cropGate(gate, w, h, 0, (h-ch)/2, w, ch)
+				h = ch
+			}
+			gate = stretchGate(gate, w, h, pw, wantH)
+			w, h = pw, wantH
+		}
+	}
+	return rotateGate(gate, w, h, ph.Rotation)
+}
+
+func cropGate(g []bool, w, h, x0, y0, cw, ch int) []bool {
+	o := make([]bool, cw*ch)
+	for y := 0; y < ch; y++ {
+		copy(o[y*cw:(y+1)*cw], g[(y+y0)*w+x0:(y+y0)*w+x0+cw])
+	}
+	return o
+}
+
+func stretchGate(g []bool, sw, sh, w, h int) []bool {
+	if sw == w && sh == h {
+		return g
+	}
+	o := make([]bool, w*h)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			o[y*w+x] = g[(y*sh/h)*sw+x*sw/w]
+		}
+	}
+	return o
+}
+
+func rotateGate(g []bool, w, h, deg int) []bool {
+	if deg != 90 && deg != 180 && deg != 270 {
+		return g
+	}
+	ow, oh := w, h
+	if deg != 180 {
+		ow, oh = h, w
+	}
+	o := make([]bool, ow*oh)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			var nx, ny int
+			switch deg {
+			case 90:
+				nx, ny = h-1-y, x
+			case 180:
+				nx, ny = w-1-x, h-1-y
+			case 270:
+				nx, ny = y, w-1-x
+			}
+			o[ny*ow+nx] = g[y*w+x]
+		}
+	}
+	return o
+}
+
+// maxPoolGate shrinks the gate: a binned pixel is rebuilt if any of its
+// source pixels was.
+func maxPoolGate(g []bool, sw, sh, w, h int) []bool {
+	o := make([]bool, w*h)
+	for y := 0; y < h; y++ {
+		y0, y1 := y*sh/h, (y+1)*sh/h
+		if y1 <= y0 {
+			y1 = y0 + 1
+		}
+		for x := 0; x < w; x++ {
+			x0, x1 := x*sw/w, (x+1)*sw/w
+			if x1 <= x0 {
+				x1 = x0 + 1
+			}
+			found := false
+			for yy := y0; yy < y1 && !found; yy++ {
+				for xx := x0; xx < x1; xx++ {
+					if g[yy*sw+xx] {
+						found = true
+						break
+					}
+				}
+			}
+			o[y*w+x] = found
+		}
+	}
+	return o
+}
+
+// nearestGate resamples the gate to an output size.
+func nearestGate(g []bool, sw, sh, w, h int) []bool {
+	if sw == w && sh == h {
+		return g
+	}
+	o := make([]bool, w*h)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			o[y*w+x] = g[(y*sh/h)*sw+x*sw/w]
+		}
+	}
+	return o
 }
 
 // whiteInput is the grey level the per-body correction brings to just under

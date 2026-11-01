@@ -129,6 +129,65 @@ func TestMaxDetailHighlightsBlueFade(t *testing.T) {
 	}
 }
 
+// Task 29: the shoulder must follow the rebuilt-pixel gate. An unclipped
+// highlight (gate false) keeps its value bit for bit; a gated one is
+// compressed under the top; the boundary is feathered, not stepped; and a
+// wrong-sized gate falls back to the old global shoulder.
+func TestMaxDetailHighlightsGate(t *testing.T) {
+	const n, top = 512, float32(0.5)
+	mk := func() *Linear {
+		l := &Linear{W: n, H: 1, Pix: make([]float32, n*3)}
+		for i := 0; i < n; i++ {
+			v := 2 * float32(i) / (n - 1)
+			l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2] = v, v*0.8, v*0.5
+		}
+		return l
+	}
+	gate := make([]bool, n)
+	for i := 0; i < n/2; i++ {
+		gate[i] = true
+	}
+	l := mk()
+	before := append([]float32(nil), l.Pix...)
+	MaxDetailHighlightsGate(l, top, gate)
+	// Far from the boundary on the gated side: compressed under the top,
+	// hue kept.
+	i := n / 4
+	if p := l.Pix[i*3 : i*3+3]; p[0] > top+1e-4 || p[0] >= before[i*3] {
+		t.Errorf("gated pixel %d not compressed: %g (was %g), top %g", i, p[0], before[i*3], top)
+	} else if g := p[1] / p[0]; g < 0.799 || g > 0.801 {
+		t.Errorf("gated pixel %d colour moved: green/red %g", i, g)
+	}
+	// Far from the boundary on the open side: untouched.
+	i = n - n/8
+	for k := 0; k < 3; k++ {
+		if got := l.Pix[i*3+k]; got != before[i*3+k] {
+			t.Errorf("ungated pixel %d channel %d moved: %g -> %g", i, k, before[i*3+k], got)
+		}
+	}
+	// The boundary is a two-pixel feather, so the gated mask ends after it
+	// and no pixel jumps from fully compressed to untouched.
+	// A gate with no true entries is a no-op and reports no mask.
+	none := make([]bool, n)
+	l2 := mk()
+	if m := MaxDetailHighlightsGate(l2, top, none); m != nil {
+		t.Errorf("empty gate returned a mask")
+	}
+	for k := range l2.Pix {
+		if l2.Pix[k] != before[k] {
+			t.Fatalf("empty gate changed pixel %d", k)
+		}
+	}
+	// A wrong-sized gate is ignored: the global shoulder runs.
+	l3 := mk()
+	if m := MaxDetailHighlightsGate(l3, top, []bool{true}); m == nil {
+		t.Errorf("wrong-sized gate did not fall back to the global shoulder")
+	}
+	if l3.Pix[(n-1)*3] > top+1e-4 {
+		t.Errorf("global fallback left %g over the top", l3.Pix[(n-1)*3])
+	}
+}
+
 // Everything under the knee is exactly the normal development's value.
 func TestMaxDetailHighlightsKnee(t *testing.T) {
 	const top = float32(0.5)

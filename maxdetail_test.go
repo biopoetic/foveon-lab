@@ -109,4 +109,62 @@ func TestUprightRawFrame(t *testing.T) {
 	}
 }
 
+// Task 29: the rebuilt-pixel gate must reach the same frame as the image,
+// through the same crop/stretch and rotation, or Max Detail would shoulder
+// the wrong pixels (or silently fall back to the global shoulder).
+func TestUprightGateFrame(t *testing.T) {
+	// An SD1 medium file: the gate is stretched to the frame and rotated 90.
+	const w, h = 4704, 1568
+	gate := make([]bool, w*h)
+	gate[10*w+10] = true
+	ph := &Photo{previewW: 3000, previewH: 2000, Rotation: 90}
+	got := uprightRaw(ph, &render.Linear{W: w, H: h, Pix: make([]float32, w*h*3)})
+	g := uprightGate(ph, gate, w, h)
+	if len(g) != got.W*got.H {
+		t.Fatalf("gate %d entries, frame %dx%d", len(g), got.W, got.H)
+	}
+	// The source pixel is stretched to rows 20 and 21 (nearest) and then
+	// rotated 90, so it lights two adjacent pixels. That is the expected
+	// nearest-neighbour thickness; the shoulder feathers it anyway.
+	if !g[10*got.W+3115] || !g[10*got.W+3114] {
+		t.Errorf("the marked pixel did not land at (3115,10)/(3114,10)")
+	}
+	n := 0
+	for _, v := range g {
+		if v {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Errorf("gate has %d marked pixels, want 2", n)
+	}
+	// A 16:9 frame in a 3:2 decode is centre-cropped: source row 0 is gone
+	// and source row 16 becomes destination row 0.
+	const cw, ch = 300, 200
+	ph2 := &Photo{previewW: 1600, previewH: 900}
+	g2a := make([]bool, cw*ch)
+	g2a[0] = true // source (0,0), cropped away
+	g3a := uprightGate(ph2, g2a, cw, ch)
+	if len(g3a) != cw*168 {
+		t.Fatalf("16:9 gate %d entries, want %d", len(g3a), cw*168)
+	}
+	for _, v := range g3a {
+		if v {
+			t.Errorf("a cropped-away row survived")
+			break
+		}
+	}
+	g2b := make([]bool, cw*ch)
+	g2b[16*cw] = true // source (0,16), the first kept row
+	g3b := uprightGate(ph2, g2b, cw, ch)
+	if !g3b[0] {
+		t.Errorf("the first kept row did not land at the top")
+	}
+	// A nil or wrong-sized gate stays nil (the caller then keeps the old
+	// global behaviour).
+	if uprightGate(ph, nil, w, h) != nil || uprightGate(ph, gate[:10], w, h) != nil {
+		t.Errorf("bad gate did not fall back")
+	}
+}
+
 func closeTo(a, b float64) bool { return a-b < 1e-9 && b-a < 1e-9 }

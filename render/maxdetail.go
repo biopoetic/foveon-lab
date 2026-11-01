@@ -13,6 +13,7 @@ package render
 import (
 	"math"
 	"sort"
+	"sync/atomic"
 )
 
 // MaxDetailOptions are the mode's strengths. Zero values take the defaults.
@@ -148,6 +149,22 @@ func MaxDetailHighlights(l *Linear, top float32) {
 // pixels changed, up to 0.25 linear). With the mask, every pixel the shoulder
 // did not touch is bit-identical to the normal development.
 func MaxDetailHighlightsMask(l *Linear, top float32) []bool {
+	return MaxDetailHighlightsGate(l, top, nil)
+}
+
+// MaxDetailHighlightsGate is MaxDetailHighlightsMask with a per-pixel
+// eligibility gate, feathered over two pixels.
+//
+// Task 29: the shoulder belongs to the rebuilt highlight, not to every tone
+// above the knee. On the SD1 frame SDIM0031 the display's white sits at 0.4165
+// linear (the per-body curve's green reaches 0.97 there), so a 0.9 knee put
+// 52% of the leaf crop above it; 62% of those pixels were compressed into the
+// last 1% of the output and rendered as flat pastel plateaus. They were all
+// open pixels - the raw never clipped there - so the "recovery" was a global
+// tone map of unclipped light. A nil gate keeps the old behaviour; the Max
+// Detail caller passes the pixels RecoverHighlights actually rebuilt, so an
+// unclipped highlight keeps the normal development's value.
+func MaxDetailHighlightsGate(l *Linear, top float32, gate []bool) []bool {
 	if l == nil || l.W < 1 || l.H < 1 {
 		return nil
 	}
@@ -168,7 +185,42 @@ func MaxDetailHighlightsMask(l *Linear, top float32) []bool {
 	if ceil <= top {
 		return nil
 	}
-	mask := make([]bool, l.W*l.H)
+	n := l.W * l.H
+	// Feather the gate: a 0/1 eligibility mask would draw its own edge at
+	// the boundary between a rebuilt highlight and an open one.
+	var weight []float32
+	if gate != nil && len(gate) == n {
+		weight = make([]float32, n)
+		for i, ok := range gate {
+			if ok {
+				weight[i] = 1
+			}
+		}
+		tmp := make([]float32, n)
+		for pass := 0; pass < 2; pass++ {
+			parallelRows(l.H, func(y0, y1 int) {
+				for y := y0; y < y1; y++ {
+					for x := 0; x < l.W; x++ {
+						var s float32
+						var cnt int
+						for dy := -1; dy <= 1; dy++ {
+							for dx := -1; dx <= 1; dx++ {
+								xx, yy := x+dx, y+dy
+								if xx < 0 || yy < 0 || xx >= l.W || yy >= l.H {
+									continue
+								}
+								s += weight[yy*l.W+xx]
+								cnt++
+							}
+						}
+						tmp[y*l.W+x] = s / float32(cnt)
+					}
+				}
+			})
+			copy(weight, tmp)
+		}
+	}
+	mask := make([]bool, n)
 	k, o := maxDetailKnee*top, top
 	// Exponential approach to the top with slope 1 at the knee, so there is
 	// no visible seam: solve its rate for this frame's ceiling.
@@ -185,12 +237,20 @@ func MaxDetailHighlightsMask(l *Linear, top float32) []bool {
 	}
 	a := (lo + hi) / 2
 	scale := room / (1 - math.Exp(-a*span))
+	var moved atomic.Bool
 	parallelRows(l.H, func(y0, y1 int) {
 		for i := y0 * l.W; i < y1*l.W; i++ {
 			p := l.Pix[i*3 : i*3+3]
 			m := max(p[0], p[1], p[2])
 			if m <= k {
 				continue
+			}
+			w := float32(1)
+			if weight != nil {
+				w = weight[i]
+				if w == 0 {
+					continue
+				}
 			}
 			t := min(float64(m-k), span)
 			g := (k + float32(scale*(1-math.Exp(-a*t)))) / m
@@ -202,16 +262,20 @@ func MaxDetailHighlightsMask(l *Linear, top float32) []bool {
 			// colour. Neutral, green and red (skin) highlights keep it.
 			blue := float64(p[2]-max(p[0], p[1])) / float64(m)
 			if blue > 0 {
-				w := 1 - smoothstep(0.03, 0.12, blue)
-				g = 1 + (g-1)*float32(w)
+				w *= float32(1 - smoothstep(0.03, 0.12, blue))
 			}
+			g = 1 + (g-1)*w
 			if g == 1 {
 				continue
 			}
 			mask[i] = true
+			moved.Store(true)
 			p[0], p[1], p[2] = p[0]*g, p[1]*g, p[2]*g
 		}
 	})
+	if !moved.Load() {
+		return nil
+	}
 	return mask
 }
 
