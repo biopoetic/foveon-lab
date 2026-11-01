@@ -721,9 +721,17 @@ func (p *memPeak) stop() uint64 {
 }
 
 func t33clearThumbCache() {
-	if dir, err := os.UserCacheDir(); err == nil {
-		os.RemoveAll(filepath.Join(dir, "foveon-lab", "thumbs"))
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return
 	}
+	p := filepath.Join(dir, "foveon-lab", "thumbs")
+	// Only clear a cache the harness has redirected into this folder; a run
+	// with the real LOCALAPPDATA must not delete the user's tiles.
+	if cwd, err := os.Getwd(); err != nil || !strings.HasPrefix(strings.ToLower(p), strings.ToLower(cwd)) {
+		return
+	}
+	os.RemoveAll(p)
 }
 
 func presetNeutral() preset.Params { return preset.Neutral() }
