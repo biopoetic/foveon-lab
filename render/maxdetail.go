@@ -137,22 +137,10 @@ func MaxDetailDevelop(l *Linear, opt MaxDetailOptions) {
 				g += (y3 - g) * t
 				b += (y3 - b) * t
 			}
-			// Bright near-neutral areas (sky, cloud, white walls) keep the
-			// cast the neutral base gives them: on the SD14 bridge sky that
-			// is about +1.5 a* against SPP's own neutral export, which shows
-			// as pink/cyan pastel blotches along the cloud edges. Pull only
-			// the low-chroma bright pixels towards neutral; saturated skin
-			// and water (C above ~10) are left alone so the mode does not
-			// cost colour where SPP keeps it.
-			if y3 > 0.55 {
-				c := chromaOf(r, g, b)
-				if c < 10 {
-					w := smoothstep(0.55, 0.8, y3) * (1 - smoothstep(4, 10, c)) * 0.6
-					r += (y3 - r) * w
-					g += (y3 - g) * w
-					b += (y3 - b) * w
-				}
-			}
+			// The bright near-neutral sky mottling this mode used to pull
+			// towards grey is handled at the source now, by the chroma
+			// low-pass every raw development gets (brightchroma.go), so the
+			// mode keeps the colour it was given instead of desaturating it.
 			p[0], p[1], p[2] = float32(clamp01f(r)), float32(clamp01f(g)), float32(clamp01f(b))
 		}
 	})
@@ -172,24 +160,6 @@ func smoothstep(a, b, x float64) float64 {
 }
 
 func clamp01f(v float64) float64 { return max(0, min(1, v)) }
-
-// chromaOf is the CIELAB chroma of a linear sRGB pixel (D65), for the
-// near-neutral gate on the highlight cast clean-up.
-func chromaOf(r, g, b float64) float64 {
-	x := 0.4124*r + 0.3576*g + 0.1805*b
-	y := 0.2126*r + 0.7152*g + 0.0722*b
-	z := 0.0193*r + 0.1192*g + 0.9505*b
-	f := func(v float64) float64 {
-		if v > 216.0/24389 {
-			return math.Cbrt(v)
-		}
-		return (24389.0/27*v + 16) / 116
-	}
-	fx, fy, fz := f(x/0.9505), f(y/1.0), f(z/1.089)
-	a := 500 * (fx - fy)
-	bb := 200 * (fy - fz)
-	return math.Hypot(a, bb)
-}
 
 // linearNoise estimates the image's luminance noise from the dark tones:
 // the median absolute Laplacian residual, scaled to a Gaussian sigma. The

@@ -393,6 +393,7 @@ func decodePreview(ph *Photo) (image.Image, error) {
 					// is the SD1's taste (render/rawbase.json, tasteFrom).
 					if c := render.RawBaseFor(calibGroup(ph), wbDesc(ph)); c != nil {
 						c.Apply(l)
+						render.BrightChromaDenoiseFor(l, calibGroup(ph))
 					}
 					img = linearToSRGB16(l)
 				}

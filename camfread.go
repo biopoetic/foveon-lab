@@ -372,6 +372,7 @@ func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error)
 	}
 	if c := rawCorrectionFor(ph); c != nil {
 		c.Apply(l)
+		render.BrightChromaDenoiseFor(l, calibGroup(ph))
 	}
 	render.MaxDetailDevelop(l, render.MaxDetailOptions{ISO: photoISO(ph)})
 	if !noChromaSpeck {

@@ -130,6 +130,14 @@ var (
 	// levFin scales the boost on the finest level only: the 1 px band is
 	// where the books' texture lives, the pepper is coarser.
 	levFin = envFloat("FOVEON_DN_LEVFIN", 0.25)
+	// dnGarrote replaces the soft threshold with the non-negative garrote
+	// (d·(1-(t/d)²) above the threshold): a strong edge coefficient is kept
+	// almost unchanged instead of being biased down by t, while a
+	// just-above-threshold coefficient (usually noise) is suppressed harder.
+	// Measured but not enabled (task 21, 21 frames, fixed basis): slope
+	// +0.5-4% came with residual +0.3-2.6% and noise +1-6%, i.e. no gain in
+	// detail per unit of noise. FOVEON_DN_GARROTE=1 for the study.
+	dnGarrote = os.Getenv("FOVEON_DN_GARROTE") != ""
 )
 
 // darkBoost is the per-pixel factor multiplying the luminance wavelet
@@ -1002,13 +1010,28 @@ func atrous(p []float32, w, h int, sigma []float32, k float64, levels int, boost
 					t *= b
 				}
 				d := cur[i] - next[i]
-				switch {
-				case d > t:
-					d -= t
-				case d < -t:
-					d += t
-				default:
-					d = 0
+				if dnGarrote {
+					if ad := d; ad < 0 {
+						ad = -ad
+						if ad > t {
+							d = -ad * (1 - (t/ad)*(t/ad))
+						} else {
+							d = 0
+						}
+					} else if ad > t {
+						d = ad * (1 - (t/ad)*(t/ad))
+					} else {
+						d = 0
+					}
+				} else {
+					switch {
+					case d > t:
+						d -= t
+					case d < -t:
+						d += t
+					default:
+						d = 0
+					}
 				}
 				out[i] += d
 			}

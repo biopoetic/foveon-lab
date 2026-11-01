@@ -21,9 +21,21 @@ package render
 import (
 	"image"
 	"math"
+	"os"
 )
 
 const sppSharpSigma = 1.0
+
+// usmClamp limits an unsharp-mask result to the 3×3 local range of the
+// unsharpened image, plus half that range. A step edge's overshoot is then at
+// most the edge's own height, so the mask cannot paint the wide bright/dark
+// halos a strong amount leaves: on the DP1 Merrill pine shadow our fixed-basis
+// residual was 3.5x SPP's with a matching slope (task 20, part 3). The clamp
+// changes nothing where the fitted amount is small (TRUEII/DP/Quattro) and
+// only touches the Merrill bodies' strong masks: 21-frame detail study, pine
+// slope 3.804 -> 3.570 and residual 0.0397 -> 0.0374 (SPP 0.0396), alley
+// 0.0540 -> 0.0494, SD1 0.0317 -> 0.0292. FOVEON_USM_NOCLAMP=1 disables it.
+var usmClamp = os.Getenv("FOVEON_USM_NOCLAMP") == ""
 
 // sppSharpByISO: the fitted amount per sharpening key (SharpKey) and ISO
 // (log2 ISO 100 = 0 … 6400 = 6); sppSharpSigmaOf gives the mask's sigma.
@@ -173,6 +185,26 @@ func usmPlanes(v []float32, w, h, n int, a float32, k [7]float32) []float32 {
 				}
 			}
 		})
+		var lo3, hi3 []float32
+		if usmClamp {
+			lo3, hi3 = make([]float32, w*h), make([]float32, w*h)
+			parallelRows(h, func(y0, y1 int) {
+				for y := y0; y < y1; y++ {
+					for x := 0; x < w; x++ {
+						lo, hi := float32(math.Inf(1)), float32(math.Inf(-1))
+						for j := -1; j <= 1; j++ {
+							yy := min(h-1, max(0, y+j))
+							for k := -1; k <= 1; k++ {
+								xx := min(w-1, max(0, x+k))
+								v := pl[yy*w+xx]
+								lo, hi = min(lo, v), max(hi, v)
+							}
+						}
+						lo3[y*w+x], hi3[y*w+x] = lo, hi
+					}
+				}
+			})
+		}
 		parallelRows(h, func(y0, y1 int) {
 			acc := make([]float32, w)
 			for y := y0; y < y1; y++ {
@@ -186,7 +218,15 @@ func usmPlanes(v []float32, w, h, n int, a float32, k [7]float32) []float32 {
 				}
 				for x := 0; x < w; x++ {
 					i := (y*w + x) * n
-					out[i+c] = pl[y*w+x] + a*(pl[y*w+x]-acc[x])
+					v := pl[y*w+x] + a*(pl[y*w+x]-acc[x])
+					if usmClamp {
+						// Allow half the local range beyond it: a 1 px line
+						// still gains acutance, a step's halo cannot grow
+						// wider than the step itself.
+						m := 0.5 * (hi3[y*w+x] - lo3[y*w+x])
+						v = min(hi3[y*w+x]+m, max(lo3[y*w+x]-m, v))
+					}
+					out[i+c] = v
 				}
 			}
 		})

@@ -161,6 +161,9 @@ func linearForCheck(ph *Photo, spp *render.Linear) (*render.Linear, error) {
 	}
 	if c != nil {
 		c.Apply(l)
+		// The app's raw development also runs the bright near-neutral chroma
+		// denoise (accurate.go); score the image the app shows.
+		render.BrightChromaDenoiseFor(l, calibGroup(ph))
 	}
 	return l, nil
 }

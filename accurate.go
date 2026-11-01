@@ -298,6 +298,10 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 	}
 	if c := rawCorrectionFor(ph); c != nil && !layers {
 		c.Apply(l)
+		// SPP's chroma noise reduction also removes the bright near-neutral
+		// low-frequency mottling the per-pixel denoiser leaves; do it here so
+		// every raw-based render (default, Max Detail, exports) has it.
+		render.BrightChromaDenoiseFor(l, calibGroup(ph))
 		// SPP renders a Merrill file marked AdobeRGB differently even in
 		// sRGB (render/adobergb.go).
 		if ph.props["EXIF_COLORSPACE"] == "AdobeRGB" && render.SensorGeneration(calibGroup(ph)) == "Merrill" {
