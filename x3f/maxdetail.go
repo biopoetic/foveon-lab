@@ -25,6 +25,7 @@ package x3f
 import (
 	"math"
 	"sync"
+	"sync/atomic"
 )
 
 // HighlightClass is what RecoverHighlights found at a pixel.
@@ -93,6 +94,20 @@ func RecoverHighlightsClass(img *CamImage, gain [3]float64, clip float64) (Recov
 		}
 	}
 	w, h := img.W, img.H
+	// Most frames clip nothing, and the fits below cost a second or more.
+	class := make([]HighlightClass, w*h)
+	var anyClip atomic.Bool
+	parallel(h, func(y0, y1 int) {
+		for _, v := range img.Pix[y0*w*3 : y1*w*3] {
+			if v >= clipF {
+				anyClip.Store(true)
+				return
+			}
+		}
+	})
+	if !anyClip.Load() {
+		return st, class
+	}
 	cell := max(highlightCellMin, min(w, h)/highlightCellDiv)
 	gw, gh := (w+cell-1)/cell, (h+cell-1)/cell
 
@@ -103,6 +118,7 @@ func RecoverHighlightsClass(img *CamImage, gain [3]float64, clip float64) (Recov
 		ratio []float64
 	}
 	fields := [3][3]*field{}
+	var fits sync.WaitGroup
 	for t := 0; t < 3; t++ {
 		for s := 0; s < 3; s++ {
 			if s == t {
@@ -110,60 +126,65 @@ func RecoverHighlightsClass(img *CamImage, gain [3]float64, clip float64) (Recov
 			}
 			f := &field{ratio: make([]float64, gw*gh)}
 			fields[t][s] = f
-			wsum := make([]float64, gw*gh)
-			for y := 0; y < h; y++ {
-				gy := y / cell
-				for x := 0; x < w; x++ {
-					p := img.Pix[(y*w+x)*3:]
-					// Both sides below the fit band: a sample at the clip
-					// would bias the slope down.
-					if float64(p[t]) >= highlightFitMax || float64(p[s]) >= highlightFitMax {
-						continue
+			fits.Add(1)
+			go func(t, s int) {
+				defer fits.Done()
+				wsum := make([]float64, gw*gh)
+				for y := 0; y < h; y++ {
+					gy := y / cell
+					for x := 0; x < w; x++ {
+						p := img.Pix[(y*w+x)*3:]
+						// Both sides below the fit band: a sample at the clip
+						// would bias the slope down.
+						if float64(p[t]) >= highlightFitMax || float64(p[s]) >= highlightFitMax {
+							continue
+						}
+						qt, qs := float64(p[t])*g[t], float64(p[s])*g[s]
+						if qt <= 0.02 || qs <= 0.02 {
+							continue
+						}
+						gi := gy*gw + x/cell
+						f.ratio[gi] += qt * qs
+						wsum[gi] += qs * qs
 					}
-					qt, qs := float64(p[t])*g[t], float64(p[s])*g[s]
-					if qt <= 0.02 || qs <= 0.02 {
-						continue
+				}
+				queue := make([]int, 0, gw*gh)
+				for i := range f.ratio {
+					if wsum[i] > 1e-9 {
+						f.ratio[i] /= wsum[i]
+						queue = append(queue, i)
+					} else {
+						f.ratio[i] = math.NaN()
 					}
-					gi := gy*gw + x/cell
-					f.ratio[gi] += qt * qs
-					wsum[gi] += qs * qs
 				}
-			}
-			queue := make([]int, 0, gw*gh)
-			for i := range f.ratio {
-				if wsum[i] > 1e-9 {
-					f.ratio[i] /= wsum[i]
-					queue = append(queue, i)
-				} else {
-					f.ratio[i] = math.NaN()
-				}
-			}
-			// Nearest fitted cell (8-neighbour BFS). A diffusion would mix
-			// every rim of a clipped region; the nearest rim is the material
-			// next to the pixel.
-			for head := 0; head < len(queue); head++ {
-				i := queue[head]
-				x, y := i%gw, i/gw
-				for _, d := range [8][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}} {
-					xx, yy := x+d[0], y+d[1]
-					if xx < 0 || yy < 0 || xx >= gw || yy >= gh {
-						continue
+				// Nearest fitted cell (8-neighbour BFS). A diffusion would mix
+				// every rim of a clipped region; the nearest rim is the material
+				// next to the pixel.
+				for head := 0; head < len(queue); head++ {
+					i := queue[head]
+					x, y := i%gw, i/gw
+					for _, d := range [8][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}} {
+						xx, yy := x+d[0], y+d[1]
+						if xx < 0 || yy < 0 || xx >= gw || yy >= gh {
+							continue
+						}
+						j := yy*gw + xx
+						if !math.IsNaN(f.ratio[j]) {
+							continue
+						}
+						f.ratio[j] = f.ratio[i]
+						queue = append(queue, j)
 					}
-					j := yy*gw + xx
-					if !math.IsNaN(f.ratio[j]) {
-						continue
+				}
+				for i := range f.ratio {
+					if math.IsNaN(f.ratio[i]) {
+						f.ratio[i] = 1
 					}
-					f.ratio[j] = f.ratio[i]
-					queue = append(queue, j)
 				}
-			}
-			for i := range f.ratio {
-				if math.IsNaN(f.ratio[i]) {
-					f.ratio[i] = 1
-				}
-			}
+			}(t, s)
 		}
 	}
+	fits.Wait()
 	at := func(f *field, x, y int) float64 {
 		fx := float64(x)/float64(cell) - 0.5
 		fy := float64(y)/float64(cell) - 0.5
@@ -184,23 +205,25 @@ func RecoverHighlightsClass(img *CamImage, gain [3]float64, clip float64) (Recov
 	sgw, sgh := (w+scell-1)/scell, (h+scell-1)/scell
 	qsum := make([]float64, sgw*sgh)
 	qcnt := make([]int, sgw*sgh)
-	for y := 0; y < h; y++ {
-		gy := y / scell
-		for x := 0; x < w; x++ {
-			p := img.Pix[(y*w+x)*3:]
-			v := math.Max(float64(p[0])*g[0], math.Max(float64(p[1])*g[1], float64(p[2])*g[2]))
-			gi := gy*sgw + x/scell
-			qsum[gi] += v
-			qcnt[gi]++
+	// Row by row of the coarse map, so no two workers share a cell.
+	parallel(sgh, func(g0, g1 int) {
+		for y := g0 * scell; y < min(h, g1*scell); y++ {
+			gy := y / scell
+			for x := 0; x < w; x++ {
+				p := img.Pix[(y*w+x)*3:]
+				v := math.Max(float64(p[0])*g[0], math.Max(float64(p[1])*g[1], float64(p[2])*g[2]))
+				gi := gy*sgw + x/scell
+				qsum[gi] += v
+				qcnt[gi]++
+			}
 		}
-	}
+	})
 	for i := range qsum {
 		if qcnt[i] > 0 {
 			qsum[i] /= float64(qcnt[i])
 		}
 	}
 
-	class := make([]HighlightClass, w*h)
 	parallel(h, func(y0, y1 int) {
 		var rec [3]int
 		var lost, partial int
