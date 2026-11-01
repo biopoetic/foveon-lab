@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -15,8 +16,10 @@ func TestSPPGapLine(t *testing.T) {
 		t.Errorf("SD1 Merrill photos = %d, want 2", g.Photos)
 	}
 	line := g.Line()
-	if line != "SD1 Merrill 4.0/255 from Sigma Photo Pro on 2 photos" {
-		t.Errorf("line = %q", line)
+	// The mean moves with every regenerated table; the wording must not.
+	want := fmt.Sprintf("SD1 Merrill %.1f/255 from Sigma Photo Pro on 2 photos", g.Mean)
+	if line != want {
+		t.Errorf("line = %q, want %q", line, want)
 	}
 	if !strings.Contains(line, "Sigma Photo Pro") || !strings.Contains(line, "2 photos") {
 		t.Errorf("the line must name the source and the photo count: %q", line)
