@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/biopoetic/foveon-lab/preset"
+	"github.com/biopoetic/foveon-lab/render"
 )
 
 // Task 19/20: Max Detail is the preset name, and the mode's sliders are
@@ -83,6 +84,28 @@ func TestMaxDetailSPPParams(t *testing.T) {
 	o := preset.Params{Exposure: .4, FillLight: .2}
 	if r := maxDetailSPPParams(o); r.Exposure != .4 || r.FillLight != .2 {
 		t.Fatalf("ordinary preset changed: %+v", r)
+	}
+}
+
+// An SD1 medium file decodes twice as wide as its frame and a portrait frame
+// decodes sideways: every raw path, Max Detail included, must fix both.
+func TestUprightRawFrame(t *testing.T) {
+	l := &render.Linear{W: 4704, H: 1568, Pix: make([]float32, 4704*1568*3), Raw: true, ISO: 200, Sensor: "x"}
+	got := uprightRaw(&Photo{previewW: 3000, previewH: 2000, Rotation: 90}, l)
+	if got.W != 3136 || got.H != 4704 {
+		t.Errorf("frame = %dx%d, want 3136x4704", got.W, got.H)
+	}
+	if !got.Raw || got.ISO != 200 || got.Sensor != "x" {
+		t.Errorf("the reshaped frame lost what the decode knows: %+v", *got)
+	}
+	// A 16:9 frame in a 3:2 decode is cropped, and the crop must keep them too.
+	l = &render.Linear{W: 300, H: 200, Pix: make([]float32, 300*200*3), Raw: true, ISO: 400, Sensor: "x"}
+	got = uprightRaw(&Photo{previewW: 1600, previewH: 900}, l)
+	if got.W != 300 || got.H != 168 {
+		t.Errorf("16:9 frame = %dx%d, want 300x168", got.W, got.H)
+	}
+	if !got.Raw || got.ISO != 400 || got.Sensor != "x" {
+		t.Errorf("the cropped frame lost what the decode knows: %+v", *got)
 	}
 }
 

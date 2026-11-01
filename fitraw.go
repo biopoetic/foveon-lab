@@ -43,7 +43,7 @@ func fitAspect(l *render.Linear, w, h int) *render.Linear {
 
 // cropLinear is the w×h region of l at (x0, y0).
 func cropLinear(l *render.Linear, x0, y0, w, h int) *render.Linear {
-	o := &render.Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: l.Scale}
+	o := &render.Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: l.Scale, Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor}
 	for y := 0; y < h; y++ {
 		copy(o.Pix[y*w*3:(y+1)*w*3], l.Pix[((y+y0)*l.W+x0)*3:])
 	}

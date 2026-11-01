@@ -155,13 +155,6 @@ func showcaseCommand() bool {
 		if err != nil {
 			fatalShowcase(fmt.Errorf("%s: Max Detail: %w", it.Name, err))
 		}
-		// rawLinearFor turns the frame upright; rawMaxDetail keeps the
-		// sensor's own orientation, so turn it the same way before the two
-		// are compared. Without this a portrait frame's Max Detail came out
-		// landscape and stretchTo squeezed it onto the wrong pixels.
-		if ph.Rotation != 0 {
-			md = md.Rotate(ph.Rotation)
-		}
 		// The SPP export is already upright. Bring it to our post-rotation
 		// frame, never upscale: the common width is the smaller of the two.
 		targetW := min(before.W, sppFull.W)

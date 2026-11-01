@@ -215,20 +215,6 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 	// stars and specular points, whose PSF lights the neighbours. Research
 	// switch FOVEON_DN_NOSPECK=1 renders the "before" for the speckle crops.
 	fullW := img.W
-	// A reduced-height readout (SD1 MED: rows binned in pairs, 4704×1568
-	// for a 3:2 frame) is brought to the frame's shape per axis on a
-	// reduced view. Shrinking both axes alike, then stretching the rows
-	// (rawLinearFor), kept 533 of the 1568 rows on a 1600 view: MED
-	// previews lost two thirds of their vertical detail.
-	dw, dh := 0, 0
-	if maxW > 0 && maxW < img.W && ph.previewW > 0 && ph.previewH > 0 {
-		if r := float64(img.W*ph.previewH) / float64(img.H*ph.previewW); r >= 1.5 || r <= 0.67 {
-			dw, dh = maxW, int(math.Round(float64(maxW*ph.previewH)/float64(ph.previewW)))
-			if dh > img.H {
-				dw, dh = 0, 0
-			}
-		}
-	}
 	// The binning factor is chosen for both paths, so a denoised view and the
 	// plain one come out at the same size: with noise reduction the frame is
 	// binned first (binning averages noise), and either way the source is
@@ -236,19 +222,7 @@ func goLinearFor(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sce
 	// the plain path follows it instead of rendering 1600 and shifting on the
 	// swap.
 	origW := img.W
-	bx, by := 1, 1
-	if dw > 0 {
-		bx, by = max(1, (img.W+dw-1)/dw), max(1, (img.H+dh-1)/dh)
-	} else if maxW > 0 {
-		// Truncating on purpose: a 4704 px frame asked for a 1600 px preview
-		// bins by 2 and denoises at 2352 px. Rounding up to 3 made the preview
-		// smaller and faster but binned 3x3 before the denoiser, and the
-		// calibration caught it: 81 photos worse by more than 0.3 dE, DP
-		// 6.14 -> 6.70, DPM 6.85 -> 7.83 (2026-10-23). A sharper source
-		// denoises closer to what SPP does.
-		bx = max(1, img.W/maxW)
-		by = bx
-	}
+	dw, dh, bx, by := reducedView(ph, img.W, img.H, maxW)
 	if strength > 0 {
 		if bx > 1 || by > 1 {
 			img = binCam2(img, bx, by)
@@ -318,6 +292,37 @@ func maxDetailAvailable(ph *Photo) bool {
 	return ph != nil && ph.Kind == "x3f" && ph.Unsupported == "" && rawAvailable() && rawDecodable(ph.props) && nativeRaw(ph)
 }
 
+// reducedView is how a raw frame reaches a maxW view: the binning per axis
+// and, for a reduced-height readout, the frame-shaped target size (dw is 0
+// otherwise). SD1 MED bins rows in pairs, 4704×1568 for a 3:2 frame.
+// Shrinking both axes alike and then stretching the rows (rawLinearFor) kept
+// 533 of the 1568 rows on a 1600 view: MED previews lost two thirds of their
+// vertical detail.
+func reducedView(ph *Photo, w, h, maxW int) (dw, dh, bx, by int) {
+	if maxW > 0 && maxW < w && ph.previewW > 0 && ph.previewH > 0 {
+		if r := float64(w*ph.previewH) / float64(h*ph.previewW); r >= 1.5 || r <= 0.67 {
+			dw, dh = maxW, int(math.Round(float64(maxW*ph.previewH)/float64(ph.previewW)))
+			if dh > h {
+				dw, dh = 0, 0
+			}
+		}
+	}
+	bx, by = 1, 1
+	if dw > 0 {
+		bx, by = max(1, (w+dw-1)/dw), max(1, (h+dh-1)/dh)
+	} else if maxW > 0 {
+		// Truncating on purpose: a 4704 px frame asked for a 1600 px preview
+		// bins by 2 and denoises at 2352 px. Rounding up to 3 made the preview
+		// smaller and faster but binned 3x3 before the denoiser, and the
+		// calibration caught it: 81 photos worse by more than 0.3 dE, DP
+		// 6.14 -> 6.70, DPM 6.85 -> 7.83 (2026-10-23). A sharper source
+		// denoises closer to what SPP does.
+		bx = max(1, w/maxW)
+		by = bx
+	}
+	return dw, dh, bx, by
+}
+
 // maxDetailRenderParams marks p as the Max Detail mode and leaves its
 // sliders alone: they are the user's adjustments on top of the development
 // and start at zero because the preset's own values were moved into
@@ -349,15 +354,22 @@ func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error)
 	// Real clipping is colourless: keep the recovered luminance, drop the
 	// layer ratio that clipping made meaningless (the SD14 magenta specks).
 	x3f.ClipHighlights(img, t.Gain)
-	bx := 1
-	if maxW > 0 && maxW < img.W {
-		bx = max(1, img.W/maxW)
-		img = binCam2(img, bx, bx)
+	dw, dh, bx, by := reducedView(ph, img.W, img.H, maxW)
+	if maxW > 0 && maxW >= img.W {
+		bx, by = 1, 1
+	}
+	if bx > 1 || by > 1 {
+		img = binCam2(img, bx, by)
 	}
 	if strength > 0 {
 		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph), Grey: greyOf(t), NoiseAware: noiseAwareFix(calibGroup(ph)), Quattro: calibGroup(ph) == "Quattro"})
 	}
-	l := render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t)
+	var l *render.Linear
+	if dw > 0 {
+		l = render.FromCamLinearSize(img.Pix, img.W, img.H, dw, dh, 0, t)
+	} else {
+		l = render.FromCamLinear(img.Pix, img.W, img.H, maxW, 0, t)
+	}
 	l.ISO, _ = strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
 	l.Sensor = render.SharpKey(calibGroup(ph))
 	if strength > 0 && !noShadowChroma {
@@ -371,6 +383,7 @@ func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error)
 			l.Pix[i] *= g
 		}
 	}
+	l = uprightRaw(ph, l)
 	if c := rawCorrectionFor(ph); c != nil {
 		c.Apply(l)
 		render.BrightChromaDenoiseFor(l, calibGroup(ph))

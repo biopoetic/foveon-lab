@@ -317,17 +317,7 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 		}
 		l = render.FromImage(img, maxW, 0)
 	}
-	if ph.previewW > 0 && ph.previewH > 0 {
-		// e.g. an SD1 medium-size file decodes at 4704×1568 for a 3:2 frame
-		// (stretched); a Quattro shot at 16:9 decodes 3:2 (cropped).
-		wantH := l.W * ph.previewH / ph.previewW
-		if d := wantH - l.H; d > l.H/30 || -d > l.H/30 {
-			l = fitAspect(l, l.W, wantH)
-		}
-	}
-	if ph.Rotation != 0 {
-		l = l.Rotate(ph.Rotation)
-	}
+	l = uprightRaw(ph, l)
 	if c := rawCorrectionFor(ph); c != nil && !layers {
 		c.Apply(l)
 		// SPP's chroma noise reduction also removes the bright near-neutral
@@ -345,6 +335,24 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 	// the per-photo raw correction has already lifted them out of the
 	// near-black neighbourhood and the tone curve has made them visible.
 	return l, nil
+}
+
+// uprightRaw gives a raw development its frame: the embedded preview's shape
+// and ph's rotation. Every raw path needs it; Max Detail once skipped it and
+// came out stretched on SD1 medium files and sideways on portrait frames.
+func uprightRaw(ph *Photo, l *render.Linear) *render.Linear {
+	if ph.previewW > 0 && ph.previewH > 0 {
+		// e.g. an SD1 medium-size file decodes at 4704×1568 for a 3:2 frame
+		// (stretched); a Quattro shot at 16:9 decodes 3:2 (cropped).
+		wantH := l.W * ph.previewH / ph.previewW
+		if d := wantH - l.H; d > l.H/30 || -d > l.H/30 {
+			l = fitAspect(l, l.W, wantH)
+		}
+	}
+	if ph.Rotation != 0 {
+		l = l.Rotate(ph.Rotation)
+	}
+	return l
 }
 
 // irLayers: the params ask for an infrared look and ph's raw data can give
