@@ -897,8 +897,18 @@ func (s *server) handlePrefetch(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		for _, id := range ids {
 			id = strings.TrimSpace(id)
-			if id == "" || s.prefetchGen.Load() != gen || s.renderActive.Load() > 0 || s.cullActive.Load() {
+			if id == "" || s.prefetchGen.Load() != gen || s.cullActive.Load() {
 				return
+			}
+			// The page asks 700 ms after the selection, when the first
+			// picture is often still rendering. Wait for it instead of
+			// dropping the prefetch: the click must never queue behind this
+			// work, but it is exactly when the wait is wanted.
+			for s.renderActive.Load() > 0 {
+				if s.prefetchGen.Load() != gen || s.cullActive.Load() {
+					return
+				}
+				time.Sleep(50 * time.Millisecond)
 			}
 			ph := s.lookup(id)
 			if ph == nil || ph.Unsupported != "" {
