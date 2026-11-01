@@ -97,3 +97,52 @@ func TestShadowChromaKeepsGreen(t *testing.T) {
 		}
 	}
 }
+
+// At base ISO a near-black noisy patch must not gain colour: the unbounded
+// ratio plane used to spread one pixel's ratio into a painted red/green
+// blob (the alley post, task 25).  The output's chroma must not grow.
+func TestShadowChromaBaseISOBlob(t *testing.T) {
+	const w, h = 64, 64
+	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), ISO: 400}
+	for i := 0; i < w*h; i++ {
+		// A dark, slightly tilted field; one sample is red-hot.
+		v := float32(0.0012 + 0.0004*float64(i%w)/w)
+		l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2] = v, v*0.98, v*1.01
+	}
+	i := (32*w + 32) * 3
+	l.Pix[i], l.Pix[i+1], l.Pix[i+2] = 0.004, 0.0004, 0.0006
+	maxChroma := func(p []float32) float64 {
+		var m float64
+		for i := 0; i < w*h; i++ {
+			r, g, b := float64(p[i*3]), float64(p[i*3+1]), float64(p[i*3+2])
+			y := 0.2126*r + 0.7152*g + 0.0722*b
+			m = math.Max(m, math.Max(math.Abs(r-y), math.Max(math.Abs(g-y), math.Abs(b-y)))/math.Max(y, 1e-6))
+		}
+		return m
+	}
+	before := maxChroma(l.Pix)
+	SmoothShadowChroma(l, w, 1)
+	after := maxChroma(l.Pix)
+	if after > before*1.05 {
+		t.Fatalf("near-black chroma grew %.2f -> %.2f", before, after)
+	}
+}
+
+// A bright point light keeps its colour: above the shadow range the filter
+// does not run at all, so its chroma is bit-identical.
+func TestShadowChromaPointLight(t *testing.T) {
+	const w, h = 48, 48
+	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), ISO: 400}
+	for i := 0; i < w*h; i++ {
+		l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2] = 0.002, 0.002, 0.002
+	}
+	i := (24*w + 24) * 3
+	l.Pix[i], l.Pix[i+1], l.Pix[i+2] = 0.55, 0.18, 0.03
+	want := [3]float32{l.Pix[i], l.Pix[i+1], l.Pix[i+2]}
+	SmoothShadowChroma(l, w, 1)
+	for k := 0; k < 3; k++ {
+		if l.Pix[i+k] != want[k] {
+			t.Fatalf("point light changed: %v -> %v", want, [3]float32{l.Pix[i], l.Pix[i+1], l.Pix[i+2]})
+		}
+	}
+}
