@@ -142,15 +142,15 @@ func sppCheckCommand(desk string) {
 // raw base applied: the image the app's preview starts from.
 func linearForCheck(ph *Photo, spp *render.Linear) (*render.Linear, error) {
 	maxW := sourceW
-	if ph.rotation == 90 || ph.rotation == 270 {
+	if ph.Rotation == 90 || ph.Rotation == 270 {
 		maxW = max(sourceW, spp.H) // the short side at least the export's width
 	}
 	l, err := goLinear(ph, maxW, defaultNR)
 	if err != nil {
 		return nil, err
 	}
-	if ph.rotation != 0 {
-		l = l.Rotate(ph.rotation)
+	if ph.Rotation != 0 {
+		l = l.Rotate(ph.Rotation)
 	}
 	l = fitAspect(l.Downscale(spp.W), spp.W, spp.H)
 	c := rawCorrectionFor(ph)

@@ -293,8 +293,8 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 			l = fitAspect(l, l.W, wantH)
 		}
 	}
-	if ph.rotation != 0 {
-		l = l.Rotate(ph.rotation)
+	if ph.Rotation != 0 {
+		l = l.Rotate(ph.Rotation)
 	}
 	if c := rawCorrectionFor(ph); c != nil && !layers {
 		c.Apply(l)

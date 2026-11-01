@@ -66,11 +66,16 @@ type Photo struct {
 	// Favorite: starred by the user (remembered in the app's config).
 	Favorite bool              `json:"favorite,omitempty"`
 	Info     map[string]string `json:"info"`
+	// Rating (1–5, 0 = unrated) and Reject are the cull decisions, kept in
+	// the photo's folder (cull.go). Reject hides a photo by default; it never
+	// deletes it. The star is rating 5.
+	Rating int  `json:"rating,omitempty"`
+	Reject bool `json:"reject,omitempty"`
 	// Accurate: an accurate (raw-based) preview exists for this camera.
 	Accurate bool `json:"accurate,omitempty"`
 
 	path      string
-	rotation  int
+	Rotation  int `json:"rotation,omitempty"` // camera/EXIF rotation, clockwise
 	props     map[string]string
 	rawFailed atomic.Bool // raw decode failed once; stay on the preview
 	camfOnce  sync.Once   // photoCC: the as-shot WB colour matrix, read once
@@ -197,7 +202,7 @@ func loadMeta(ph *Photo) bool {
 			log.Printf("skipping %s: %v", ph.path, err)
 			return false
 		}
-		ph.props, ph.Camera, ph.rotation = f.Props, f.Camera(), f.Rotation
+		ph.props, ph.Camera, ph.Rotation = f.Props, f.Camera(), f.Rotation
 		for _, im := range f.Images {
 			if im.ImgType == 2 && im.Format == 18 && int(im.Width) > ph.previewW {
 				ph.previewW, ph.previewH = int(im.Width), int(im.Height)
@@ -216,7 +221,7 @@ func loadMeta(ph *Photo) bool {
 			}
 		}
 		if r, err := strconv.Atoi(f.Props["ROTATION"]); err == nil && (r == 90 || r == 180 || r == 270) {
-			ph.rotation = r
+			ph.Rotation = r
 		}
 		for _, k := range infoKeys {
 			if v := strings.TrimSpace(f.Props[k]); v != "" {
@@ -236,13 +241,16 @@ func loadMeta(ph *Photo) bool {
 		}
 	}
 	if ph.Kind == "image" {
-		ph.rotation = exifRotation(ph.path)
+		ph.Rotation = exifRotation(ph.path)
 		return true // not a Sigma file: no camera, so every preset is offered
 	}
 	if ph.Camera == "" {
 		ph.Camera = x3f.ShortModel(ph.Folder)
 	}
 	ph.Accurate = rawCorrectionFor(ph) != nil
+	if g, ok := sppGapFor(modelOf(ph)); ok {
+		ph.Info["SPPGAP"] = g.Line()
+	}
 	return true
 }
 
@@ -312,10 +320,11 @@ type server struct {
 	pByID   map[string]preset.Preset
 	pErrs   []string
 
-	sources *lru // id → *render.Linear at sourceW
-	bases   *lru // id|w → *render.Base
-	thumbs  *lru // id → []byte
-	sem     chan struct{}
+	sources  *lru // id → *render.Linear at sourceW
+	bases    *lru // id|w → *render.Base
+	thumbs   *lru // id → []byte
+	cullImgs *lru // id → []byte, the cull view's embedded JPEG
+	sem      chan struct{}
 
 	ai aiState
 
@@ -480,7 +489,7 @@ func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
 			}
 			return nil, err
 		}
-		return balanceJPEG(ph, render.FromImage(img, sourceW, ph.rotation)), nil
+		return balanceJPEG(ph, render.FromImage(img, sourceW, ph.Rotation)), nil
 	})
 	if err != nil {
 		return nil, err
@@ -508,7 +517,7 @@ func (s *server) fullGeo(ph *Photo, mode string, g render.Geometry) (*render.Lin
 		default:
 			var img image.Image
 			if img, err = decodePreview(ph); err == nil {
-				src = balanceJPEG(ph, render.FromImage(img, 0, ph.rotation))
+				src = balanceJPEG(ph, render.FromImage(img, 0, ph.Rotation))
 			}
 		}
 		if err != nil {
@@ -1108,7 +1117,7 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 		if err != nil {
 			return "", err
 		}
-		src = balanceJPEG(ph, render.FromImage(img, 0, ph.rotation))
+		src = balanceJPEG(ph, render.FromImage(img, 0, ph.Rotation))
 	}
 	base := render.NewBase(render.ApplyGeometry(src, geometryOf(ph)))
 	var c render.Compensation
@@ -1486,6 +1495,9 @@ func calibCommand(desk string) bool {
 		sppCheckCommand(desk)
 		return true
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "showcase" {
+		return showcaseCommand()
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "nr-score" {
 		nrScoreCommand(desk)
 		return true
@@ -1703,6 +1715,7 @@ func main() {
 		sources:    newLRU(6),
 		bases:      newLRU(40),
 		thumbs:     newLRU(2000),
+		cullImgs:   newLRU(12),
 		sem:        make(chan struct{}, max(2, runtime.NumCPU()/2)),
 	}
 	// AI agent: what was set in the app wins over the environment variable.
@@ -1728,6 +1741,8 @@ func main() {
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/api/photos", s.handlePhotos)
 	mux.HandleFunc("/api/favorite", s.handleFavorite)
+	mux.HandleFunc("/api/cull", s.handleCull)
+	mux.HandleFunc("/api/cullimg", s.handleCullImg)
 	mux.HandleFunc("/api/delete", s.handleDelete)
 	mux.HandleFunc("/api/folders", s.handleFolders)
 	mux.HandleFunc("/api/browse", s.handleBrowse)
@@ -1751,6 +1766,8 @@ func main() {
 	mux.HandleFunc("/api/geometry", s.handleGeometry)
 	mux.HandleFunc("/api/quit", handleQuit)
 	mux.HandleFunc("/api/presets", s.handlePresets)
+	mux.HandleFunc("/api/look/export", s.handleLookExport)
+	mux.HandleFunc("/api/look/import", s.handleLookImport)
 	mux.HandleFunc("/api/thumb", s.handleThumb)
 	mux.HandleFunc("/api/render", s.handleRender)
 	mux.HandleFunc("/api/gpu/base", s.handleGPUBase)

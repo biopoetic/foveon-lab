@@ -84,6 +84,40 @@ foveon-lab -photos "D:\Photos;E:\Sigma" -presets "D:\SPP presets" -port 8777 -no
 
 Photos are found up to 4 levels below each `-photos` folder.
 
+## Cull, then finish the keepers
+
+**Cull** (or `K`) opens a light view of the filtered list. `1`–`5` rate, `X` rejects, `U` clears,
+`←`/`→` (or `↑`/`↓`) move; `Esc` returns to the grid. Rating and rejection advance to the next photo
+unless **Advance** is off. The cull shows the camera's own embedded JPEG, never a raw development, so a
+200-file folder stays quick (183 frames: mean 15 ms, p95 57 ms per preview on a warm disk; the next two
+are prefetched).
+
+A **star is five stars**: a star has always meant "keep", and five stars is the cull's keeper.
+Unstarring clears the rating only when it was five. A **reject hides** a photo from the default list and
+is never a delete; nothing in the cull removes a file. **Hide rejected**, **Show all** and **Only
+rejected** in the sidebar, with **Any rating / Unrated / ★1+ … ★5**, are the filters; the list, the cull,
+**Export…** (the *filtered* scope) and **Finish** (which can save all filtered photos at once) all use
+the same set.
+
+Decisions are kept in `FoveonLab_Cull.json` in the photo's own folder, keyed by file name, written in
+one atomic step. The X3F is never touched: the sidecar moves with the folder, so the decisions survive a
+restart and a moved folder. The app's older path-keyed favourites list is mirrored for older builds and
+is the fallback for a photo that has no cull decision yet.
+
+## One file, the whole look
+
+**Export look (.foveonlook)** in the Export group writes one plain JSON file with the SPP values *and*
+the film, push, paper, darkroom, lens filter and layer mix that SPP's XML cannot carry. **Import look…**
+checks every field (unknown fields and out-of-range values are refused), never fetches or runs anything
+from the file, and never replaces a preset of the same name: it reports the collision and asks for
+another name. The import writes the XML and its `FoveonLab_FL.json` entry, so SPP can still open it.
+
+The calibration switches (**Undo camera JPEG look**, **Size**, **Accurate preview**, **All images**)
+live in **⚙ Settings** (or `C`); the cull filters and **★ Favorites** stay in the main window because
+they choose which photos you are looking at. The photo info also shows the body's measured gap against
+SPP from the latest `spp-check`, e.g. *SD1 Merrill 4.0/255 from Sigma Photo Pro on 2 photos*; the table
+is regenerated with `go run ./tools/sppgap -json docs/spp-check.json`.
+
 ## Open in Sigma Photo Pro (Windows, SPP 6)
 
 **Open in SPP ↗** in the editor hands the current preset straight to SPP: it adds it to SPP's preset
@@ -203,6 +237,8 @@ little clipping). This is black-box measurement of SPP's output; nothing is deco
 | `calib/` | calibration preset pack, export analysis, source-photo suggestions |
 | `agent/` | vision-model agent loop (tools: `render_presets`, `render`, `finish`) |
 | `spp/` | hand-off to an installed Sigma Photo Pro 6 (preset list + current setting) |
+| `tools/showcase/` | before / Max Detail / SPP crops on the same pixels, with measured EV (`zz-out` only) |
+| `tools/sppgap/` | regenerates the per-body SPP gap table from a `spp-check` JSON |
 | `web/index.html` | the UI (embedded into the binary) |
 
 ```

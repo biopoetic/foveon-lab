@@ -93,7 +93,7 @@ func (c *metaCache) get(ph *Photo, size, mod int64) (metaEntry, bool) {
 func (c *metaCache) put(ph *Photo, size, mod int64) {
 	e := metaEntry{
 		Size: size, Mod: mod,
-		Props: ph.props, Camera: ph.Camera, Rotation: ph.rotation,
+		Props: ph.props, Camera: ph.Camera, Rotation: ph.Rotation,
 		PreviewW: ph.previewW, PreviewH: ph.previewH, Info: ph.Info,
 		Unsupported: ph.Unsupported, RawDecoded: ph.RawDecoded, LowRes: ph.LowRes,
 	}
@@ -132,11 +132,13 @@ func (c *metaCache) save() {
 
 // applyMeta fills ph from a cached entry, exactly as loadMeta would.
 func applyMeta(ph *Photo, e metaEntry) {
-	ph.props, ph.Camera, ph.rotation = e.Props, e.Camera, e.Rotation
+	ph.props, ph.Camera, ph.Rotation = e.Props, e.Camera, e.Rotation
 	ph.previewW, ph.previewH = e.PreviewW, e.PreviewH
-	ph.Info = e.Info
-	if ph.Info == nil {
-		ph.Info = map[string]string{}
+	// Copy the info map: the cached entry may be used by a later scan while
+	// this photo's derived line (SPPGAP) is written into it.
+	ph.Info = make(map[string]string, len(e.Info)+1)
+	for k, v := range e.Info {
+		ph.Info[k] = v
 	}
 	ph.Unsupported, ph.RawDecoded, ph.LowRes = e.Unsupported, e.RawDecoded, e.LowRes
 }
@@ -155,6 +157,9 @@ func loadMetaCached(ph *Photo, c *metaCache) bool {
 			ph.Camera = x3f.ShortModel(ph.Folder)
 		}
 		ph.Accurate = rawCorrectionFor(ph) != nil
+		if g, ok := sppGapFor(modelOf(ph)); ok {
+			ph.Info["SPPGAP"] = g.Line()
+		}
 		return true
 	}
 	if !loadMeta(ph) {

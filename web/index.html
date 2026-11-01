@@ -212,6 +212,40 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 .final{border:1px solid var(--accent);border-radius:8px;padding:10px;background:#2a2312}
 .final h4{margin:0 0 6px;color:var(--accent)}
 .final .adj{color:var(--dim);font-size:12px;margin:6px 0}
+/* cull: a light view for 200 photos, the embedded JPEG on screen, decisions
+   with one key. The list filters live in the sidebar and are the same set the
+   cull, Export and Finish use. */
+#cullFilters{display:flex;gap:5px;align-items:center;padding:5px 8px;border-bottom:1px solid var(--line);background:var(--panel);font-size:12px;flex-wrap:wrap}
+#cullFilters select{font-size:12px;padding:2px 5px;max-width:128px}
+#cullStats{color:var(--dim);font-size:11px;flex:1;text-align:right;white-space:nowrap}
+.ph.chidden,.folder.chidden,.fgroup.chidden{display:none}
+.ph .rate{flex:none;color:var(--accent);font-size:11px;margin-left:auto;min-width:18px;text-align:right}
+.ph.rej .rate{color:var(--bad)}
+.ph.rej{opacity:.55}
+#cullView{display:none;height:100%;grid-template-rows:auto 1fr auto;min-height:0}
+#cullView.on{display:grid}
+#cullBar{display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line)}
+#cullBar b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw}
+#cullStage{position:relative;min-height:0;display:flex;align-items:center;justify-content:center;background:#0b0b0b;overflow:hidden}
+#cullImg{max-width:100%;max-height:100%;object-fit:contain;display:none;image-orientation:none;transform-origin:center center}
+#cullImg.on{display:block;max-width:none;max-height:none}
+#cullImg.on{display:block}
+#cullRejTag{display:none;position:absolute;top:14px;left:14px;background:var(--bad);color:#1a0000;font-weight:700;letter-spacing:.08em;padding:4px 10px;border-radius:4px;transform:rotate(-4deg)}
+#cullView.rejected #cullRejTag{display:block}
+#cullBusy{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);color:var(--dim);font-size:12px;background:#000a;padding:3px 10px;border-radius:4px;display:none}
+#cullBottom{display:flex;gap:10px;align-items:center;padding:8px 12px;border-top:1px solid var(--line)}
+#cullRating{display:flex;gap:2px;align-items:center}
+#cullRating button{padding:2px 7px;font-size:17px;line-height:1.2;color:var(--dim);border-color:transparent;background:none}
+#cullRating button.on{color:var(--accent)}
+#cullRating button:hover{color:var(--text);border-color:var(--line)}
+#cullBottom button{padding:4px 10px}
+#settingsDlg .box{width:min(560px,94vw)}
+#settingsDlg label.chk{justify-content:space-between}
+#settingsDlg .srow{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+#settingsDlg .srow:last-child{border-bottom:0}
+#settingsDlg .srow > span{flex:1;color:var(--text)}
+#settingsDlg .srow small{display:block;color:var(--dim)}
+#settingsDlg input[type=range]{width:190px;accent-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -220,15 +254,12 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <h1>FOVEON <span>LAB</span> <small id="appVersion" style="font-size:11px;font-weight:400;opacity:.6;letter-spacing:0"></small></h1>
     <div><span id="photoTitle">No photo</span> <span id="photoInfo"></span></div>
     <div class="spacer"></div>
-    <label class="chk" title="Undo the Vivid mode, contrast and saturation the camera baked into its JPEG preview, so a look starts from a more neutral base"><input type="checkbox" id="comp" checked> Undo camera JPEG look</label>
-    <label class="chk">Size <input type="range" id="tileSize" min="220" max="560" step="20" value="340"></label>
     <span id="updateBox" style="display:none"></span>
     <button id="updateCheck" title="Check for a new version now">⟳ Check for updates</button>
-    <label class="chk" id="accLab" title="Start from the sensor's raw data and a neutral colour balance instead of the camera's JPEG preview. The first view decodes in the background: a quick version in about 2 to 5 seconds, then the full, denoised one in about 10 to 30 seconds."><input type="checkbox" id="accurate"> Accurate preview</label>
-    <label class="chk" title="Also list ordinary JPEG, TIFF and PNG files, such as exports from other cameras or other programs. Presets only change their look; they are not Foveon raw data."><input type="checkbox" id="allImages"> All images</label>
-    <label class="chk" title="Show only the photos you starred (☆ next to each photo, or the F key)"><input type="checkbox" id="favOnly"> ★ Favorites</label>
+    <label class="chk" title="Show only the photos you starred (☆ next to each photo, or the F key). A star is five stars in the cull."><input type="checkbox" id="favOnly"> ★ Favorites</label>
     <button id="folders" title="Choose where your photos are">Folders…</button>
     <button id="cardBtn" class="primary" title="Copy new photos off a camera card into your library">Import from card…</button>
+    <button id="settingsBtn" title="Preview and listing settings (C or the gear)">⚙ Settings</button>
     <button id="quit" title="Stop Foveon Lab">Quit</button>
   </header>
   <aside id="photos">
@@ -236,7 +267,25 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
       <button id="selAll" title="Select every listed photo">All</button>
       <button id="selFav" title="Select the photos you starred">★</button>
       <button id="selClear" title="Select only the photo you are looking at">1</button>
+      <button id="cullToggle" title="Cull this list: 1–5 rate, X rejects, U clears, arrows move (K)">Cull</button>
       <span id="selCount">1 selected</span>
+    </div>
+    <div id="cullFilters" title="The list, the cull, Export and Finish all use this filtered set">
+      <select id="ratingFilter" title="Show photos at or above this rating, or only the unrated ones">
+        <option value="any">Any rating</option>
+        <option value="unrated">Unrated</option>
+        <option value="1">★1 and up</option>
+        <option value="2">★2 and up</option>
+        <option value="3">★3 and up</option>
+        <option value="4">★4 and up</option>
+        <option value="5">★5 only</option>
+      </select>
+      <select id="statusFilter" title="Rejected photos are hidden by default. Nothing is ever deleted.">
+        <option value="hide">Hide rejected</option>
+        <option value="all">Show all</option>
+        <option value="only">Only rejected</option>
+      </select>
+      <span id="cullStats"></span>
     </div>
     <div id="photoList"></div>
   </aside>
@@ -264,6 +313,33 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div class="src" style="margin-top:14px"><a id="welcomeCard" style="cursor:pointer;color:var(--accent2)">Import from card instead</a></div>
       </div>
       <div id="grid"></div>
+    </section>
+    <section id="cullView">
+      <div id="cullBar">
+        <button id="cullExit" title="Back to the grid (Esc)">← Grid</button>
+        <span id="cullPos" style="color:var(--dim)"></span>
+        <b id="cullName"></b>
+        <span id="cullFolder" style="color:var(--dim)"></span>
+        <span class="spacer"></span>
+        <label class="chk" title="After a rating or a rejection, move to the next photo in the filtered list"><input type="checkbox" id="cullAdvance" checked> Advance</label>
+        <button id="cullExport" title="Export the filtered photos with one look">Export filtered…</button>
+        <button id="cullFinish" class="primary" title="Finish the filtered photos with one look">Finish filtered…</button>
+      </div>
+      <div id="cullStage">
+        <img id="cullImg" alt="">
+        <div id="cullRejTag">REJECTED</div>
+        <div id="cullBusy">loading the embedded JPEG…</div>
+      </div>
+      <div id="cullBottom">
+        <div id="cullRating" title="Rate this photo; 5 stars is the favourite star"></div>
+        <button id="cullReject" title="Reject (X): hide it from the default list, keep the file">✕ Reject</button>
+        <button id="cullClear" title="Clear this photo's rating and rejection (U)">U Clear</button>
+        <span class="spacer"></span>
+        <button id="cullPrev" title="Previous photo (← or ↑)">‹</button>
+        <span id="cullCount" style="color:var(--dim);min-width:110px;text-align:center"></span>
+        <button id="cullNext" title="Next photo (→ or ↓)">›</button>
+        <span style="color:var(--dim);font-size:11px">1–5 rate · X reject · U clear · ←/→ move</span>
+      </div>
     </section>
     <section id="detail">
       <div id="view">
@@ -403,6 +479,9 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="export" title="Full-resolution JPEG with the preset applied">Export JPEG</button>
           <button id="exportTiff" title="Full-size 16-bit TIFF with the look applied, with no 8-bit rounding">Export TIFF 16-bit</button>
           <button id="lutBtn" title="Download this look as a 3D LUT (.cube) for darktable, Photoshop, Camera Raw / Lightroom profiles, DaVinci Resolve, Affinity…">Export LUT (.cube)</button>
+          <button id="lookExport" title="Save the whole look — SPP values plus film, push, paper and the darkroom — as one .foveonlook file to share">Export look (.foveonlook)</button>
+          <button id="lookImport" title="Import a .foveonlook file. Every field is checked, nothing is fetched or run, and an existing preset is never overwritten.">Import look…</button>
+          <input type="file" id="lookFile" accept=".foveonlook,application/json" style="display:none">
           <button id="batchBtn" title="Apply this preset to many photos and export them all">Batch export…</button>
           <button id="exportDngR" title="Full-resolution 16-bit linear DNG of this render: opens in Lightroom / Capture One / darktable / Apple Photos looking like the preview, with white balance and exposure still editable">Export DNG</button>
           <button id="exportDng" title="The raw sensor data as DNG for Lightroom, Capture One or darktable. Presets are not applied." style="display:none">Export raw DNG</button>
@@ -413,6 +492,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div class="grp" data-g="keys"><div class="gh"><span class="chev">▾</span><span class="gt">Keyboard shortcuts</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
           <div class="gb" id="g-keys">
         <div class="kbd">
+          <code>K</code> cull · <code>1</code>–<code>5</code> rate · <code>X</code> reject · <code>U</code> clear · arrows move<br>
           <code>←</code> <code>→</code> previous / next preset<br>
           <code>↑</code> <code>↓</code> previous / next photo (same preset)<br>
           <code>O</code> hold for the camera original<br>
@@ -496,6 +576,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <b>Export photos</b>
     <div class="src" id="bPreset"></div>
     <label class="chk"><input type="radio" name="bScope" value="selected" checked> <span id="bSelectedLab">The selected photos</span></label>
+    <label class="chk"><input type="radio" name="bScope" value="filtered"> <span id="bFilteredLab">The filtered photos</span></label>
     <label class="chk"><input type="radio" name="bScope" value="folder"> <span id="bFolderLab">This folder</span></label>
     <label class="chk"><input type="radio" name="bScope" value="all"> <span id="bAllLab">All listed photos</span></label>
     <label class="chk" id="bLookRow">Look <select id="bPresetSel" style="flex:1"></select></label>
@@ -529,11 +610,35 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <div class="btns"><button class="primary" id="cardStart">Import</button> <button id="cardStop" style="display:none">Stop</button> <button id="cardClose">Close</button></div>
   </div>
 </div>
+<div id="settingsDlg" class="modal">
+  <div class="box">
+    <div style="display:flex;align-items:center;gap:8px"><b style="flex:1">Settings</b><button id="settingsClose">Close</button></div>
+    <div class="src">These change how previews are made and what the list shows. The cull keys, favourites and photo folders stay in the main window.</div>
+    <div class="srow">
+      <span>Undo camera JPEG look<small>The camera bakes Vivid, contrast and saturation into its JPEG preview. This starts from a more neutral base.</small></span>
+      <label class="chk"><input type="checkbox" id="comp" checked></label>
+    </div>
+    <div class="srow">
+      <span>Size<small>The preset tiles and the detail view's working width.</small></span>
+      <input type="range" id="tileSize" min="220" max="560" step="20" value="340">
+    </div>
+    <div class="srow" id="accLab">
+      <span>Accurate preview<small>Decode the sensor's raw data instead of the camera JPEG. The first view is quick, then the full denoised one follows.</small></span>
+      <label class="chk"><input type="checkbox" id="accurate"></label>
+    </div>
+    <div class="srow">
+      <span>All images<small>Also list ordinary JPEG, TIFF and PNG files. Their presets change only the look; they are not raw data.</small></span>
+      <label class="chk"><input type="checkbox" id="allImages"></label>
+    </div>
+    <div class="src" style="margin-top:2px">The calibration switches live here now; Favourites and the cull filters stay in the header and the photo list because they are about which photos you are looking at.</div>
+  </div>
+</div>
 <div id="toast"></div>
 <div id="finishDlg" class="modal">
   <div class="box">
     <b>Finish this photo</b>
     <div class="src" id="finishLook"></div>
+    <label class="chk" id="finishScopeRow">Apply to <select id="finishScope"><option value="one">This photo</option><option value="filtered">The filtered photos</option></select></label>
     <label class="chk">Save as <select id="finishFormat"><option value="jpeg">JPEG, full size</option><option value="tiff">TIFF 16-bit, full size</option><option value="dng">DNG 16-bit, full size</option></select></label>
     <label class="chk">Colour <select id="finishSpace"><option value="srgb">sRGB (recommended)</option><option value="adobe">Adobe RGB (1998)</option><option value="apple">Apple RGB</option><option value="colormatch">ColorMatch RGB</option><option value="prophoto">ProPhoto RGB</option></select></label>
     <label class="chk">Save to <select id="finishDest"><option value="">Next to the photo (foveon-lab folder)</option><option value="chosen">A folder I choose</option></select></label>
@@ -667,9 +772,10 @@ async function loadPhotos(){
       box.appendChild(group);
     }
     const el = document.createElement("div");
-    el.className = "ph"; el.dataset.id = p.id;
+    el.className = "ph" + (p.reject ? " rej" : "");
+    el.dataset.id = p.id;
     const sub = p.unsupported ? "not supported yet" : [p.lowRes && "low-res preview", p.rawDecoded && "raw-decoded", p.info.ISO && "ISO "+p.info.ISO, p.info.SH_DESC, p.info.AP_DESC && "f/"+p.info.AP_DESC].filter(Boolean).join(" · ");
-    el.innerHTML = `<img loading="lazy" src="/api/thumb?id=${p.id}" onerror="this.style.visibility='hidden'"><div>${esc(p.name)}<small>${esc(sub)}</small></div><span class="star" title="Favorite (F)">${p.favorite ? "★" : "☆"}</span><span class="trash" title="Move to the Recycle Bin (Delete)">🗑</span>`;
+    el.innerHTML = `<img loading="lazy" src="/api/thumb?id=${p.id}" onerror="this.style.visibility='hidden'"><div>${esc(p.name)}<small>${esc(sub)}</small></div><span class="rate" title="Rating (1–5, X = rejected)">${p.reject ? "✕" : (p.rating ? "★"+p.rating : "")}</span><span class="star" title="Favorite (F) — five stars">${p.favorite ? "★" : "☆"}</span><span class="trash" title="Move to the Recycle Bin (Delete)">🗑</span>`;
     if (p.favorite) el.classList.add("fav");
     el.querySelector(".star").onclick = ev => { ev.stopPropagation(); toggleFavorite(p.id); };
     el.querySelector(".trash").onclick = ev => { ev.stopPropagation(); deletePhoto(p.id); };
@@ -707,9 +813,9 @@ async function chooseFirstFolder(){
 
 // A plain click opens one photo; ctrl/cmd-click adds or removes one; a
 // shift-click adds everything between the last click and this one. The
-// selection is what "Export…" uses.
+// visible, filtered list is what "Export…" and the cull use.
 function photoClicked(id, ev){
-  const visible = S.photos.filter(p => !$("#favOnly").checked || p.favorite);
+  const visible = visiblePhotos();
   if (ev.shiftKey && S.selAnchor && visible.some(p => p.id === S.selAnchor)){
     const a = visible.findIndex(p => p.id === S.selAnchor), b = visible.findIndex(p => p.id === id);
     if (a >= 0 && b >= 0){
@@ -736,13 +842,52 @@ function paintSelection(){
   $("#exportSel").disabled = n === 0;
 }
 
+// ---------- the filtered set ----------
+// One predicate for the photo list, the cull, Export and Finish. A rejected
+// photo is hidden by default (and can be shown again with the status filter);
+// a rating filter is a threshold, and "Unrated" is its own choice.
+function passesCull(p){
+  if ($("#favOnly").checked && !p.favorite) return false;
+  const st = $("#statusFilter")?.value || "hide";
+  if (st === "hide" && p.reject) return false;
+  if (st === "only" && !p.reject) return false;
+  const rf = $("#ratingFilter")?.value || "any";
+  if (rf === "unrated") return !p.rating;
+  if (/^[1-5]$/.test(rf) && (p.rating || 0) < +rf) return false;
+  return true;
+}
+function visiblePhotos(){ return S.photos.filter(passesCull); }
+
+// applyFavFilter also applies the cull filters: every .ph is shown or hidden,
+// and a folder with nothing visible is hidden with its photos.
+function applyFavFilter(){
+  const favOn = $("#favOnly").checked;
+  document.body.classList.toggle("favonly", favOn);
+  const visible = new Set(visiblePhotos().map(p => p.id));
+  for (const el of document.querySelectorAll("#photoList .ph")) el.classList.toggle("chidden", !visible.has(el.dataset.id));
+  for (const g of document.querySelectorAll("#photos .fgroup")){
+    const empty = !g.querySelector(".ph:not(.chidden)");
+    g.classList.toggle("chidden", empty);
+    g.previousElementSibling?.classList.toggle("chidden", empty);
+  }
+  const shown = visible.size, rejected = S.photos.filter(p => p.reject).length;
+  $("#cullStats").textContent = `${shown} of ${S.photos.length}` + (rejected ? ` · ${rejected} rejected` : "");
+}
+// applyCullFilters is the filter controls' entry point; it keeps the cull
+// view in step with the list and lets go of a photo that is no longer shown.
+function applyCullFilters(){
+  applyFavFilter();
+  S.sel = new Set([...S.sel].filter(id => visiblePhotos().some(p => p.id === id)));
+  paintSelection();
+  if (CULL.on) cullGo(true);
+}
+
 function selectAllPhotos(){
-  const visible = S.photos.filter(p => !$("#favOnly").checked || p.favorite);
-  S.sel = new Set(visible.map(p => p.id));
+  S.sel = new Set(visiblePhotos().map(p => p.id));
   paintSelection();
 }
 function selectFavoritePhotos(){
-  S.sel = new Set(S.photos.filter(p => p.favorite).map(p => p.id));
+  S.sel = new Set(visiblePhotos().filter(p => p.favorite).map(p => p.id));
   paintSelection();
 }
 
@@ -766,31 +911,37 @@ You can restore it from there.`)) return;
   }
 }
 
-// toggleFavorite stars or unstars a photo (remembered by the app).
+// cullSet records one decision in the sidecar and repaints the one row. The
+// star is rating 5: starring sets five stars, unstarring clears it.
+async function cullSet(id, body){
+  const p = S.photos.find(x => x.id === id);
+  if (!p) return null;
+  let r;
+  try {
+    const res = await fetch("/api/cull", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({id, ...body})});
+    if (!res.ok) throw new Error(await res.text());
+    r = await res.json();
+  } catch (e) { toast("Could not save the cull decision: " + esc(e.message), 8000); return null; }
+  p.rating = r.rating; p.reject = r.reject; p.favorite = r.favorite;
+  paintPhotoRow(p);
+  applyFavFilter();
+  if (S.photo?.id === id) $("#photoInfo").textContent = photoInfoText(p);
+  return p;
+}
+function paintPhotoRow(p){
+  const el = document.querySelector(`#photoList .ph[data-id="${p.id}"]`);
+  if (!el) return;
+  el.classList.toggle("rej", !!p.reject);
+  el.classList.toggle("fav", !!p.favorite);
+  el.querySelector(".rate").textContent = p.reject ? "✕" : (p.rating ? "★"+p.rating : "");
+  el.querySelector(".star").textContent = p.favorite ? "★" : "☆";
+}
+async function ratePhoto(id, n){ return cullSet(id, {rating: n}); }
+// toggleFavorite stars or unstars a photo: five stars or none.
 async function toggleFavorite(id){
   const p = S.photos.find(x => x.id === id);
   if (!p) return;
-  const on = !p.favorite;
-  try {
-    const r = await fetch("/api/favorite", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id, on})});
-    if (!r.ok) throw new Error(await r.text());
-  } catch (e) { alert("Could not save the favorite: " + e.message); return; }
-  p.favorite = on;
-  const el = document.querySelector(`.ph[data-id="${id}"]`);
-  if (el){ el.classList.toggle("fav", on); el.querySelector(".star").textContent = on ? "★" : "☆"; }
-  applyFavFilter();
-}
-
-// applyFavFilter hides folders without a starred photo while "★ Favorites"
-// is on (the photos themselves are hidden by CSS).
-function applyFavFilter(){
-  const on = $("#favOnly").checked;
-  document.body.classList.toggle("favonly", on);
-  for (const g of document.querySelectorAll("#photos .fgroup")){
-    const empty = on && !g.querySelector(".ph.fav");
-    g.classList.toggle("fhidden", empty);
-    g.previousElementSibling?.classList.toggle("fhidden", empty);
-  }
+  return cullSet(id, {rating: p.favorite ? 0 : 5});
 }
 
 function setFolderCollapsed(folder, on){
@@ -858,12 +1009,13 @@ function accWatch(){
 
 function photoInfoText(p){
   const i = p.info;
-  return [accLabel(p), p.lowRes && "LOW-RES PREVIEW (567 px, no full-size preview in SD9/SD10 files)", p.rawDecoded && "RAW-DECODED (from the raw data, no in-camera look)", p.kind === "image" && "NOT A FOVEON FILE: the presets only change its look", i.REPAIRED && "REPAIRED: " + i.REPAIRED, i.CAMMODEL, i.LENS && "lens " + i.LENS, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.TIME].filter(Boolean).join(" · ");
+  return [accLabel(p), p.lowRes && "LOW-RES PREVIEW (567 px, no full-size preview in SD9/SD10 files)", p.rawDecoded && "RAW-DECODED (from the raw data, no in-camera look)", p.kind === "image" && "NOT A FOVEON FILE: the presets only change its look", i.REPAIRED && "REPAIRED: " + i.REPAIRED, i.CAMMODEL, i.LENS && "lens " + i.LENS, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.SPPGAP, i.TIME].filter(Boolean).join(" · ");
 }
 
 function selectPhoto(id){
   const p = S.photos.find(x => x.id === id) || S.photos[0];
   if (!p) return;
+  if (CULL.on){ cullShow(p); return; }
   const first = !S.photo; // the photo restored at start-up: keep folders as left
   S.photo = p; store.set("photo", p.id);
   if (!S.sel.size){ S.sel.add(p.id); S.selAnchor = p.id; }
@@ -895,10 +1047,142 @@ function selectPhoto(id){
 }
 
 function stepPhoto(d){
-  const i = S.photos.findIndex(x => x === S.photo);
-  const n = S.photos[i + d];
+  const list = visiblePhotos();
+  if (!list.length) return;
+  const i = list.findIndex(x => x === S.photo);
+  const n = list[i < 0 ? (d > 0 ? 0 : list.length - 1) : Math.max(0, Math.min(list.length - 1, i + d))];
   if (n) selectPhoto(n.id);
 }
+
+// ---------- cull ----------
+// The cull is a light view over the filtered list: the camera's embedded JPEG,
+// one key per decision, and the next photo prefetched so 200 files stay
+// instant. It shares S.photo with the grid, so Export, Finish and the side
+// panels all agree on which photo is on screen.
+const CULL = {on: false, busy: 0};
+function cullList(){ return visiblePhotos(); }
+function cullOpen(){
+  if (!S.photos.length){ toast("Choose a photo folder first.", 5000); return; }
+  if (!S.params){ S.base = {...NEUTRAL}; S.params = {...NEUTRAL}; }
+  CULL.on = true;
+  $("#gridView").style.display = "none";
+  $("#detail").classList.remove("on");
+  $("#cullView").classList.add("on");
+  $("#cullToggle").classList.add("on");
+  cullGo();
+}
+function cullClose(){
+  CULL.on = false;
+  $("#cullView").classList.remove("on");
+  $("#gridView").style.display = "";
+  $("#cullToggle").classList.remove("on");
+  if (S.photo) selectPhoto(S.photo.id); else drawGrid();
+}
+function cullGo(keep){
+  const list = cullList();
+  if (!list.length){
+    $("#cullImg").classList.remove("on");
+    $("#cullBusy").style.display = "block";
+    $("#cullBusy").textContent = "Nothing in the filtered list. Loosen the rating or rejected filter.";
+    $("#cullPos").textContent = "0/0"; $("#cullCount").textContent = "0 of 0";
+    $("#cullName").textContent = ""; $("#cullFolder").textContent = "";
+    return;
+  }
+  $("#cullBusy").textContent = "loading the embedded JPEG…";
+  let i = list.findIndex(x => x.id === S.photo?.id);
+  if (i < 0 && keep) i = 0;
+  if (i < 0) i = 0;
+  cullShow(list[i]);
+}
+function cullShow(p){
+  S.photo = p; store.set("photo", p.id);
+  if (!S.sel.has(p.id)){ S.sel = new Set([p.id]); S.selAnchor = p.id; }
+  paintSelection();
+  document.querySelectorAll(".ph").forEach(e => e.classList.toggle("sel", e.dataset.id === p.id));
+  $("#photoTitle").textContent = `${p.folder} / ${p.name}`;
+  $("#photoInfo").textContent = photoInfoText(p);
+  sppButton(); exportButtons(); loadGeo(p.id);
+  const list = cullList(), i = Math.max(0, list.findIndex(x => x.id === p.id));
+  $("#cullPos").textContent = `${i+1}/${list.length}`;
+  $("#cullCount").textContent = `${i+1} of ${list.length}`;
+  $("#cullName").textContent = p.name;
+  $("#cullFolder").textContent = p.folder;
+  $("#cullView").classList.toggle("rejected", !!p.reject);
+  const img = $("#cullImg"), busy = $("#cullBusy"), mine = ++CULL.busy;
+  const rot = p.rotation || 0;
+  busy.textContent = "loading the embedded JPEG…"; busy.style.display = "block";
+  img.classList.remove("on");
+  img.dataset.rot = rot;
+  img.onload = () => { if (mine !== CULL.busy) return; img.classList.add("on"); busy.style.display = "none"; cullFit(img, rot); };
+  img.onerror = () => { if (mine !== CULL.busy) return; busy.textContent = "This photo could not be shown."; };
+  img.src = "/api/cullimg?id=" + encodeURIComponent(p.id);
+  paintCullRating(p);
+  // The next two photos are warmed in the browser's cache and the server's
+  // small LRU, so an arrow key shows the picture instead of waiting.
+  for (let k = 1; k <= 2; k++){
+    const q = list[i + k];
+    if (q){ const pre = new Image(); pre.src = "/api/cullimg?id=" + encodeURIComponent(q.id); }
+  }
+}
+function paintCullRating(p){
+  document.querySelectorAll("#cullRating button").forEach(b => b.classList.toggle("on", +b.dataset.n <= (p.rating || 0)));
+  $("#cullReject").classList.toggle("on", !!p.reject);
+  $("#cullClear").disabled = !p.rating && !p.reject;
+}
+// cullFit sizes the embedded JPEG for its rotation before turning it. The
+// server never decodes a rotated preview (that cost seconds per frame); the
+// browser turns the camera's own JPEG, and the pre-rotation box is chosen so
+// the turned picture fits the stage.
+function cullFit(img, rot){
+  const st = $("#cullStage");
+  if (!img.naturalWidth || !st.clientWidth) return;
+  const swap = rot === 90 || rot === 270;
+  const bw = swap ? st.clientHeight : st.clientWidth, bh = swap ? st.clientWidth : st.clientHeight;
+  const s = Math.min(1, bw / img.naturalWidth, bh / img.naturalHeight);
+  img.style.width = (img.naturalWidth * s) + "px";
+  img.style.height = (img.naturalHeight * s) + "px";
+  img.style.transform = rot === 180 ? "rotate(180deg)" : rot === 90 ? "rotate(90deg)" : rot === 270 ? "rotate(-90deg)" : "";
+}
+function cullStep(d){
+  const list = cullList();
+  if (!list.length) return;
+  const i = list.findIndex(x => x.id === S.photo?.id);
+  const j = Math.max(0, Math.min(list.length - 1, (i < 0 ? 0 : i) + d));
+  if (j === i) return;
+  cullShow(list[j]);
+}
+// cullAdvance chooses where to land after a decision: the next photo if this
+// one is still in the filtered list, else whatever took its place.
+function cullAdvanceFrom(id, was){
+  paintCullRating(S.photo);
+  if (!$("#cullAdvance").checked) return;
+  const list = cullList();
+  if (!list.length){ cullGo(); return; }
+  let j = list.findIndex(x => x.id === id);
+  if (j < 0) j = Math.min(was, list.length - 1);
+  else j = Math.min(j + 1, list.length - 1);
+  cullShow(list[j]);
+}
+async function cullRate(n){
+  if (!S.photo) return;
+  const id = S.photo.id, was = Math.max(0, cullList().findIndex(x => x.id === id));
+  const p = await ratePhoto(id, n);
+  if (!p) return;
+  cullAdvanceFrom(id, was);
+}
+async function cullReject(){
+  if (!S.photo) return;
+  const id = S.photo.id, was = Math.max(0, cullList().findIndex(x => x.id === id));
+  const p = await cullSet(id, {reject: true});
+  if (!p) return;
+  cullAdvanceFrom(id, was);
+}
+async function cullClear(){
+  if (!S.photo) return;
+  const p = await cullSet(S.photo.id, {clear: true});
+  if (p) paintCullRating(p);
+}
+
 
 // ---------- presets ----------
 async function loadPresets(reload){
@@ -2111,21 +2395,23 @@ function batchArm(){
 function batchIds(scope){
   const ok = x => !x.unsupported;
   if (scope === "all") return S.photos.filter(ok).map(x => x.id);
-  if (scope === "folder") return S.photos.filter(x => ok(x) && x.folder === S.photo.folder).map(x => x.id);
-  const inList = S.photos.filter(ok).map(x => x.id);
-  return inList.filter(id => S.sel.has(id));
+  if (scope === "filtered") return visiblePhotos().filter(ok).map(x => x.id);
+  if (scope === "folder") return visiblePhotos().filter(x => ok(x) && x.folder === S.photo.folder).map(x => x.id);
+  return visiblePhotos().filter(ok).map(x => x.id).filter(id => S.sel.has(id));
 }
 
 function batchOpen(scope){
   if (!S.photo){ toast("Pick a photo first.", 4000); return; }
-  scope = scope || (S.sel.size > 1 ? "selected" : "folder");
+  scope = scope || (CULL.on ? "filtered" : (S.sel.size > 1 ? "selected" : "folder"));
   BATCH.ids = [];
-  const folder = S.photos.filter(x => x.folder === S.photo.folder && !x.unsupported);
+  const vis = visiblePhotos();
+  const folder = vis.filter(x => x.folder === S.photo.folder && !x.unsupported);
   const all = S.photos.filter(x => !x.unsupported);
   const p = current();
-  const tuned = !!S.params && $("#detail").classList.contains("on") && dirty();
+  const tuned = !!S.params && (CULL.on || $("#detail").classList.contains("on")) && dirty();
   $("#bSelectedLab").textContent = `The selected photos (${batchIds("selected").length})`;
-  $("#bFolderLab").textContent = `This folder: ${S.photo.folder} (${folder.length} photos)`;
+  $("#bFilteredLab").textContent = `The filtered photos (${batchIds("filtered").length})`;
+  $("#bFolderLab").textContent = `This folder: ${S.photo.folder} (${folder.length} filtered photos)`;
   $("#bAllLab").textContent = `All listed photos (${all.length})`;
   const r = document.querySelector(`input[name=bScope][value="${scope}"]`);
   if (r) r.checked = true;
@@ -2479,6 +2765,51 @@ function drawHisto(hist){
   c.globalCompositeOperation = "source-over";
 }
 
+// ---------- .foveonlook: one file, the whole look ----------
+// Export sends the app's own look (SPP values + film, push, paper, darkroom,
+// lens, layer) as one plain JSON file. Import reads the local file, posts its
+// bytes to the app, and the app checks every field before writing anything;
+// it never replaces an existing preset, asks for another name instead.
+function lookExport(){
+  if (!S.photo || !S.params){ toast("Open a photo first.", 4000); return; }
+  const p = current(), u = new URLSearchParams();
+  if (p && !dirty()) u.set("preset", p.id); else u.set("p", JSON.stringify(S.params));
+  u.set("name", lookName());
+  u.set("id", S.photo.id);
+  u.set("camera", S.photo.camera || "");
+  const a = document.createElement("a");
+  a.href = "/api/look/export?" + u;
+  a.download = "";
+  document.body.appendChild(a); a.click(); a.remove();
+}
+async function importLookText(text, name){
+  let res;
+  try {
+    res = await fetch("/api/look/import" + (name ? "?name=" + encodeURIComponent(name) : ""),
+      {method:"POST", headers:{"Content-Type":"application/json"}, body:text});
+  } catch (e) { toast("Could not reach the app: " + esc(e.message), 8000); return null; }
+  if (res.status === 409){
+    const why = await res.text();
+    const base = (() => { try { return JSON.parse(text).name || "Imported look"; } catch { return "Imported look"; } })();
+    const other = prompt(why + "\n\nImport it under another name:", base + " (imported)");
+    if (!other) return null;
+    return importLookText(text, other.trim());
+  }
+  if (!res.ok){ toast("Import refused: " + esc(await res.text()), 12000); return null; }
+  const data = await res.json();
+  S.presets = data.presets || S.presets;
+  await loadPresets(false);
+  refreshList();
+  toast(`Imported <b>${esc(data.imported || "")}</b> into <b>${esc(data.savedTo || "")}</b>`, 8000);
+  return data;
+}
+async function importLookFile(file){
+  if (!file) return;
+  if (file.size > 1024 * 1024){ toast("That file is too large to be a look.", 6000); return; }
+  const text = await file.text();
+  await importLookText(text, "");
+}
+
 async function savePreset(){
   const p = current();
   const cam = S.photo.camera || "";
@@ -2551,6 +2882,11 @@ function finishOpen(){
   if (!S.photo || !S.params) return;
   const p = current(), tuned = dirty();
   $("#finishLook").textContent = "Look: " + (tuned ? "your current settings" : (p ? p.name : "Neutral"));
+  const vis = visiblePhotos().filter(x => !x.unsupported).length;
+  const sc = $("#finishScope");
+  sc.options[1].textContent = `The filtered photos (${vis})`;
+  $("#finishScopeRow").style.display = vis > 1 ? "" : "none";
+  sc.value = vis > 1 && CULL.on ? "filtered" : "one";
   const dest = store.get("exportFolder", "");
   $("#finishDest").value = dest ? "chosen" : "";
   $("#finishDestPath").value = dest;
@@ -2574,6 +2910,7 @@ async function finishSave(){
   const dest = chosen ? $("#finishDestPath").value.trim() : "";
   if (chosen && !dest){ $("#finishMsg").textContent = "Choose a folder to save into."; return; }
   if (dest) store.set("exportFolder", dest);
+  if ($("#finishScope").value === "filtered"){ await finishFiltered(format, space, dest); return; }
   FIN.busy = true;
   const closedAtStart = FIN.closed;
   $("#finishGo").disabled = true; $("#finishGo").textContent = "Saving…";
@@ -2589,6 +2926,57 @@ async function finishSave(){
     $("#finishGo").disabled = false; $("#finishGo").textContent = "Save";
     if ($("#finishDlg").classList.contains("on") && $("#finishMsg").textContent === "Saving the picture…")
       $("#finishMsg").textContent = "JPEG at high quality. A file that is already there is never replaced; the new one gets a number.";
+  }
+}
+
+// finishFiltered is Finish on the filtered set: one look, the chosen format
+// and folder, every visible photo in turn. It uses the same batch endpoint as
+// Export and never replaces an existing file.
+async function finishFiltered(format, space, dest){
+  const ids = batchIds("filtered");
+  if (!ids.length){ $("#finishMsg").textContent = "No visible photos to save."; return; }
+  const p = current(), tuned = dirty();
+  const body = {
+    ids, format, preset: p && !tuned ? p.id : "",
+    params: (!p || tuned) && S.idx !== -2 ? S.params : null,
+    comp: comp() === "1", denoise: +$("#nr").value, space, destination: dest, photos: false,
+    look: lookName(),
+  };
+  FIN.busy = true;
+  const closedAtStart = FIN.closed;
+  $("#finishGo").disabled = true; $("#finishGo").textContent = "Saving…";
+  $("#finishMsg").textContent = `Saving ${ids.length} filtered photos…`;
+  try {
+    const res = await fetch("/api/export/batch", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+    if (!res.ok){ $("#finishMsg").textContent = await res.text(); return; }
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = "", done = null, errors = [];
+    for (;;){
+      const {value, done: eof} = await reader.read();
+      if (eof) break;
+      buf += dec.decode(value, {stream:true});
+      let nl;
+      while ((nl = buf.indexOf(String.fromCharCode(10))) >= 0){
+        const line = JSON.parse(buf.slice(0, nl)); buf = buf.slice(nl + 1);
+        if (line.done) done = line;
+        else {
+          $("#finishMsg").textContent = `${line.i}/${line.n} ${line.name || ""}`;
+          if (line.error) errors.push(`${line.name || "?"}: ${line.error}`);
+        }
+      }
+    }
+    if (FIN.closed !== closedAtStart) { toast("The filtered photos are saved.", 6000); return; }
+    if (done){
+      toast(`Saved ${done.ok} filtered photo${done.ok === 1 ? "" : "s"}${done.failed ? `, ${done.failed} failed` : ""}.${errors.length ? "<br>" + errors.slice(0, 3).map(esc).join("<br>") : ""}`, 9000);
+      finishClose();
+    } else {
+      $("#finishMsg").textContent = "The export stopped before it finished. Files already saved are kept.";
+    }
+  } catch (e) {
+    $("#finishMsg").textContent = "The export failed: " + e.message;
+  } finally {
+    FIN.busy = false;
+    $("#finishGo").disabled = false; $("#finishGo").textContent = "Save";
   }
 }
 
@@ -3244,6 +3632,25 @@ function mdLite(s){
 // ---------- wiring ----------
 function bind(){
   buildSliders();
+  // Cull filters: the list, the cull, Export and Finish all read these.
+  $("#ratingFilter").value = store.get("ratingFilter", "any");
+  $("#statusFilter").value = store.get("statusFilter", "hide");
+  $("#cullAdvance").checked = store.get("cullAdvance", true);
+  $("#ratingFilter").onchange = e => { store.set("ratingFilter", e.target.value); e.target.blur(); applyCullFilters(); };
+  $("#statusFilter").onchange = e => { store.set("statusFilter", e.target.value); e.target.blur(); applyCullFilters(); };
+  $("#cullAdvance").onchange = e => { store.set("cullAdvance", e.target.checked); e.target.blur(); };
+  $("#cullRating").innerHTML = [1,2,3,4,5].map(n => `<button data-n="${n}" title="${n} star${n>1?"s":""}">★</button>`).join("");
+  document.querySelectorAll("#cullRating button").forEach(b => b.onclick = () => { b.blur(); cullRate(+b.dataset.n); });
+  $("#cullToggle").onclick = () => { $("#cullToggle").blur(); CULL.on ? cullClose() : cullOpen(); };
+  $("#cullExit").onclick = cullClose;
+  $("#cullPrev").onclick = () => cullStep(-1);
+  $("#cullNext").onclick = () => cullStep(1);
+  $("#cullReject").onclick = () => { $("#cullReject").blur(); cullReject(); };
+  $("#cullClear").onclick = () => { $("#cullClear").blur(); cullClear(); };
+  $("#cullExport").onclick = () => batchOpen("filtered");
+  $("#cullFinish").onclick = () => finishOpen();
+  $("#settingsBtn").onclick = () => $("#settingsDlg").classList.add("on");
+  $("#settingsClose").onclick = () => $("#settingsDlg").classList.remove("on");
   $("#camSel").value = S.cam;
   $("#camSel").onchange = e => { S.cam = e.target.value; store.set("cam", S.cam); refreshList(); drawChips(); drawGrid(); };
   $("#srcSel").onchange = e => { S.src = e.target.value; store.set("src", S.src); refreshList(); drawChips(); drawGrid(); };
@@ -3265,6 +3672,9 @@ function bind(){
   $("#redoBtn").onclick = () => { redoStep(); $("#redoBtn").blur(); };
   paintUndo();
   $("#save").onclick = savePreset;
+  $("#lookExport").onclick = lookExport;
+  $("#lookImport").onclick = () => $("#lookFile").click();
+  $("#lookFile").onchange = e => { importLookFile(e.target.files[0]); e.target.value = ""; };
   $("#saveEdits").onclick = savePhotoEdits;
   $("#exportSel").onclick = () => batchOpen("selected");
   $("#selAll").onclick = selectAllPhotos;
@@ -3305,7 +3715,7 @@ function bind(){
   $("#abClose").onclick = abClose;
   $("#abClose2").onclick = abClose;
   // Clicking the dark backdrop of a small dialog closes it, like Cancel.
-  for (const [id, close] of [["#finishDlg", finishClose], ["#batch", batchClose], ["#cardDlg", cardClose], ["#abDlg", abClose]])
+  for (const [id, close] of [["#finishDlg", finishClose], ["#batch", batchClose], ["#cardDlg", cardClose], ["#abDlg", abClose], ["#settingsDlg", () => $("#settingsDlg").classList.remove("on")]])
     $(id).addEventListener("click", e => { if (e.target.id === id.slice(1)) close(); });
   cropInit();
   try { const v = localStorage.getItem("fl.nr"); if (v !== null) $("#nr").value = v; } catch {}
@@ -3394,6 +3804,22 @@ function bind(){
         if ($(id).classList.contains("on")){ e.preventDefault(); close(); return; }
     }
     if ($("#foldersDlg").classList.contains("on") && e.key === "Escape"){ e.preventDefault(); $("#foldersDlg").classList.remove("on"); return; }
+    if ($("#settingsDlg").classList.contains("on") && e.key === "Escape"){ e.preventDefault(); $("#settingsDlg").classList.remove("on"); return; }
+    // In the cull, the keys own the window; a filter select may keep the
+    // focus, and 1–5 must still rate rather than change the select.
+    if (CULL.on){
+      if (e.target.matches("input[type=text],input[type=password],input[type=search],textarea")) return;
+      if (e.key === "Escape"){ e.preventDefault(); cullClose(); return; }
+      if (e.repeat) return;
+      if (/^[1-5]$/.test(e.key)){ e.preventDefault(); cullRate(+e.key); return; }
+      if (e.key === "x" || e.key === "X"){ e.preventDefault(); cullReject(); return; }
+      if (e.key === "u" || e.key === "U"){ e.preventDefault(); cullClear(); return; }
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp" || e.key === "PageUp"){ e.preventDefault(); cullStep(-1); return; }
+      if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === "PageDown"){ e.preventDefault(); cullStep(1); return; }
+      if (e.key === "Tab"){ e.preventDefault(); const v = sides(); const show = !(v.list || v.panel); setSides(show, show); return; }
+      if (e.key === "f" || e.key === "F"){ e.preventDefault(); toggleFavorite(S.photo?.id).then(p => p && paintCullRating(p)); return; }
+      return; // nothing else should crop, zoom or leave the cull by accident
+    }
     if (e.target.matches("input[type=text],input[type=password],input[type=search],select,textarea,input[type=range]")) return;
     // Undo / redo of the editor's own state (not the browser's).
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "z" || e.key === "Z")){
@@ -3417,6 +3843,8 @@ function bind(){
     if ((e.key === "F" || e.key === "f") && e.shiftKey && !e.ctrlKey && !e.metaKey){ e.preventDefault(); toggleFull(); return; }
     if (e.key === "F11"){ e.preventDefault(); toggleFull(); return; }
     if (e.key === "Escape" && document.body.classList.contains("full")){ e.preventDefault(); toggleFull(); return; }
+    if ((e.key === "k" || e.key === "K") && !e.ctrlKey && !e.metaKey && !e.altKey && S.photo){ e.preventDefault(); cullOpen(); return; }
+    if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey && !$("#detail").classList.contains("on") && !e.shiftKey){ e.preventDefault(); $("#settingsDlg").classList.add("on"); return; }
     if (e.key === "Tab" && !e.ctrlKey && !e.altKey && !e.metaKey){ e.preventDefault(); const v = sides(); const show = !(v.list || v.panel); setSides(show, show); return; }
     if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && S.photo){ e.preventDefault(); toggleFavorite(S.photo.id); return; }
     if (e.key === "Delete" && !e.ctrlKey && !e.metaKey && S.photo){ e.preventDefault(); deletePhoto(S.photo.id); return; }
@@ -3434,7 +3862,7 @@ function bind(){
     else if ((e.key === "r" || e.key === "R") && inDetail && !e.ctrlKey && !e.metaKey){ e.preventDefault(); cropOpen(); }
   });
   document.addEventListener("keyup", e => { if ((e.key === "o" || e.key === "O") && origDown){ origDown = false; renderBig(); } });
-  let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if ($("#detail").classList.contains("on")) renderBig(); }, 300); });
+  let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if ($("#detail").classList.contains("on")) renderBig(); if (CULL.on && $("#cullImg").classList.contains("on")) cullFit($("#cullImg"), +$("#cullImg").dataset.rot || 0); }, 300); });
 }
 
 (async function init(){

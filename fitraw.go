@@ -409,7 +409,7 @@ func loadPair(name, e string, ph *Photo, family, group string, groups map[string
 		// stretched (nearest neighbour) to fit: blurred, misaligned
 		// detail (SDIM0418 15.3, area colour alone 2.7).
 		maxW := sourceW
-		if ph.rotation == 90 || ph.rotation == 270 {
+		if ph.Rotation == 90 || ph.Rotation == 270 {
 			maxW = max(sourceW, spp.H)
 		}
 		l, err := goLinear(ph, maxW, nr)
@@ -420,8 +420,8 @@ func loadPair(name, e string, ph *Photo, family, group string, groups map[string
 		// Turned as the app shows it (rawLinearFor): unturned, a portrait
 		// photo's landscape data was stretched onto SPP's portrait export
 		// (SDIM0412, 0418: errors 92 and 59), poisoning the whole fit.
-		if ph.rotation != 0 {
-			l = l.Rotate(ph.rotation)
+		if ph.Rotation != 0 {
+			l = l.Rotate(ph.Rotation)
 		}
 		raw = fitAspect(l.Downscale(spp.W), spp.W, spp.H)
 	} else if camfRaw {

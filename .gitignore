@@ -1,6 +1,8 @@
 *.exe
 .claude/
 dist/
+# Crops and measurements from a task stay out of the repository.
+zz-out/
 
 testdata/
 # ... except the synthetic golden references, which are ours and small.

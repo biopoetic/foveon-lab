@@ -90,8 +90,11 @@ func (s *server) setPhotos(roots []string, all bool) {
 	}
 	for _, p := range ps {
 		m[p.ID] = p
-		p.Favorite = favs[p.path]
 	}
+	// The cull sidecars in each folder are the source of truth for rating and
+	// rejection; the config's old favourites list is the fallback for a photo
+	// that has no decision yet.
+	applyCullSidecars(ps, favs)
 	s.photoMu.Lock()
 	s.photos, s.byID, s.photoRoots, s.allImages = ps, m, roots, all
 	s.photoMu.Unlock()
@@ -105,8 +108,10 @@ func (s *server) handlePhotos(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.photos)
 }
 
-// handleFavorite stars or unstars a photo (POST {"id", "on"}) and remembers
-// it in the app's config, by file path, across rescans and restarts.
+// handleFavorite stars or unstars a photo (POST {"id", "on"}). The star is
+// the cull's five-star rating (cull.go), so it is stored in the photo
+// folder's sidecar and mirrored into the app's config by path for older
+// builds. Unstarring a photo rated below five leaves that rating alone.
 func (s *server) handleFavorite(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ID string `json:"id"`
@@ -116,34 +121,24 @@ func (s *server) handleFavorite(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, errors.New("POST {id, on}"))
 		return
 	}
-	s.photoMu.Lock()
-	ph := s.byID[req.ID]
+	ph := s.lookup(req.ID)
 	if ph == nil {
-		s.photoMu.Unlock()
 		httpErr(w, 404, errors.New("unknown photo"))
 		return
 	}
-	ph.Favorite = req.On
-	path := ph.path
-	s.photoMu.Unlock()
-	cfgMu.Lock()
-	defer cfgMu.Unlock()
-	c, _ := loadConfig()
-	var out []string
-	for _, f := range c.Favorites {
-		if f != path {
-			out = append(out, f)
-		}
-	}
+	s.photoMu.RLock()
+	rating, reject := ph.Rating, ph.Reject
+	s.photoMu.RUnlock()
 	if req.On {
-		out = append(out, path)
+		rating = 5
+	} else if rating == 5 {
+		rating = 0
 	}
-	c.Favorites = out
-	if err := saveConfig(c); err != nil {
+	if err := s.setCullState(ph, rating, reject); err != nil {
 		httpErr(w, 500, err)
 		return
 	}
-	writeJSON(w, map[string]bool{"favorite": req.On})
+	writeJSON(w, map[string]any{"favorite": rating == 5, "rating": rating})
 }
 
 // cfgMu serialises read-modify-write of the config file.

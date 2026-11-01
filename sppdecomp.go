@@ -436,7 +436,7 @@ func auditReference(ph *Photo, spp *render.Linear) (corr, ev, gainErr float64) {
 	if err != nil {
 		return math.NaN(), math.NaN(), math.NaN()
 	}
-	cam := fitAspect(render.FromImage(img, calib.AnalysisW, ph.rotation), spp.W, spp.H)
+	cam := fitAspect(render.FromImage(img, calib.AnalysisW, ph.Rotation), spp.W, spp.H)
 	// Correlation of the two images' sRGB values.
 	var n, sx, sy, sxx, syy, sxy float64
 	var yo, ys float64
