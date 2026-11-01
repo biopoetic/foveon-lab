@@ -346,6 +346,23 @@ func rawCorrect(ph *Photo, l *render.Linear) {
 	}
 }
 
+// rawCorrectApply is the per-body matrix and curves without the bright-chroma
+// denoise. Max Detail needs them apart: its shoulder must run before the
+// curves (so the ramp does not clip the recovered values), but the denoise is
+// spatial and must see the un-shouldered development, or it pulls the chroma
+// of unclipped pixels towards a nearby recovered highlight. Max Detail keeps
+// the normal rawCorrect result for every pixel the shoulder did not move.
+func rawCorrectApply(ph *Photo, l *render.Linear) {
+	c := rawCorrectionFor(ph)
+	if c == nil {
+		return
+	}
+	c.Apply(l)
+	if ph.props["EXIF_COLORSPACE"] == "AdobeRGB" && render.SensorGeneration(calibGroup(ph)) == "Merrill" {
+		render.ApplySPPAdobeRGB(l)
+	}
+}
+
 // uprightRaw gives a raw development its frame: the embedded preview's shape
 // and ph's rotation. Every raw path needs it; Max Detail once skipped it and
 // came out stretched on SD1 medium files and sideways on portrait frames.

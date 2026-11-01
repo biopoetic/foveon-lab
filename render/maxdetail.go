@@ -126,17 +126,49 @@ func linearNoise(l *Linear) float64 {
 // Max Detail's highlight shoulder: above this fraction of the top, the
 // brightest channel is compressed so the frame's top lands at the top. Colour
 // is untouched because all three channels share one gain, and everything
-// under the knee is left alone.
-const maxDetailKnee = 0.60
+// under the knee is left alone. The knee is high on purpose: 0.60 (before
+// task 28) reached into tones the normal development never clips and
+// stretched the faint cloud contrast into grey patches with hard edges on the
+// SD14 bridge sky. Only the last tenth, where the correction is already about
+// to run to white, may move.
+const maxDetailKnee = 0.90
 
 // MaxDetailHighlights brings what the frame holds above white back into
 // range. Run it before the per-body correction: that correction ends in a
 // ramp that turns the sensor's top stop into flat white.
 func MaxDetailHighlights(l *Linear, top float32) {
-	ceil := highlightCeiling(l)
-	if ceil <= top {
-		return
+	MaxDetailHighlightsMask(l, top)
+}
+
+// MaxDetailHighlightsMask is MaxDetailHighlights and reports which pixels it
+// moved. The caller can keep the normal development's corrected value for
+// the rest: the shoulder is per-pixel, but the bright-chroma denoise that
+// runs later is spatial, and a moved highlight would otherwise pull the
+// chroma of its unclipped neighbours (task 28 measured 87,004 below-knee
+// pixels changed, up to 0.25 linear). With the mask, every pixel the shoulder
+// did not touch is bit-identical to the normal development.
+func MaxDetailHighlightsMask(l *Linear, top float32) []bool {
+	if l == nil || l.W < 1 || l.H < 1 {
+		return nil
 	}
+	ceil := highlightCeiling(l)
+	// The ceiling must stay inside what the correction can display. On a
+	// frame with a large fully clipped area, the lost pixels are neutralised
+	// at their brightest layer, well above white, and they are 3% or more of
+	// the frame: the 99.95th percentile then sits at the lost plateau (2.5 on
+	// the SD14 bridge) instead of at the top of the open tones (about 1.9).
+	// Using the plateau as the ceiling compresses every open near-white tone
+	// into the first part of the range and turns a faint cloud into a grey
+	// patch with edges. Above the base's white a value cannot be shown as
+	// anything but white anyway, so it must not buy room from the values that
+	// can.
+	if ceil > rawBaseWhite {
+		ceil = rawBaseWhite
+	}
+	if ceil <= top {
+		return nil
+	}
+	mask := make([]bool, l.W*l.H)
 	k, o := maxDetailKnee*top, top
 	// Exponential approach to the top with slope 1 at the knee, so there is
 	// no visible seam: solve its rate for this frame's ceiling.
@@ -162,9 +194,25 @@ func MaxDetailHighlights(l *Linear, top float32) {
 			}
 			t := min(float64(m-k), span)
 			g := (k + float32(scale*(1-math.Exp(-a*t)))) / m
+			// A blue- or violet-dominant highlight is a reflection whose
+			// colour above white reads as a lilac fleck (SDIM0031's leaf)
+			// once the shoulder pulls it below the correction's clip. Fade
+			// the shoulder out there, smoothly with the blue excess, so the
+			// pixel stays the normal development's white instead of a new
+			// colour. Neutral, green and red (skin) highlights keep it.
+			blue := float64(p[2]-max(p[0], p[1])) / float64(m)
+			if blue > 0 {
+				w := 1 - smoothstep(0.03, 0.12, blue)
+				g = 1 + (g-1)*float32(w)
+			}
+			if g == 1 {
+				continue
+			}
+			mask[i] = true
 			p[0], p[1], p[2] = p[0]*g, p[1]*g, p[2]*g
 		}
 	})
+	return mask
 }
 
 // highlightCeiling is the frame's top level, ignoring the few brightest

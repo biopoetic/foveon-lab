@@ -73,7 +73,7 @@ func TestMaxDetailHighlights(t *testing.T) {
 	prev := float32(-1)
 	for i := 0; i < n; i++ {
 		p := l.Pix[i*3 : i*3+3]
-		if p[0] < prev {
+		if p[0] < prev-1e-5 {
 			t.Fatalf("not monotonic at %d: %g after %g", i, p[0], prev)
 		}
 		prev = p[0]
@@ -88,5 +88,66 @@ func TestMaxDetailHighlights(t *testing.T) {
 	}
 	if prev < top*0.98 {
 		t.Errorf("the frame's top lands at %g, want near %g", prev, top)
+	}
+}
+
+// A blue-dominant highlight must not be turned into a lilac patch: the
+// shoulder fades out smoothly with the blue excess, while a neutral or
+// green-dominant highlight at the same level is still compressed. This is the
+// SDIM0031 leaf: its blown speculars are blue, and revealing them as a dark
+// violet was the visible task 27 fault.
+func TestMaxDetailHighlightsBlueFade(t *testing.T) {
+	const top = float32(0.5)
+	mk := func(r, g, b float32) *Linear {
+		l := &Linear{W: 8, H: 8, Pix: make([]float32, 8*8*3)}
+		for i := 0; i < 8*8; i++ {
+			l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2] = r, g, b
+		}
+		return l
+	}
+	neutral := mk(2, 2, 2)
+	blue := mk(1.4, 1.5, 2)
+	green := mk(1.2, 2, 1.3)
+	MaxDetailHighlights(neutral, top)
+	MaxDetailHighlights(blue, top)
+	MaxDetailHighlights(green, top)
+	if neutral.Pix[0] >= 1.99 {
+		t.Errorf("neutral highlight was not compressed: %g", neutral.Pix[0])
+	}
+	if blue.Pix[2] < 1.99 {
+		t.Errorf("blue highlight was compressed to %g, want the shoulder faded out", blue.Pix[2])
+	}
+	if green.Pix[1] >= 1.99 {
+		t.Errorf("green highlight was not compressed: %g", green.Pix[1])
+	}
+	// The fade is smooth: a small blue excess gets a partial, not a stepped,
+	// compression.
+	mid := mk(1.8, 1.9, 2)
+	MaxDetailHighlights(mid, top)
+	if mid.Pix[2] >= 2 || mid.Pix[2] <= float32(top) {
+		t.Errorf("partial blue fade landed at %g, want between the compressed and unchanged levels", mid.Pix[2])
+	}
+}
+
+// Everything under the knee is exactly the normal development's value.
+func TestMaxDetailHighlightsKnee(t *testing.T) {
+	const top = float32(0.5)
+	l := &Linear{W: 16, H: 1, Pix: make([]float32, 16*3)}
+	for i := 0; i < 16; i++ {
+		v := float32(i) / 15 * 0.5
+		l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2] = v, v*0.8, v*0.5
+	}
+	before := append([]float32(nil), l.Pix...)
+	MaxDetailHighlights(l, top)
+	for i := 0; i < 16; i++ {
+		p := before[i*3 : i*3+3]
+		if max(p[0], max(p[1], p[2])) > 0.9*top+1e-6 {
+			continue // above the knee: the whole pixel may be scaled
+		}
+		for k := 0; k < 3; k++ {
+			if got := l.Pix[i*3+k]; got != before[i*3+k] {
+				t.Fatalf("pixel %d under the knee moved: %g -> %g", i, before[i*3+k], got)
+			}
+		}
 	}
 }

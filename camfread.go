@@ -348,8 +348,25 @@ func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error)
 		return nil, err
 	}
 	l = uprightRaw(ph, l)
-	render.MaxDetailHighlights(l, whiteInput(ph))
-	rawCorrect(ph, l)
+	// Keep the un-shouldered development for the pixels the shoulder does
+	// not move. The shoulder itself is per-pixel and exact, but the
+	// bright-chroma denoise inside rawCorrect is spatial: without this, a
+	// recovered highlight changes the chroma of its unclipped neighbours
+	// (task 28: 87,004 below-knee pixels, up to 0.25 linear). The copied
+	// pixels are the normal development's, bit for bit.
+	base := &render.Linear{W: l.W, H: l.H, Pix: append([]float32(nil), l.Pix...)}
+	mask := render.MaxDetailHighlightsMask(l, whiteInput(ph))
+	if mask == nil {
+		rawCorrect(ph, l)
+	} else {
+		rawCorrect(ph, base)
+		rawCorrectApply(ph, l)
+		for i, moved := range mask {
+			if !moved {
+				copy(l.Pix[i*3:i*3+3], base.Pix[i*3:i*3+3])
+			}
+		}
+	}
 	render.MaxDetailDevelop(l, render.MaxDetailOptions{ISO: photoISO(ph)})
 	return l, nil
 }

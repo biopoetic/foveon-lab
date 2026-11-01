@@ -1,16 +1,40 @@
 package x3f
 
-// Task 19: highlight recovery from the sensor's own layers, for the Max
+// Task 19/26: highlight recovery from the sensor's own layers, for the Max
 // Detail development mode. When one layer reaches output white but another
 // has not, the clipped layer's value is unknown; its ratio to the unclipped
 // layers is a property of the light, not of the exposure, so it can be
-// estimated around the clipped area and the missing value rebuilt. When all
-// three layers have clipped there is nothing left: the pixel is neutralised
-// at its brightest layer and left to the tone curve's white. Nothing here
-// invents texture in that case.
+// estimated around the clipped area and the missing value rebuilt.
+//
+// Task 26 found the real cause of the weak recovery: the fitted field is a
+// ratio q_t/q_s, but the shipped prediction divided it by the squared source
+// and used the result directly as q_t, i.e. it never multiplied by the
+// source's own value. A ratio of about 1 therefore predicted q_t about 1
+// whatever the source was, which is below the clipped value q_t = gain, so
+// most partially clipped pixels were left untouched. The prediction is now
+// ratio * q_s, which is the quantity the field was fitted for.
+//
+// The ratio is fitted on a small cell grid (about 1/300 of the short side)
+// and empty cells take the ratio of the nearest cell that had samples, so a
+// large clipped cloud takes the colour of its own unclipped rim rather than
+// the average of the whole frame. Both targets are then neutralised at the
+// brightest layer, which keeps the recovered luminance detail and drops the
+// layer ratio that clipping made meaningless; fully clipped pixels stay
+// neutral because there is nothing left to rebuild.
 
 import (
 	"math"
+	"sync"
+)
+
+// HighlightClass is what RecoverHighlights found at a pixel.
+type HighlightClass uint8
+
+const (
+	HLNone      HighlightClass = iota // no layer clipped
+	HLRecovered                       // one or two layers clipped, at least one rebuilt
+	HLFlat                            // one or two clipped, but nothing rebuilt
+	HLLost                            // all three clipped: no signal left
 )
 
 // RecoverStats says what RecoverHighlights did, for the report and tests.
@@ -20,19 +44,46 @@ type RecoverStats struct {
 	Partial   int    // pixels clipped in one or two layers
 }
 
+// Clipping: a layer that reaches this fraction of its own white is treated as
+// saturated. The fitted ratios use only samples below highlightFitMax, so a
+// pixel near the clip cannot bias the slope downwards.
+const (
+	highlightClip    = 0.995
+	highlightFitMax  = 0.95
+	maxRecoverQ      = 32.0 // safety ceiling, white-balanced units
+	highlightCellMin = 4
+	highlightCellDiv = 300
+)
+
 // RecoverHighlights rebuilds clipped layers from the ones still holding
-// signal. gain is the as-shot white balance (CamTransform.Gain); a layer is
-// clipped at clip of its own white, and the ratios are fitted in
-// white-balanced units so a layer at 0.03 of white with gain 36 is treated
-// at its real output level. Values above clip are left above it: the tone
-// curve brings them to white without inventing detail.
+// signal. gain is the as-shot white balance (CamTransform.Gain), in the same
+// white-balanced units as the ratios: p*gain. Values above the clip are left
+// above it: the tone curve brings them to white without inventing detail.
 func RecoverHighlights(img *CamImage, gain [3]float64, clip float64) RecoverStats {
+	st, _ := RecoverHighlightsClass(img, gain, clip)
+	return st
+}
+
+// RecoverHighlightsClass is RecoverHighlights with the per-pixel class, so a
+// caller (Max Detail's display shoulder) can tell a rebuilt pixel from a
+// merely clipped one.
+func RecoverHighlightsClass(img *CamImage, gain [3]float64, clip float64) (RecoverStats, []HighlightClass) {
 	var st RecoverStats
+	var mu sync.Mutex
+	merge := func(rec [3]int, lost, partial int) {
+		mu.Lock()
+		for k := range rec {
+			st.Recovered[k] += rec[k]
+		}
+		st.Lost += lost
+		st.Partial += partial
+		mu.Unlock()
+	}
 	if img == nil || img.W < 2 || img.H < 2 {
-		return st
+		return st, nil
 	}
 	if clip <= 0 || clip >= 1 {
-		clip = 0.995
+		clip = highlightClip
 	}
 	clipF := float32(clip)
 	g := [3]float64{gain[0], gain[1], gain[2]}
@@ -42,14 +93,14 @@ func RecoverHighlights(img *CamImage, gain [3]float64, clip float64) RecoverStat
 		}
 	}
 	w, h := img.W, img.H
-	// Ratio fields, one per (target layer, source layer): q_t / q_s fitted
-	// on unclipped pixels and smoothed so a clipped patch takes the colour
-	// of the light around it, not a tile edge.
-	cell := max(4, min(w, h)/96)
+	cell := max(highlightCellMin, min(w, h)/highlightCellDiv)
 	gw, gh := (w+cell-1)/cell, (h+cell-1)/cell
+
+	// Ratio fields, one per (target layer, source layer): q_t/q_s fitted on
+	// unclipped pixels and filled outwards from the nearest fitted cell so a
+	// clipped patch takes the colour of the light around it, not a tile edge.
 	type field struct {
-		num, den []float64
-		global   float64
+		ratio []float64
 	}
 	fields := [3][3]*field{}
 	for t := 0; t < 3; t++ {
@@ -57,34 +108,60 @@ func RecoverHighlights(img *CamImage, gain [3]float64, clip float64) RecoverStat
 			if s == t {
 				continue
 			}
-			f := &field{num: make([]float64, gw*gh), den: make([]float64, gw*gh)}
+			f := &field{ratio: make([]float64, gw*gh)}
 			fields[t][s] = f
-			var tn, td float64
+			wsum := make([]float64, gw*gh)
 			for y := 0; y < h; y++ {
 				gy := y / cell
 				for x := 0; x < w; x++ {
 					p := img.Pix[(y*w+x)*3:]
-					if p[t] >= clipF || p[s] >= clipF {
+					// Both sides below the fit band: a sample at the clip
+					// would bias the slope down.
+					if float64(p[t]) >= highlightFitMax || float64(p[s]) >= highlightFitMax {
 						continue
 					}
 					qt, qs := float64(p[t])*g[t], float64(p[s])*g[s]
 					if qt <= 0.02 || qs <= 0.02 {
 						continue
 					}
-					// Weight by the source so bright, well-exposed
-					// samples decide the ratio, not dark noise.
 					gi := gy*gw + x/cell
-					f.num[gi] += qt * qs
-					f.den[gi] += qs * qs
-					tn += qt * qs
-					td += qs * qs
+					f.ratio[gi] += qt * qs
+					wsum[gi] += qs * qs
 				}
 			}
-			if td > 0 {
-				f.global = tn / td
+			queue := make([]int, 0, gw*gh)
+			for i := range f.ratio {
+				if wsum[i] > 1e-9 {
+					f.ratio[i] /= wsum[i]
+					queue = append(queue, i)
+				} else {
+					f.ratio[i] = math.NaN()
+				}
 			}
-			blurField(f.num, gw, gh)
-			blurField(f.den, gw, gh)
+			// Nearest fitted cell (8-neighbour BFS). A diffusion would mix
+			// every rim of a clipped region; the nearest rim is the material
+			// next to the pixel.
+			for head := 0; head < len(queue); head++ {
+				i := queue[head]
+				x, y := i%gw, i/gw
+				for _, d := range [8][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}} {
+					xx, yy := x+d[0], y+d[1]
+					if xx < 0 || yy < 0 || xx >= gw || yy >= gh {
+						continue
+					}
+					j := yy*gw + xx
+					if !math.IsNaN(f.ratio[j]) {
+						continue
+					}
+					f.ratio[j] = f.ratio[i]
+					queue = append(queue, j)
+				}
+			}
+			for i := range f.ratio {
+				if math.IsNaN(f.ratio[i]) {
+					f.ratio[i] = 1
+				}
+			}
 		}
 	}
 	at := func(f *field, x, y int) float64 {
@@ -95,19 +172,38 @@ func RecoverHighlights(img *CamImage, gain [3]float64, clip float64) RecoverStat
 		x0, y0 := int(fx), int(fy)
 		x1, y1 := min(x0+1, gw-1), min(y0+1, gh-1)
 		tx, ty := fx-float64(x0), fy-float64(y0)
-		sample := func(k int) float64 {
-			// A cell with no unclipped samples is filled from its smoothed
-			// neighbours; when those are empty too, use the frame's ratio.
-			if f.den[k] > 1e-9 {
-				return f.num[k] / f.den[k]
-			}
-			return f.global
-		}
-		a := sample(y0*gw+x0)*(1-tx) + sample(y0*gw+x1)*tx
-		b := sample(y1*gw+x0)*(1-tx) + sample(y1*gw+x1)*tx
+		a := f.ratio[y0*gw+x0]*(1-tx) + f.ratio[y0*gw+x1]*tx
+		b := f.ratio[y1*gw+x0]*(1-tx) + f.ratio[y1*gw+x1]*tx
 		return a*(1-ty) + b*ty
 	}
+
+	// A coarse, read-only map of the brightest layer, for the specular test.
+	// It is built before the parallel pass so the test never reads a pixel
+	// another goroutine is rebuilding.
+	scell := max(2, min(w, h)/400)
+	sgw, sgh := (w+scell-1)/scell, (h+scell-1)/scell
+	qsum := make([]float64, sgw*sgh)
+	qcnt := make([]int, sgw*sgh)
+	for y := 0; y < h; y++ {
+		gy := y / scell
+		for x := 0; x < w; x++ {
+			p := img.Pix[(y*w+x)*3:]
+			v := math.Max(float64(p[0])*g[0], math.Max(float64(p[1])*g[1], float64(p[2])*g[2]))
+			gi := gy*sgw + x/scell
+			qsum[gi] += v
+			qcnt[gi]++
+		}
+	}
+	for i := range qsum {
+		if qcnt[i] > 0 {
+			qsum[i] /= float64(qcnt[i])
+		}
+	}
+
+	class := make([]HighlightClass, w*h)
 	parallel(h, func(y0, y1 int) {
+		var rec [3]int
+		var lost, partial int
 		for y := y0; y < y1; y++ {
 			for x := 0; x < w; x++ {
 				i := (y*w + x) * 3
@@ -123,6 +219,38 @@ func RecoverHighlights(img *CamImage, gain [3]float64, clip float64) RecoverStat
 				if nClip == 0 {
 					continue
 				}
+				// A clipped, isolated, near-neutral bright point is a
+				// specular. Rebuilding it can only make it a grey disc and a
+				// partially clipped one would be shown below white; push it
+				// to a little above white instead, so the point light stays a
+				// point light. A coloured LED is not near-neutral and is left
+				// to the normal path.
+				qmax, qmin := math.Max(q[0], math.Max(q[1], q[2])), math.Min(q[0], math.Min(q[1], q[2]))
+				if qmax > 0.5 {
+					gx, gy := x/scell, y/scell
+					var sum float64
+					var n int
+					for yy := max(0, gy-1); yy <= min(sgh-1, gy+1); yy++ {
+						for xx := max(0, gx-1); xx <= min(sgw-1, gx+1); xx++ {
+							sum += qsum[yy*sgw+xx]
+							n++
+						}
+					}
+					if n > 0 && qmax > 2.2*(sum/float64(n)) && qmax-qmin < 0.2*qmax {
+						target := math.Max(qmax, 1.2)
+						for k := 0; k < 3; k++ {
+							p[k] = float32(target / g[k])
+						}
+						if nClip == 3 {
+							lost++
+							class[y*w+x] = HLLost
+						} else {
+							partial++
+							class[y*w+x] = HLFlat
+						}
+						continue
+					}
+				}
 				if nClip == 3 {
 					// All three stopped counting: no detail left. Make the
 					// pixel neutral at its brightest layer; the tone curve
@@ -131,10 +259,12 @@ func RecoverHighlights(img *CamImage, gain [3]float64, clip float64) RecoverStat
 					for k := 0; k < 3; k++ {
 						p[k] = float32(m / g[k])
 					}
-					st.Lost++
+					lost++
+					class[y*w+x] = HLLost
 					continue
 				}
-				st.Partial++
+				partial++
+				recovered := false
 				for t := 0; t < 3; t++ {
 					if p[t] < clipF {
 						continue
@@ -152,57 +282,35 @@ func RecoverHighlights(img *CamImage, gain [3]float64, clip float64) RecoverStat
 						if r <= 0 {
 							continue
 						}
-						num += r * qs * qs
-						den += qs * qs
+						// The field is q_t/q_s; the missing value is r*q_s.
+						wgt := qs * qs
+						num += r * qs * wgt
+						den += wgt
 					}
 					if den <= 1e-9 {
 						continue
 					}
-					predQ := num / den
-					// Do not invent more than two stops above white; a bad
-					// ratio on a near-black neighbour must not become a
-					// white hole.
-					predQ = math.Min(predQ, 4)
+					predQ := math.Min(num/den, maxRecoverQ)
 					if predP := float32(predQ / g[t]); predP > p[t] {
 						p[t] = predP
-						st.Recovered[t]++
+						rec[t]++
+						recovered = true
 					}
 				}
+				// The caller (Max Detail) runs ClipHighlights next, which
+				// neutralises these pixels at the brightest layer: that keeps
+				// the recovered luminance detail and drops the layer ratio
+				// that clipping made meaningless, so no magenta/cyan rim can
+				// appear. This function leaves the per-layer values intact so
+				// the synthetic ramp can measure them.
+				if recovered {
+					class[y*w+x] = HLRecovered
+				} else {
+					class[y*w+x] = HLFlat
+				}
 			}
 		}
+		merge(rec, lost, partial)
 	})
-	return st
-}
-
-// blurField box-blurs a grid in place, twice, so ratio fields cross tile
-// boundaries smoothly.
-func blurField(v []float64, w, h int) {
-	if w < 3 || h < 3 {
-		return
-	}
-	tmp := make([]float64, len(v))
-	for pass := 0; pass < 2; pass++ {
-		for y := 0; y < h; y++ {
-			for x := 0; x < w; x++ {
-				var s float64
-				var n int
-				for k := max(0, x-2); k <= min(w-1, x+2); k++ {
-					s += v[y*w+k]
-					n++
-				}
-				tmp[y*w+x] = s / float64(n)
-			}
-		}
-		for y := 0; y < h; y++ {
-			for x := 0; x < w; x++ {
-				var s float64
-				var n int
-				for k := max(0, y-2); k <= min(h-1, y+2); k++ {
-					s += tmp[k*w+x]
-					n++
-				}
-				v[y*w+x] = s / float64(n)
-			}
-		}
-	}
+	return st, class
 }
