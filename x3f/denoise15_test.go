@@ -76,9 +76,12 @@ func TestChromaPatchKept(t *testing.T) {
 		return math.Max(r, math.Max(g, b)) - math.Min(r, math.Min(g, b))
 	}
 	plain := mk()
+	oldCB := dnCB
+	dnCB = 0 // this test pins the old wide filter's patch restore, not task 43
 	Denoise(plain, DenoiseOptions{Strength: 0.3, ISO: 6400})
 	withFix := mk()
 	Denoise(withFix, DenoiseOptions{Strength: 0.3, ISO: 6400, Quattro: true})
+	dnCB = oldCB
 	cp, cf := patchChroma(plain), patchChroma(withFix)
 	if cf < cp*1.05 {
 		t.Errorf("Quattro patch chroma %.4f, without %.4f: the patch-scale restore did not run", cf, cp)

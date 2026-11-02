@@ -78,6 +78,11 @@ type nrMetric struct {
 	EdgeGain      float64 `json:"edgeGain"`
 	EdgeContrast  float64 `json:"edgeContrast"`
 	EdgeN         int     `json:"edgeN"`
+	// Chroma structure the high-ISO frame has and its own ISO 100 frame does
+	// not, at 4-96 px plus new 2-4 px edges (artefact.go). Total and FlatTotal
+	// are the weighted score over the chroma-flat inside mask and over the
+	// ISO 100 flat blocks; Bands are the per-scale excess. Higher is worse.
+	Artefact artefactMetric `json:"artefact"`
 	// ShiftX/ShiftY: integer translation of this frame against its own ISO
 	// 100 frame, measured on the luma high-pass (0 = registered).
 	ShiftX int `json:"shiftX,omitempty"`
@@ -114,7 +119,7 @@ type nrMetric struct {
 	// Saturation and colour error on coloured flat areas: each pipeline
 	// against its own ISO 100 frame, on two sets. SatRetain is every coloured
 	// flat block (large areas included); SatLocal is the blocks whose colour
-	// is local — the block differs from its 48 px surroundings, so it is a
+	// is local â€” the block differs from its 48 px surroundings, so it is a
 	// patch like the chart's. Wide chroma smoothing can keep a large coloured
 	// area and still pale a patch, so the local number is the one that sees
 	// the chart. The ratios are block chroma / the same block's ISO 100
@@ -490,6 +495,10 @@ func scoreLadder(l *nrLadder, nr float64, crop nrCrop, fixedW int) ([]nrRecord, 
 		strict := strictFlatMask(rO, selO)
 		om.measureColour(oLab, rO, selO, strict, tex)
 		sm.measureColour(sLab, rS, selS, strict, tex)
+		if os.Getenv("FOVEON_NR_ART") != "0" {
+			om.Artefact.measureArtefact(oLab, rO)
+			sm.Artefact.measureArtefact(sLab, rS)
+		}
 		scale := edgeScale(ours.W)
 		edges := findChromaEdges(rO, scale)
 		om.measureEdgeCross(oLab, rO, edges, scale)
@@ -640,7 +649,7 @@ func toLab8(l *render.Linear) *lab8 {
 	return o
 }
 
-// resize reduces a measurement image to w×h by area-averaging each plane.
+// resize reduces a measurement image to wĂ—h by area-averaging each plane.
 func (p *lab8) resize(w, h int) *lab8 {
 	return &lab8{w: w, h: h, y: areaPlane(p.y, p.w, p.h, w, h), a: areaPlane(p.a, p.w, p.h, w, h), b: areaPlane(p.b, p.w, p.h, w, h)}
 }
@@ -1251,24 +1260,25 @@ func printNRSummary(recs []nrRecord) {
 		orb, srb     float64 // row banding
 		ocb, scb     float64 // col banding
 		oursMS       float64
-		otn, stn     [4]float64 // tone-band luma noise
-		osat, ssat   float64    // saturation retention (all coloured blocks)
-		osatL, ssatL float64    // saturation retention (local patches)
-		osatS, ssatS float64    // saturation retention (saturated flat colour)
-		oabs, sabs   float64    // absolute chroma on those blocks
-		oerr, serr   float64    // colour error
-		ocef, scef   float64    // mean a*b* error, flat blocks
-		ocet, scet   float64    // mean a*b* error, textured pixels
-		ob32, sb32   float64    // 32-64 px blotch
-		oce, sce     [7]float64 // chroma error per band
-		ocd, scd     [4]float64 // fine chroma detail slope
-		oes, ses     float64    // colour-across-edge spread, px
-		oeg, seg     float64    // spread gain against ISO 100
-		oec, sec     float64    // step contrast at the edge
-		oen          int        // frames with an edge measurement
-		oshift       int        // largest |shift| of ours against its ISO 100
-		sshift       int        // largest |shift| of SPP against its ISO 100
-		oda2, odb2   float64    // dark a*/b*
+		otn, stn     [4]float64     // tone-band luma noise
+		osat, ssat   float64        // saturation retention (all coloured blocks)
+		osatL, ssatL float64        // saturation retention (local patches)
+		osatS, ssatS float64        // saturation retention (saturated flat colour)
+		oabs, sabs   float64        // absolute chroma on those blocks
+		oerr, serr   float64        // colour error
+		ocef, scef   float64        // mean a*b* error, flat blocks
+		ocet, scet   float64        // mean a*b* error, textured pixels
+		ob32, sb32   float64        // 32-64 px blotch
+		oce, sce     [7]float64     // chroma error per band
+		ocd, scd     [4]float64     // fine chroma detail slope
+		oes, ses     float64        // colour-across-edge spread, px
+		oeg, seg     float64        // spread gain against ISO 100
+		oec, sec     float64        // step contrast at the edge
+		oen          int            // frames with an edge measurement
+		oart, sart   artefactMetric // summed artefacts
+		oshift       int            // largest |shift| of ours against its ISO 100
+		sshift       int            // largest |shift| of SPP against its ISO 100
+		oda2, odb2   float64        // dark a*/b*
 		sda2, sdb2   float64
 		osp, ssp     float64 // dark spread
 	}
@@ -1347,6 +1357,18 @@ func printNRSummary(recs []nrRecord) {
 			a.sec += r.SPP.EdgeContrast
 			a.oen++
 		}
+		a.oart.N += r.Ours.Artefact.N
+		a.sart.N += r.SPP.Artefact.N
+		a.oart.Edge += r.Ours.Artefact.Edge
+		a.sart.Edge += r.SPP.Artefact.Edge
+		a.oart.Total += r.Ours.Artefact.Total
+		a.sart.Total += r.SPP.Artefact.Total
+		a.oart.FlatTotal += r.Ours.Artefact.FlatTotal
+		a.sart.FlatTotal += r.SPP.Artefact.FlatTotal
+		for b := 0; b < 5; b++ {
+			a.oart.Bands[b] += r.Ours.Artefact.Bands[b]
+			a.sart.Bands[b] += r.SPP.Artefact.Bands[b]
+		}
 	}
 	var ks []key
 	for k := range by {
@@ -1420,6 +1442,22 @@ func printNRSummary(recs []nrRecord) {
 			fmt.Printf(" %5.2f/%4.2f", a.oce[b]/n, a.sce[b]/n)
 		}
 		fmt.Println()
+	}
+	fmt.Println("\nChroma structure not in the ISO 100 frame, ours / SPP (p99 excess dE, higher = more new")
+	fmt.Println("blocks, mottle or clouds; edge is new 2-4 px chroma edges, bands 4-8 ... 64-96 px):")
+	fmt.Printf("%-24s %5s %3s %13s %11s %13s %13s %13s %13s %13s %13s\n", "body", "ISO", "n", "total", "flat", "edge", "4-8", "8-16", "16-32", "32-64", "64-96")
+	for _, k := range ks {
+		a := by[k]
+		if a.oart.N == 0 {
+			continue
+		}
+		nn := float64(a.oart.N)
+		fmt.Printf("%-24s %5g %3d %6.2f/%5.2f %5.2f/%4.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f\n",
+			k.body, k.iso, a.n, a.oart.Total/nn, a.sart.Total/nn, a.oart.FlatTotal/nn, a.sart.FlatTotal/nn,
+			a.oart.Edge/nn, a.sart.Edge/nn,
+			a.oart.Bands[0]/nn, a.sart.Bands[0]/nn, a.oart.Bands[1]/nn, a.sart.Bands[1]/nn,
+			a.oart.Bands[2]/nn, a.sart.Bands[2]/nn, a.oart.Bands[3]/nn, a.sart.Bands[3]/nn,
+			a.oart.Bands[4]/nn, a.sart.Bands[4]/nn)
 	}
 	fmt.Println("\nColour across object edges, from the ISO 100 frame's chroma edges (lower spread is better):")
 	fmt.Printf("%-24s %5s %3s %13s %13s %13s %11s\n", "body", "ISO", "n", "spread px", "excess px", "contrast", "edges")

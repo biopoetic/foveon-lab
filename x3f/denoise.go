@@ -12,7 +12,7 @@ package x3f
 //   - each pixel is then rescaled to its (denoised) luminance.
 //
 // Everything follows the measured noise: a per-plane noise model
-// sigma(v) = sqrt(a + b·v) is fitted on the flattest 16×16 blocks at each
+// sigma(v) = sqrt(a + bĂ„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â·v) is fitted on the flattest 16Ä‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬Ă˘â‚¬ĹĄ16 blocks at each
 // brightness, the luminance wavelet threshold is that sigma at each pixel's
 // level, and the colour filter's eps is a few times the relative luminance
 // noise, so a clean frame keeps its colour texture.
@@ -152,7 +152,7 @@ var (
 	// where the books' texture lives, the pepper is coarser.
 	levFin = envFloat("FOVEON_DN_LEVFIN", 0.25)
 	// dnGarrote replaces the soft threshold with the non-negative garrote
-	// (d·(1-(t/d)²) above the threshold): a strong edge coefficient is kept
+	// (dĂ„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â·(1-(t/d)Ă„â€šĂ˘â‚¬ĹˇÄ‚â€ąĂ˘â‚¬Ĺź) above the threshold): a strong edge coefficient is kept
 	// almost unchanged instead of being biased down by t, while a
 	// just-above-threshold coefficient (usually noise) is suppressed harder.
 	// Measured but not enabled (task 21, 21 frames, fixed basis): slope
@@ -244,7 +244,7 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	ym := estimateNoise(Y, w, h)
 	local := boxBlur(Y, w, h, 4)
 	sig := make([]float32, n) // the luminance noise at each pixel's level
-	// sigma(v) = sqrt(a + b·v) written out rather than through noiseModel.at:
+	// sigma(v) = sqrt(a + bĂ„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â·v) written out rather than through noiseModel.at:
 	// a method call and a math.Max per pixel was 8% of a denoise in the
 	// profile (most of it in restoreChroma, which is written out too).
 	na, nb := ym.a, ym.b
@@ -306,8 +306,11 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 		fmt.Fprintf(os.Stderr, "denoise: wf %.9g %.9g %.9g mean %.9g eps %.9g r %d\n",
 			wf[0], wf[1], wf[2], mean, eps, r)
 	}
-	// The guide does not change per layer: its blurs are shared.
-	mI, mII := boxBlur(G, w, h, r), boxBlurSq(G, w, h, r)
+	// Task 43: one continuous joint-bilateral chroma filter at ISO >= 800,
+	// with a wide support and weights from a heavily smoothed chroma estimate
+	// (chromabilat.go). It replaces the wide guided filter and its task 41
+	// gate; below ISO 800 the old path runs untouched.
+	useCB := dnCB > 0 && o.ISO >= 800 && r > 2
 	// A wide chroma filter averages each layer over a window larger than a
 	// colour chart's patch, so a patch smaller than the window is pulled
 	// towards its surroundings and pales (the dp2 Quattro chart at ISO 6400
@@ -317,39 +320,117 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 	// not restored). That keeps the patch and leaves the wide filter's
 	// mottle removal; FOVEON_DN_NOCS=1 renders without it.
 	rFine := min(r, 8)
-	csFix := chromaSmooth && csMode > 0 && o.Quattro && o.ISO >= 800 && r > rFine
+	csFix := chromaSmooth && csMode > 0 && o.Quattro && o.ISO >= 800 && r > rFine && !useCB
 	rResid := max(2, int(math.Round(float64(csResid)*scale)))
 	var outF [3][]float32
 	var out [3][]float32
-	var wg sync.WaitGroup
-	for k := 0; k < 3; k++ {
-		wg.Add(1)
-		go func(k int) {
-			defer wg.Done()
-			p := plane(k)
-			for i := range p {
-				p[i] /= m
-			}
-			out[k] = guidedPre(G, p, w, h, r, eps, mI, mII)
-			if csFix {
-				if csMode == 2 {
-					// The wide filter's residual, low-passed at a patch
-					// radius: the colour it removed at the chart's scale,
-					// with the 8-32 px grain largely smoothed out.
-					res := getPlane(n)
-					for i := range res {
-						res[i] = p[i] - out[k][i]
-					}
-					outF[k] = boxBlur(res, w, h, rResid)
-					putPlane(res)
-				} else {
-					outF[k] = guidedPre(G, p, w, h, rFine, eps, mI, mII)
+	if useCB {
+		var pn [3][]float32
+		var wg sync.WaitGroup
+		for k := 0; k < 3; k++ {
+			wg.Add(1)
+			go func(k int) {
+				defer wg.Done()
+				p := plane(k)
+				for i := range p {
+					p[i] /= m
 				}
+				pn[k] = p
+			}(k)
+		}
+		wg.Wait()
+		// A clean chroma estimate for the wide filter's range weights: the
+		// same luma-guided filter as before, whose output is smooth and
+		// edge-aware. It is the guide only (dnCBGU=2), or also the base the
+		// wide filter averages (dnCBGU=1).
+		mI, mII := boxBlur(G, w, h, r), boxBlurSq(G, w, h, r)
+		var gb [3][]float32
+		var wgGuide sync.WaitGroup
+		for k := 0; k < 3; k++ {
+			wgGuide.Add(1)
+			go func(k int) {
+				defer wgGuide.Done()
+				gb[k] = guidedPre(G, pn[k], w, h, r, eps, mI, mII)
+			}(k)
+		}
+		wgGuide.Wait()
+		putPlane(mI)
+		putPlane(mII)
+		base := gb
+		baseOwned := false
+		if rBase := int(math.Round(dnCBBaseR * scale)); rBase >= 2 && rBase != r {
+			// A narrower guided filter is the base: less of its own bleed in
+			// the neutral patches, and the wide bilateral over it still has
+			// the clean r-radius estimate as its guide.
+			mIB, mIIB := boxBlur(G, w, h, rBase), boxBlurSq(G, w, h, rBase)
+			for k := 0; k < 3; k++ {
+				base[k] = guidedPre(G, pn[k], w, h, rBase, eps, mIB, mIIB)
 			}
-			putPlane(p)
-		}(k)
+			putPlane(mIB)
+			putPlane(mIIB)
+			baseOwned = true
+		} else if dnCBGU != 1 {
+			base = pn
+		}
+		out = chromaBilateral(base, gb, G, w, h, scale, rel)
+		if baseOwned {
+			for k := 0; k < 3; k++ {
+				putPlane(base[k])
+			}
+		}
+		if dnCBFineAmt > 0 {
+			// A controlled amount of the original 0-4 px chroma detail, so
+			// the wide average does not leave the thread and paper surfaces
+			// waxy. It is the fine band only: the coarse clouds stay filtered.
+			rf := max(1, int(math.Round(dnCBFine*scale)))
+			for k := 0; k < 3; k++ {
+				lo := boxBlur(pn[k], w, h, rf)
+				for i := range out[k] {
+					out[k][i] += float32(dnCBFineAmt) * (pn[k][i] - lo[i])
+				}
+				putPlane(lo)
+			}
+		}
+		for k := 0; k < 3; k++ {
+			putPlane(pn[k])
+			putPlane(gb[k])
+		}
+	} else {
+		// The guide does not change per layer: its blurs are shared.
+		mI, mII := boxBlur(G, w, h, r), boxBlurSq(G, w, h, r)
+		var wg sync.WaitGroup
+		for k := 0; k < 3; k++ {
+			wg.Add(1)
+			go func(k int) {
+				defer wg.Done()
+				p := plane(k)
+				for i := range p {
+					p[i] /= m
+				}
+				out[k] = guidedPre(G, p, w, h, r, eps, mI, mII)
+				if csFix {
+					if csMode == 2 {
+						// The wide filter's residual, low-passed at a patch
+						// radius: the colour it removed at the chart's scale,
+						// with the 8-32 px grain largely smoothed out.
+						res := getPlane(n)
+						for i := range res {
+							res[i] = p[i] - out[k][i]
+						}
+						outF[k] = boxBlur(res, w, h, rResid)
+						putPlane(res)
+					} else {
+						outF[k] = guidedPre(G, p, w, h, rFine, eps, mI, mII)
+					}
+				}
+				putPlane(p)
+			}(k)
+		}
+		wg.Wait()
+		putPlane(mI)
+		putPlane(mII)
 	}
-	wg.Wait()
+
 	parallel(n, func(i0, i1 int) {
 		for i := i0; i < i1; i++ {
 			a, b, c := out[0][i]*m, out[1][i]*m, out[2][i]*m
@@ -957,7 +1038,7 @@ func guidedPre(I, p []float32, w, h, r int, eps float32, mI, mII []float32) []fl
 	return out
 }
 
-// atrous soft-thresholds an à-trous B3-spline wavelet decomposition at k
+// atrous soft-thresholds an Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â -trous B3-spline wavelet decomposition at k
 // times each level's noise (sigma: the plane's noise at each pixel).
 func atrous(p []float32, w, h int, sigma []float32, k float64, levels int, boost []float32) []float32 {
 	cur := append([]float32(nil), p...)
@@ -1068,7 +1149,7 @@ func atrous(p []float32, w, h int, sigma []float32, k float64, levels int, boost
 }
 
 // noiseModel is a plane's noise as a function of brightness:
-// sigma(v) = sqrt(a + b·v) (read noise plus shot noise).
+// sigma(v) = sqrt(a + bĂ„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â·v) (read noise plus shot noise).
 type noiseModel struct{ a, b float64 }
 
 func (m noiseModel) at(v float64) float64 {
@@ -1085,7 +1166,7 @@ func median(p []float32) float64 {
 	return s[len(s)/2]
 }
 
-// estimateNoise fits the noise model on 16×16 blocks: each block's noise is
+// estimateNoise fits the noise model on 16Ä‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬Ă˘â‚¬ĹĄ16 blocks: each block's noise is
 // the robust spread of its pixels' difference from their four neighbours'
 // mean; per brightness band only the flattest blocks (15th percentile)
 // count, so texture and edges are not mistaken for noise.
@@ -1114,7 +1195,7 @@ func estimateNoise(p []float32, w, h int) noiseModel {
 						res = append(res, math.Abs(float64(r)))
 					}
 				}
-				// Laplacian residual of white noise: variance 1.25 sigma².
+				// Laplacian residual of white noise: variance 1.25 sigmaĂ„â€šĂ˘â‚¬ĹˇÄ‚â€ąĂ˘â‚¬Ĺź.
 				rows[ri] = append(rows[ri], blk{sum / (B * B), selectK(res, len(res)/2) / 0.6745 / math.Sqrt(1.25)})
 			}
 		}
@@ -1145,7 +1226,7 @@ func estimateNoise(p []float32, w, h int) noiseModel {
 		s := ss[len(ss)*15/100]
 		xs, ys = append(xs, mm/float64(len(band))), append(ys, s*s)
 	}
-	// Least squares var = a + b·v, b >= 0.
+	// Least squares var = a + bĂ„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â·v, b >= 0.
 	var sx, sy, sxx, sxy float64
 	for i := range xs {
 		sx, sy, sxx, sxy = sx+xs[i], sy+ys[i], sxx+xs[i]*xs[i], sxy+xs[i]*ys[i]
@@ -1191,8 +1272,8 @@ func selectK(v []float64, k int) float64 {
 	return v[k]
 }
 
-// greyWeights is grey (DenoiseOptions.Grey) scaled so that wf·gw = 1: adding
-// d·gw changes the weighted luminance by exactly d. A zero grey gives equal
+// greyWeights is grey (DenoiseOptions.Grey) scaled so that wfĂ„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â·gw = 1: adding
+// dĂ„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â·gw changes the weighted luminance by exactly d. A zero grey gives equal
 // layers (wf sums to 1).
 func greyWeights(grey [3]float64, wf [3]float32) [3]float32 {
 	y := float64(wf[0])*grey[0] + float64(wf[1])*grey[1] + float64(wf[2])*grey[2]
