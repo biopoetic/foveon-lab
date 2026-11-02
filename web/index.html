@@ -256,6 +256,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <label class="chk" title="Also list ordinary JPEG, TIFF and PNG files. Their presets change only the look; they are not raw data."><input type="checkbox" id="allImages"> All images</label>
     <button id="folders" title="Choose where your photos are">Folders…</button>
     <button id="cardBtn" class="primary" title="Copy new photos off a camera card into your library">Import from card…</button>
+    <button id="exportTop" class="primary" title="Save this photo at full size, or all the selected photos">Export…</button>
     <button id="settingsBtn" title="Preview and listing settings (C or the gear)">⚙ Settings</button>
     <button id="quit" title="Stop Foveon Lab">Quit</button>
   </header>
@@ -267,7 +268,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
       <button id="cullToggle" title="Cull this list: 1–5 rate, X rejects, U clears, arrows move (K)">Cull</button>
       <span id="selCount">1 selected</span>
     </div>
-    <div id="cullFilters" title="The list, the cull, Export and Finish all use this filtered set">
+    <div id="cullFilters" title="The list, the cull and Export all use this filtered set">
       <select id="ratingFilter" title="Show photos at or above this rating, or only the unrated ones">
         <option value="any">Any rating</option>
         <option value="unrated">Unrated</option>
@@ -303,7 +304,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <button class="ai" id="aiOpen" title="Let an AI agent pick and tune the best preset for this photo">✦ AI pick</button>
         <button id="exportSel" class="primary" title="Export the selected photos with one look">Export…</button>
       </div>
-      <div class="note" id="gridNote">Pick a look to compare it on your photo, then press <b>Finish</b> to save the full-size picture.</div>
+      <div class="note" id="gridNote">Pick a look to compare it on your photo, then press <b>Export</b> to save the full-size picture.</div>
       <div id="welcome">
         <p id="welcomeText">Choose the folder where your Sigma photos live and they will appear here.</p>
         <button id="welcomePick" class="primary">Choose photo folder</button>
@@ -352,7 +353,6 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <button id="clipBtn" title="Mark clipped highlights (red) and crushed shadows (blue) (C)">Clipping</button>
           <button id="zoomBtn" title="100% view (Z, or double-click the image where you want to look); drag to move around">1:1</button>
           <button id="cropBtn" title="Straighten and crop this photo (R). Applies to the preview and every export">Crop</button>
-          <button id="finishBtn" class="primary" title="Save the finished picture with the usual settings">Finish…</button>
           <button class="sideBtn" id="listBtn" title="Show / hide the photo list (Tab hides or shows both side panels)">◧</button>
           <button class="sideBtn" id="panelBtn" title="Show / hide the settings panel (Tab hides or shows both side panels)">◨</button>
           <button id="fullBtn" title="Full screen: only the photo (Shift+F or F11; Esc to leave)">⛶</button>
@@ -628,7 +628,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 <div id="toast"></div>
 <div id="finishDlg" class="modal">
   <div class="box">
-    <b>Finish this photo</b>
+    <b>Export this photo</b>
     <div class="src" id="finishLook"></div>
     <label class="chk">Save as <select id="finishFormat"><option value="jpeg">JPEG, full size</option><option value="tiff">TIFF 16-bit, full size</option><option value="dng">DNG 16-bit, full size</option></select></label>
     <label class="chk">Colour <select id="finishSpace"><option value="srgb">sRGB (recommended)</option><option value="adobe">Adobe RGB (1998)</option><option value="apple">Apple RGB</option><option value="colormatch">ColorMatch RGB</option><option value="prophoto">ProPhoto RGB</option></select></label>
@@ -2435,7 +2435,6 @@ function batchLookName(look){
   return S.presets.find(x => x.id === look)?.name || "Edited";
 }
 function batchButtonText(){
-  if (BATCH.finish) return "Finish";
   const photosOn = CARD.settings?.platform === "darwin";
   return photosOn && $("#bPhotos").checked ? "Export to Photos" : "Export";
 }
@@ -2935,6 +2934,13 @@ function openExportGroup(){
   GROUPS_CLOSED.delete("export");
   store.set("groupsClosed", [...GROUPS_CLOSED]);
   grp.scrollIntoView({block: "start"});
+}
+// The one Export button: several photos go to the batch dialog, one to Finish.
+function exportOpen(){
+  if (CULL.on || S.sel.size > 1){ batchOpen(); return; }
+  if (!S.photo){ toast("Pick a photo first.", 4000); return; }
+  if (!S.params){ S.base = {...NEUTRAL}; S.params = {...NEUTRAL}; } // no look opened yet
+  finishOpen();
 }
 function finishOpen(){
   if (!S.photo || !S.params) return;
@@ -3572,7 +3578,7 @@ function bind(){
   $("#exportTiff").onclick = () => exportImage("tiff");
   $("#exportDng").onclick = () => exportImage("rawdng");
   $("#exportDngR").onclick = () => exportImage("dng");
-  $("#finishBtn").onclick = finishOpen;
+  $("#exportTop").onclick = exportOpen;
   $("#finishClose").onclick = finishClose;
   $("#finishMore").onclick = () => { finishClose(); openExportGroup(); };
   $("#finishGo").onclick = finishSave;
