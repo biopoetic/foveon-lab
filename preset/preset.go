@@ -60,7 +60,13 @@ type Params struct {
 	// none), FilmWidth the film frame's long side in mm (0 = 36, 35 mm
 	// film), Halation 0-1 the light the film base reflects back into the
 	// red-sensitive layer (0 = an anti-halation layer, 1 = none).
-	Grain     float64 `json:"grain,omitempty"`
+	Grain float64 `json:"grain,omitempty"`
+	// GrainSet: Grain is a settled value (a film's own grain filled in, or
+	// the slider's). A preset that names a film but has GrainSet false and
+	// Grain 0 predates the grain model: the loader fills the film's grain
+	// once and sets this. The renderer never fills it, so a slider at 0
+	// really means no grain.
+	GrainSet  bool    `json:"grainSet,omitempty"`
 	FilmWidth float64 `json:"filmWidth,omitempty"`
 	Halation  float64 `json:"halation,omitempty"`
 	// NoGrain turns a named film's grain off for a render that isolates its

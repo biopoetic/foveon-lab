@@ -36,9 +36,11 @@ func filmPresets() []preset.Preset {
 		p := preset.Neutral()
 		p.Film = key
 		p.Mono = f.BW
-		if f.RMS > 0 {
-			p.Grain = math.Round(f.Grain*2) / 2
-		}
+		// Every stock now has a grain value: a slide's RMS, a negative's
+		// on the print, or the one colour-negative scale. The preset stores
+		// it and says it is settled, so the slider can take it back to 0.
+		p.Grain = math.Round(f.Grain*2) / 2
+		p.GrainSet = true
 		section := "Color"
 		if f.BW {
 			section = "BW"

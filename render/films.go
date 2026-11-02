@@ -22,8 +22,11 @@ package render
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"math"
 	"sync"
+
+	"github.com/biopoetic/foveon-lab/preset"
 )
 
 //go:embed films.json
@@ -45,10 +48,18 @@ type Film struct {
 	// estimated from; GrainEstimated carries it to the UI.
 	EstRMS  float64 `json:"est_rms,omitempty"`
 	RMSNote string  `json:"rms_note,omitempty"`
-	// GrainEstimated: EstRMS is an estimate, not a published number.
+	// GrainEstimated: Grain is an estimate, not a published number. A
+	// colour negative's G is now always estimated on one scale (see
+	// cnGrain), even when its maker published an RMS or a PGI.
 	GrainEstimated bool `json:"grain_estimated,omitempty"`
 	// GrainSource is "rms", "pgi" or "estimated": where Grain came from.
 	GrainSource string `json:"grain_source,omitempty"`
+	// GrainNote explains an estimated grain value (the published number it
+	// was built from and the class it was placed in).
+	GrainNote string `json:"grain_note,omitempty"`
+	// CNClass is a colour negative's grain class: "consumer", "pro" or
+	// "value" (see cnClass). Empty for every other kind of film.
+	CNClass string `json:"cn_class,omitempty"`
 	// Formats are the film sizes the maker sold this stock in: "135"
 	// (35 mm), "120"/"220" (medium-format rolls), "4x5"/"8x10" (sheets),
 	// read from the film's own data sheet. Empty means unverified: the model
@@ -123,6 +134,83 @@ func pgiGrain(pgi int) float64 {
 	return pgiAnchorRMS * math.Pow(10, (float64(pgi)-pgiThreshold)/pgiSlope)
 }
 
+// One scale for colour negatives.
+//
+// RMS and PGI are not the same measurement and cannot be mixed directly:
+// Fuji's integer "RMS 4" for Superia 100, 200 and 400 is a rounded negative
+// granularity, while Kodak's PGI is a perceptual print-graininess scale at a
+// fixed 4x6 print, whose logarithmic relation has a 29.64-point decade. Fed
+// through the old conversion, Ultramax 400 came out at G 47.7 against
+// Superia X-TRA 400's 9.33 for the same speed and class — five times apart.
+//
+// A colour negative's grain is therefore estimated on ONE scale from its ISO
+// and its class, anchored on the published RMS value that is fine enough to
+// trust at ISO 100 (Fuji's RMS 4 -> G 9.33 at a consumer ISO 100) and on the
+// published digits at the other speeds only as a sanity band:
+//
+//	negative RMS = base * (ISO/100)^exponent
+//	consumer: 4.00, 0.19   -> ISO 100 4.00, 400 5.20, 1600 6.77
+//	pro:      3.10, 0.23   -> ISO 100 3.10, 400 4.00, 800 4.72
+//	value:    5.50, 0.17   -> ISO 100 5.50, 400 6.99
+//
+// 5.20 at a consumer ISO 400 is inside the "RMS 5" rounding of the stocks
+// whose sheets print 5 (True Definition 400, the 800s), and 0.7 above the
+// rounded 4 that Fuji prints for Superia 100/400; that is the speed ranking
+// the task allows. G is the positive-density RMS (x printGain). The classes
+// are the grain families the data supports: the professional lines (Portra,
+// Ektar, Fuji Pro, Agfacolor Portrait) are finer; the 3M/Ferrania "Scotch"
+// films are the published RMS 6-7 value line; everything else is consumer.
+// Every colour negative's G is marked estimated and keeps its published RMS
+// or PGI in the data. Slides keep their own published scale, and black-and-
+// white films keep the published/estimated RMS path.
+func cnClass(f Film) string {
+	switch f.Name {
+	case "Agfacolor Portrait 160",
+		"Fujicolor Pro 160S", "Fujicolor Pro 160C", "Fujicolor Pro 400H",
+		"Fujicolor Pro 800Z", "Fujicolor NPZ 800",
+		"Portra 160", "Portra 400", "Portra 800", "Ektar 100":
+		return "pro"
+	}
+	if f.Maker == "3M / Imation (made by Ferrania)" {
+		return "value"
+	}
+	return "consumer"
+}
+
+func cnGrain(iso int, class string) float64 {
+	base, exp := 4.00, 0.19 // consumer
+	switch class {
+	case "pro":
+		base, exp = 3.10, 0.23
+	case "value":
+		base, exp = 5.50, 0.17
+	}
+	iso = max(25, min(6400, iso))
+	return base * math.Pow(float64(iso)/100, exp) * printGain
+}
+
+// FillFilmGrain settles a named film's grain once, when a preset is loaded or
+// a film is chosen. A presets file that names a film but predates the grain
+// model has Grain 0 and GrainSet false; it gets the film's grain here and is
+// marked set. A parameter set that already has GrainSet true (a slider at 0,
+// say) is left alone. The renderer deliberately does not do this: otherwise
+// slider 0 could never turn grain off.
+func FillFilmGrain(p *preset.Params) bool {
+	if p == nil || p.Film == "" || p.GrainSet {
+		return false
+	}
+	f, ok := FilmByKey(p.Film)
+	if !ok {
+		return false
+	}
+	if p.Grain <= 0 {
+		// The UI's slider step is 0.5 RMS.
+		p.Grain = math.Round(f.Grain*2) / 2
+	}
+	p.GrainSet = true
+	return true
+}
+
 // Films is the library, with each film's grain on the positive.
 func Films() []Film {
 	var d struct {
@@ -132,6 +220,19 @@ func Films() []Film {
 	for i := range d.Films {
 		f := &d.Films[i]
 		switch {
+		case f.Kind == "cn":
+			f.CNClass = cnClass(*f)
+			f.Grain = cnGrain(f.ISO, f.CNClass)
+			f.GrainSource = "estimated"
+			f.GrainEstimated = true
+			switch {
+			case f.RMS > 0:
+				f.GrainNote = fmt.Sprintf("published RMS %g is a rounded negative granularity; G is estimated on the one colour-negative scale from ISO %d and the %s class", f.RMS, f.ISO, f.CNClass)
+			case f.PGI > 0:
+				f.GrainNote = fmt.Sprintf("published PGI %d (Kodak's perceptual print scale); G is estimated on the one colour-negative scale from ISO %d and the %s class", f.PGI, f.ISO, f.CNClass)
+			default:
+				f.GrainNote = fmt.Sprintf("estimated on the one colour-negative scale from ISO %d and the %s class", f.ISO, f.CNClass)
+			}
 		case f.RMS > 0:
 			f.Grain = f.RMS
 			f.GrainSource = "rms"
@@ -143,7 +244,10 @@ func Films() []Film {
 			f.GrainEstimated = true
 			f.GrainSource = "estimated"
 		}
-		if f.Kind != "slide" {
+		// cnGrain already returns the positive-density G (it applies
+		// printGain itself, because it is one scale rather than a
+		// published negative RMS).
+		if f.Kind != "slide" && f.Kind != "cn" {
 			f.Grain *= printGain
 		}
 		f.Curve = filmCurves()[f.Maker+" "+f.Name]

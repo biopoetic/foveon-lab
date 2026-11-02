@@ -1,6 +1,7 @@
 package render
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -26,9 +27,10 @@ func TestFilms(t *testing.T) {
 	}
 }
 
-// Every film now has a grain value: published RMS, a converted PGI, or a
-// marked estimate. The PGI conversion is monotonic and separate from RMS;
-// Superia 100 and 400 share a published RMS but not a grain size.
+// Every film has a grain value. Colour negatives are all on ONE estimated
+// scale (their published RMS or PGI is kept but does not set G directly), so
+// speed orders them and same-speed consumer films land together. Slides and
+// black-and-white films keep the published/estimated RMS path.
 func TestFilmGrainSources(t *testing.T) {
 	for _, f := range Films() {
 		if f.Grain <= 0 {
@@ -45,17 +47,39 @@ func TestFilmGrainSources(t *testing.T) {
 		if f.GrainSource == "rms" && f.GrainEstimated {
 			t.Errorf("%s %s: published RMS marked estimated", f.Maker, f.Name)
 		}
+		if f.Kind == "cn" {
+			if !f.GrainEstimated || f.GrainSource != "estimated" || f.GrainNote == "" {
+				t.Errorf("%s %s: colour negative not on the estimated one-scale path (%q est=%v)", f.Maker, f.Name, f.GrainSource, f.GrainEstimated)
+			}
+			if f.CNClass != "consumer" && f.CNClass != "pro" && f.CNClass != "value" {
+				t.Errorf("%s %s: colour-negative class %q", f.Maker, f.Name, f.CNClass)
+			}
+		}
 	}
 	p160, _ := FilmByKey("Kodak Portra 160")
 	p400, _ := FilmByKey("Kodak Portra 400")
 	p800, _ := FilmByKey("Kodak Portra 800")
 	if !(p160.Grain < p400.Grain && p400.Grain < p800.Grain) {
-		t.Errorf("PGI conversion not monotonic: %.1f %.1f %.1f", p160.Grain, p400.Grain, p800.Grain)
+		t.Errorf("Portra grain not monotonic in speed: %.1f %.1f %.1f", p160.Grain, p400.Grain, p800.Grain)
 	}
 	s100, _ := FilmByKey("Fujifilm Fujicolor Superia 100")
 	s400, _ := FilmByKey("Fujifilm Fujicolor Superia X-TRA 400")
-	if s100.Grain != s400.Grain {
-		t.Errorf("the two Superias should share the published RMS: %.1f %.1f", s100.Grain, s400.Grain)
+	if s400.Grain < 1.2*s100.Grain {
+		t.Errorf("Superia 100 and 400 on the same scale: %.2f vs %.2f, want 400 plainly higher", s100.Grain, s400.Grain)
+	}
+	// Same speed and class: consumer 400s must land close together.
+	u400, _ := FilmByKey("Kodak Ultramax 400")
+	if math.Abs(u400.Grain-s400.Grain) > 0.02*s400.Grain {
+		t.Errorf("Ultramax 400 %.2f and Superia 400 %.2f are not on one scale", u400.Grain, s400.Grain)
+	}
+	g200, _ := FilmByKey("Kodak Gold 200")
+	s200, _ := FilmByKey("Fujifilm Fujicolor Superia 200")
+	if math.Abs(g200.Grain-s200.Grain) > 0.02*s200.Grain {
+		t.Errorf("Gold 200 %.2f and Superia 200 %.2f are not on one scale", g200.Grain, s200.Grain)
+	}
+	// Slides stay on their own published scale.
+	if v, _ := FilmByKey("Fujifilm Fujichrome Velvia 50"); v.Grain != 9 || v.GrainSource != "rms" {
+		t.Errorf("Velvia 50 grain %.1f (%s), want the slide's published RMS 9", v.Grain, v.GrainSource)
 	}
 	// The median is the middle of the nine log-spaced bands (index 4).
 	s100sizes, _ := grainSizes("cn", 100, 0)

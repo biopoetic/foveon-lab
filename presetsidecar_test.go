@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/biopoetic/foveon-lab/preset"
+	"github.com/biopoetic/foveon-lab/render"
 )
 
 // A saved preset must keep the fields SPP's XML cannot carry: film, push,
@@ -77,6 +78,31 @@ func TestFLPresetXMLWins(t *testing.T) {
 	}
 	if ps[0].Params.Exposure != 0.5 || ps[0].Params.Push != 2 {
 		t.Errorf("exposure %.2f push %v, want 0.5 and 2", ps[0].Params.Exposure, ps[0].Params.Push)
+	}
+}
+
+// A preset saved with the grain slider at 0 and a film chosen stores
+// grainSet true: loading it must not fill the film's grain back in.
+func TestFLSidecarKeepsGrainOff(t *testing.T) {
+	dir := t.TempDir()
+	xml := filepath.Join(dir, "FoveonLab_ALL.xml")
+	p := preset.Neutral()
+	p.Film, p.Grain, p.GrainSet = "Kodak Portra 800", 0, true
+	if err := preset.Append(xml, "clean Portra 800", p); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveFLParams(dir, filepath.Base(xml), "clean Portra 800", p); err != nil {
+		t.Fatal(err)
+	}
+	ps, errs := preset.Load(preset.Source{FS: os.DirFS(dir), Merge: flMerge(dir)})
+	if len(errs) != 0 || len(ps) != 1 {
+		t.Fatalf("load: %d presets, %v", len(ps), errs)
+	}
+	if ps[0].Params.GrainSet != true || ps[0].Params.Grain != 0 {
+		t.Fatalf("grain %.2f set=%v, want 0 true", ps[0].Params.Grain, ps[0].Params.GrainSet)
+	}
+	if render.FillFilmGrain(&ps[0].Params) {
+		t.Error("the loader filled a grain the user had set to 0")
 	}
 }
 

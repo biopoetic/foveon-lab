@@ -148,7 +148,7 @@ float grainFineAt(uint i, int c){
 }
 float grain1(float v, float n){
   if (v <= 0.) return v;
-  float u = min(1., enc(v)), amp = 2. * sqrt(u * (1. - u));
+  float u = min(1., enc(v)), amp = 4. * u * (1. - u);
   return v * exp(-2.302585 * amp * n);
 }
 void main(){

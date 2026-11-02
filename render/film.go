@@ -135,11 +135,9 @@ func (b *Base) newFilmOp(p preset.Params, mono, buildNoise bool) *filmOp {
 	target := p.Grain / 1000 // RMS granularity -> density sigma
 	film, hasFilm := FilmByKey(p.Film)
 	if p.NoGrain {
+		// A render-only flag (the Compare films tiles): it is not a slider
+		// and it never overrides a user's saved grain value.
 		target = 0
-	} else if target <= 0 && hasFilm {
-		// Choosing a film turns its grain on. The slider still scales it
-		// (p.Grain > 0 overrides this base value).
-		target = film.Grain / 1000
 	}
 	if target <= 0 && p.Halation <= 0 {
 		return nil
@@ -166,10 +164,13 @@ func (b *Base) newFilmOp(p preset.Params, mono, buildNoise bool) *filmOp {
 			iso = 6400
 		}
 		push := math.Max(0, p.Push)
-		// A pushed film is underexposed and overdeveloped: its grains grow
-		// and there are fewer of them per unit density. This is an estimate
-		// (makers publish no pushed granularity), monotonic in the push.
-		target *= 1 + 0.45*push + 0.08*push*push
+		// A pushed film is underexposed and overdeveloped. There is no
+		// published pushed granularity; the consistent estimate is the
+		// model's own speed law: +n stops is the film rated 2^n faster, so
+		// the grain grows by 2^(0.30 n) (1.52x at +2), not by an extra
+		// factor on top of the stock's own speed. The grain size grows more
+		// gently (2^(0.10 n)) because development swells the clumps.
+		target *= math.Pow(2, 0.30*push)
 		f.rho = grainRho(kind, mono)
 		f.buildGrain(b, p, kind, iso, push, target, buildNoise)
 	}
@@ -195,7 +196,7 @@ func grainSizes(kind string, iso, push float64) ([]float64, []float32) {
 		base, exp = 1.05, 0.28
 	}
 	d50 := base * math.Pow(iso/100, exp)
-	d50 *= 1 + 0.10*push // an estimated growth with development
+	d50 *= math.Pow(2, 0.10*push) // an estimated growth with development
 	d50 = math.Max(0.35, math.Min(3.2, d50))
 
 	lo := 0.4 * d50
@@ -239,6 +240,11 @@ func grainAperture(s, L float64) float64 {
 }
 
 // grainRho is the common share of the three colour layers' density noise.
+// A scan or print shares most of its density noise between the three layers:
+// what the eye reads as film grain is mainly luminance, with a quiet chroma.
+// 0.90 leaves a tenth of the variance independent (a chroma SD near a third
+// of the luma SD) and still shows colour on a saturated dyer. Slides keep
+// their own, more independent dye layers (0.10) and their own grain scale.
 func grainRho(kind string, mono bool) float32 {
 	if mono {
 		return 0
@@ -246,7 +252,7 @@ func grainRho(kind string, mono bool) float32 {
 	if kind == "slide" {
 		return 0.10
 	}
-	return 0.30
+	return 0.90
 }
 
 // buildGrain sizes the field on the film and normalizes it so a 48 µm
@@ -444,22 +450,25 @@ func (f *filmOp) buildNoise(b *Base, p preset.Params) {
 	}
 }
 
+// grainDensity applies one density-noise sample n to a linear pixel v. The
+// print/scan's local gamma 4u(1-u) fades the grain at paper white and black.
+func grainDensity(v, n float32) float32 {
+	if v <= 0 {
+		return v
+	}
+	u := min(1, enc(v))
+	amp := 4 * u * (1 - u)
+	return v * float32(math.Exp(-2.302585*float64(n*amp)))
+}
+
 // grain applies the density noise to an output-linear pixel.
 func (f *filmOp) grain(i int, r, g, bl float32) (float32, float32, float32) {
 	if f == nil || f.noise == nil {
 		return r, g, bl
 	}
-	one := func(v float32, n float32) float32 {
-		if v <= 0 {
-			return v
-		}
-		u := min(1, enc(v))
-		amp := 2 * float32(math.Sqrt(float64(u*(1-u))))
-		return v * float32(math.Exp(-2.302585*float64(n*amp)))
-	}
 	if f.mono {
 		n := f.noise[i]
-		return one(r, n), one(g, n), one(bl, n)
+		return grainDensity(r, n), grainDensity(g, n), grainDensity(bl, n)
 	}
-	return one(r, f.noise[i*3]), one(g, f.noise[i*3+1]), one(bl, f.noise[i*3+2])
+	return grainDensity(r, f.noise[i*3]), grainDensity(g, f.noise[i*3+1]), grainDensity(bl, f.noise[i*3+2])
 }

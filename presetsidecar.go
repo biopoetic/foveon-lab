@@ -61,7 +61,7 @@ func (e flSidecarEntry) apply(p *preset.Params) {
 	p.GND, p.GNDAngle, p.GNDPos, p.GNDSoft = e.Params.GND, e.Params.GNDAngle, e.Params.GNDPos, e.Params.GNDSoft
 	p.Filter = e.Params.Filter
 	p.LayerBottom, p.LayerMiddle, p.LayerTop = e.Params.LayerBottom, e.Params.LayerMiddle, e.Params.LayerTop
-	p.Grain, p.FilmWidth, p.Halation = e.Params.Grain, e.Params.FilmWidth, e.Params.Halation
+	p.Grain, p.GrainSet, p.FilmWidth, p.Halation = e.Params.Grain, e.Params.GrainSet, e.Params.FilmWidth, e.Params.Halation
 }
 
 // flMerge is the preset.Source hook: a preset whose XML was written together

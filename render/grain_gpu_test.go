@@ -77,6 +77,29 @@ func t47GPUField(r *GPURecipe, i, x, y int) [3]float32 {
 	return n
 }
 
+// t48GPUgrain1 mirrors web/gpu.js's grain1, the tone application of one
+// density sample. web/gpu.js and film.go must keep the same curve.
+func t48GPUgrain1(v, n float32) float32 {
+	if v <= 0 {
+		return v
+	}
+	u := min(1, enc(v))
+	amp := 4 * u * (1 - u)
+	return v * float32(math.Exp(-2.302585*float64(amp*n)))
+}
+
+func TestGrainToneGPUAgrees(t *testing.T) {
+	for _, v := range []float32{0.001, 0.01, 0.05, 0.2, 0.5, 0.8, 0.95, 0.999} {
+		for _, n := range []float32{-3, -1, -0.25, 0.25, 1, 3} {
+			want := grainDensity(v, n)
+			got := t48GPUgrain1(v, n)
+			if d := math.Abs(float64(got - want)); d > 1e-6 {
+				t.Errorf("v %.3f n %.2f: GPU %.8f, CPU %.8f", v, n, got, want)
+			}
+		}
+	}
+}
+
 func TestGrainGPUAgrees(t *testing.T) {
 	for _, tc := range []struct {
 		name string

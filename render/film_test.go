@@ -88,22 +88,94 @@ func TestGrainSpeedAndPush(t *testing.T) {
 	}
 }
 
-// Choosing a film turns its grain on even when the stored Grain is 0 (a
-// preset that names a film but predates the film's grain), and the slider
-// still scales it linearly.
-func TestFilmGrainOnByDefault(t *testing.T) {
+// The renderer never invents grain from a named film: a preset that stores
+// Grain 0 is grain-free, whatever film it names. This is the regression test
+// for the slider at 0 (on 36bea55 the renderer filled the film's grain in).
+func TestFilmGrainIsNotFilledByRenderer(t *testing.T) {
+	b := NewBase(flat(1200, 800, 0.2))
+	for _, p := range []preset.Params{
+		{Film: "Ilford Pan F Plus"},
+		{Film: "Kodak Portra 800"},
+		{Film: "Fujifilm Fujichrome Velvia 50"},
+	} {
+		if f := b.newFilm(p, p.Film != "Fujifilm Fujichrome Velvia 50"); f != nil && f.sigma != 0 {
+			t.Errorf("%s with Grain 0 built grain %.3f", p.Film, f.sigma)
+		}
+	}
+}
+
+// A film's grain is filled once, by the loader or the film picker, and a
+// slider at 0 afterwards means off.
+func TestFillFilmGrain(t *testing.T) {
+	f800, _ := FilmByKey("Kodak Portra 800")
+	p := preset.Params{Film: "Kodak Portra 800"}
+	if !FillFilmGrain(&p) {
+		t.Fatal("an old preset naming a film did not get its grain")
+	}
+	want := math.Round(f800.Grain*2) / 2
+	if p.Grain != want || !p.GrainSet {
+		t.Errorf("filled grain %.2f set=%v, want %.2f true", p.Grain, p.GrainSet, want)
+	}
+	// Loading it again does not change a value the user has since moved.
+	p.Grain = 3
+	FillFilmGrain(&p)
+	if p.Grain != 3 {
+		t.Errorf("a settled grain was overwritten: %.2f", p.Grain)
+	}
+	// An explicit 0 is settled: leave it alone and build no grain.
+	off := preset.Params{Film: "Kodak Portra 800", GrainSet: true}
+	if FillFilmGrain(&off) {
+		t.Error("FillFilmGrain touched an explicitly set 0")
+	}
+	if f := NewBase(flat(1200, 800, 0.2)).newFilm(off, false); f != nil && f.sigma != 0 {
+		t.Errorf("slider 0 still built grain %.3f", f.sigma)
+	}
+	// NoGrain (the Compare films tiles) still wins over a set grain.
+	full := preset.Params{Film: "Kodak Portra 800", Grain: 40, GrainSet: true, NoGrain: true}
+	if f := NewBase(flat(1200, 800, 0.2)).newFilm(full, false); f != nil && f.sigma != 0 {
+		t.Errorf("NoGrain still built grain %.3f", f.sigma)
+	}
+}
+
+// The slider scales the settled grain linearly.
+func TestFilmGrainSliderScales(t *testing.T) {
 	b := NewBase(flat(1200, 800, 0.2))
 	f, _ := FilmByKey("Ilford Pan F Plus")
-	a := b.newFilm(preset.Params{Film: "Ilford Pan F Plus"}, true)
+	a := b.newFilm(preset.Params{Film: "Ilford Pan F Plus", Grain: f.Grain, GrainSet: true}, true)
 	if a == nil || a.sigma == 0 {
-		t.Fatal("selecting a film did not turn its grain on")
+		t.Fatal("no grain")
 	}
-	if off := b.newFilm(preset.Params{Film: "Ilford Pan F Plus", NoGrain: true}, true); off != nil && off.sigma != 0 {
-		t.Errorf("NoGrain still built grain: %.3f", off.sigma)
-	}
-	d := b.newFilm(preset.Params{Film: "Ilford Pan F Plus", Grain: 2 * f.Grain}, true)
+	d := b.newFilm(preset.Params{Film: "Ilford Pan F Plus", Grain: 2 * f.Grain, GrainSet: true}, true)
 	if d.sigma < 1.9*a.sigma || d.sigma > 2.1*a.sigma {
 		t.Errorf("doubling the slider gave %.3f x the grain, want 2", d.sigma/a.sigma)
+	}
+}
+
+// Grain fades at paper white and near black instead of laying sand on the
+// ends. On 36bea55 the near-white patch carried 58% of the mid-grey SD.
+func TestGrainToneFades(t *testing.T) {
+	f, _ := FilmByKey("Kodak Portra 400")
+	sd := func(v float32) float64 {
+		b := NewBase(flat(800, 533, v))
+		p := preset.Params{Film: "Kodak Portra 400", Grain: f.Grain, GrainSet: true}
+		out := make([]float32, b.W*b.H*3)
+		renderInto(b, p, Compensation{}, func(i int, r, g, bl float32) {
+			out[i*3], out[i*3+1], out[i*3+2] = r, g, bl
+		})
+		var s, s2 float64
+		n := float64(b.W * b.H)
+		for i := 0; i < b.W*b.H; i++ {
+			l := 0.2126*float64(enc(out[i*3])) + 0.7152*float64(enc(out[i*3+1])) + 0.0722*float64(enc(out[i*3+2]))
+			s, s2 = s+l, s2+l*l
+		}
+		return math.Sqrt(s2/n - (s/n)*(s/n))
+	}
+	mid, white, black := sd(0.2), sd(0.95), sd(0.02)
+	if white > 0.45*mid {
+		t.Errorf("near-white grain %.4f is %.0f%% of mid %.4f, want under 45%%", white, 100*white/mid, mid)
+	}
+	if black > 0.45*mid {
+		t.Errorf("near-black grain %.4f is %.0f%% of mid %.4f, want under 45%%", black, 100*black/mid, mid)
 	}
 }
 

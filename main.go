@@ -452,6 +452,11 @@ func (s *server) loadPresets() {
 	ps, errs := preset.Load(srcs...)
 	for i := range ps {
 		ps[i].Film = render.FilmFor(ps[i].Name)
+		// An old preset that names a film but predates the grain model
+		// stores grain 0. Fill the film's grain once, here at load, and
+		// mark it set; the renderer must not do it (a slider at 0 has to
+		// mean no grain).
+		render.FillFilmGrain(&ps[i].Params)
 		if isMaxDetail(ps[i].Name) {
 			maxDetailPreset(&ps[i])
 		}
