@@ -68,12 +68,27 @@ func TestCameraDNGOrientation(t *testing.T) {
 		want        uint16
 	}{{0, 1}, {1, 1}, {3, 3}, {6, 6}, {8, 8}} {
 		var buf bytes.Buffer
-		if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6}, 2, 1, gain, cc, nil, c.orientation, "SIGMA", "SD10", "test"); err != nil {
+		if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6}, 2, 1, gain, cc, nil, c.orientation, [2]float64{1, 1}, "SIGMA", "SD10", "test"); err != nil {
 			t.Fatal(err)
 		}
 		if got := readShortTag(t, buf.Bytes(), 274); got != c.want {
 			t.Errorf("orientation %d written as %d, want %d", c.orientation, got, c.want)
 		}
+	}
+}
+
+// TestCameraDNGDefaultScale: a raw readout whose shape differs from the
+// camera's frame carries the stretch as the DNG DefaultScale, not in the
+// pixels. 2640x880 stretched to 1776x1184's aspect is 1, 2.
+func TestCameraDNGDefaultScale(t *testing.T) {
+	gain := [3]float64{1, 1, 1}
+	cc := [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
+	var buf bytes.Buffer
+	if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6}, 2, 1, gain, cc, nil, 1, [2]float64{1, 2}, "SIGMA", "SD14", "test"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readTag(t, buf.Bytes(), 50718); len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Fatalf("DefaultScale %v, want [1 2]", got)
 	}
 }
 
@@ -87,7 +102,7 @@ func TestCameraDNGColour(t *testing.T) {
 	}
 	cc := [9]float64{3.13, -3.55, 1.42, -1.70, 3.87, -1.17, 1.11, -4.86, 4.75}
 	var buf bytes.Buffer
-	if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6}, 2, 1, gain, cc, nil, 1, "SIGMA", "SD1 Merrill", "test"); err != nil {
+	if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6}, 2, 1, gain, cc, nil, 1, [2]float64{1, 1}, "SIGMA", "SD1 Merrill", "test"); err != nil {
 		t.Fatal(err)
 	}
 	b := buf.Bytes()
@@ -132,7 +147,7 @@ func TestCameraDNGProfile(t *testing.T) {
 	prof := &DNGProfile{Name: "test", Matrix: [9]float64{2.2, -0.3, 0.1, -0.2, 2.9, -0.1, 0.05, -0.4, 3.6},
 		Tone: []float64{0, 0, 0.25, 0.4, 1, 1}}
 	var buf bytes.Buffer
-	if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3}, 1, 1, gain, cc, prof, 1, "SIGMA", "SD1 Merrill", "test"); err != nil {
+	if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3}, 1, 1, gain, cc, prof, 1, [2]float64{1, 1}, "SIGMA", "SD1 Merrill", "test"); err != nil {
 		t.Fatal(err)
 	}
 	b := buf.Bytes()

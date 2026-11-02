@@ -132,7 +132,8 @@ type dngMeta struct {
 	colorMatrix, forward          []float64 // XYZ(D65) -> camera; camera -> XYZ(D50)
 	neutral                       [3]float64
 	baselineExposure              float64
-	orientation                   uint16 // TIFF Orientation; 1 = upright
+	orientation                   uint16     // TIFF Orientation; 1 = upright
+	defaultScale                  [2]float64 // DNG DefaultScale; 0 or 1,1 = none
 	profile                       string
 	linearCurve                   bool      // ProfileToneCurve: linear (show the data as is)
 	tone                          []float32 // ProfileToneCurve pairs (camera profile)
@@ -178,6 +179,9 @@ func writeDNG(w io.Writer, width, height, rowsPerStrip int, strips [][]byte, m d
 		{50936, tASCII, 0, dngASCII(m.profile)},                     // ProfileName
 		{50941, tLong, 1, dngLongs(3)},                              // ProfileEmbedPolicy: no restrictions
 		{50964, tSRational, 9, dngSRationals(m.forward...)},         // ForwardMatrix1
+	}
+	if m.defaultScale[0] > 0 && (m.defaultScale[0] != 1 || m.defaultScale[1] != 1) {
+		entries = append(entries, dngEntry{50718, tRational, 2, dngRationals(m.defaultScale[:]...)}) // DefaultScale
 	}
 	if m.linearCurve {
 		entries = append(entries, dngEntry{50940, tFloat, 4, dngFloats(0, 0, 1, 1)}) // ProfileToneCurve: linear
@@ -323,7 +327,7 @@ func (c *RawCorrection) DNGProfile(name string) *DNGProfile {
 // matrix: linear sRGB = cc · diag(gain) · camera, then prof's matrix and
 // tone when prof is not nil. Values above white clip. orientation is the
 // TIFF Orientation of these (unrotated) pixels (1, 3, 6 or 8).
-func WriteCameraDNG(out io.Writer, pix []float32, w, h int, gain [3]float64, cc [9]float64, prof *DNGProfile, orientation uint16, make_, model, software string) error {
+func WriteCameraDNG(out io.Writer, pix []float32, w, h int, gain [3]float64, cc [9]float64, prof *DNGProfile, orientation uint16, defaultScale [2]float64, make_, model, software string) error {
 	const rowsPerStrip = 32
 	var strips [][]byte
 	row := make([]byte, w*6)
@@ -398,6 +402,7 @@ func WriteCameraDNG(out io.Writer, pix []float32, w, h int, gain [3]float64, cc 
 		make: make_, model: model, software: software, unique: make_ + " " + model,
 		colorMatrix: cm[:], forward: fwd[:], neutral: neutral,
 		baselineExposure: math.Log2(k), orientation: orientation, profile: name,
+		defaultScale: defaultScale,
 	}
 	if prof != nil {
 		// With a profile the grey's brightness goes into its tone curve

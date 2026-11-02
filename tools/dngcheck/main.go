@@ -82,7 +82,7 @@ func check(path, export string) error {
 	case 270:
 		orientation = 8
 	}
-	if err := render.WriteCameraDNG(&buf, img.Pix, img.W, img.H, gain, cc, base.DNGProfile("check"), orientation, "SIGMA", "x", "dngcheck"); err != nil {
+	if err := render.WriteCameraDNG(&buf, img.Pix, img.W, img.H, gain, cc, base.DNGProfile("check"), orientation, [2]float64{1, 1}, "SIGMA", "x", "dngcheck"); err != nil {
 		return err
 	}
 	// DNGCHECK_SAVE=dir keeps the DNG, to develop it in a real raw editor.

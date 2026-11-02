@@ -783,7 +783,12 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 	if c := render.RawBaseFitted(calibGroup(ph), wbDesc(ph)); c != nil {
 		prof = c.DNGProfile("Foveon Lab SPP Neutral (" + calibGroup(ph) + ")")
 	}
-	err = render.WriteCameraDNG(f, img.Pix, img.W, img.H, t.Gain, t.CC, prof, dngOrientation(ph.Rotation), "SIGMA", dngModel(ph), "Foveon Lab "+version)
+	// The DP2's camera-JPEG balance is deliberately not folded into
+	// AsShotNeutral: it is a gain on the finished linear image, after the raw
+	// base's per-channel tone, while a DNG applies AsShotNeutral before its
+	// single ProfileToneCurve. Forcing it took the DP2 from 7.3 to 23.3 dE2000
+	// against our render (task 40), so the rendered DNG stays its hand-off.
+	err = render.WriteCameraDNG(f, img.Pix, img.W, img.H, t.Gain, t.CC, prof, dngOrientation(ph.Rotation), cameraDNGDefaultScale(ph, img.W, img.H), "SIGMA", dngModel(ph), "Foveon Lab "+version)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -806,6 +811,26 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 		cube = ""
 	}
 	writeJSON(w, map[string]string{"path": path, "lut": cube})
+}
+
+// cameraDNGDefaultScale is the DNG DefaultScale for the camera DNG: the
+// stretch the app's frame gives a raw readout whose shape differs from the
+// embedded preview. Most files are 1:1. A few are not: the SD1 medium files
+// decode 4704x1568 for a 4704x3136 frame, and rytterfalk_SDIM3880.X3F (SD14)
+// decodes 2640x880 for a 1776x1184 preview, so it opens at 3:1 without it.
+// DefaultScale is the standard DNG way to say "the pixels are not square in
+// display terms"; it does not touch the pixels, and a reader that ignores it
+// still sees the raw readout. The rendered DNG carries the result for those
+// readers.
+func cameraDNGDefaultScale(ph *Photo, w, h int) [2]float64 {
+	if ph.previewW <= 0 || ph.previewH <= 0 || w <= 0 || h <= 0 {
+		return [2]float64{1, 1}
+	}
+	wantH := w * ph.previewH / ph.previewW
+	if d := wantH - h; d <= h/30 && -d <= h/30 {
+		return [2]float64{1, 1}
+	}
+	return [2]float64{1, float64(wantH) / float64(h)}
 }
 
 // dngOrientation maps the X3F header's clockwise rotation to the TIFF
