@@ -67,6 +67,17 @@ type nrMetric struct {
 	// ChromaDetail is the slope of this chroma band on the reference's
 	// chroma over textured pixels: 1 = all the fine colour detail is kept.
 	ChromaDetail [4]float64 `json:"chromaDetail"`
+	// Colour across object edges, measured from the ISO 100 frame's chroma
+	// edges (edgecross.go). EdgeSpread is the median excess width of the
+	// chroma step in px (the area between the observed step and an ideal one),
+	// EdgeRefSpread the same on this pipeline's ISO 100 frame, EdgeGain the
+	// extra px over ISO 100, and EdgeContrast the step that survives at +-16 px
+	// (1 = the full ISO 100 step). EdgeN is the number of edges.
+	EdgeSpread    float64 `json:"edgeSpread"`
+	EdgeRefSpread float64 `json:"edgeRefSpread"`
+	EdgeGain      float64 `json:"edgeGain"`
+	EdgeContrast  float64 `json:"edgeContrast"`
+	EdgeN         int     `json:"edgeN"`
 	// ShiftX/ShiftY: integer translation of this frame against its own ISO
 	// 100 frame, measured on the luma high-pass (0 = registered).
 	ShiftX int `json:"shiftX,omitempty"`
@@ -479,6 +490,10 @@ func scoreLadder(l *nrLadder, nr float64, crop nrCrop, fixedW int) ([]nrRecord, 
 		strict := strictFlatMask(rO, selO)
 		om.measureColour(oLab, rO, selO, strict, tex)
 		sm.measureColour(sLab, rS, selS, strict, tex)
+		scale := edgeScale(ours.W)
+		edges := findChromaEdges(rO, scale)
+		om.measureEdgeCross(oLab, rO, edges, scale)
+		sm.measureEdgeCross(sLab, rS, edges, scale)
 		om.ShiftX, om.ShiftY = estimateShift(rO, oLab)
 		sm.ShiftX, sm.ShiftY = estimateShift(rS, sLab)
 		om.Blocks, sm.Blocks = blocks, blocks
@@ -1247,6 +1262,10 @@ func printNRSummary(recs []nrRecord) {
 		ob32, sb32   float64    // 32-64 px blotch
 		oce, sce     [7]float64 // chroma error per band
 		ocd, scd     [4]float64 // fine chroma detail slope
+		oes, ses     float64    // colour-across-edge spread, px
+		oeg, seg     float64    // spread gain against ISO 100
+		oec, sec     float64    // step contrast at the edge
+		oen          int        // frames with an edge measurement
 		oshift       int        // largest |shift| of ours against its ISO 100
 		sshift       int        // largest |shift| of SPP against its ISO 100
 		oda2, odb2   float64    // dark a*/b*
@@ -1319,6 +1338,15 @@ func printNRSummary(recs []nrRecord) {
 		a.sdb2 += r.SPP.DarkB
 		a.osp += r.Ours.DarkSpread
 		a.ssp += r.SPP.DarkSpread
+		if r.Ours.EdgeN > 0 {
+			a.oes += r.Ours.EdgeSpread
+			a.ses += r.SPP.EdgeSpread
+			a.oeg += r.Ours.EdgeGain
+			a.seg += r.SPP.EdgeGain
+			a.oec += r.Ours.EdgeContrast
+			a.sec += r.SPP.EdgeContrast
+			a.oen++
+		}
 	}
 	var ks []key
 	for k := range by {
@@ -1392,6 +1420,17 @@ func printNRSummary(recs []nrRecord) {
 			fmt.Printf(" %5.2f/%4.2f", a.oce[b]/n, a.sce[b]/n)
 		}
 		fmt.Println()
+	}
+	fmt.Println("\nColour across object edges, from the ISO 100 frame's chroma edges (lower spread is better):")
+	fmt.Printf("%-24s %5s %3s %13s %13s %13s %11s\n", "body", "ISO", "n", "spread px", "excess px", "contrast", "edges")
+	for _, k := range ks {
+		a := by[k]
+		if a.oen == 0 {
+			continue
+		}
+		nn := float64(a.oen)
+		fmt.Printf("%-24s %5g %3d %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %11d\n",
+			k.body, k.iso, a.n, a.oes/nn, a.ses/nn, a.oeg/nn, a.seg/nn, a.oec/nn, a.sec/nn, a.oen)
 	}
 	fmt.Println("\nRegistration against each pipeline's own ISO 100 (largest |integer shift| in the group, px):")
 	for _, k := range ks {
