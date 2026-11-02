@@ -41,6 +41,9 @@ renders an X3F — for anyone building X3F tools — is in [How SPP works](docs/
     (within 0.5/255 of the preview); Fill Light becomes a global shadow lift and Sharpness is left out.
 - **Batch export:** one preset (or your tuned settings) on a whole folder or every photo, as JPEG,
   16-bit TIFF or DNG.
+- **Publish…** makes a JPEG at Instagram/Facebook/Flickr/500px/Web size from the current look, saves
+  it in a `publish/` folder beside the photo, and opens that folder and the site's upload page; drag
+  the file in. Nothing is uploaded by the app.
 - **Calibration tools** measure what SPP actually does, to replace guesses with measured curves (below).
 
 Single Go binary, no runtime dependencies, runs locally on `127.0.0.1` only.
@@ -123,6 +126,27 @@ Decisions are kept in `FoveonLab_Cull.json` in the photo's own folder, keyed by 
 one atomic step. The X3F is never touched: the sidecar moves with the folder, so the decisions survive a
 restart and a moved folder. The app's older path-keyed favourites list is mirrored for older builds and
 is the fallback for a photo that has no cull decision yet.
+
+## Publish
+
+**Publish…** in the header (right after **Export…**) writes a JPEG at a social site's size from the
+photo you are looking at *and its current look*: Instagram portrait 1080×1350, square 1080×1080 or
+landscape 1080×566; Facebook, Flickr and Web at 2048 on the long edge; 500px at 2048 on the short
+edge. It is sRGB with the sRGB profile, and sharpened once more for the final size (the small 3×3
+unsharp mask the renderer already uses). The file goes in a `publish/` folder beside the photo, and
+a name already there is never replaced: the next one gets ` (2)`.
+
+If the photo's shape is not the destination's, the dialog shows the crop frame over the current
+look and you drag it (or click where it should sit). Publish refuses to centre-crop a photo you have
+not seen a crop for. With several photos selected it writes them all, in order, and opens the folder
+and the page once.
+
+The app sends nothing anywhere and needs no account. It only opens the folder and the browser; the
+site's page says "drag the file in". The page is a fixed official URL compiled into the app.
+
+By default the JPEG carries only its sRGB ICC profile: no EXIF, no GPS, no camera or capture data.
+**Keep location (GPS)** copies the original JPEG's EXIF block, GPS included, when the photo is a
+JPEG; X3F files have no location block. The tick box is off by default.
 
 ## One file, the whole look
 
@@ -224,8 +248,15 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
   DNG was checked against the app's own render (0.34/255 mean, 0.23 dE2000); the raw DNG's tags pass
   DNG 1.4 on eight generations, and portrait files now carry their orientation (fixed 2 November
   2026). The embedded SPP-neutral profile is 2.1–4.4 dE2000 from our render on the other seven
-  generations and 7.3 on the DP2, whose raw DNG keeps the file's uncorrected Auto white balance. No
-  real editor has been run on this machine, so opening in one is still to do.
+  generations and 7.3 on the DP2, whose raw DNG keeps the file's uncorrected Auto white balance.
+  darktable 5.6.2 opened all eight generations (no black/white warning, upright, right size), but it
+  ignores the camera DNG's `ProfileToneCurve`, `ProfileHueSatMap`, `ForwardMatrix1` and
+  `BaselineExposure`; its own sigmoid look accounts for 3.2–9.9 dE2000 against the rendered DNG.
+  The rendered DNG is therefore the hand-off that carries the look. The one SD14 whose readout is
+  3:1 now declares its 2× vertical `DefaultScale`; readers that ignore that (darktable does) still
+  see the raw readout, so use its rendered DNG there. Lightroom/Camera Raw, Capture One and Apple
+  Photos have still not been run on this machine.
+
 
 ## Calibration: measuring SPP instead of guessing
 

@@ -270,6 +270,16 @@ func usmPlanes(v []float32, w, h, n int, a float32, k [7]float32) []float32 {
 	return out
 }
 
+// OutputSharpen16 applies the app's 3×3 cross unsharp mask after a publish
+// resize, so the JPEG at 1080 or 2048 does not look softer than the full-size
+// render. amount is small (0.2–0.4): the render already carries SPP's and the
+// preset's sharpening, this only restores what the downscale took away.
+func OutputSharpen16(img *image.RGBA64, amount float32) {
+	if amount > 0 {
+		sharpen16(img, amount)
+	}
+}
+
 // sppSharpen8 applies SPP's sharpening to an 8-bit image at view scale s.
 func sppSharpen8(img *image.RGBA, s, iso float64, sensor string) {
 	sppSharpen8Scale(img, s, iso, sensor, 1)

@@ -346,6 +346,10 @@ type server struct {
 	thumbs   *lru // id → []byte
 	cullImgs *lru // id → []byte, the cull view's embedded JPEG
 	sem      chan struct{}
+	// openFolder/openURL are Publish's side effects; nil means the OS's
+	// file browser and browser. Tests replace them so nothing opens.
+	openFolder func(string) error
+	openURL    func(string) error
 
 	ai aiState
 
@@ -1330,62 +1334,8 @@ func (s *server) exportImageCtx(ctx context.Context, ph *Photo, p preset.Params,
 	if err := waiting(); err != nil {
 		return "", err
 	}
-	var src *render.Linear
-	wbDeveloped := false
-	md := p.MaxDetail && maxDetailAvailable(ph)
-	if !md && p.MaxDetail && p.SPPFallback != nil {
-		// No raw development for this source: export the mode's SPP
-		// fallback look, as the preview does.
-		fb := *p.SPPFallback
-		fb.MaxDetail = false
-		p = fb
-	}
-	lf, ir := layersSource(ph, p)
-	if md {
-		l, err := rawMaxDetailExplicit(ph, 0, goStrength(rawExportColor(denoise)), explicitStrength(rawExportColor(denoise)))
-		if err != nil {
-			return "", err
-		}
-		src = l
-		p = maxDetailRenderParams(p)
-	} else if ir {
-		l, err := rawLinearFor(ph, 0, rawExportColor(denoise), lf)
-		if err != nil {
-			return "", err
-		}
-		src = l
-	} else if ph.RawDecoded && !ph.rawFailed.Load() {
-		// SD9/SD10: the same full-size raw development their preview has
-		// always used (see rawStillLinear), not the binned accurate path.
-		l, err := rawStillLinear(ph, 0)
-		if err != nil {
-			return "", err
-		}
-		src = l
-	} else if s.wantRaw(ph) || ph.jpegBroken.Load() {
-		// Accurate mode: export from the raw data even if the preview
-		// hasn't switched yet (this waits for the decode).
-		color := rawExportColor(denoise)
-		wf, _ := wbSource(ph, p)
-		wbDeveloped = wf != ""
-		l, err := rawLinearFor(ph, 0, color, wf)
-		if err != nil {
-			return "", err
-		}
-		if color == "sRGB" { // the preview's full decode is ready now too
-			s.rawMu.Lock()
-			s.rawState[ph.ID] = rawReady
-			s.rawMu.Unlock()
-		}
-		src = l
-	} else {
-		img, err := decodePreview(ph)
-		if err != nil {
-			return "", err
-		}
-		src = balanceJPEG(ph, render.FromImage(img, 0, ph.Rotation))
-	}
-	if err := waiting(); err != nil {
+	src, p, c, _, err := s.developSource(ctx, ph, p, comp, denoise)
+	if err != nil {
 		return "", err
 	}
 	lap("source")
@@ -1402,16 +1352,6 @@ func (s *server) exportImageCtx(ctx context.Context, ph *Photo, p preset.Params,
 		return "", err
 	}
 	lap("base prep")
-	var c render.Compensation
-	if md {
-		c = rawCompensation(ph)
-	} else {
-		c = s.compensation(ph, comp)
-	}
-	if ir {
-		c = layerCompensation(c)
-	}
-	c.WBDeveloped = wbDeveloped
 	ext := ".jpg"
 	switch format {
 	case "tiff":
@@ -2108,6 +2048,8 @@ func main() {
 		w.Write(b)
 	})
 	mux.HandleFunc("/api/export", s.handleExport)
+	mux.HandleFunc("/api/publish", s.handlePublish)
+	mux.HandleFunc("/api/publish/sites", s.handlePublishSites)
 	mux.HandleFunc("/api/films", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, render.Films()) })
 	mux.HandleFunc("/api/papers", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, render.PaperList()) })
 	mux.HandleFunc("/api/filters", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, render.BrandFilters()) })

@@ -176,8 +176,8 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 .fdir .fn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fdir .fc{opacity:.55;font-size:12px;white-space:nowrap}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;width:min(440px,92vw);display:flex;flex-direction:column;gap:9px}
-#bProg,#cardProg{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
-#bProg div,#cardProg div{height:100%;width:0;background:var(--accent);transition:width .2s}
+#bProg,#cardProg,#pubProg{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+#bProg div,#cardProg div,#pubProg div{height:100%;width:0;background:var(--accent);transition:width .2s}
 .lookbar{grid-column:1/-1;color:var(--dim);padding:2px 2px 6px}
 .lookbar a,.cap a.more{color:var(--accent2);cursor:pointer}
 #aiSetup{display:none;flex-direction:column;gap:7px;padding:10px 12px;border-bottom:1px solid var(--line)}
@@ -257,6 +257,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <button id="folders" title="Choose where your photos are">Folders…</button>
     <button id="cardBtn" class="primary" title="Copy new photos off a camera card into your library">Import from card…</button>
     <button id="exportTop" class="primary" title="Save this photo at full size, or all the selected photos">Export…</button>
+    <button id="publishTop" title="Make a JPEG for Instagram, Facebook, Flickr, 500px or the Web, then drag it into the page">Publish…</button>
     <button id="settingsBtn" title="Preview and listing settings (C or the gear)">⚙ Settings</button>
     <button id="quit" title="Stop Foveon Lab">Quit</button>
   </header>
@@ -636,6 +637,26 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <div id="finishDestRow" style="display:none;gap:6px;align-items:center"><input id="finishDestPath" type="text" style="flex:1"><button id="finishDestPick">Choose…</button></div>
     <div class="src" id="finishMsg">JPEG at high quality. A file that is already there is never replaced; the new one gets a number.</div>
     <div class="btns"><button class="primary" id="finishGo">Save</button><button id="finishMore">More export options</button><button id="finishClose">Cancel</button></div>
+  </div>
+</div>
+<div id="publishDlg" class="modal">
+  <div class="box" style="width:min(560px,94vw)">
+    <b>Publish</b>
+    <div class="src" id="pubCount"></div>
+    <label class="chk">Destination <select id="pubSite" style="flex:1"></select></label>
+    <div class="src" id="pubSiteNote"></div>
+    <div id="pubPreviewWrap" style="position:relative;display:inline-block;max-width:100%;align-self:flex-start">
+      <img id="pubImg" alt="" style="display:block;max-width:100%;max-height:44vh;width:auto;height:auto;user-select:none">
+      <div id="pubCrop" style="position:absolute;box-sizing:border-box;border:2px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.5);cursor:move;display:none"></div>
+    </div>
+    <div class="src" id="pubCropNote"></div>
+    <label class="chk" id="pubAllRow" style="display:none"><input type="checkbox" id="pubAll" checked> Use this crop for all selected photos</label>
+    <label class="chk"><input type="checkbox" id="pubGps"> Keep location (GPS) from a JPEG original</label>
+    <div class="src" id="pubMeta"></div>
+    <div class="src">Nothing is sent anywhere. The app writes the JPEG, opens the folder and the site's page; drag the file in.</div>
+    <div id="pubProg"><div></div></div>
+    <div class="src" id="pubMsg"></div>
+    <div class="btns"><button class="primary" id="pubGo">Publish</button><button id="pubClose">Cancel</button></div>
   </div>
 </div>
 <script src="/gpu.js"></script>
@@ -2591,6 +2612,216 @@ function batchClose(){
   $("#batch").classList.remove("on");
 }
 
+// ---------- publish ----------
+// Make one JPEG at a site's size from the current look, then open the folder
+// and the site's upload page. The crop frame is shown before Publish can use
+// it; a shape that does not fit is never cropped silently.
+const PUB = {sites: null, ids: [], crop: null, drag: null, busy: false, ctl: null, run: 0};
+
+function publishSite(){
+  return PUB.sites?.find(s => s.id === $("#pubSite").value) || null;
+}
+function publishTargets(){
+  const ids = S.photos.filter(p => !p.unsupported && S.sel.has(p.id)).map(p => p.id);
+  if (ids.length) return ids;
+  return S.photo ? [S.photo.id] : [];
+}
+function publishLook(){
+  const p = current();
+  return {preset: p && !dirty() ? p.id : "", params: (!p || dirty()) ? S.params : null};
+}
+function publishSiteNote(){
+  const site = publishSite();
+  $("#pubSiteNote").textContent = site ? site.note : "";
+}
+function publishPreview(){
+  const site = publishSite();
+  if (!site || !S.photo) return;
+  const look = publishLook();
+  const u = renderURL({w: 900, ...(look.preset ? {preset: look.preset} : {params: look.params})}) + "&_=" + Date.now();
+  const img = $("#pubImg");
+  img.onload = () => publishLayout(true);
+  img.onerror = () => { $("#pubCropNote").textContent = "The preview could not be made."; };
+  img.src = u;
+}
+// publishLayout sizes the crop frame to the site's shape. reset re-centres it
+// when the destination changes; dragging calls it with false to keep the spot.
+function publishLayout(reset){
+  const img = $("#pubImg"), site = publishSite();
+  if (!img.naturalWidth || !site) return;
+  const iw = img.clientWidth, ih = img.clientHeight;
+  let need = false;
+  if (site.w && site.h){
+    const a = img.naturalWidth / img.naturalHeight, t = site.w / site.h;
+    need = Math.abs(a - t) > 0.005;
+    if (need && (reset || !PUB.crop)){
+      const cw = a > t ? t / a : 1;
+      const ch = a > t ? 1 : a / t;
+      PUB.crop = {x: (1 - cw) / 2, y: (1 - ch) / 2, w: cw, h: ch};
+    }
+    if (!need) PUB.crop = null;
+  } else {
+    PUB.crop = null;
+  }
+  const frame = $("#pubCrop");
+  frame.style.display = need ? "block" : "none";
+  if (need && PUB.crop){
+    const c = PUB.crop;
+    frame.style.left = (c.x * iw) + "px"; frame.style.top = (c.y * ih) + "px";
+    frame.style.width = (c.w * iw) + "px"; frame.style.height = (c.h * ih) + "px";
+  }
+  $("#pubCropNote").textContent = need
+    ? "This photo's shape does not fit. Drag the frame (or click the photo) to choose what stays; only what is inside is published."
+    : (site.w ? "This photo already has the destination's shape." : "The photo keeps its own shape; no crop.");
+  $("#pubAllRow").style.display = need && PUB.ids.length > 1 ? "" : "none";
+}
+function publishCropInit(){
+  const wrap = $("#pubPreviewWrap");
+  wrap.addEventListener("pointerdown", e => {
+    if (!PUB.crop || $("#pubCrop").style.display === "none") return;
+    const wr = wrap.getBoundingClientRect();
+    PUB.drag = {mx: e.clientX, my: e.clientY, c: {...PUB.crop}, wr};
+    if (e.target !== $("#pubCrop")){
+      const x = (e.clientX - wr.left) / wr.width, y = (e.clientY - wr.top) / wr.height;
+      PUB.crop.x = Math.max(0, Math.min(1 - PUB.crop.w, x - PUB.crop.w / 2));
+      PUB.crop.y = Math.max(0, Math.min(1 - PUB.crop.h, y - PUB.crop.h / 2));
+      PUB.drag = {mx: e.clientX, my: e.clientY, c: {...PUB.crop}, wr};
+      publishLayout(false);
+    }
+    try { wrap.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+  });
+  wrap.addEventListener("pointermove", e => {
+    const d = PUB.drag;
+    if (!d || !PUB.crop) return;
+    const dx = (e.clientX - d.mx) / d.wr.width, dy = (e.clientY - d.my) / d.wr.height;
+    PUB.crop.x = Math.max(0, Math.min(1 - PUB.crop.w, d.c.x + dx));
+    PUB.crop.y = Math.max(0, Math.min(1 - PUB.crop.h, d.c.y + dy));
+    publishLayout(false);
+  });
+  window.addEventListener("pointerup", () => { PUB.drag = null; });
+  window.addEventListener("resize", () => { if ($("#publishDlg").classList.contains("on")) publishLayout(false); });
+}
+
+async function publishOpen(){
+  if (!S.photo){ toast("Pick a photo first.", 4000); return; }
+  PUB.ids = publishTargets();
+  if (!PUB.ids.length){ toast("Pick a photo first.", 4000); return; }
+  if (!PUB.sites){
+    try {
+      const d = await (await fetch("/api/publish/sites")).json();
+      PUB.sites = d.sites || [];
+      $("#pubMeta").textContent = d.keepNote || "";
+    } catch { PUB.sites = []; }
+  }
+  if (!PUB.sites.length){ toast("Could not read the publish destinations.", 6000); return; }
+  const sel = $("#pubSite");
+  if (!sel.options.length){
+    sel.innerHTML = PUB.sites.map(s => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join("");
+    const saved = store.get("publishSite", "instagram-portrait");
+    if (PUB.sites.some(s => s.id === saved)) sel.value = saved;
+    sel.onchange = () => { store.set("publishSite", sel.value); PUB.crop = null; publishSiteNote(); publishLayout(true); };
+  }
+  const site = publishSite();
+  $("#pubCount").textContent = `${PUB.ids.length} photo${PUB.ids.length === 1 ? "" : "s"} with the current look (${lookName()}).`;
+  $("#pubSiteNote").textContent = site ? site.note : "";
+  $("#pubGps").checked = false;
+  $("#pubAll").checked = true;
+  $("#pubProg div").style.width = "0";
+  $("#pubMsg").textContent = "";
+  $("#pubGo").textContent = "Publish";
+  $("#pubGo").disabled = false;
+  PUB.busy = false; PUB.ctl = null; PUB.crop = null;
+  $("#publishDlg").classList.add("on");
+  publishPreview();
+}
+
+async function publishStart(){
+  if (PUB.busy) return;
+  const site = publishSite();
+  if (!site){ $("#pubMsg").textContent = "Choose a destination."; return; }
+  if (!$("#pubImg").naturalWidth){ $("#pubMsg").textContent = "The preview is still loading."; return; }
+  const crop = PUB.crop;
+  const crops = {};
+  if (crop){
+    if (PUB.ids.length === 1 || $("#pubAll").checked){
+      for (const id of PUB.ids) crops[id] = crop;
+    } else {
+      crops[S.photo.id] = crop;
+    }
+  }
+  const look = publishLook();
+  const body = {
+    ids: PUB.ids, site: site.id, look: lookName(),
+    preset: look.preset, params: look.params, paramsById: {},
+    comp: comp() === "1", denoise: +$("#nr").value,
+    crops, keepGps: $("#pubGps").checked,
+  };
+  PUB.busy = true;
+  $("#pubGo").disabled = true; $("#pubGo").textContent = "Publishing…";
+  $("#pubMsg").textContent = "Rendering " + (PUB.ids.length === 1 ? "the photo" : PUB.ids.length + " photos") + "…";
+  PUB.ctl = new AbortController();
+  const run = ++PUB.run;
+  let res;
+  try {
+    res = await fetch("/api/publish", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body), signal: PUB.ctl.signal});
+  } catch {
+    if (run !== PUB.run) return;
+    PUB.busy = false; PUB.ctl = null;
+    $("#pubGo").disabled = false; $("#pubGo").textContent = "Publish";
+    return;
+  }
+  if (!res.ok){
+    if (run !== PUB.run) return;
+    $("#pubMsg").textContent = await res.text();
+    PUB.busy = false; PUB.ctl = null;
+    $("#pubGo").disabled = false; $("#pubGo").textContent = "Publish";
+    return;
+  }
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = "", errors = [], last = "", doneLine = null;
+  try {
+    for (;;){
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream:true});
+      let nl;
+      while ((nl = buf.indexOf(String.fromCharCode(10))) >= 0){
+        const line = JSON.parse(buf.slice(0, nl)); buf = buf.slice(nl + 1);
+        if (line.done) doneLine = line;
+        else {
+          $("#pubProg div").style.width = (100 * line.i / line.n) + "%";
+          $("#pubMsg").textContent = `${line.i}/${line.n} ${line.name || ""}`;
+          if (line.error) errors.push(`${line.name || "?"}: ${line.error}`);
+          if (line.path) last = line.path;
+        }
+      }
+    }
+  } catch {}
+  if (run !== PUB.run) return;
+  PUB.busy = false; PUB.ctl = null;
+  $("#pubGo").disabled = false;
+  if (doneLine){
+    let msg = `Done: ${doneLine.ok} published${doneLine.failed ? `, ${doneLine.failed} not published` : ""}.`;
+    if (doneLine.next) msg += ` <b>${esc(doneLine.next)}</b>`;
+    if (last) msg += ` <a id="pubReveal">Show in folder</a>`;
+    if (errors.length) msg += `<br>${errors.slice(0, 3).map(esc).join("<br>")}`;
+    $("#pubMsg").innerHTML = msg;
+    if ($("#pubReveal")) $("#pubReveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(last));
+    $("#pubProg div").style.width = "100%";
+    $("#pubGo").textContent = "Done";
+  } else {
+    $("#pubGo").textContent = "Publish";
+  }
+}
+
+function publishClose(){
+  if (PUB.ctl){ PUB.ctl.abort(); PUB.ctl = null; }
+  PUB.run++;
+  PUB.busy = false;
+  $("#publishDlg").classList.remove("on");
+}
+
 // ---------- import from card ----------
 const CARD = {settings: null, cards: [], root: "", scan: null, ctl: null};
 
@@ -3579,6 +3810,10 @@ function bind(){
   $("#exportDng").onclick = () => exportImage("rawdng");
   $("#exportDngR").onclick = () => exportImage("dng");
   $("#exportTop").onclick = exportOpen;
+  $("#publishTop").onclick = publishOpen;
+  $("#pubGo").onclick = publishStart;
+  $("#pubClose").onclick = publishClose;
+  publishCropInit();
   $("#finishClose").onclick = finishClose;
   $("#finishMore").onclick = () => { finishClose(); openExportGroup(); };
   $("#finishGo").onclick = finishSave;
