@@ -116,6 +116,40 @@ func nativeRaw(ph *Photo) bool {
 // the photo's grain and detail and only calms the colour noise.
 const defaultNR = 0.3
 
+// baseNR is the default denoise strength at base ISO (<= 400) on the DPM and
+// Quattro bodies. SPP keeps more pixel-scale texture there than our 0.3
+// does; task 37 measured the <0.7 px band at 0.78-0.93 of SPP's energy and
+// the held-out base-ISO scenes improved with less smoothing. High ISO keeps
+// the 0.3: there the missing energy is SPP's noise, which we deliberately
+// remove, and lower smoothing made those frames worse. The two bodies above
+// ISO 400, and every other sensor generation, are unchanged.
+const baseNR = 0.15
+
+// denoiseStrengthFor is the strength the app's default development uses:
+// baseNR at base ISO on the DPM and Quattro bodies, the caller's strength
+// everywhere else (including an explicit -dn/-nodenoise, which is passed as
+// explicit). An unknown ISO is left alone, so a file without the field keeps
+// the old 0.3. explicit matters because -dn3 is numerically the old default:
+// a user who asked for 0.3 must still get 0.3.
+func denoiseStrengthFor(ph *Photo, strength float64, explicit bool) float64 {
+	if explicit || strength != defaultNR {
+		return strength
+	}
+	if iso := photoISO(ph); iso > 0 && iso <= 400 {
+		if g := calibGroup(ph); g == "DPM" || g == "Quattro" {
+			return baseNR
+		}
+	}
+	return strength
+}
+
+// explicitStrength reports whether a decode name asks for a particular noise
+// reduction ("-dnN" or "-nodenoise") rather than leaving the default.
+func explicitStrength(color string) bool {
+	_, opts, _ := strings.Cut(color, "-")
+	return strings.Contains(opts, "nodenoise") || strings.HasPrefix(opts, "dn")
+}
+
 // goStrength maps a decode name to the native denoiser's strength: the
 // default decode defaultNR, "-nodenoise" 0, "-dnN" N/10 (NR Full: -dn10).
 func goStrength(color string) float64 {
@@ -327,7 +361,7 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 	layers := irWhite != nil
 	if goRaw {
 		var err error
-		if l, err = goLinearFor(ph, maxW, goStrength(color), irWhite, irFilter == "film", wbName, false); err != nil {
+		if l, err = goLinearForExplicit(ph, maxW, goStrength(color), irWhite, irFilter == "film", wbName, false, explicitStrength(color)); err != nil {
 			return nil, err
 		}
 	} else {

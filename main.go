@@ -1342,7 +1342,7 @@ func (s *server) exportImageCtx(ctx context.Context, ph *Photo, p preset.Params,
 	}
 	lf, ir := layersSource(ph, p)
 	if md {
-		l, err := rawMaxDetail(ph, 0, goStrength(rawExportColor(denoise)))
+		l, err := rawMaxDetailExplicit(ph, 0, goStrength(rawExportColor(denoise)), explicitStrength(rawExportColor(denoise)))
 		if err != nil {
 			return "", err
 		}
