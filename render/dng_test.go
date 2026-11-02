@@ -48,6 +48,10 @@ func TestRenderedDNG(t *testing.T) {
 	if tags[262][1] != 34892 {
 		t.Errorf("photometric = %d, want LinearRaw", tags[262][1])
 	}
+	// The render is already upright, so a rendered DNG is Orientation 1.
+	if tags[274][1] != 1 {
+		t.Errorf("orientation = %d, want 1", tags[274][1])
+	}
 	// Pixels: follow StripOffsets.
 	cnt, off := tags[273][0], tags[273][1]
 	var data []byte

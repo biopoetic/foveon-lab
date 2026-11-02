@@ -39,6 +39,44 @@ func readTag(t *testing.T, b []byte, tag uint16) []float64 {
 	return nil
 }
 
+// readShortTag reads a one-value SHORT stored in the IFD entry itself.
+func readShortTag(t *testing.T, b []byte, tag uint16) uint16 {
+	ifd := binary.LittleEndian.Uint32(b[4:])
+	n := int(binary.LittleEndian.Uint16(b[ifd:]))
+	for i := 0; i < n; i++ {
+		e := b[int(ifd)+2+12*i:]
+		if binary.LittleEndian.Uint16(e) != tag {
+			continue
+		}
+		if binary.LittleEndian.Uint16(e[2:]) != tShort || binary.LittleEndian.Uint32(e[4:]) != 1 {
+			t.Fatalf("tag %d is not a one-value SHORT", tag)
+		}
+		return binary.LittleEndian.Uint16(e[8:])
+	}
+	t.Fatalf("tag %d missing", tag)
+	return 0
+}
+
+// TestCameraDNGOrientation: the raw development is unrotated, so the camera
+// DNG must carry the camera's rotation in tag 274 or a portrait shot opens
+// sideways. 90/180/270 degrees clockwise are TIFF 6/3/8.
+func TestCameraDNGOrientation(t *testing.T) {
+	gain := [3]float64{2, 1, 0.5}
+	cc := [9]float64{3.13, -3.55, 1.42, -1.70, 3.87, -1.17, 1.11, -4.86, 4.75}
+	for _, c := range []struct {
+		orientation uint16
+		want        uint16
+	}{{0, 1}, {1, 1}, {3, 3}, {6, 6}, {8, 8}} {
+		var buf bytes.Buffer
+		if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6}, 2, 1, gain, cc, nil, c.orientation, "SIGMA", "SD10", "test"); err != nil {
+			t.Fatal(err)
+		}
+		if got := readShortTag(t, buf.Bytes(), 274); got != c.want {
+			t.Errorf("orientation %d written as %d, want %d", c.orientation, got, c.want)
+		}
+	}
+}
+
 // TestCameraDNGColour develops a camera colour the way the DNG spec tells a
 // reader to (white-balance by AsShotNeutral, ForwardMatrix to XYZ D50, scale
 // by BaselineExposure) and checks it matches cc · diag(gain) · camera.
@@ -49,7 +87,7 @@ func TestCameraDNGColour(t *testing.T) {
 	}
 	cc := [9]float64{3.13, -3.55, 1.42, -1.70, 3.87, -1.17, 1.11, -4.86, 4.75}
 	var buf bytes.Buffer
-	if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6}, 2, 1, gain, cc, nil, "SIGMA", "SD1 Merrill", "test"); err != nil {
+	if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6}, 2, 1, gain, cc, nil, 1, "SIGMA", "SD1 Merrill", "test"); err != nil {
 		t.Fatal(err)
 	}
 	b := buf.Bytes()
@@ -94,7 +132,7 @@ func TestCameraDNGProfile(t *testing.T) {
 	prof := &DNGProfile{Name: "test", Matrix: [9]float64{2.2, -0.3, 0.1, -0.2, 2.9, -0.1, 0.05, -0.4, 3.6},
 		Tone: []float64{0, 0, 0.25, 0.4, 1, 1}}
 	var buf bytes.Buffer
-	if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3}, 1, 1, gain, cc, prof, "SIGMA", "SD1 Merrill", "test"); err != nil {
+	if err := WriteCameraDNG(&buf, []float32{0.1, 0.2, 0.3}, 1, 1, gain, cc, prof, 1, "SIGMA", "SD1 Merrill", "test"); err != nil {
 		t.Fatal(err)
 	}
 	b := buf.Bytes()

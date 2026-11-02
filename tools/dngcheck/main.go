@@ -73,7 +73,16 @@ func check(path, export string) error {
 		return fmt.Errorf("no raw base for %q", group)
 	}
 	var buf bytes.Buffer
-	if err := render.WriteCameraDNG(&buf, img.Pix, img.W, img.H, gain, cc, base.DNGProfile("check"), "SIGMA", "x", "dngcheck"); err != nil {
+	orientation := uint16(1)
+	switch ((f.Rotation % 360) + 360) % 360 {
+	case 90:
+		orientation = 6
+	case 180:
+		orientation = 3
+	case 270:
+		orientation = 8
+	}
+	if err := render.WriteCameraDNG(&buf, img.Pix, img.W, img.H, gain, cc, base.DNGProfile("check"), orientation, "SIGMA", "x", "dngcheck"); err != nil {
 		return err
 	}
 	// DNGCHECK_SAVE=dir keeps the DNG, to develop it in a real raw editor.
