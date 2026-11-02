@@ -79,10 +79,28 @@ type DenoiseOptions struct {
 // colour error vs the ISO 200 frame, 32 / 16 / 8 px): ISO 200 itself 0.80 /
 // 0.62 / 0.45, ISO 400 4.85 / 4.88 / 4.94, ISO 800 4.73 / 4.77 / 4.88,
 // ISO 1600 5.64 / 5.74 / 5.96 - so wide from ISO 800, as before.
+//
+// Task 39 split that high-ISO figure by scale and found the 32 px window
+// pulled a small colour patch towards its surround: on the DP1 Merrill
+// studio ladder at ISO 1600 the patch-mean colour error was 14.6 at 32 px
+// and 11.9 at 24 px, the patch saturation 0.916 -> 0.937 (SPP 0.962), and
+// the old 8-32 px blotch 4.18 -> 3.95. On a strict flat mask (chroma edges
+// dilated away) the 16-32 px noise band is 0.45 against 0.32 at 32 px and
+// the 32-64 band 0.84 against 0.81, so 24 trades a little flat chroma noise
+// for much less colour bleeding. 24 is the one value used at every ISO
+// >= 800; it is a radius, not a table per body.
 func colourRadius(iso float64) float64 {
 	switch {
-	case iso <= 0 || iso >= 800:
+	case iso <= 0:
 		return 32
+	case iso >= 800:
+		// Research switch for measuring the high-ISO radius apart from the
+		// base-ISO ones (the SD1 study above used -R, which also changed the
+		// reference frame).
+		if dnHighR > 0 {
+			return dnHighR
+		}
+		return 24
 	case iso <= 200:
 		return 8
 	default:
@@ -105,6 +123,9 @@ var (
 	// dnRadius overrides the colour filter's radius (research switch
 	// FOVEON_DN_R), so the radius can be measured apart from ISO.
 	dnRadius = envFloat("FOVEON_DN_R", 0)
+	// dnHighR overrides only the ISO >= 800 radius (FOVEON_DN_HIGHR), which
+	// leaves the ISO 100 reference on its base-ISO radius.
+	dnHighR = envFloat("FOVEON_DN_HIGHR", 0)
 	// chromaSmooth puts the patch-scale chroma the wide filter removed back
 	// into saturated areas (default on for Quattro; FOVEON_DN_NOCS=1
 	// renders without it). csA2/csB2 are the absolute layer chroma where it
