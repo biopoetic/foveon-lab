@@ -15,6 +15,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -289,6 +290,47 @@ func t36batchHTTP(t *testing.T, groups map[string][]*Photo, out string) {
 	}
 }
 
+// t36cancel starts a batch and closes the page (cancels the request) after a
+// few seconds, then reports what is left on disk and how long the handler took
+// to stop.
+func t36cancel(t *testing.T, groups map[string][]*Photo, out string) {
+	list := groups["Merrill"]
+	if len(list) < 4 {
+		t.Skip("need four Merrill photos")
+	}
+	ids := make([]string, 4)
+	byID := map[string]*Photo{}
+	for i := 0; i < 4; i++ {
+		ids[i] = list[i].ID
+		byID[list[i].ID] = list[i]
+	}
+	dir := filepath.Join(out, "cancel")
+	os.MkdirAll(dir, 0o755)
+	body, _ := json.Marshal(map[string]any{
+		"ids": ids, "format": "jpeg", "preset": "", "look": "Neutral",
+		"destination": dir, "space": "",
+	})
+	s := t36server()
+	s.byID = byID
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest("POST", "/api/export/batch", bytes.NewReader(body)).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	t0 := time.Now()
+	go func() { s.handleExportBatch(rec, req); close(done) }()
+	time.Sleep(3 * time.Second)
+	cancel()
+	<-done
+	stop := time.Since(t0) - 3*time.Second
+	final, _ := filepath.Glob(filepath.Join(dir, "*.jpg"))
+	parts, _ := filepath.Glob(filepath.Join(dir, ".foveon-lab-*"))
+	fmt.Printf("T36 CANCEL\treturn=%s\tfinal=%d\ttemp=%d\tdone=%v\n",
+		stop.Round(100*time.Millisecond), len(final), len(parts), strings.Contains(rec.Body.String(), `"done":true`))
+	for _, p := range parts {
+		t.Errorf("temporary file left behind: %s", p)
+	}
+}
+
 func TestTask36(t *testing.T) {
 	if os.Getenv("FOVEON_T36") == "" {
 		t.Skip("set FOVEON_T36=1")
@@ -311,6 +353,9 @@ func TestTask36(t *testing.T) {
 	}
 	if mode == "httpbatch" {
 		t.Run("httpbatch20", func(t *testing.T) { t36batchHTTP(t, groups, out) })
+	}
+	if mode == "cancel" {
+		t.Run("cancel", func(t *testing.T) { t36cancel(t, groups, out) })
 	}
 }
 
