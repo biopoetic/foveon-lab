@@ -29,9 +29,7 @@ import (
 )
 
 // publishSite is one destination. Fixed sizes are exact; MaxLong caps a free
-// shape's long edge; TargetShort makes the short edge a size. URL is the one
-// fixed official upload page opened after writing; empty means "just the
-// folder" (Web).
+// shape's long edge; TargetShort makes the short edge a size.
 type publishSite struct {
 	ID          string `json:"id"`
 	Label       string `json:"label"`
@@ -40,7 +38,6 @@ type publishSite struct {
 	MaxLong     int    `json:"maxLong,omitempty"`
 	TargetShort int    `json:"targetShort,omitempty"`
 	Aspect      string `json:"aspect,omitempty"`
-	URL         string `json:"url"`
 	Note        string `json:"note"`
 }
 
@@ -52,19 +49,19 @@ type publishSite struct {
 // so.
 var publishSites = []publishSite{
 	{ID: "instagram-portrait", Label: "Instagram portrait 4:5 (1080×1350)", W: 1080, H: 1350, Aspect: "4:5",
-		URL: "https://www.instagram.com/", Note: "Instagram portrait post."},
+		Note: "Instagram portrait post."},
 	{ID: "instagram-square", Label: "Instagram square (1080×1080)", W: 1080, H: 1080, Aspect: "1:1",
-		URL: "https://www.instagram.com/", Note: "Instagram square post."},
+		Note: "Instagram square post."},
 	{ID: "instagram-landscape", Label: "Instagram landscape (1080×566)", W: 1080, H: 566, Aspect: "1.91:1",
-		URL: "https://www.instagram.com/", Note: "Instagram landscape post."},
+		Note: "Instagram landscape post."},
 	{ID: "facebook", Label: "Facebook (long edge 2048)", MaxLong: 2048, Aspect: "photo's own",
-		URL: "https://www.facebook.com/", Note: "No fixed crop; Facebook takes the photo's own shape."},
+		Note: "No fixed crop; Facebook takes the photo's own shape."},
 	{ID: "flickr", Label: "Flickr (long edge 2048)", MaxLong: 2048, Aspect: "photo's own",
-		URL: "https://www.flickr.com/photos/upload/", Note: "Flickr accepts the photo's own shape; 2048 is its display size."},
+		Note: "Flickr accepts the photo's own shape; 2048 is its display size."},
 	{ID: "500px", Label: "500px (short edge 2048)", TargetShort: 2048, Aspect: "photo's own",
-		URL: "https://500px.com/upload", Note: "500px asks for at least 2048 pixels on the shortest side."},
+		Note: "500px asks for at least 2048 pixels on the shortest side."},
 	{ID: "web", Label: "Web (long edge 2048)", MaxLong: 2048, Aspect: "photo's own",
-		URL: "", Note: "No site page; the JPEG is written and the folder opens."},
+		Note: "The JPEG is written and the folder opens."},
 }
 
 func publishSiteByID(id string) (publishSite, bool) {
@@ -252,7 +249,7 @@ func (s *server) handlePublish(w http.ResponseWriter, r *http.Request) {
 		}
 		send(line)
 	}
-	done := map[string]any{"done": true, "ok": okCount, "failed": failed, "files": files, "folders": folders, "url": site.URL}
+	done := map[string]any{"done": true, "ok": okCount, "failed": failed, "files": files, "folders": folders}
 	if len(folders) > 0 {
 		done["folder"] = folders[0]
 	}
@@ -261,44 +258,17 @@ func (s *server) handlePublish(w http.ResponseWriter, r *http.Request) {
 		if openFolder == nil {
 			openFolder = openFolderOS
 		}
-		openURL := s.openURL
-		if openURL == nil {
-			openURL = openBrowserOS
-		}
 		for _, d := range folders {
 			if err := openFolder(d); err != nil {
 				done["openFolderError"] = err.Error()
 				break
 			}
 		}
-		if site.URL != "" {
-			if err := openURL(site.URL); err != nil {
-				done["openURLError"] = err.Error()
-			}
-		}
 	}
 	if len(files) > 0 {
-		if site.URL == "" {
-			done["next"] = "The JPEG is in the publish folder. Upload it wherever you like."
-		} else {
-			done["next"] = "Drag the JPEG into the " + siteLabelShort(site) + " page that just opened."
-		}
+		done["next"] = "The JPEG is in the publish folder. Upload it wherever you like."
 	}
 	send(done)
-}
-
-func siteLabelShort(site publishSite) string {
-	switch site.ID {
-	case "instagram-portrait", "instagram-square", "instagram-landscape":
-		return "Instagram"
-	case "facebook":
-		return "Facebook"
-	case "flickr":
-		return "Flickr"
-	case "500px":
-		return "500px"
-	}
-	return site.Label
 }
 
 // publishOne renders the current look at full size, crops and resizes it for
@@ -497,17 +467,5 @@ func openFolderOS(dir string) error {
 		return exec.Command("open", dir).Start()
 	default:
 		return exec.Command("xdg-open", dir).Start()
-	}
-}
-
-// openBrowserOS opens url in the platform's default browser.
-func openBrowserOS(url string) error {
-	switch runtime.GOOS {
-	case "windows":
-		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
-	case "darwin":
-		return exec.Command("open", url).Start()
-	default:
-		return exec.Command("xdg-open", url).Start()
 	}
 }

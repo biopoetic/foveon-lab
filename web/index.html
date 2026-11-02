@@ -258,7 +258,6 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <button id="folders" title="Choose where your photos are">Folders…</button>
     <button id="cardBtn" class="primary" title="Copy new photos off a camera card into your library">Import from card…</button>
     <button id="exportTop" class="primary" title="Save this photo at full size, or all the selected photos">Export…</button>
-    <button id="publishTop" title="Make a JPEG for Instagram, Facebook, Flickr, 500px or the Web, then drag it into the page">Publish…</button>
     <button id="settingsBtn" title="Preview and listing settings (C or the gear)">⚙ Settings</button>
     <button id="quit" title="Stop Foveon Lab">Quit</button>
   </header>
@@ -593,7 +592,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <div class="src" id="bNote">Full size, sRGB, JPEG at high quality. A file that is already there is never replaced; the new one gets a number.</div>
     <div id="bProg"><div></div></div>
     <div class="src" id="bMsg"></div>
-    <div class="btns"><button class="primary" id="bStart">Export</button> <button id="bStop" style="display:none">Stop</button> <button id="bClose">Close</button></div>
+    <div class="btns"><button class="primary" id="bStart">Export</button> <button id="bWeb" title="JPEGs at the size Instagram, Facebook, Flickr or 500px wants">For a website…</button> <button id="bStop" style="display:none">Stop</button> <button id="bClose">Close</button></div>
   </div>
 </div>
 <div id="cardDlg" class="modal">
@@ -639,12 +638,12 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <label class="chk">Save to <select id="finishDest"><option value="">Next to the photo (foveon-lab folder)</option><option value="chosen">A folder I choose</option></select></label>
     <div id="finishDestRow" style="display:none;gap:6px;align-items:center"><input id="finishDestPath" type="text" style="flex:1"><button id="finishDestPick">Choose…</button></div>
     <div class="src" id="finishMsg">JPEG at high quality. A file that is already there is never replaced; the new one gets a number.</div>
-    <div class="btns"><button class="primary" id="finishGo">Save</button><button id="finishMore">More export options</button><button id="finishClose">Cancel</button></div>
+    <div class="btns"><button class="primary" id="finishGo">Save</button><button id="finishWeb" title="A JPEG at the size Instagram, Facebook, Flickr or 500px wants">For a website…</button><button id="finishMore">More export options</button><button id="finishClose">Cancel</button></div>
   </div>
 </div>
 <div id="publishDlg" class="modal">
   <div class="box" style="width:min(560px,94vw)">
-    <b>Publish</b>
+    <b>Save for a website</b>
     <div class="src" id="pubCount"></div>
     <label class="chk">Destination <select id="pubSite" style="flex:1"></select></label>
     <div class="src" id="pubSiteNote"></div>
@@ -656,10 +655,10 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     <label class="chk" id="pubAllRow" style="display:none"><input type="checkbox" id="pubAll" checked> Use this crop for all selected photos</label>
     <label class="chk"><input type="checkbox" id="pubGps"> Keep location (GPS) from a JPEG original</label>
     <div class="src" id="pubMeta"></div>
-    <div class="src">Nothing is sent anywhere. The app writes the JPEG, opens the folder and the site's page; drag the file in.</div>
+    <div class="src">Saves a JPEG at this size in a publish folder and opens the folder. Nothing is uploaded.</div>
     <div id="pubProg"><div></div></div>
     <div class="src" id="pubMsg"></div>
-    <div class="btns"><button class="primary" id="pubGo">Publish</button><button id="pubClose">Cancel</button></div>
+    <div class="btns"><button class="primary" id="pubGo">Save</button><button id="pubClose">Cancel</button></div>
   </div>
 </div>
 <script src="/gpu.js"></script>
@@ -2735,7 +2734,7 @@ function publishLayout(reset){
     frame.style.width = (c.w * iw) + "px"; frame.style.height = (c.h * ih) + "px";
   }
   $("#pubCropNote").textContent = need
-    ? "This photo's shape does not fit. Drag the frame (or click the photo) to choose what stays; only what is inside is published."
+    ? "This photo's shape does not fit. Drag the frame (or click the photo) to choose what stays; only what is inside is saved."
     : (site.w ? "This photo already has the destination's shape." : "The photo keeps its own shape; no crop.");
   $("#pubAllRow").style.display = need && PUB.ids.length > 1 ? "" : "none";
 }
@@ -2779,7 +2778,7 @@ async function publishOpen(){
       $("#pubMeta").textContent = d.keepNote || "";
     } catch { PUB.sites = []; }
   }
-  if (!PUB.sites.length){ toast("Could not read the publish destinations.", 6000); return; }
+  if (!PUB.sites.length){ toast("Could not read the website sizes.", 6000); return; }
   const sel = $("#pubSite");
   if (!sel.options.length){
     sel.innerHTML = PUB.sites.map(s => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join("");
@@ -2794,7 +2793,7 @@ async function publishOpen(){
   $("#pubAll").checked = true;
   $("#pubProg div").style.width = "0";
   $("#pubMsg").textContent = "";
-  $("#pubGo").textContent = "Publish";
+  $("#pubGo").textContent = "Save";
   $("#pubGo").disabled = false;
   PUB.busy = false; PUB.ctl = null; PUB.crop = null;
   $("#publishDlg").classList.add("on");
@@ -2823,7 +2822,7 @@ async function publishStart(){
     crops, keepGps: $("#pubGps").checked,
   };
   PUB.busy = true;
-  $("#pubGo").disabled = true; $("#pubGo").textContent = "Publishing…";
+  $("#pubGo").disabled = true; $("#pubGo").textContent = "Saving…";
   $("#pubMsg").textContent = "Rendering " + (PUB.ids.length === 1 ? "the photo" : PUB.ids.length + " photos") + "…";
   PUB.ctl = new AbortController();
   const run = ++PUB.run;
@@ -2833,14 +2832,14 @@ async function publishStart(){
   } catch {
     if (run !== PUB.run) return;
     PUB.busy = false; PUB.ctl = null;
-    $("#pubGo").disabled = false; $("#pubGo").textContent = "Publish";
+    $("#pubGo").disabled = false; $("#pubGo").textContent = "Save";
     return;
   }
   if (!res.ok){
     if (run !== PUB.run) return;
     $("#pubMsg").textContent = await res.text();
     PUB.busy = false; PUB.ctl = null;
-    $("#pubGo").disabled = false; $("#pubGo").textContent = "Publish";
+    $("#pubGo").disabled = false; $("#pubGo").textContent = "Save";
     return;
   }
   const reader = res.body.getReader(), dec = new TextDecoder();
@@ -2867,7 +2866,7 @@ async function publishStart(){
   PUB.busy = false; PUB.ctl = null;
   $("#pubGo").disabled = false;
   if (doneLine){
-    let msg = `Done: ${doneLine.ok} published${doneLine.failed ? `, ${doneLine.failed} not published` : ""}.`;
+    let msg = `Done: ${doneLine.ok} saved${doneLine.failed ? `, ${doneLine.failed} not saved` : ""}.`;
     if (doneLine.next) msg += ` <b>${esc(doneLine.next)}</b>`;
     if (last) msg += ` <a id="pubReveal">Show in folder</a>`;
     if (errors.length) msg += `<br>${errors.slice(0, 3).map(esc).join("<br>")}`;
@@ -2876,7 +2875,7 @@ async function publishStart(){
     $("#pubProg div").style.width = "100%";
     $("#pubGo").textContent = "Done";
   } else {
-    $("#pubGo").textContent = "Publish";
+    $("#pubGo").textContent = "Save";
   }
 }
 
@@ -3874,7 +3873,8 @@ function bind(){
   $("#exportDng").onclick = () => exportImage("rawdng");
   $("#exportDngR").onclick = () => exportImage("dng");
   $("#exportTop").onclick = exportOpen;
-  $("#publishTop").onclick = publishOpen;
+  $("#finishWeb").onclick = () => { finishClose(); publishOpen(); };
+  $("#bWeb").onclick = () => { batchClose(); publishOpen(); };
   $("#pubGo").onclick = publishStart;
   $("#pubClose").onclick = publishClose;
   publishCropInit();

@@ -93,10 +93,9 @@ func TestPublishSquareWritesSiteSizeAndNeverReplaces(t *testing.T) {
 	useTemporaryConfig(t)
 	dir := t.TempDir()
 	ph := publishPhoto(t, dir, "square.png", 1200, 1200)
-	var folders, urls []string
+	var folders []string
 	s := &server{byID: map[string]*Photo{ph.ID: ph}, sem: make(chan struct{}, 1),
-		openFolder: func(d string) error { folders = append(folders, d); return nil },
-		openURL:    func(u string) error { urls = append(urls, u); return nil }}
+		openFolder: func(d string) error { folders = append(folders, d); return nil }}
 	body := map[string]any{"ids": []string{ph.ID}, "site": "instagram-square", "look": "Neutral"}
 	_, lines, done := publishRun(t, s, body)
 	if len(lines) != 1 || lines[0]["error"] != nil {
@@ -132,10 +131,7 @@ func TestPublishSquareWritesSiteSizeAndNeverReplaces(t *testing.T) {
 	if len(folders) != 2 || folders[0] != filepath.Dir(path) || folders[1] != filepath.Dir(path) {
 		t.Fatalf("folders opened %v", folders)
 	}
-	if len(urls) != 2 || urls[0] != "https://www.instagram.com/" || urls[1] != "https://www.instagram.com/" {
-		t.Fatalf("urls opened %v", urls)
-	}
-	if next, _ := done["next"].(string); !strings.Contains(next, "Drag") {
+	if next, _ := done["next"].(string); !strings.Contains(next, "publish folder") {
 		t.Fatalf("next %q", next)
 	}
 }
@@ -154,7 +150,7 @@ func TestPublishRefusesSilentCropAndAcceptsChosenCrop(t *testing.T) {
 	dir := t.TempDir()
 	ph := publishPhoto(t, dir, "wide.png", 1600, 900)
 	s := &server{byID: map[string]*Photo{ph.ID: ph}, sem: make(chan struct{}, 1),
-		openFolder: func(string) error { return nil }, openURL: func(string) error { return nil }}
+		openFolder: func(string) error { return nil }}
 	base := map[string]any{"ids": []string{ph.ID}, "site": "instagram-portrait", "look": "Neutral"}
 
 	_, _, done := publishRun(t, s, base)
@@ -190,10 +186,9 @@ func TestPublishBatchInOrderOpensOnce(t *testing.T) {
 	dir := t.TempDir()
 	a := publishPhoto(t, dir, "a.png", 800, 800)
 	b := publishPhoto(t, dir, "b.png", 1000, 1000)
-	var folders, urls []string
+	var folders []string
 	s := &server{byID: map[string]*Photo{a.ID: a, b.ID: b}, sem: make(chan struct{}, 1),
-		openFolder: func(d string) error { folders = append(folders, d); return nil },
-		openURL:    func(u string) error { urls = append(urls, u); return nil }}
+		openFolder: func(d string) error { folders = append(folders, d); return nil }}
 	_, lines, done := publishRun(t, s, map[string]any{"ids": []string{a.ID, b.ID}, "site": "instagram-square", "look": "Neutral"})
 	if len(lines) != 2 || done["ok"] != float64(2) {
 		t.Fatalf("lines %v done %v", lines, done)
@@ -203,9 +198,6 @@ func TestPublishBatchInOrderOpensOnce(t *testing.T) {
 	}
 	if len(folders) != 1 {
 		t.Fatalf("folder opened %d times, want once", len(folders))
-	}
-	if len(urls) != 1 {
-		t.Fatalf("page opened %d times, want once", len(urls))
 	}
 	for _, ln := range lines {
 		p, _ := ln["path"].(string)
@@ -220,7 +212,7 @@ func TestPublishFreeShapesKeepTheirShape(t *testing.T) {
 	dir := t.TempDir()
 	web := publishPhoto(t, dir, "web.png", 3000, 2000)
 	s := &server{byID: map[string]*Photo{web.ID: web}, sem: make(chan struct{}, 1),
-		openFolder: func(string) error { return nil }, openURL: func(string) error { return nil }}
+		openFolder: func(string) error { return nil }}
 	_, lines, done := publishRun(t, s, map[string]any{"ids": []string{web.ID}, "site": "web", "look": "Neutral"})
 	if done["ok"] != float64(1) {
 		t.Fatalf("web publish: %v", done)
@@ -230,13 +222,10 @@ func TestPublishFreeShapesKeepTheirShape(t *testing.T) {
 		t.Fatalf("web %dx%d, want 2048x1365", w, h)
 	}
 	// The site's own page is not opened for Web; only the folder.
-	if done["url"] != "" {
-		t.Fatalf("web url %q", done["url"])
-	}
 
 	five := publishPhoto(t, dir, "five.png", 1200, 800)
 	s = &server{byID: map[string]*Photo{five.ID: five}, sem: make(chan struct{}, 1),
-		openFolder: func(string) error { return nil }, openURL: func(string) error { return nil }}
+		openFolder: func(string) error { return nil }}
 	_, lines, done = publishRun(t, s, map[string]any{"ids": []string{five.ID}, "site": "500px", "look": "Neutral"})
 	if done["ok"] != float64(1) {
 		t.Fatalf("500px publish: %v", done)
@@ -290,7 +279,7 @@ func TestPublishGPSIsAbsentByDefaultAndKeptOnRequest(t *testing.T) {
 	jpegWithGPS(t, path)
 	ph := &Photo{ID: "place", Name: "place.jpg", Kind: "image", path: path, Info: map[string]string{}}
 	s := &server{byID: map[string]*Photo{ph.ID: ph}, sem: make(chan struct{}, 1),
-		openFolder: func(string) error { return nil }, openURL: func(string) error { return nil }}
+		openFolder: func(string) error { return nil }}
 	_, lines, done := publishRun(t, s, map[string]any{"ids": []string{ph.ID}, "site": "instagram-square", "look": "Neutral"})
 	if done["ok"] != float64(1) {
 		t.Fatalf("publish: %v", done)

@@ -49,9 +49,9 @@ renders an X3F — for anyone building X3F tools — is in [How SPP works](docs/
     (within 0.5/255 of the preview); Fill Light becomes a global shadow lift and Sharpness is left out.
 - **Batch export:** one preset (or your tuned settings) on a whole folder or every photo, as JPEG,
   16-bit TIFF or DNG.
-- **Publish…** makes a JPEG at Instagram/Facebook/Flickr/500px/Web size from the current look, saves
-  it in a `publish/` folder beside the photo, and opens that folder and the site's upload page; drag
-  the file in. Nothing is uploaded by the app.
+- **For a website…** in the Export dialog makes a JPEG at Instagram/Facebook/Flickr/500px/Web size
+  from the current look, saves it in a `publish/` folder beside the photo and opens that folder.
+  Nothing is uploaded by the app.
 - **Calibration tools** measure what SPP actually does, to replace guesses with measured curves (below).
 
 Single Go binary, no runtime dependencies, runs locally on `127.0.0.1` only.
@@ -135,9 +135,9 @@ one atomic step. The X3F is never touched: the sidecar moves with the folder, so
 restart and a moved folder. The app's older path-keyed favourites list is mirrored for older builds and
 is the fallback for a photo that has no cull decision yet.
 
-## Publish
+## For a website
 
-**Publish…** in the header (right after **Export…**) writes a JPEG at a social site's size from the
+**For a website…** in the Export dialog writes a JPEG at a social site's size from the
 photo you are looking at *and its current look*: Instagram portrait 1080×1350, square 1080×1080 or
 landscape 1080×566; Facebook, Flickr and Web at 2048 on the long edge; 500px at 2048 on the short
 edge, never enlarged. It is sRGB with the sRGB profile, and sharpened once more for the final size (the small 3×3
@@ -145,12 +145,11 @@ unsharp mask the renderer already uses). The file goes in a `publish/` folder be
 a name already there is never replaced: the next one gets ` (2)`.
 
 If the photo's shape is not the destination's, the dialog shows the crop frame over the current
-look and you drag it (or click where it should sit). Publish refuses to centre-crop a photo you have
+look and you drag it (or click where it should sit). It refuses to centre-crop a photo you have
 not seen a crop for. With several photos selected it writes them all, in order, and opens the folder
-and the page once.
+once.
 
-The app sends nothing anywhere and needs no account. It only opens the folder and the browser; the
-site's page says "drag the file in". The page is a fixed official URL compiled into the app.
+The app sends nothing anywhere and needs no account. It only opens the folder.
 
 By default the JPEG carries only its sRGB ICC profile: no EXIF, no GPS, no camera or capture data.
 **Keep location (GPS)** copies the original JPEG's EXIF block, GPS included, when the photo is a

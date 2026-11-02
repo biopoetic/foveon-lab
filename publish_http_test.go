@@ -20,7 +20,7 @@ func TestPublishOverHTTP(t *testing.T) {
 	dir := t.TempDir()
 	ph := publishPhoto(t, dir, "http.png", 1600, 900)
 	s := &server{byID: map[string]*Photo{ph.ID: ph}, sem: make(chan struct{}, 1),
-		openFolder: func(string) error { return nil }, openURL: func(string) error { return nil }}
+		openFolder: func(string) error { return nil }}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/publish/sites", s.handlePublishSites)
 	mux.HandleFunc("/api/publish", s.handlePublish)
@@ -47,9 +47,6 @@ func TestPublishOverHTTP(t *testing.T) {
 	for _, site := range sites.Sites {
 		if w, ok := want[site.ID]; ok && (site.W != w[0] || site.H != w[1]) {
 			t.Errorf("%s is %dx%d, want %dx%d", site.ID, site.W, site.H, w[0], w[1])
-		}
-		if site.URL != "" && !strings.HasPrefix(site.URL, "https://") {
-			t.Errorf("%s URL %q", site.ID, site.URL)
 		}
 	}
 	if len(sites.Sites) != len(publishSites) {

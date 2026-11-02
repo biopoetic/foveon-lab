@@ -404,10 +404,9 @@ type server struct {
 	thumbs   *lru // id → []byte
 	cullImgs *lru // id → []byte, the cull view's embedded JPEG
 	sem      chan struct{}
-	// openFolder/openURL are Publish's side effects; nil means the OS's
-	// file browser and browser. Tests replace them so nothing opens.
+	// openFolder is Publish's side effect; nil means the OS's file browser.
+	// Tests replace it so nothing opens.
 	openFolder func(string) error
-	openURL    func(string) error
 
 	ai aiState
 
