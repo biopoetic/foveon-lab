@@ -2705,6 +2705,7 @@ function publishCropInit(){
 
 async function publishOpen(){
   if (!S.photo){ toast("Pick a photo first.", 4000); return; }
+  if (!S.params){ S.base = {...NEUTRAL}; S.params = {...NEUTRAL}; } // no look opened yet
   PUB.ids = publishTargets();
   if (!PUB.ids.length){ toast("Pick a photo first.", 4000); return; }
   if (!PUB.sites){
