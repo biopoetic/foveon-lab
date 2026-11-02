@@ -1160,8 +1160,8 @@ func exportFileStem(photoName, label, space, format string) string {
 // the same photo and preset gets " (2)" (or the next free number), so an
 // earlier export is never silently lost.
 func uniquePath(dir, stem, ext string) string {
-	p := filepath.Join(dir, stem+ext)
-	for i := 2; ; i++ {
+	for n := 1; ; n++ {
+		p := numberedPath(dir, stem, ext, n)
 		_, err := os.Stat(p)
 		if errors.Is(err, fs.ErrNotExist) {
 			return p
@@ -1169,8 +1169,39 @@ func uniquePath(dir, stem, ext string) string {
 		if err != nil {
 			return p
 		}
-		p = filepath.Join(dir, fmt.Sprintf("%s (%d)%s", stem, i, ext))
 	}
+}
+
+// numberedPath is the n-th candidate name: the stem, then " (2)", " (3)".
+func numberedPath(dir, stem, ext string, n int) string {
+	if n <= 1 {
+		return filepath.Join(dir, stem+ext)
+	}
+	return filepath.Join(dir, fmt.Sprintf("%s (%d)%s", stem, n, ext))
+}
+
+// commitTemp gives a finished temporary file its final name without ever
+// replacing a file that is already there. The existence test and the rename
+// are one atomic step, so two exports racing for the same stem cannot overwrite
+// one another (and a cancelled export leaves no file under a final name).
+func commitTemp(tmp, dir, stem, ext string) (string, error) {
+	for n := 1; n < 10000; n++ {
+		p := numberedPath(dir, stem, ext, n)
+		if _, err := os.Stat(p); err == nil {
+			continue
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return p, err
+		}
+		if err := renameNoReplace(tmp, p); err == nil {
+			return p, nil
+		}
+		// Another export may have taken this name first: try the next one.
+		if _, statErr := os.Stat(p); statErr == nil {
+			continue
+		}
+		return p, fmt.Errorf("could not give the export its name: %s", p)
+	}
+	return "", errors.New("too many exports with the same name")
 }
 
 // handleExport renders the full-size preview and saves it next to the shot
@@ -1256,6 +1287,14 @@ func rawExportColor(dn *int) string {
 }
 
 func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool, format string, denoise *int, space, destDir string) (string, error) {
+	return s.exportImageCtx(context.Background(), ph, p, label, comp, format, denoise, space, destDir)
+}
+
+// exportImageCtx is exportImage with a cancellation context: the batch stops a
+// running export at the next stage boundary, and a half-written file never
+// gets its final name (the bytes go to a temporary file, renamed only after
+// the encoder has closed it).
+func (s *server) exportImageCtx(ctx context.Context, ph *Photo, p preset.Params, label string, comp bool, format string, denoise *int, space, destDir string) (string, error) {
 	cs, ok := render.ColourSpaceByID(space)
 	if !ok {
 		return "", errors.New("unknown colour space " + space)
@@ -1267,8 +1306,30 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", plainFileError(err, filepath.Join(dir, "foveon-lab"))
 	}
-	s.sem <- struct{}{}
+	timing := os.Getenv("FOVEON_TIMING") != ""
+	mark := time.Now()
+	lap := func(name string) {
+		if timing {
+			fmt.Fprintf(os.Stderr, "  %-16s %s\n", name, time.Since(mark).Round(time.Millisecond))
+			mark = time.Now()
+		}
+	}
+	select {
+	case s.sem <- struct{}{}:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	lap("lock wait")
 	defer func() { <-s.sem }()
+	waiting := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return nil
+	}
+	if err := waiting(); err != nil {
+		return "", err
+	}
 	var src *render.Linear
 	wbDeveloped := false
 	md := p.MaxDetail && maxDetailAvailable(ph)
@@ -1324,7 +1385,23 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 		}
 		src = balanceJPEG(ph, render.FromImage(img, 0, ph.Rotation))
 	}
+	if err := waiting(); err != nil {
+		return "", err
+	}
+	lap("source")
+	// The development leaves several full-frame planes (denoise scratch,
+	// noise maps, resample temporaries) dead at once. Collecting them here,
+	// while the live set is small, keeps an export's peak near what it
+	// actually needs and lets a second export fit beside it on a 16 GB
+	// machine. It does not touch a pixel.
+	if os.Getenv("FOVEON_EXPORT_GC") != "0" {
+		runtime.GC()
+	}
 	base := render.NewBase(render.ApplyGeometry(src, geometryOf(ph)))
+	if err := waiting(); err != nil {
+		return "", err
+	}
+	lap("base prep")
 	var c render.Compensation
 	if md {
 		c = rawCompensation(ph)
@@ -1343,22 +1420,32 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 		ext = ".dng"
 	}
 	stem := exportFileStem(ph.Name, label, cs.ID, format)
-	path := uniquePath(dir, stem, ext)
-	f, err := os.Create(path)
+	tmp, err := os.CreateTemp(dir, ".foveon-lab-*"+ext)
 	if err != nil {
-		return "", plainFileError(err, path)
+		return "", plainFileError(err, dir)
 	}
+	tmpName := tmp.Name()
+	if err := waiting(); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return "", err
+	}
+	f := tmp
+	lap("create")
 	switch format {
 	case "tiff":
 		img := render.Render16(base, p, c)
+		lap("render")
 		render.ConvertFromSRGB(img, cs)
 		err = render.WriteTIFF16ICC(f, img, cs.ICC())
+		lap("encode+write")
 	case "dng":
 		make_, model := "SIGMA", ph.Camera
 		if ph.props != nil {
 			make_, model = ph.props["CAMMANUF"], ph.props["CAMMODEL"]
 		}
 		err = render.WriteRenderedDNG(f, render.Render16(base, p, c), make_, model, "Foveon Lab "+version)
+		lap("render+encode+write")
 	default:
 		// sRGB straight from the 8-bit render; another space from the
 		// 16-bit one, converted before rounding. Either way the profile is
@@ -1371,20 +1458,39 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 			render.ConvertFromSRGB(img16, cs)
 			img = render.To8(img16)
 		}
+		lap("render")
+		// The base (the developed float image and its Fill Light fields) is
+		// not needed by the encoder; let it go before the file is built.
+		base, src = nil, nil
+		if os.Getenv("FOVEON_EXPORT_GC") != "0" {
+			runtime.GC()
+		}
 		var buf bytes.Buffer
 		if err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}); err == nil {
-			_, err = f.Write(render.JPEGWithICC(buf.Bytes(), cs.ICC()))
+			lap("encode")
+			if err = waiting(); err == nil {
+				_, err = f.Write(render.JPEGWithICC(buf.Bytes(), cs.ICC()))
+				lap("write")
+			}
 		}
 	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
-	if err != nil {
-		os.Remove(path)
-		return "", plainFileError(err, path)
+	if err == nil {
+		err = waiting()
 	}
-	log.Printf("exported %s", path)
-	return path, nil
+	if err != nil {
+		os.Remove(tmpName)
+		return "", plainFileError(err, tmpName)
+	}
+	final, err := commitTemp(tmpName, dir, stem, ext)
+	if err != nil {
+		os.Remove(tmpName)
+		return "", plainFileError(err, final)
+	}
+	log.Printf("exported %s", final)
+	return final, nil
 }
 
 // exportDNG converts the X3F's raw data to a DNG with x3f_extract, for
