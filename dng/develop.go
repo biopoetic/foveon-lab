@@ -84,6 +84,20 @@ func (f *File) Develop(maxW int) (*Image, error) {
 			}
 		}
 	})
+	if im.mono {
+		// A monochrome sensor is one plane. Keeping the developed colour
+		// would let a camera matrix tint a grey scene; take the linear sRGB
+		// luminance so the result really is grey.
+		parallelRows(im.height, func(y0, y1 int) {
+			for y := y0; y < y1; y++ {
+				for x := 0; x < im.width; x++ {
+					i := (y*im.width + x) * 3
+					lum := 0.2126*float64(rgb[i]) + 0.7152*float64(rgb[i+1]) + 0.0722*float64(rgb[i+2])
+					rgb[i], rgb[i+1], rgb[i+2] = float32(lum), float32(lum), float32(lum)
+				}
+			}
+		})
+	}
 	// Output-stage opcodes (FixVignetteRadial, WarpRectilinear) are applied
 	// to the developed linear image, in list order, before the geometry.
 	rgb = im.applyStage3(rgb, im.width, im.height)
@@ -223,7 +237,7 @@ func (f *File) colour(im *rawImage) ([9]float64, [3]float64, float64, bool, erro
 	}
 	be := 0.0
 	if t, ok := f.findTag(tagBaselineExposure); ok {
-		if v := f.floatValues(t); len(v) > 0 {
+		if v := f.floatValues(t); len(v) > 0 && !math.IsNaN(v[0]) && !math.IsInf(v[0], 0) {
 			be = v[0]
 		}
 	}
@@ -240,7 +254,7 @@ func (f *File) colour(im *rawImage) ([9]float64, [3]float64, float64, bool, erro
 	whiteX, whiteY, hasWhiteXY := 0.0, 0.0, false
 	whiteTemp := 0.0
 	if t, ok := f.findTag(tagAsShotWhiteXY); ok {
-		if v := f.floatValues(t); len(v) >= 2 && v[1] != 0 {
+		if v := f.floatValues(t); len(v) >= 2 && v[1] != 0 && !math.IsNaN(v[0]) && !math.IsNaN(v[1]) && !math.IsInf(v[0], 0) && !math.IsInf(v[1], 0) {
 			whiteX, whiteY, hasWhiteXY = v[0], v[1], true
 			whiteTemp = cctFromXY(v[0], v[1])
 		}

@@ -4,16 +4,29 @@
 //
 // It reads the tags this app already writes (render/dng.go) and the ones a
 // camera or Adobe DNG Converter writes: ColorMatrix1/2, ForwardMatrix1/2,
-// AsShotNeutral/AsShotWhiteXY, CalibrationIlluminant1/2, BaselineExposure,
-// BlackLevel/WhiteLevel, DefaultCrop and DefaultScale. The result is linear
-// sRGB, the space the film stage takes from a JPEG or TIFF source. The
-// camera profile's own tone curve and hue/saturation map are deliberately
-// not applied: they are the camera maker's look, and the film stage supplies
-// the look here.
+// AsShotNeutral/AsShotWhiteXY, CalibrationIlluminant1/2, CameraCalibration1/2,
+// AnalogBalance, BaselineExposure, BlackLevel/BlackLevelRepeatDim/
+// BlackLevelDeltaH/V, WhiteLevel, LinearizationTable, ActiveArea,
+// DefaultCropOrigin/Size, MaskedAreas, DefaultScale and Orientation. Samples
+// may be 8-16-bit integers, packed, or 16/32-bit floats; a one-plane file is
+// shown as grey (Leica Monochrom style); lossy DNG (Compression 34892) goes
+// through the standard library's baseline JPEG decoder. The result is linear
+// sRGB, the space the film stage takes from a JPEG or TIFF source. The camera
+// profile's own tone curve and hue/saturation map are deliberately not
+// applied: they are the camera maker's look, and the film stage supplies the
+// look here.
+//
+// OpcodeList1/2/3 are parsed (opcode.go). GainMap is applied in raw space,
+// TrimBounds trims the geometry, and FixVignetteRadial and WarpRectilinear
+// are applied to the developed linear image. An unknown optional opcode is
+// skipped; an unknown mandatory one is reported in Meta.Notice, which the UI
+// shows. MapTable, MapPolynomial, the delta/scale opcodes and the bad-pixel
+// opcodes are not guessed at.
 //
 // No third-party code and no cgo: the TIFF/DNG structure, the Deflate, LZW,
 // PackBits and lossless-JPEG decoders, the demosaic and the colour matrices
-// are all in this package.
+// are all in this package. The only additional decoder is Go's standard
+// image/jpeg for lossy DNG.
 package dng
 
 import (

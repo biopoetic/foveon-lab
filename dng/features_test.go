@@ -562,6 +562,28 @@ func TestMonochrome(t *testing.T) {
 	}
 }
 
+func TestMonochromeStaysGreyWithTintingMatrix(t *testing.T) {
+	const w, h = 8, 4
+	vals := make([]uint32, w*h)
+	for i := range vals {
+		vals[i] = 30000
+	}
+	d := sdir{tags: baseRawTags(w, h, 16, 1, compressionNone, photometricLinearRaw, raw16(vals))}
+	d.tags = append(d.tags,
+		tgSRational(tagForwardMatrix1, 1.5, 0, 0, 0, 1, 0, 0, 0, 0.5),
+		tgShort(tagCalibIllum1, 21),
+		tgRational(tagAsShotNeutral, 1, 1, 1),
+	)
+	img := developFile(t, buildTIFF(t, []sdir{d}, [][]byte{raw16(vals)}), 0)
+	i := (h/2*w + w/2) * 3
+	if math.Abs(float64(img.Pix[i]-img.Pix[i+1])) > 1e-6 || math.Abs(float64(img.Pix[i]-img.Pix[i+2])) > 1e-6 {
+		t.Fatalf("monochrome with a tinting matrix is not grey: %v %v %v", img.Pix[i], img.Pix[i+1], img.Pix[i+2])
+	}
+	if img.Pix[i] <= 0 {
+		t.Fatalf("monochrome luminance is not positive: %v", img.Pix[i])
+	}
+}
+
 func TestNonBayerCFARefused(t *testing.T) {
 	const w, h = 24, 24
 	vals := make([]uint32, w*h)
