@@ -483,6 +483,12 @@ type Compensation struct {
 	// Sensor is the Foveon generation for the physical lens filters
 	// ("Merrill", "TRUEII", "SD9", "Quattro"); "" = no lens filters.
 	Sensor string
+	// GenericFilm: the source is a colour-managed linear RGB image with no
+	// measured sensor sensitivity (another camera's raw), so a colour film
+	// is fitted to the sRGB/CIE observer response instead of a Foveon layer
+	// stack. The film's optics are then an approximation: its spectral layer
+	// map cannot see a spectrum the file never carried.
+	GenericFilm bool
 	// NoModes says the camera has no in-camera colour modes (SD9, SD10,
 	// SD14): SPP ignores the setting on those bodies, so the emulation must
 	// too — its export with Colour mode 6/7 is identical to the neutral.
@@ -750,6 +756,18 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 					op.cfInv[i] = float32(v)
 				}
 			}
+		}
+	} else if c.GenericFilm {
+		// Another camera's raw is linear sRGB, not a Foveon layer stack. Fit
+		// the film to the colourimetric sRGB response (spectralfilter.go,
+		// srgbSens) and feed it the pixels directly: no Foveon matrix, no
+		// pretence that the file carries silicon layer data.
+		if f := colorFilmOnPush(p.Film, p.Paper, "sRGB", p.Push, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}); f != nil {
+			op.cfilm = f
+			for i := range op.cfInv {
+				op.cfInv[i] = 0
+			}
+			op.cfInv[0], op.cfInv[4], op.cfInv[8] = 1, 1, 1
 		}
 	}
 	// A colour film is the look: SPP's measured rendering doesn't apply.

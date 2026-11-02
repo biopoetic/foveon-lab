@@ -129,8 +129,16 @@ func cmf1931(l float64) [3]float64 {
 var xyzToLinSRGB = [9]float64{3.2406, -1.5372, -0.4986, -0.9689, 1.8758, 0.0415, 0.0557, -0.2040, 1.0570}
 
 // sensorGrey: mid-grey as a fraction of the sensor's saturation, 10/78
-// (ISO 12232 saturation-based speed vs an exposure meter's 10/S).
+// (ISO 12232 saturation-based speed vs an exposure meter's 10/S). A
+// colourimetric linear-sRGB source has 0.18 as its mid-grey instead.
 const sensorGrey = 10.0 / 78
+
+func sourceGrey(sensor string) float64 {
+	if sensor == "sRGB" {
+		return 0.18
+	}
+	return sensorGrey
+}
 
 const (
 	cfLutN    = 33  // samples per density axis
@@ -274,8 +282,9 @@ func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 	}
 	sp := spectral()
 	names := [3]string{"R", "G", "B"}
+	grey := sourceGrey(sensor)
 	// 1. Sensor layers -> film exposures (fitLayerMap).
-	f := &colorFilm{hWhite: 10 / d.ISO / sensorGrey}
+	f := &colorFilm{hWhite: 10 / d.ISO / grey}
 	if !fitLayerMap(f, S, d.Sens) {
 		return nil
 	}
@@ -350,7 +359,7 @@ func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 		w := slide(amountsWith(Ainv, dmin))
 		var e float64
 		for s := -4.0; s <= 1.01; s += 0.5 {
-			lg := math.Log10(sensorGrey*f.hWhite) + s*math.Log10(2)
+			lg := math.Log10(grey*f.hWhite) + s*math.Log10(2)
 			D := [3]float64{f.density(0, lg), f.density(1, lg), f.density(2, lg)}
 			v := slide(amountsWith(Ainv, D))
 			if v[0] <= 0 || v[1] <= 0 || v[2] <= 0 {

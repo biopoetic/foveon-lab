@@ -26,6 +26,14 @@ func (s *server) developSource(ctx context.Context, ph *Photo, p preset.Params, 
 		fb.MaxDetail = false
 		p = fb
 	}
+	p = sourceParams(ph, p)
+	if ph.Kind == "dng" {
+		l, err := dngDevelop(ph, 0)
+		if err != nil {
+			return nil, p, render.Compensation{}, md, err
+		}
+		return l, p, s.compensation(ph, comp), md, nil
+	}
 	lf, ir := layersSource(ph, p)
 	if md {
 		l, err := rawMaxDetailExplicit(ph, 0, goStrength(rawExportColor(denoise)), explicitStrength(rawExportColor(denoise)))

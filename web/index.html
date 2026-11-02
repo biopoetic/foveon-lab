@@ -76,6 +76,8 @@ body.full header{display:none}
 body.full #app{grid-template-rows:1fr}
 #nav .sideBtn.on{border-color:var(--accent);color:var(--accent)}
 #view{display:flex;flex-direction:column;min-width:0;min-height:0}
+#sourceNote{display:none;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--panel);color:var(--text);font-size:12px;line-height:1.45}
+#sourceNote b{color:var(--accent)}
 #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#0b0b0b;position:relative}
 #stage img{max-width:100%;max-height:100%;object-fit:contain}
 #bigGL{max-width:100%;max-height:100%;display:none}
@@ -343,6 +345,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
     </section>
     <section id="detail">
       <div id="view">
+        <div id="sourceNote"></div>
         <div id="stage"><img id="big" alt=""><canvas id="bigGL"></canvas><img id="bigOrig" alt=""><canvas id="clipCv"></canvas><div id="splitLine"></div><div id="stageTag"></div><div id="zoomPct"></div><div id="busy">rendering…</div><div id="cropBox"><i class="nw"></i><i class="ne"></i><i class="sw"></i><i class="se"></i></div><div id="cropBar">Straighten <input type="range" id="cropAng" min="-45" max="45" step="0.1" value="0"><input type="number" id="cropAngN" min="-45" max="45" step="0.1" value="0">° Aspect <select id="cropAsp"><option value="0">Free</option><option value="orig">Original</option><option value="1.5">3:2</option><option value="1.3333">4:3</option><option value="1">1:1</option><option value="1.7778">16:9</option><option value="0.8">4:5</option><option value="0.6667">2:3</option></select><button id="cropReset">Reset</button><button id="cropCancel">Cancel</button><button id="cropDone" class="primary">Done</button></div></div>
         <div id="nav">
           <button id="back" title="Esc">← Grid</button>
@@ -410,7 +413,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
           <div class="src" id="filmLink" style="display:none"></div>
           <button id="filmCmpBtn" title="This photo, with your settings, in every film side by side (colour and tone only, without grain): colour slides, colour negatives on each colour paper, and black-and-white films. Click one to use it. Needs a raw-decodable X3F." style="margin-top:6px">Compare films…</button>
         </div>
-        <div class="row" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky. The full-spectrum infrared looks are for converted cameras (the IR-cut protector removed)."><div class="lab">Filter on the lens <span class="dim">(search below)</span></div>
+        <div class="row" id="lensFilterRow" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky. The full-spectrum infrared looks are for converted cameras (the IR-cut protector removed)."><div class="lab">Filter on the lens <span class="dim">(search below)</span></div>
           <input id="lensSearch" type="search" placeholder="Search filters: name, glass, brand, nm" style="width:100%;margin-bottom:4px" title="Filters the list below. Matches the physical name, the glass or Wratten number, a wavelength, the brand, and measured/documented.">
           <select id="lensSel" style="width:100%"></select>
           <div class="src" id="irNote" style="display:none;margin-top:4px"></div>
@@ -1038,7 +1041,41 @@ function accWatch(){
 
 function photoInfoText(p){
   const i = p.info;
-  return [accLabel(p), p.lowRes && "LOW-RES PREVIEW (567 px, no full-size preview in SD9/SD10 files)", p.rawDecoded && ((ACC.mode[p.id] || "").startsWith("raw") ? "RAW-DECODED (from the raw data, no in-camera look)" : "DEVELOPING THE RAW DATA (the camera's small preview is shown meanwhile)"), p.kind === "image" && "NOT A FOVEON FILE: the presets only change its look", i.REPAIRED, i.CAMMODEL, i.LENS && "lens " + i.LENS, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.SPPGAP, i.TIME].filter(Boolean).join(" · ");
+  return [accLabel(p), p.lowRes && "LOW-RES PREVIEW (567 px, no full-size preview in SD9/SD10 files)", p.rawDecoded && ((ACC.mode[p.id] || "").startsWith("raw") ? "RAW-DECODED (from the raw data, no in-camera look)" : "DEVELOPING THE RAW DATA (the camera's small preview is shown meanwhile)"), p.kind === "dng" && "OTHER CAMERA RAW (DNG): developed from its own colour matrix, no Foveon layers", p.kind === "image" && "NOT A FOVEON FILE: the presets only change its look", i.REPAIRED, i.CAMMODEL, i.LENS && "lens " + i.LENS, i.ISO && "ISO "+i.ISO, i.SH_DESC, i.AP_DESC && "f/"+i.AP_DESC, i.FLENGTH && i.FLENGTH !== "0" && i.FLENGTH+"mm", i.CM_DESC && "mode "+i.CM_DESC, i.WB_DESC && "WB "+i.WB_DESC, i.SPPGAP, i.TIME].filter(Boolean).join(" · ");
+}
+
+// applySourceLimits says, plainly, what another camera's raw can and cannot
+// do here, and keeps the Foveon-only look controls out of the way. The IR
+// looks and layer mixes are matrices on the sensor's three silicon layers;
+// a DNG has no such layers, so offering them would be a lie and applying
+// them would be Foveon maths on someone else's data.
+function applySourceLimits(p){
+  const foveon = !!p && p.kind === "x3f";
+  const layerGrp = document.querySelector('#panel .grp[data-g="layer"]');
+  if (layerGrp) layerGrp.style.display = foveon ? "" : "none";
+  const lensRow = $("#lensFilterRow");
+  if (lensRow) lensRow.style.display = foveon ? "" : "none";
+  const note = $("#sourceNote");
+  if (note){
+    if (p && p.kind === "dng"){
+      note.style.display = "";
+      note.innerHTML = `<b>Another camera's raw (DNG)</b> — the file is demosaiced (Malvar–He–Cutler) and colour-managed from its own ColourMatrix / ForwardMatrix and AsShotNeutral, then the film looks run on linear light. The camera profile's tone curve is not applied and very bright detail clips. There are no Foveon layers here, so infrared looks and layer mixes are hidden; colour films are fitted to a colourimetric sRGB response rather than to silicon, and fine detail is approximate.`;
+    } else if (p && p.kind === "image"){
+      note.style.display = "";
+      note.innerHTML = `<b>Not a raw file</b> — a JPEG/TIFF/PNG is already developed, so the presets change its look only. Infrared looks and layer mixes need Foveon layers and are hidden.`;
+    } else {
+      note.style.display = "none";
+      note.innerHTML = "";
+    }
+  }
+  if (!foveon && S.params){
+    const had = (S.params.filter || "") || S.params.layerBottom || S.params.layerMiddle || S.params.layerTop || S.params.whiteBalance || S.params.camMode;
+    S.params.filter = "";
+    S.params.layerBottom = S.params.layerMiddle = S.params.layerTop = 0;
+    S.params.whiteBalance = 0;
+    S.params.camMode = "";
+    if (had && typeof syncSliders === "function") syncSliders();
+  }
 }
 
 // prefetchNeighbours prepares the photos beside the one on screen once it
@@ -1075,6 +1112,7 @@ function selectPhoto(id){
   $("#photoTitle").textContent = `${p.folder} / ${p.name}`;
   const i = p.info;
   $("#photoInfo").textContent = photoInfoText(p);
+  applySourceLimits(p);
   accWatch();
   prefetchNeighbours();
   loadGeo(p.id);
@@ -1284,7 +1322,12 @@ function baseFiltered(){
   const cam = camFilter();
   // "velvia|portra" matches either term.
   const terms = S.q.toLowerCase().split("|").map(t => t.trim()).filter(Boolean);
+  // Another camera's raw or an ordinary image has no Foveon layers or CAMF:
+  // the IR looks, the Foveon white-balance codes and the per-camera colour
+  // modes cannot mean anything there.
+  const noLayers = !!S.photo && S.photo.kind !== "x3f";
   return S.presets.filter(p =>
+    (!noLayers || (p.group !== "IR" && p.group !== "WB" && p.group !== "CAMERA" && !p.camera)) &&
     (!cam || !p.camera || p.camera === cam) &&
     (!S.src || p.source === S.src) &&
     (!terms.length || terms.some(t => p.name.toLowerCase().includes(t))));
@@ -1354,8 +1397,10 @@ function drawGrid(){
   if (S.photo.unsupported){ g.innerHTML = `<div class="empty">${esc(S.photo.unsupported)}</div>`; return; }
   g.style.gridTemplateColumns = `repeat(auto-fill,minmax(${$("#tileSize").value}px,1fr))`;
   const w = tileW();
+  const origCap = S.photo.kind === "dng" ? "Original (DNG development)" : S.photo.kind === "image" ? "Original" : "Original (camera JPEG)";
+  const origSub = S.photo.kind === "dng" ? "the file developed, no preset" : "no processing at all";
   const tiles = [
-    `<div class="tile ref" data-i="-2"><div class="img"><img src="${renderURL({w, comp:"0", camera: true})}"></div><div class="cap">Original${S.photo.kind === "image" ? "" : " (camera JPEG)"}<small>no processing at all</small></div></div>`,
+    `<div class="tile ref" data-i="-2"><div class="img"><img src="${renderURL({w, comp:"0", camera: true})}"></div><div class="cap">${origCap}<small>${origSub}</small></div></div>`,
     `<div class="tile ref" data-i="-1"><div class="img"><img src="${renderURL({w})}"></div><div class="cap">Neutral${(ACC.mode[S.photo.id] || "").startsWith("raw") ? " (accurate: from raw data)" : comp()==="1"?" (compensated)":""}<small>starting point for presets</small></div></div>`,
   ];
   if (S.looks && S.lookOpen && S.lookKey) tiles.unshift(`<div class="lookbar">Presets that look like <b>${esc(S.list[0]?.name || "")}</b> on this photo · <a id="lookBack">← all looks</a></div>`);

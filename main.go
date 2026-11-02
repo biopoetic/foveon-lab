@@ -39,6 +39,7 @@ import (
 
 	"github.com/biopoetic/foveon-lab/agent"
 	"github.com/biopoetic/foveon-lab/calib"
+	"github.com/biopoetic/foveon-lab/dng"
 	"github.com/biopoetic/foveon-lab/preset"
 	"github.com/biopoetic/foveon-lab/render"
 	"github.com/biopoetic/foveon-lab/spp"
@@ -54,7 +55,7 @@ type Photo struct {
 	Name   string `json:"name"`
 	Folder string `json:"folder"`
 	Camera string `json:"camera"`
-	Kind   string `json:"kind"` // "x3f", "jpg" (Sigma camera JPEG) or "image" (any other picture)
+	Kind   string `json:"kind"` // "x3f", "dng" (another camera's raw), "jpg" (Sigma camera JPEG) or "image" (any other picture)
 	// Unsupported explains why the photo can't be previewed; empty when it can.
 	Unsupported string `json:"unsupported,omitempty"`
 	// LowRes: only a small preview exists (SD9/SD10 carry a 567 px one and
@@ -143,7 +144,11 @@ func scanPhotos(roots []string, all bool) []*Photo {
 			}
 			ext := strings.ToLower(filepath.Ext(p))
 			sigma := ext == ".x3f" || reSDIM.MatchString(d.Name())
-			if !sigma && !(all && otherImageExt[ext]) {
+			// A DNG is another camera's raw: it belongs in the list the way
+			// an X3F does, not behind the "All images" switch (which is for
+			// already-rendered JPEG/TIFF/PNG files).
+			rawDNG := ext == ".dng"
+			if !sigma && !rawDNG && !(all && otherImageExt[ext]) {
 				return nil
 			}
 			id := idOf(p)
@@ -155,6 +160,8 @@ func scanPhotos(roots []string, all bool) []*Photo {
 			switch {
 			case ext == ".x3f":
 				ph.Kind = "x3f"
+			case rawDNG:
+				ph.Kind = "dng"
 			case !sigma:
 				ph.Kind = "image"
 			}
@@ -270,6 +277,43 @@ func loadMeta(ph *Photo) bool {
 		if t, err := strconv.ParseInt(ph.Info["TIME"], 10, 64); err == nil {
 			ph.Info["TIME"] = time.Unix(t, 0).UTC().Format("2006-01-02 15:04")
 		}
+	}
+	if ph.Kind == "dng" {
+		m, err := dng.Info(ph.path)
+		if err != nil {
+			ph.Unsupported = "This DNG could not be read: " + err.Error()
+			log.Printf("unreadable DNG %s: %v", ph.path, err)
+			return true
+		}
+		ph.Rotation = m.Rotation
+		if err := m.Readable(); err != nil {
+			ph.Unsupported = "This DNG is not one Foveon Lab can read yet: " + err.Error() + ". The file was not changed."
+			return true
+		}
+		ph.props = map[string]string{}
+		if m.Make != "" {
+			ph.props["CAMMANUF"] = m.Make
+		}
+		if m.Model != "" {
+			ph.props["CAMMODEL"] = m.Model
+			ph.Info["CAMMODEL"] = m.Model
+		} else if m.UniqueModel != "" {
+			ph.Info["CAMMODEL"] = m.UniqueModel
+		}
+		if m.ISO > 0 {
+			ph.props["ISO"] = strconv.FormatFloat(m.ISO, 'f', -1, 64)
+			ph.Info["ISO"] = ph.props["ISO"]
+		}
+		if m.DateTime != "" {
+			ph.Info["TIME"] = m.DateTime
+		}
+		ph.Info["DNG"] = m.Description()
+		if m.ApproxColour {
+			ph.Info["DNG"] += " (no colour matrix: colour approximate)"
+		}
+		// Not a Foveon file: Camera stays empty, so every film preset is
+		// offered and no camera family is implied.
+		return true
 	}
 	if ph.Kind == "image" {
 		ph.Rotation = exifRotation(ph.path)
@@ -436,6 +480,13 @@ func decodePreview(ph *Photo) (image.Image, error) {
 	if ph.Unsupported != "" {
 		return nil, errors.New(ph.Unsupported)
 	}
+	if ph.Kind == "dng" {
+		l, err := dngDevelopUnrotated(ph, 1600)
+		if err != nil {
+			return nil, err
+		}
+		return linearToSRGB16(l), nil
+	}
 	if ph.Kind == "x3f" {
 		if ph.RawDecoded && !ph.rawFailed.Load() {
 			var img image.Image
@@ -520,6 +571,9 @@ func balanceJPEG(ph *Photo, l *render.Linear) *render.Linear {
 // decode is queued once the JPEG source is in hand (baseAs), or when the page
 // polls /api/rawstate after the picture is on screen; the cull never asks.
 func (s *server) sourceMode(ph *Photo) string {
+	if ph.Kind == "dng" {
+		return "dng"
+	}
 	if ph.jpegBroken.Load() {
 		return "raw"
 	}
@@ -540,7 +594,15 @@ func (s *server) source(ph *Photo) (*render.Linear, error) {
 }
 
 func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
+	if ph.Kind == "dng" {
+		// A DNG has one development; the page's source names ("jpg", "raw")
+		// do not apply to it.
+		mode = "dng"
+	}
 	v, err := s.sources.get(ph.ID+"|"+mode, func() (any, error) {
+		if mode == "dng" {
+			return dngDevelop(ph, sourceW)
+		}
 		if mode == "raw" {
 			if ph.RawDecoded && !ph.rawFailed.Load() {
 				return rawStillLinear(ph, sourceW)
@@ -598,6 +660,8 @@ func (s *server) fullGeo(ph *Photo, mode string, g render.Geometry) (*render.Lin
 		irFilter, ir := strings.CutPrefix(mode, "rawlayers:")
 		wbFilter, wb := strings.CutPrefix(mode, "rawwb:")
 		switch {
+		case ph.Kind == "dng":
+			src, err = dngDevelop(ph, 0)
 		case ir:
 			src, err = rawLinearFor(ph, 0, "sRGB", irFilter)
 		case wb:
@@ -674,10 +738,16 @@ func rawCompensation(ph *Photo) render.Compensation {
 	if camera == "" {
 		camera = calibGroup(ph)
 	}
-	return render.Compensation{SatFactor: 1, Family: x3f.PresetFamily(ph.Camera), CC: layerCC(ph), Sensor: render.SensorGeneration(calibGroup(ph)), NoModes: !x3f.HasColourModes(modelOf(ph)), Model: camera}
+	return render.Compensation{SatFactor: 1, Family: x3f.PresetFamily(ph.Camera), CC: layerCC(ph), Sensor: render.SensorGeneration(calibGroup(ph)), NoModes: !x3f.HasColourModes(modelOf(ph)), Model: camera, GenericFilm: ph.Kind == "dng"}
 }
 
 func (s *server) compensation(ph *Photo, on bool) render.Compensation {
+	// A DNG is another camera's raw: it has no Foveon layers and no CAMF
+	// colour-mode calibration, so it gets the raw-style compensation (no
+	// undo, no camera matrix for a layer filter).
+	if ph.Kind == "dng" {
+		return rawCompensation(ph)
+	}
 	// A raw decode carries no in-camera styling, so there is nothing to undo.
 	fam := x3f.PresetFamily(ph.Camera)
 	modes := !x3f.HasColourModes(modelOf(ph))
@@ -814,6 +884,7 @@ func (s *server) renderBase(w http.ResponseWriter, r *http.Request) (*render.Bas
 		httpErr(w, 400, err)
 		return nil, p, comp, false
 	}
+	p = sourceParams(ph, p)
 	// src=camera: the camera's own JPEG (the "Original" tile), even when
 	// the accurate raw-based preview is in use.
 	mode := s.sourceMode(ph)
@@ -950,8 +1021,12 @@ func (s *server) handlePrefetch(w http.ResponseWriter, r *http.Request) {
 // development behind the picture being looked at.
 func (s *server) prefetchBase(ph *Photo) (*render.Base, error) {
 	g := geometryOf(ph)
-	v, err := s.bases.get(ph.ID+"|jpg|"+strconv.Itoa(sourceW)+geoKey(g), func() (any, error) {
-		src, err := s.sourceAs(ph, "jpg")
+	mode := "jpg"
+	if ph.Kind == "dng" {
+		mode = "dng"
+	}
+	v, err := s.bases.get(ph.ID+"|"+mode+"|"+strconv.Itoa(sourceW)+geoKey(g), func() (any, error) {
+		src, err := s.sourceAs(ph, mode)
 		if err != nil {
 			return nil, err
 		}
@@ -1086,6 +1161,9 @@ func (s *server) handleThumb(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
+		if ph.Kind == "dng" && ph.Rotation != 0 {
+			return thumbnailJPEGRot(img, ph.Rotation), nil
+		}
 		return thumbnailJPEG(img), nil
 	})
 	if err != nil {
@@ -1100,7 +1178,13 @@ func (s *server) handleThumb(w http.ResponseWriter, r *http.Request) {
 }
 
 func thumbnailJPEG(img image.Image) []byte {
-	b := render.NewBase(render.FromImage(img, 240, 0))
+	return thumbnailJPEGRot(img, 0)
+}
+
+// thumbnailJPEGRot encodes a list thumbnail, turning it by rot degrees for
+// the sources (a DNG with an Orientation) the page shows upright.
+func thumbnailJPEGRot(img image.Image, rot int) []byte {
+	b := render.NewBase(render.FromImage(img, 240, rot))
 	var buf bytes.Buffer
 	_ = jpeg.Encode(&buf, render.Render(b, preset.Neutral(), render.Compensation{SatFactor: 1}), &jpeg.Options{Quality: 80})
 	return buf.Bytes()

@@ -11,6 +11,14 @@ renders an X3F — for anyone building X3F tools — is in [How SPP works](docs/
 
 - Scans your folders for `.X3F` files and shows each one at once from the **full-size JPEG embedded
   in it**, then from its **raw data** (native Go decoder for every generation, SD9 to Quattro).
+- **Other cameras' raw files (DNG)**: Bayer CFA or linear DNG, uncompressed or Deflate, LZW,
+  PackBits or lossless-JPEG compressed, at 8–16 bits. The file's own `ColorMatrix1/2`,
+  `ForwardMatrix1/2`, `AsShotNeutral`/`AsShotWhiteXY`, black/white levels and default crop/scale
+  take it to the same linear sRGB the film stage uses; a Malvar–He–Cutler 5×5 demosaic handles a
+  CFA. The film looks then run on it like any other source. There are no Foveon layers in a Bayer
+  file, so the infrared looks and layer mixes are hidden, and a colour film's spectral layer map is
+  fitted to a colourimetric sRGB response rather than to silicon: the UI says so plainly. CR2/CR3,
+  NEF and ARW are not read yet.
 - **Presets from three places:** your own preset folder, a **built-in pack of 107 curated SD1/SD15
   presets** (54 SD1, 53 SD15: base, negative/slide/portrait film looks, cine, B&W, white balance,
   scene), and the presets you saved in SPP itself (Windows). Comma or dot decimals; identical

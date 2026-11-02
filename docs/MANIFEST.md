@@ -51,7 +51,7 @@ exports, and the two SD1 files are the calibration pair. Held-out figures are ma
 | Colour film | The makers' curves, sensitivities and dyes for slides and negatives, checked against real slides and prints | 15 films (5 slides, 10 negatives), 2 papers, colour darkroom (Y/M/C filtration, print exposure) — not yet checked against real slides or prints |
 | Grain & halation | Each film's own granularity and halation, per format | Grain from each film's RMS (locked to the film, not a dial); halation modelled |
 | Lens filters | Physical filters through each sensor generation | Named real filters: the Wratten set on Kodak's measured transmittance (nine of ten; Wratten 47 approximate), brand filters by model (B+W, Hoya, Cokin, Tiffen, K&F, Kolari) on measured SCHOTT glass or published specs; neutral-density and graduated-ND products as density |
-| Other cameras' files | Raw files from other cameras into the same simulator | JPEG / TIFF / PNG only, no other raws yet |
+| Other cameras' files | Raw files from other cameras into the same simulator | DNG first: Bayer CFA and linear DNG, uncompressed/Deflate/LZW/PackBits/lossless-JPEG, own colour matrices/AsShotNeutral, Malvar–He–Cutler demosaic, film looks; IR and layer mixes hidden (no Foveon layers), colour films on a colourimetric sRGB fit. Tested on synthetic Bayer DNGs and DNGs this app writes; no third-party camera DNG on this machine. CR2/CR3, NEF and ARW not yet |
 | Speed | Instant sliders | GPU preview ~60 fps (film included); folder open 1.4–2.4 s (183 files, six connections), next photo 0.23 s when prefetched, preset grid 10–12 s; raw export Merrill 10.8 s, Quattro 17.5 s (2 Nov 2026, shared machine) |
 
 ## Non-goals

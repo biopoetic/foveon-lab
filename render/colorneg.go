@@ -233,7 +233,8 @@ func newColorNeg(d *colorNegData, pp *colorPaperData, sensor string, push float6
 	sp := spectral()
 	// 1. Sensor layers -> the negative's layer exposures (as a slide).
 	char, ei := negFamily(d, push)
-	f := &colorFilm{hWhite: 10 / ei / sensorGrey, ei: ei}
+	grey := sourceGrey(sensor)
+	f := &colorFilm{hWhite: 10 / ei / grey, ei: ei}
 	if !fitLayerMap(f, S, d.Sens) {
 		return nil
 	}
@@ -384,7 +385,7 @@ func newColorNeg(d *colorNegData, pp *colorPaperData, sensor string, push float6
 	negAt := func(lgH float64) [3]float64 {
 		return [3]float64{f.density(0, lgH), f.density(1, lgH), f.density(2, lgH)}
 	}
-	lgGrey := math.Log10(sensorGrey * f.hWhite)
+	lgGrey := math.Log10(grey * f.hWhite)
 	// filtration solves print(mid-grey) = 0.18 grey (Newton on log gains).
 	filtration := func(Pinv [9]float64) ([3]float64, bool) {
 		lg := [3]float64{0, 0, 0}

@@ -127,11 +127,33 @@ var measuredSens = sync.OnceValue(func() map[string][][3]float64 {
 // on the spectral grid: measured where a measurement exists (Merrill,
 // SD9/SD10), else the fitted depth model; nil if neither.
 func layerSens(sensor string) [][3]float64 {
+	if sensor == "sRGB" {
+		return srgbSens()
+	}
 	if S, ok := measuredSens()[sensor]; ok {
 		return S
 	}
 	return modelSens(sensor)
 }
+
+// srgbSens is the spectral response a colourimetric linear-sRGB source has:
+// the CIE 1931 observer's curves carried through the sRGB matrix. It is what
+// a camera with no measured spectral sensitivity can honestly offer -- a
+// three-channel colour, not a stack of silicon layers -- so the film layer
+// map is fitted to it for another camera's raw or for a JPEG/TIFF. The
+// negative lobes of the sRGB primaries are part of the response; fitLayerMap
+// handles them, and the fit is normalised by the daylight white.
+var srgbSens = sync.OnceValue(func() [][3]float64 {
+	sp := spectral()
+	S := make([][3]float64, len(sp.lams))
+	for i, l := range sp.lams {
+		c := cmf1931(l)
+		for k := 0; k < 3; k++ {
+			S[i][k] = xyzToLinSRGB[k*3]*c[0] + xyzToLinSRGB[k*3+1]*c[1] + xyzToLinSRGB[k*3+2]*c[2]
+		}
+	}
+	return S
+})
 
 // modelSens is the fitted depth model's layer sensitivities (layerfilters
 // .json "model"): the IR looks use it beyond 700 nm, where nothing is
