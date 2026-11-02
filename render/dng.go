@@ -132,6 +132,7 @@ type dngMeta struct {
 	colorMatrix, forward          []float64 // XYZ(D65) -> camera; camera -> XYZ(D50)
 	neutral                       [3]float64
 	baselineExposure              float64
+	orientation                   uint16 // TIFF Orientation; 1 = upright
 	profile                       string
 	linearCurve                   bool      // ProfileToneCurve: linear (show the data as is)
 	tone                          []float32 // ProfileToneCurve pairs (camera profile)
@@ -145,6 +146,10 @@ func writeDNG(w io.Writer, width, height, rowsPerStrip int, strips [][]byte, m d
 	for i, s := range strips {
 		stripCounts[i] = uint32(len(s))
 	}
+	orientation := m.orientation
+	if orientation == 0 {
+		orientation = 1
+	}
 	entries := []dngEntry{
 		{254, tLong, 1, dngLongs(0)},                                // NewSubFileType: main image
 		{256, tLong, 1, dngLongs(uint32(width))},                    // ImageWidth
@@ -155,7 +160,7 @@ func writeDNG(w io.Writer, width, height, rowsPerStrip int, strips [][]byte, m d
 		{271, tASCII, 0, dngASCII(m.make)},                          // Make
 		{272, tASCII, 0, dngASCII(m.model)},                         // Model
 		{273, tLong, uint32(len(strips)), nil},                      // StripOffsets (filled in below)
-		{274, tShort, 1, dngShorts(1)},                              // Orientation
+		{274, tShort, 1, dngShorts(orientation)},                    // Orientation
 		{277, tShort, 1, dngShorts(3)},                              // SamplesPerPixel
 		{278, tLong, 1, dngLongs(uint32(rowsPerStrip))},             // RowsPerStrip
 		{279, tLong, uint32(len(strips)), dngLongs(stripCounts...)}, // StripByteCounts
@@ -316,8 +321,9 @@ func (c *RawCorrection) DNGProfile(name string) *DNGProfile {
 // w×h×3) as a raw-like LinearRaw DNG that raw editors develop themselves.
 // The colour metadata comes from the camera's own white balance and colour
 // matrix: linear sRGB = cc · diag(gain) · camera, then prof's matrix and
-// tone when prof is not nil. Values above white clip.
-func WriteCameraDNG(out io.Writer, pix []float32, w, h int, gain [3]float64, cc [9]float64, prof *DNGProfile, make_, model, software string) error {
+// tone when prof is not nil. Values above white clip. orientation is the
+// TIFF Orientation of these (unrotated) pixels (1, 3, 6 or 8).
+func WriteCameraDNG(out io.Writer, pix []float32, w, h int, gain [3]float64, cc [9]float64, prof *DNGProfile, orientation uint16, make_, model, software string) error {
 	const rowsPerStrip = 32
 	var strips [][]byte
 	row := make([]byte, w*6)
@@ -391,7 +397,7 @@ func WriteCameraDNG(out io.Writer, pix []float32, w, h int, gain [3]float64, cc 
 	meta := dngMeta{
 		make: make_, model: model, software: software, unique: make_ + " " + model,
 		colorMatrix: cm[:], forward: fwd[:], neutral: neutral,
-		baselineExposure: math.Log2(k), profile: name,
+		baselineExposure: math.Log2(k), orientation: orientation, profile: name,
 	}
 	if prof != nil {
 		// With a profile the grey's brightness goes into its tone curve

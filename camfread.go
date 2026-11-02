@@ -783,7 +783,7 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 	if c := render.RawBaseFitted(calibGroup(ph), wbDesc(ph)); c != nil {
 		prof = c.DNGProfile("Foveon Lab SPP Neutral (" + calibGroup(ph) + ")")
 	}
-	err = render.WriteCameraDNG(f, img.Pix, img.W, img.H, t.Gain, t.CC, prof, "SIGMA", dngModel(ph), "Foveon Lab "+version)
+	err = render.WriteCameraDNG(f, img.Pix, img.W, img.H, t.Gain, t.CC, prof, dngOrientation(ph.Rotation), "SIGMA", dngModel(ph), "Foveon Lab "+version)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -806,6 +806,20 @@ func (s *server) exportCameraDNG(w http.ResponseWriter, ph *Photo, dir, stem str
 		cube = ""
 	}
 	writeJSON(w, map[string]string{"path": path, "lut": cube})
+}
+
+// dngOrientation maps the X3F header's clockwise rotation to the TIFF
+// Orientation of the unrotated camera pixels: 90/180/270 -> 6/3/8.
+func dngOrientation(deg int) uint16 {
+	switch ((deg % 360) + 360) % 360 {
+	case 90:
+		return 6
+	case 180:
+		return 3
+	case 270:
+		return 8
+	}
+	return 1
 }
 
 // dngModel is the camera model for a DNG: CAMMODEL without "SIGMA ", else
