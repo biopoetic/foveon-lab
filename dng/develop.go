@@ -44,7 +44,7 @@ func (f *File) Develop(maxW int) (*Image, error) {
 		}
 		raw = nil
 	} else if im.samples == 1 {
-		rgb = Demosaic(raw, im.width, im.height, im.cfa, im.cfaPW, im.cfaPH)
+		rgb = Demosaic(raw, im.width, im.height, im.cfa, im.cfaPW, im.cfaPH, im.cfaX, im.cfaY)
 		raw = nil
 	} else {
 		rgb = raw

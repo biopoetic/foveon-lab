@@ -41,6 +41,7 @@ type rawImage struct {
 
 	cfaPW, cfaPH int
 	cfa          []byte // 0 = R, 1 = G, 2 = B
+	cfaX, cfaY   int    // ActiveArea origin: the CFA pattern starts there
 	cfaLayout    int
 	mono         bool
 
@@ -141,6 +142,32 @@ func (f *File) image() (*rawImage, error) {
 	pixels := int64(im.width) * int64(im.height)
 	if pixels > maxPixels {
 		return nil, fmt.Errorf("dng: image %dx%d has %d pixels, more than this reader decodes at once (%d)", im.width, im.height, pixels, maxPixels)
+	}
+	// ActiveArea sets the usable rectangle. The CFA pattern, and the black
+	// repeat pattern, are specified relative to its top-left corner (DNG 1.6,
+	// ActiveArea and CFAPattern), so an odd origin shifts both.
+	active := area{top: 0, left: 0, bottom: im.height, right: im.width}
+	if t, ok := d.tags[tagActiveArea]; ok {
+		if v := f.uintValues(t); len(v) >= 4 && v[2] > v[0] && v[3] > v[1] {
+			a := area{top: int(v[0]), left: int(v[1]), bottom: int(v[2]), right: int(v[3])}
+			if a.top >= 0 && a.left >= 0 && a.bottom <= im.height && a.right <= im.width {
+				active = a
+			}
+		}
+	}
+	im.cfaX, im.cfaY = active.left, active.top
+
+	// These two tags change how the samples are laid out inside a strip or
+	// tile. Ignoring them would silently read the wrong pixels, so refuse.
+	if t, ok := d.tags[tagSubTileBlockSize]; ok {
+		if v := f.uintValues(t); len(v) >= 2 && (v[0] > 1 || v[1] > 1) {
+			return nil, unsupported("SubTileBlockSize %dx%d", v[0], v[1])
+		}
+	}
+	if t, ok := d.tags[tagRowInterleave]; ok {
+		if v := f.uintValues(t); len(v) > 0 && v[0] > 1 {
+			return nil, unsupported("RowInterleaveFactor %d", v[0])
+		}
 	}
 
 	// Strips and tiles.
@@ -307,16 +334,6 @@ func (f *File) image() (*rawImage, error) {
 	// DefaultCropOrigin is relative to its top-left corner (DNG 1.6,
 	// DefaultCropOrigin), which is why the two are added rather than one
 	// replacing the other.
-	im.cropX, im.cropY, im.cropW, im.cropH = 0, 0, im.width, im.height
-	active := area{top: 0, left: 0, bottom: im.height, right: im.width}
-	if t, ok := d.tags[tagActiveArea]; ok {
-		if v := f.uintValues(t); len(v) >= 4 && v[2] > v[0] && v[3] > v[1] {
-			a := area{top: int(v[0]), left: int(v[1]), bottom: int(v[2]), right: int(v[3])}
-			if a.top >= 0 && a.left >= 0 && a.bottom <= im.height && a.right <= im.width {
-				active = a
-			}
-		}
-	}
 	im.cropX, im.cropY, im.cropW, im.cropH = active.left, active.top, active.right-active.left, active.bottom-active.top
 	if t, ok := d.tags[tagDefaultCropOrig]; ok {
 		if v := f.floatValues(t); len(v) >= 2 {
@@ -359,12 +376,22 @@ func (f *File) image() (*rawImage, error) {
 // blackAt returns the black level for plane c (0,1,2) at pixel (x, y),
 // including the per-column and per-row BlackLevelDelta corrections.
 func (im *rawImage) blackAt(c, x, y int) float64 {
-	v := levelAt(im.black, c, x, y, im.blackRepeatW, im.blackRepeatH, im.samples)
+	v := levelAt(im.black, c, x-im.cfaX, y-im.cfaY, im.blackRepeatW, im.blackRepeatH, im.samples)
 	if len(im.blackDeltaH) > 0 {
-		v += im.blackDeltaH[min(x, len(im.blackDeltaH)-1)]
+		// A delta array covers either the whole image or just the ActiveArea;
+		// the shorter form starts at the ActiveArea's left edge.
+		xi := x
+		if len(im.blackDeltaH) < im.width {
+			xi = x - im.cfaX
+		}
+		v += im.blackDeltaH[max(0, min(xi, len(im.blackDeltaH)-1))]
 	}
 	if len(im.blackDeltaV) > 0 {
-		v += im.blackDeltaV[min(y, len(im.blackDeltaV)-1)]
+		yi := y
+		if len(im.blackDeltaV) < im.height {
+			yi = y - im.cfaY
+		}
+		v += im.blackDeltaV[max(0, min(yi, len(im.blackDeltaV)-1))]
 	}
 	return v
 }
@@ -376,7 +403,7 @@ func (im *rawImage) whiteAt(c, x, y int) float64 {
 		}
 		return float64(uint64(1)<<im.bits) - 1
 	}
-	return levelAt(im.white, c, x, y, im.whiteRepeatW, im.whiteRepeatH, im.samples)
+	return levelAt(im.white, c, x-im.cfaX, y-im.cfaY, im.whiteRepeatW, im.whiteRepeatH, im.samples)
 }
 
 // levelAt indexes a per-plane, per-CFA-cell or per-pixel-repeat tag. The
@@ -390,10 +417,10 @@ func levelAt(v []float64, c, x, y, rw, rh, samples int) float64 {
 		return v[0]
 	}
 	if rw > 0 && rh > 0 && rw*rh == len(v) && (rw > 1 || rh > 1) {
-		return v[(y%rh)*rw+(x%rw)]
+		return v[posMod(y, rh)*rw+posMod(x, rw)]
 	}
 	if samples > 1 && len(v) == samples*(rw*rh) && (rw > 1 || rh > 1) {
-		return v[(((y%rh)*rw+(x%rw))*samples)+c]
+		return v[((posMod(y, rh)*rw+posMod(x, rw))*samples)+c]
 	}
 	if len(v) == samples && c < len(v) {
 		return v[c]
@@ -401,12 +428,27 @@ func levelAt(v []float64, c, x, y, rw, rh, samples int) float64 {
 	return v[0]
 }
 
-// cfaAt is the colour plane at pixel (x, y).
+// cfaAt is the colour plane at pixel (x, y). The pattern starts at the
+// ActiveArea origin, which may be odd; outside the area the modulo wraps so
+// the demosaic of the discarded border does not index negatively.
 func (im *rawImage) cfaAt(x, y int) int {
 	if im.mono || len(im.cfa) == 0 {
 		return 0
 	}
-	return int(im.cfa[(y%im.cfaPH)*im.cfaPW+(x%im.cfaPW)])
+	xx := posMod(x-im.cfaX, im.cfaPW)
+	yy := posMod(y-im.cfaY, im.cfaPH)
+	return int(im.cfa[yy*im.cfaPW+xx])
+}
+
+func posMod(v, m int) int {
+	if m <= 0 {
+		return 0
+	}
+	v %= m
+	if v < 0 {
+		v += m
+	}
+	return v
 }
 
 // rowBytes is the packed byte length of one row of cols pixels.

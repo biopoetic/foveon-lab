@@ -84,6 +84,8 @@ const (
 	tagOpcodeList1      = 51008
 	tagOpcodeList2      = 51009
 	tagOpcodeList3      = 51010
+	tagSubTileBlockSize = 50974
+	tagRowInterleave    = 50975
 	tagISO              = 34855
 	tagDateTimeOriginal = 36867
 )

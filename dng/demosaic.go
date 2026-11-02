@@ -76,8 +76,10 @@ func conv5(raw []float32, w, h int, x, y int, k *[25]float64) float32 {
 	return float32(sum / 8)
 }
 
-// Demosaic turns a one-channel CFA image into interleaved linear RGB.
-func Demosaic(raw []float32, w, h int, pattern []byte, pw, ph int) []float32 {
+// Demosaic turns a one-channel CFA image into interleaved linear RGB. The
+// pattern starts at (offX, offY), the ActiveArea origin; outside it the
+// modulo wraps so the discarded border does not index negatively.
+func Demosaic(raw []float32, w, h int, pattern []byte, pw, ph, offX, offY int) []float32 {
 	out := make([]float32, w*h*3)
 	rows := runtime.GOMAXPROCS(0)
 	if rows > h {
@@ -92,7 +94,9 @@ func Demosaic(raw []float32, w, h int, pattern []byte, pw, ph int) []float32 {
 			defer wg.Done()
 			for y := y0; y < y1; y++ {
 				for x := 0; x < w; x++ {
-					c := int(pattern[(y%ph)*pw+(x%pw)])
+					yy := posMod(y-offY, ph)
+					xx := posMod(x-offX, pw)
+					c := int(pattern[yy*pw+xx])
 					i := (y*w + x) * 3
 					v := raw[y*w+x]
 					switch c {
@@ -101,7 +105,7 @@ func Demosaic(raw []float32, w, h int, pattern []byte, pw, ph int) []float32 {
 					case 2: // blue
 						out[i], out[i+1], out[i+2] = conv5(raw, w, h, x, y, &kRAtB), conv5(raw, w, h, x, y, &kGreenAtRB), v
 					default: // green: look left to see whether R or B is horizontal
-						left := int(pattern[(y%ph)*pw+((x-1+pw*1024)%pw)])
+						left := int(pattern[yy*pw+posMod(x-1-offX, pw)])
 						if left == 0 {
 							out[i], out[i+1], out[i+2] = conv5(raw, w, h, x, y, &kRAtGRow), v, conv5(raw, w, h, x, y, &kRAtGCol)
 						} else {

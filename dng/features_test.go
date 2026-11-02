@@ -302,6 +302,37 @@ func TestActiveAreaAndDefaultCrop(t *testing.T) {
 	wantPatch(t, img, 0, 0, [3]float64{4.0 / (w - 1), 5.0 / (h - 1), 0.2500}, 0.002)
 }
 
+func TestActiveAreaShiftsCFAPhase(t *testing.T) {
+	const w, h = 32, 16
+	const ax, ay = 3, 1 // both odd: the CFA pattern starts here
+	want := [3]float64{0.50, 0.20, 0.10}
+	black := [4]float64{100, 200, 300, 400}
+	pat := []byte{0, 1, 1, 2}
+	vals := make([]uint32, w*h)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			xx, yy := posMod(x-ax, 2), posMod(y-ay, 2)
+			c := int(pat[yy*2+xx])
+			b := black[yy*2+xx]
+			vals[y*w+x] = uint32(math.Round(b + want[c]*(4095-b)))
+		}
+	}
+	d := sdir{tags: baseRawTags(w, h, 16, 1, compressionNone, photometricCFA, raw16(vals))}
+	d.tags = append(d.tags, cfaTags(pat)...)
+	d.tags = append(d.tags,
+		tgLong(tagActiveArea, ay, ax, h, w),
+		tgShort(tagBlackLevelRepeat, 2, 2),
+		tgRational(tagBlackLevel, black[0], black[1], black[2], black[3]),
+		tgLong(tagWhiteLevel, 4095),
+	)
+	d.tags = append(d.tags, colourTags()...)
+	img := developFile(t, buildTIFF(t, []sdir{d}, [][]byte{raw16(vals)}), 0)
+	if img.W != w-ax || img.H != h-ay {
+		t.Fatalf("ActiveArea output %dx%d, want %dx%d", img.W, img.H, w-ax, h-ay)
+	}
+	wantPatch(t, img, img.W/2, img.H/2, want, 0.015)
+}
+
 func TestTrimBoundsOpcode(t *testing.T) {
 	const w, h = 32, 24
 	vals := make([]uint32, w*h*3)
@@ -548,6 +579,22 @@ func TestNonBayerCFARefused(t *testing.T) {
 	}
 	if _, err := f.Develop(0); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("6x6 CFA error is %v, want unsupported", err)
+	}
+}
+
+func TestSubTileLayoutRefused(t *testing.T) {
+	const w, h = 8, 4
+	vals := make([]uint32, w*h*3)
+	d := sdir{tags: baseRawTags(w, h, 16, 3, compressionNone, photometricLinearRaw, raw16(vals))}
+	d.tags = append(d.tags, tgLong(tagSubTileBlockSize, 2, 2))
+	d.tags = append(d.tags, colourTags()...)
+	b := buildTIFF(t, []sdir{d}, [][]byte{raw16(vals)})
+	f, err := NewReader(bytes.NewReader(b), int64(len(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Develop(0); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("SubTileBlockSize error is %v, want unsupported", err)
 	}
 }
 
