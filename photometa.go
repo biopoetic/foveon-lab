@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/biopoetic/foveon-lab/render"
 	"github.com/biopoetic/foveon-lab/x3f"
 )
 
@@ -156,6 +157,7 @@ func loadMetaCached(ph *Photo, c *metaCache) bool {
 		if ph.Camera == "" {
 			ph.Camera = x3f.ShortModel(ph.Folder)
 		}
+		ph.IRApprox = render.IRApproximate(render.SensorGeneration(x3f.CalibGroup(photoModel(ph))))
 		ph.Accurate = ph.RawDecoded || rawCorrectionFor(ph) != nil
 		if g, ok := sppGapFor(modelOf(ph)); ok {
 			ph.Info["SPPGAP"] = g.Line()

@@ -398,6 +398,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
               <option value="mix:top">Top layer only (cleanest)</option><option value="custom" disabled>Custom (layer sliders)</option>
             </optgroup>
           </select>
+          <div class="src" id="irNoteLayer" style="display:none;margin-top:4px"></div>
         </div>
           </div>
         </div>
@@ -412,6 +413,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div class="row" title="A colour filter on the lens, in front of the film (or the sensor), simulated through the sensor's layers. With a black-and-white film the film sees the filtered light: a red filter darkens a blue sky. The full-spectrum infrared looks are for converted cameras (the IR-cut protector removed)."><div class="lab">Filter on the lens <span class="dim">(search below)</span></div>
           <input id="lensSearch" type="search" placeholder="Search filters: name, glass, brand, nm" style="width:100%;margin-bottom:4px" title="Filters the list below. Matches the physical name, the glass or Wratten number, a wavelength, the brand, and measured/documented.">
           <select id="lensSel" style="width:100%"></select>
+          <div class="src" id="irNote" style="display:none;margin-top:4px"></div>
         </div>
         <div class="row" title="A neutral-density filter costs exposure, not colour: a density of d attenuates every wavelength by 10^-d. &quot;As metered&quot; shows the frame at the same settings with the filter on (darker by exactly its stops); with it off the photographer has opened up by the filter factor, so the frame is unchanged and only the exposure time grew."><div class="lab">Neutral density <span class="dim" id="ndNote"></span></div>
           <select id="ndSel" style="width:100%"></select>
@@ -1598,6 +1600,26 @@ function filterMatches(f, q){
                f.evidence, f.kind].join(" ").toLowerCase();
   return q.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));
 }
+// updateIRNote says, where an infrared look is chosen, whether this body's
+// infrared is calibrated (the SD1/DP Merrill generation, measured on real
+// full-spectrum frames) or only a model prediction. The task is to be plain
+// about it, not to hide the look.
+function updateIRNote(){
+  const notes = [$("#irNote"), $("#irNoteLayer")].filter(Boolean);
+  const isIR = (S.params?.filter || "").startsWith("ir-");
+  if (!isIR){
+    for (const el of notes){ el.style.display = "none"; el.textContent = ""; }
+    return;
+  }
+  const approx = !!S.photo?.irApprox;
+  const model = S.photo?.info?.CAMMODEL || S.photo?.camera || "this body";
+  const body = model.replace(/^SIGMA\s+/i, "");
+  const msg = approx
+    ? `<b>Approximate infrared on ${esc(body)}</b> — no full-spectrum file has been measured for this sensor. This look is predicted from the silicon model and the SD1 Merrill calibration, and it assumes the IR-cut dust protector has been removed; expect colour and highlight recovery to differ from a calibrated body.`
+    : `<b>Calibrated infrared</b> — the sensor's layer response was measured on full-spectrum SD1 Merrill frames (dust protector removed).`;
+  for (const el of notes){ el.style.display = ""; el.innerHTML = msg; }
+}
+
 function buildLensSel(){
   const q = ($("#lensSearch")?.value || "").trim();
   const sel = $("#lensSel");
@@ -1937,6 +1959,7 @@ function syncSliders(){
   $("#mode").value = [4,6,7].includes(m) ? m : 0;
   $("#modeNote").textContent = [4,6,7].includes(m) ? "" : `(code ${m})`;
   $("#wbNote").textContent = `WhiteBalance ${S.params.whiteBalance} · ColorTemp ${S.params.colorTemp || "none"} (saved with the preset, not used in the preview)`;
+  updateIRNote();
 }
 
 function current(){ return S.idx >= 0 ? S.list[S.idx] : null; }

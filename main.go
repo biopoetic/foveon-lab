@@ -74,6 +74,9 @@ type Photo struct {
 	Reject bool `json:"reject,omitempty"`
 	// Accurate: an accurate (raw-based) preview exists for this camera.
 	Accurate bool `json:"accurate,omitempty"`
+	// IRApprox: the infrared looks are a model prediction on this body, not
+	// a calibration; the UI says so where an IR look is chosen.
+	IRApprox bool `json:"irApprox,omitempty"`
 
 	path      string
 	Rotation  int `json:"rotation,omitempty"` // camera/EXIF rotation, clockwise
@@ -201,6 +204,16 @@ func scanPhotos(roots []string, all bool) []*Photo {
 	return out
 }
 
+// photoModel is the camera model an X3F reports. ph.Camera is the short
+// preset-family label and can be empty (Quattro); the CAMF-era CAMMODEL is
+// what CalibGroup needs.
+func photoModel(ph *Photo) string {
+	if m := ph.props["CAMMODEL"]; m != "" {
+		return m
+	}
+	return ph.Camera
+}
+
 // loadMeta fills camera, rotation and shot info from the X3F header.
 func loadMeta(ph *Photo) bool {
 	if ph.Kind == "x3f" {
@@ -265,6 +278,7 @@ func loadMeta(ph *Photo) bool {
 	if ph.Camera == "" {
 		ph.Camera = x3f.ShortModel(ph.Folder)
 	}
+	ph.IRApprox = render.IRApproximate(render.SensorGeneration(x3f.CalibGroup(photoModel(ph))))
 	ph.Accurate = ph.RawDecoded || rawCorrectionFor(ph) != nil
 	if g, ok := sppGapFor(modelOf(ph)); ok {
 		ph.Info["SPPGAP"] = g.Line()
