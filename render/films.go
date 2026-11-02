@@ -71,7 +71,10 @@ type Film struct {
 	URL        string   `json:"url,omitempty"`
 	// Grain is the positive-density RMS the model uses: a published RMS
 	// × printGain for a negative, pgiGrain for a PGI film, or EstRMS ×
-	// printGain for an estimate. GrainSource says which; 0 = none.
+	// printGain for an estimate. For a colour negative it is a rendered look
+	// on a screen, estimated on one ISO/class scale, not the maker's
+	// published negative number (which stays in RMS or PGI).
+	// GrainSource says which; 0 = none.
 	Grain float64 `json:"grain"`
 	// BW: a black-and-white film. Mono: its spectral sensitivity (from its
 	// data sheet) as weights of the white-balanced Foveon layers, per
@@ -144,25 +147,32 @@ func pgiGrain(pgi int) float64 {
 // Superia X-TRA 400's 9.33 for the same speed and class — five times apart.
 //
 // A colour negative's grain is therefore estimated on ONE scale from its ISO
-// and its class, anchored on the published RMS value that is fine enough to
-// trust at ISO 100 (Fuji's RMS 4 -> G 9.33 at a consumer ISO 100) and on the
-// published digits at the other speeds only as a sanity band:
+// and its class. The ISO-100 anchors are the published values that are fine
+// enough to trust (Fuji's RMS 4 -> a consumer ISO 100 of 4.00); every class
+// then uses the same exponent, 0.45, so speed drives the grain:
 //
-//	negative RMS = base * (ISO/100)^exponent
-//	consumer: 4.00, 0.19   -> ISO 100 4.00, 400 5.20, 1600 6.77
-//	pro:      3.10, 0.23   -> ISO 100 3.10, 400 4.00, 800 4.72
-//	value:    5.50, 0.17   -> ISO 100 5.50, 400 6.99
+//	negative RMS = base * (ISO/100)^0.45
+//	consumer: 4.00 -> RMS 4.00 at 100, 7.46 at 400, 10.20 at 800, 13.93 at 1600
+//	pro:      3.10 -> RMS 3.10 at 100, 5.78 at 400, 7.90 at 800, 10.80 at 1600
+//	value:    5.50 -> RMS 5.50 at 100, 10.26 at 400, 14.03 at 800
 //
-// 5.20 at a consumer ISO 400 is inside the "RMS 5" rounding of the stocks
-// whose sheets print 5 (True Definition 400, the 800s), and 0.7 above the
-// rounded 4 that Fuji prints for Superia 100/400; that is the speed ranking
-// the task allows. G is the positive-density RMS (x printGain). The classes
-// are the grain families the data supports: the professional lines (Portra,
-// Ektar, Fuji Pro, Agfacolor Portrait) are finer; the 3M/Ferrania "Scotch"
-// films are the published RMS 6-7 value line; everything else is consumer.
-// Every colour negative's G is marked estimated and keeps its published RMS
-// or PGI in the data. Slides keep their own published scale, and black-and-
-// white films keep the published/estimated RMS path.
+// The professional lines sit at 0.775x the consumer value (about 25% finer)
+// at every speed. The consumer 400 result, 7.46, is above the rounded "RMS 4"
+// Fuji prints for Superia X-TRA 400 and near the "RMS 5" some sheets print;
+// the published digits are too coarse to rank a 400 against another 400, so
+// speed and class set the ordering within that rounding. G is the positive-
+// density RMS (x printGain).
+//
+// This G is a LOOK ON A SCREEN, not the maker's published negative number.
+// The maker's RMS or PGI is a measurement of the negative; the model's G is
+// the granularity the rendered positive carries, so it can be shown on a
+// display at a chosen view. The published RMS or PGI stays beside it in the
+// data and in the UI. The classes are the grain families the data supports:
+// the professional lines (Portra, Ektar, Fuji Pro, Agfacolor Portrait) are
+// finer; the 3M/Ferrania "Scotch" films are the published RMS 6-7 value
+// line; everything else is consumer. Every colour negative's G is marked
+// estimated. Slides keep their own published scale, and black-and-white
+// films keep the published/estimated RMS path.
 func cnClass(f Film) string {
 	switch f.Name {
 	case "Agfacolor Portrait 160",
@@ -178,16 +188,26 @@ func cnClass(f Film) string {
 }
 
 func cnGrain(iso int, class string) float64 {
-	base, exp := 4.00, 0.19 // consumer
+	// The ISO-100 anchors are published; the exponent is one speed law for
+	// every class (see the comment above), so a faster stock is always
+	// grainier and the professional lines stay about 25% finer.
+	base := 4.00 // consumer
 	switch class {
 	case "pro":
-		base, exp = 3.10, 0.23
+		base = 3.10
 	case "value":
-		base, exp = 5.50, 0.17
+		base = 5.50
 	}
 	iso = max(25, min(6400, iso))
-	return base * math.Pow(float64(iso)/100, exp) * printGain
+	return base * math.Pow(float64(iso)/100, 0.45) * printGain
 }
+
+// cnPushGrain is the colour-negative push law: a film rated 2^n faster has
+// the grain of the same emulsion at that ISO, so the target grows by 2^0.45n
+// — the same exponent as cnGrain. At +2 that is 1.87x, which puts Portra 800
+// +2 (EI 3200) at G about 34, near the 34 a 34-RMS look gives on the slider.
+// Black and white, slides and manual grain keep the task 48 push factor.
+func cnPushGrain(push float64) float64 { return math.Pow(2, 0.45*push) }
 
 // FillFilmGrain settles a named film's grain once, when a preset is loaded or
 // a film is chosen. A presets file that names a film but predates the grain
@@ -225,13 +245,14 @@ func Films() []Film {
 			f.Grain = cnGrain(f.ISO, f.CNClass)
 			f.GrainSource = "estimated"
 			f.GrainEstimated = true
+			const look = "G is a rendered look on a screen, not the published negative number"
 			switch {
 			case f.RMS > 0:
-				f.GrainNote = fmt.Sprintf("published RMS %g is a rounded negative granularity; G is estimated on the one colour-negative scale from ISO %d and the %s class", f.RMS, f.ISO, f.CNClass)
+				f.GrainNote = fmt.Sprintf("published RMS %g is a rounded negative granularity; %s %.1f is estimated on the one colour-negative scale from ISO %d and the %s class", f.RMS, look, f.Grain, f.ISO, f.CNClass)
 			case f.PGI > 0:
-				f.GrainNote = fmt.Sprintf("published PGI %d (Kodak's perceptual print scale); G is estimated on the one colour-negative scale from ISO %d and the %s class", f.PGI, f.ISO, f.CNClass)
+				f.GrainNote = fmt.Sprintf("published PGI %d (Kodak's perceptual print scale); %s %.1f is estimated on the one colour-negative scale from ISO %d and the %s class", f.PGI, look, f.Grain, f.ISO, f.CNClass)
 			default:
-				f.GrainNote = fmt.Sprintf("estimated on the one colour-negative scale from ISO %d and the %s class", f.ISO, f.CNClass)
+				f.GrainNote = fmt.Sprintf("%s %.1f is estimated on the one colour-negative scale from ISO %d and the %s class", look, f.Grain, f.ISO, f.CNClass)
 			}
 		case f.RMS > 0:
 			f.Grain = f.RMS

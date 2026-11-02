@@ -1,5 +1,5 @@
 {
- "note": "Diffuse RMS granularity x 1000 (48 um aperture, density 1.0), as each maker's own technical data publishes it. kind: slide = measured on the image itself; neg / cn / chromo = measured on the negative (low contrast), printed or scanned at ~2.3x contrast. Films whose makers publish no RMS are listed with rms 0.",
+ "note": "Diffuse RMS granularity x 1000 (48 um aperture, density 1.0), as each maker's own technical data publishes it. kind: slide = measured on the image itself; neg / cn / chromo = measured on the negative (low contrast), printed or scanned at ~2.3x contrast. Films whose makers publish no RMS are listed with rms 0. For a colour negative, grain is not this published RMS or PGI: it is a rendered look on a screen, estimated on one scale from ISO and grain class (consumer/pro/value, exponent 0.45), and the published rms or pgi is kept beside it.",
  "films": [
   {
    "maker": "Agfa",

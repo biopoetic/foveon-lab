@@ -179,6 +179,25 @@ func TestGrainToneFades(t *testing.T) {
 	}
 }
 
+// The push law is the colour-negative speed law only. Colour negatives get
+// 2^0.45n (so Portra 800 +2 is G 32-36); B&W, slides and manual grain keep
+// the task 48 2^0.30n and are not moved by this task.
+func TestPushLawByKind(t *testing.T) {
+	const push = 2.0
+	if got, want := pushGrain("cn", true, push), math.Pow(2, 0.9); math.Abs(got-want) > 1e-9 {
+		t.Errorf("colour-negative push %.4f, want %.4f", got, want)
+	}
+	if got, want := pushGrain("neg", true, push), math.Pow(2, 0.6); math.Abs(got-want) > 1e-9 {
+		t.Errorf("black-and-white push %.4f, want the unchanged %.4f", got, want)
+	}
+	if got, want := pushGrain("slide", true, push), math.Pow(2, 0.6); math.Abs(got-want) > 1e-9 {
+		t.Errorf("slide push %.4f, want the unchanged %.4f", got, want)
+	}
+	if got, want := pushGrain("cn", false, push), math.Pow(2, 0.6); math.Abs(got-want) > 1e-9 {
+		t.Errorf("manual-grain push %.4f, want the unchanged %.4f", got, want)
+	}
+}
+
 // Halation: light spreads into red (a little green), never blue.
 func TestHalationRed(t *testing.T) {
 	l := flat(101, 101, 0)

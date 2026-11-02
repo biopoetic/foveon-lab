@@ -404,7 +404,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         </div>
         <div class="grp" data-g="film"><div class="gh"><span class="chev">▾</span><span class="gt">Film &amp; Darkroom</span><i class="gdot" title="Changed in this group"></i><button class="greset" title="Reset this group to the preset">↺</button></div>
           <div class="gb" id="g-film">
-        <div class="row"><div class="lab">Film stock <span class="dim" title="Foveon Lab only. A black-and-white or slide film uses its maker's published RMS granularity, with the document in the tooltip. Every colour negative is estimated on one scale from its ISO and grain class, because the makers' RMS and PGI numbers cannot be compared directly; the published number is still shown. A film whose maker publishes no number carries an estimate, marked (estimated).">(grain from its data sheet or the one colour-negative scale)</span></div>
+        <div class="row"><div class="lab">Film stock <span class="dim" title="Foveon Lab only. A black-and-white or slide film uses its maker's published RMS granularity, with the document in the tooltip. Every colour negative is estimated on one scale from its ISO and grain class, because the makers' RMS and PGI numbers cannot be compared directly; that G is a rendered look on a screen, not the published negative number, and the published RMS or PGI is still shown beside it. A film whose maker publishes no number carries an estimate, marked (estimated).">(grain from its data sheet or the one colour-negative scale)</span></div>
           <select id="filmStock" style="width:100%"><option value="">None (set the grain by hand)</option></select>
           <div class="src" id="filmSrc"></div>
           <div class="src" id="filmLink" style="display:none"></div>
@@ -690,7 +690,7 @@ const SLIDERS = [
 // size distribution set by the film's speed; the slider scales that film's
 // grain. A crop or 100% view shows the same physical grain, a reduced view
 // keeps the clumps that survive the pixel.
-const GRAIN_TIPS = "Film grain as the RMS-equivalent granularity of the final image (Selwyn's law sizes it on the film, so it depends on the film format below). Choosing a film turns its own grain on: a slide's published RMS, a black-and-white film's published or estimated RMS, or — for every colour negative — one estimate from its ISO and grain class, marked (estimated), with the published RMS or PGI kept beside it. The slider scales the chosen film's grain and 0 means no grain; with no film selected it sets a grain by hand.";
+const GRAIN_TIPS = "Film grain as the RMS-equivalent granularity of the final image (Selwyn's law sizes it on the film, so it depends on the film format below). Choosing a film turns its own grain on: a slide's published RMS, a black-and-white film's published or estimated RMS, or — for every colour negative — one estimate from its ISO and grain class, marked (estimated), with the published RMS or PGI kept beside it. For a colour negative that G is a rendered look on a screen, not the published negative number. The slider scales the chosen film's grain and 0 means no grain; with no film selected it sets a grain by hand.";
 // Layer mix presets, in stops per sensor layer (bottom, middle, top).
 const LAYER_MIX = { top: [-6,-6,0] };
 // The colour filters on the lens (Film & Darkroom); the IR looks and layer
@@ -1837,7 +1837,7 @@ function syncFilm(){
   $("#filmCmpBtn").style.display = S.photo?.kind === "x3f" ? "" : "none";
   const src = f && f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.src)}</a>` : f ? esc(f.src) : "";
   const grain = f ? (f.kind === "cn"
-    ? `G ${f.grain.toFixed(1)} (estimated on one colour-negative scale; ${f.rms ? "published RMS " + f.rms : f.pgi ? "published PGI " + f.pgi : "no published number"})`
+    ? `G ${f.grain.toFixed(1)} (a rendered look on a screen, not the published negative number; estimated on one colour-negative scale from ISO and class; ${f.rms ? "published RMS " + f.rms : f.pgi ? "published PGI " + f.pgi : "no published number"})`
     : f.rms ? `RMS ${f.rms} (${esc(f.kind === "slide" ? "on the slide" : "on the negative, ×2.3 on the print")})`
     : f.pgi ? `PGI ${f.pgi} (Kodak print-grain scale, converted — not RMS)`
     : f.grain_estimated ? `grain ${f.grain.toFixed(1)} (estimated${f.rms_note ? ": " + esc(f.rms_note) : ""})` : "") : "";

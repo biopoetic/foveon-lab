@@ -62,10 +62,49 @@ func TestFilmGrainSources(t *testing.T) {
 	if !(p160.Grain < p400.Grain && p400.Grain < p800.Grain) {
 		t.Errorf("Portra grain not monotonic in speed: %.1f %.1f %.1f", p160.Grain, p400.Grain, p800.Grain)
 	}
+	// One speed law, 0.45, on the published ISO-100 anchors. These are the
+	// numbers the task asks for: consumer 400 about 7.4 RMS, 800 about 10,
+	// 1600 about 14; pro about 25% finer. A test that pins only "higher"
+	// would let the exponent drift back to the 0.19/0.23/0.17 per-class
+	// scales that made Portra 800 +2 nearly clean.
+	consumer := func(iso int) float64 { return 4.00 * math.Pow(float64(iso)/100, 0.45) * printGain }
+	for _, tc := range []struct {
+		name string
+		want float64
+	}{
+		{"Fujifilm Fujicolor Superia 100", consumer(100)},
+		{"Fujifilm Fujicolor Superia X-TRA 400", consumer(400)},
+		{"Fujifilm Fujicolor Superia X-TRA 800", consumer(800)},
+		{"Konica Konica Centuria Super 1600", consumer(1600)},
+	} {
+		f, ok := FilmByKey(tc.name)
+		if !ok {
+			t.Fatalf("%s: no library entry", tc.name)
+		}
+		if math.Abs(f.Grain-tc.want) > 0.05 {
+			t.Errorf("%s G %.2f, want %.2f on the 0.45 consumer scale", tc.name, f.Grain, tc.want)
+		}
+	}
+	// The professional lines are the same law from their own ISO-100 anchor:
+	// 3.10/4.00 = 0.775, about 25% finer than consumer at every speed.
+	if math.Abs(p800.Grain-3.10*math.Pow(8, 0.45)*printGain) > 0.05 {
+		t.Errorf("Portra 800 G %.2f is not on the professional 0.45 scale", p800.Grain)
+	}
+	c800, _ := FilmByKey("Fujifilm Fujicolor Superia X-TRA 800")
+	if r := p800.Grain / c800.Grain; r < 0.72 || r > 0.82 {
+		t.Errorf("pro/consumer ISO 800 ratio %.3f, want about 0.775 (25%% finer)", r)
+	}
 	s100, _ := FilmByKey("Fujifilm Fujicolor Superia 100")
 	s400, _ := FilmByKey("Fujifilm Fujicolor Superia X-TRA 400")
-	if s400.Grain < 1.2*s100.Grain {
-		t.Errorf("Superia 100 and 400 on the same scale: %.2f vs %.2f, want 400 plainly higher", s100.Grain, s400.Grain)
+	if s400.Grain < 1.8*s100.Grain {
+		t.Errorf("Superia 100 and 400 on the same scale: %.2f vs %.2f, want 4^0.45 = 1.87x", s100.Grain, s400.Grain)
+	}
+	// Push uses the same law, so Portra 800 +2 (EI 3200) lands at G 32-36.
+	if g := p800.Grain * cnPushGrain(2); g < 32 || g > 36 {
+		t.Errorf("Portra 800 +2 lands at G %.2f, want 32-36", g)
+	}
+	if got := cnPushGrain(2); math.Abs(got-1.866) > 0.01 {
+		t.Errorf("colour-negative push factor at +2 is %.3f, want 2^0.9 = 1.866", got)
 	}
 	// Same speed and class: consumer 400s must land close together.
 	u400, _ := FilmByKey("Kodak Ultramax 400")

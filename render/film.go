@@ -167,10 +167,14 @@ func (b *Base) newFilmOp(p preset.Params, mono, buildNoise bool) *filmOp {
 		// A pushed film is underexposed and overdeveloped. There is no
 		// published pushed granularity; the consistent estimate is the
 		// model's own speed law: +n stops is the film rated 2^n faster, so
-		// the grain grows by 2^(0.30 n) (1.52x at +2), not by an extra
-		// factor on top of the stock's own speed. The grain size grows more
-		// gently (2^(0.10 n)) because development swells the clumps.
-		target *= math.Pow(2, 0.30*push)
+		// the grain grows with the same 0.45 exponent as the colour-negative
+		// ISO scale (2^0.45n = 1.87x at +2). That puts Portra 800 +2 at G
+		// about 34, the value the owner found visible on the slider. Black
+		// and white, slides and manual grain keep the task 48 factor,
+		// 2^0.30n: their scale is not the colour-negative one and must stay
+		// untouched. The grain size grows more gently (2^0.10n) because
+		// development swells the clumps.
+		target *= pushGrain(kind, hasFilm, push)
 		f.rho = grainRho(kind, mono)
 		f.buildGrain(b, p, kind, iso, push, target, buildNoise)
 	}
@@ -179,6 +183,16 @@ func (b *Base) newFilmOp(p preset.Params, mono, buildNoise bool) *filmOp {
 		f.haloK = float32(math.Min(1, p.Halation) * haloMax)
 	}
 	return f
+}
+
+// pushGrain is the grain-target multiplier for a push in stops. A colour
+// negative follows the same 0.45 speed law as cnGrain; a black-and-white
+// film, a slide and manual grain keep the task 48 0.30 factor.
+func pushGrain(kind string, hasFilm bool, push float64) float64 {
+	if hasFilm && kind == "cn" {
+		return cnPushGrain(push)
+	}
+	return math.Pow(2, 0.30*push)
 }
 
 // grainSizes returns the size bands (µm) and their normalized variance
