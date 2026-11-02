@@ -283,10 +283,11 @@ func t36batchHTTP(t *testing.T, groups map[string][]*Photo, out string) {
 				lines++
 			}
 		}
-		fmt.Printf("T36 HTTPBATCH\t%s\t20\t%s\t%.3f\t%.2f\t%.2f\t%.0f\t%.0f\tlines=%d done=%v ok=%d failed=%d\n",
+		fmt.Printf("T36 HTTPBATCH\t%s\t20\t%s\t%.3f\t%.2f\t%.2f\t%.0f\t%.0f\tlines=%d done=%v ok=%d failed=%d budget=%dMB workers=%d\n",
 			name, wall.Round(time.Millisecond), wall.Seconds(), cpu,
 			100*cpu/(wall.Seconds()*float64(runtime.GOMAXPROCS(0))),
-			float64(peak)/1e6, float64(sys)/1e6, lines, done, ok, failed)
+			float64(peak)/1e6, float64(sys)/1e6, lines, done, ok, failed,
+			exportMemoryBudget()>>20, s.batchWorkers())
 	}
 }
 
