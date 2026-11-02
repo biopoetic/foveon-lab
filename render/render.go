@@ -648,14 +648,14 @@ func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, 
 // pixOp is the per-pixel part of a render (everything but sharpening);
 // the Fill Light mask value comes from the caller.
 type pixOp struct {
-	cr, cg, cb, maskScale, fill, hl, blk, ct float32
-	satF                                     float64
-	mono                                     bool
-	mode                                     int
-	undo                                     *[9]float32
-	undoGamma                                bool
-	layer                                    *[9]float32 // layer filter, colour
-	layerMono                                *[3]float32 // layer filter, monochrome grey
+	cr, cg, cb, exp, maskScale, fill, hl, blk, ct float32
+	satF                                          float64
+	mono                                          bool
+	mode                                          int
+	undo                                          *[9]float32
+	undoGamma                                     bool
+	layer                                         *[9]float32 // layer filter, colour
+	layerMono                                     *[3]float32 // layer filter, monochrome grey
 
 	// Measured emulation (model.go), when a model is embedded.
 	measured   bool
@@ -723,6 +723,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	op := pixOp{
 		undo: c.Undo, undoGamma: c.UndoGamma,
 		cr: float32(p.R * k * expGain), cg: float32(p.G * k * expGain), cb: float32(p.B * k * expGain),
+		exp:       float32(expGain),
 		maskScale: float32(math.Exp2(p.Exposure / 2.2)),
 		fill:      float32(p.FillLight * 1.5),
 		hl:        float32(p.Highlight * 0.35),
@@ -1059,10 +1060,16 @@ func (op *pixOp) apply(r, g, bl, m, da, db float32) (float32, float32, float32) 
 	if op.measured {
 		return op.applyMeasured(r, g, bl, m, da, db)
 	}
-	r, g, bl = r*op.cr, g*op.cg, bl*op.cb
 	if f := op.cfilm; f != nil {
+		// The film is exposed by the scene, and the colour adjust tints the
+		// result. Tinting first feeds the film layer ratios no scene has, and
+		// a slide's contrast turns a small tint into a green picture.
 		m := &op.cfInv
+		r, g, bl = r*op.exp, g*op.exp, bl*op.exp
 		r, g, bl = f.apply(m[0]*r+m[1]*g+m[2]*bl, m[3]*r+m[4]*g+m[5]*bl, m[6]*r+m[7]*g+m[8]*bl)
+		r, g, bl = r*op.cr/op.exp, g*op.cg/op.exp, bl*op.cb/op.exp
+	} else {
+		r, g, bl = r*op.cr, g*op.cg, bl*op.cb
 	}
 
 	if op.fill != 0 {

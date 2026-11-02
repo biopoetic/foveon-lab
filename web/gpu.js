@@ -31,7 +31,7 @@ uniform sampler2D uRGB, uAux, uLut, uFilm, uCFCurve;
 uniform highp sampler3D uCFLut;
 uniform bool uCF;
 uniform vec3 uCFInv[3], uCFA[3], uCFB[3];   // linear sRGB -> layers; root-polynomial (r,g,b) and (√rg,√gb,√rb) rows
-uniform float uCFH, uCFDmax, uCFN, uCFLgMin, uCFLgMax, uCFCurveN;
+uniform float uCFH, uCFExp, uCFDmax, uCFN, uCFLgMin, uCFLgMax, uCFCurveN;
 uniform int uW, uH, uFlipOut;
 uniform bool uUndo, uUndoGamma, uMeasured, uMono, uFilmTone, uWB, uWBTaste, uMM, uMMTaste, uFillABCK, uFillLocal, uGrainMono;
 uniform int uLayerMode;   // 0 none, 1 matrix, 2 mono weights
@@ -154,8 +154,8 @@ void main(){
     float Y2 = dec(x);
     c = uMono ? vec3(Y2) : Y2 + ch * (chroma * uSatMeasure * (1. - des));
   } else {
-    c *= uGain;
-    if (uCF) c = colorFilm(c);
+    if (uCF) c = colorFilm(c * uCFExp) * uGain / uCFExp;
+    else c *= uGain;
     if (uFill != 0.){
       float m = min(1., aux.r * uMaskScale), wt = (1. - m) * (1. - m);
       c *= exp2(uFill * wt);
@@ -355,7 +355,7 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     if (cf){
       const rp = r.colorFilm.rp;
       gl.uniform3fv(u.uCFInv, rows3(r.colorFilm.inv)); gl.uniform3fv(u.uCFA, rp.slice(0, 9)); gl.uniform3fv(u.uCFB, rp.slice(9, 18));
-      gl.uniform1f(u.uCFH, r.colorFilm.hWhite);
+      gl.uniform1f(u.uCFH, r.colorFilm.hWhite); gl.uniform1f(u.uCFExp, r.colorFilm.exp);
       gl.uniform1f(u.uCFDmax, cf.hdr.dmax); gl.uniform1f(u.uCFN, cf.hdr.n); gl.uniform1f(u.uCFLgMin, cf.hdr.lgMin); gl.uniform1f(u.uCFLgMax, cf.hdr.lgMax); gl.uniform1f(u.uCFCurveN, cf.hdr.curveN);
       gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_3D, cf.lut); gl.uniform1i(u.uCFLut, 4);
       bind(P, "uCFCurve", 5, cf.curve);
