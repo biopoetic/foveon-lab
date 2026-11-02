@@ -18,6 +18,7 @@ package x3f
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"sync"
 )
@@ -106,20 +107,24 @@ func decodeHuffman10(b []byte, w, h, stride int) (*RawImage, error) {
 		if w*4 > stride || stride*h > len(b) {
 			return nil, errors.New("x3f: packed raw exceeds its section")
 		}
-		for y := 0; y < h; y++ {
-			var acc [3]uint16
-			for x := 0; x < w; x++ {
-				packed := le.Uint32(b[y*stride+x*4:])
-				for c := 0; c < 3; c++ {
-					acc[c] += mapping[packed>>(10*c)&(n-1)]
-					v := acc[c]
-					if int16(v) <= 0 {
-						v = 0
+		// Rows are independent (each starts from a zero accumulator), so the
+		// decode runs them on all cores; every row's output is unchanged.
+		parallel(h, func(y0, y1 int) {
+			for y := y0; y < y1; y++ {
+				var acc [3]uint16
+				for x := 0; x < w; x++ {
+					packed := le.Uint32(b[y*stride+x*4:])
+					for c := 0; c < 3; c++ {
+						acc[c] += mapping[packed>>(10*c)&(n-1)]
+						v := acc[c]
+						if int16(v) <= 0 {
+							v = 0
+						}
+						out.Pix[(y*w+x)*3+c] = v
 					}
-					out.Pix[(y*w+x)*3+c] = v
 				}
 			}
-		}
+		})
 		return out, nil
 	}
 	if len(b) < n*4+h*4 {
@@ -140,28 +145,54 @@ func decodeHuffman10(b []byte, w, h, stride int) (*RawImage, error) {
 	stream := b[n*4 : len(b)-h*4]
 	offsets := b[len(b)-h*4:]
 	decode := func(start int16) (int, error) {
-		minimum := 0
-		for y := 0; y < h; y++ {
-			off := int(le.Uint32(offsets[y*4:]))
-			if off >= len(stream) {
-				return 0, fmt.Errorf("x3f: row %d offset beyond the data", y)
-			}
-			r := &bitReader{data: stream, pos: off * 8}
-			acc := [3]int16{start, start, start}
-			for x := 0; x < w; x++ {
-				for c := 0; c < 3; c++ {
-					d, err := tree.next(r)
-					if err != nil {
-						return 0, fmt.Errorf("x3f: raw row %d col %d: %w", y, x, err)
+		// Each row starts from its own accumulator and its own bit offset
+		// (the table at the end of the section), so rows decode independently.
+		// The minimum is an integer reduction, which is order-free.
+		var mu sync.Mutex
+		var firstErr error
+		minAll := int32(math.MaxInt32)
+		parallel(h, func(y0, y1 int) {
+			local := int32(math.MaxInt32)
+			for y := y0; y < y1; y++ {
+				off := int(le.Uint32(offsets[y*4:]))
+				if off >= len(stream) {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("x3f: row %d offset beyond the data", y)
 					}
-					acc[c] += int16(uint16(d))
-					v := int(acc[c])
-					minimum = min(minimum, v)
-					out.Pix[(y*w+x)*3+c] = uint16(max(v, 0))
+					mu.Unlock()
+					return
+				}
+				r := &bitReader{data: stream, pos: off * 8}
+				acc := [3]int16{start, start, start}
+				for x := 0; x < w; x++ {
+					for c := 0; c < 3; c++ {
+						d, err := tree.next(r)
+						if err != nil {
+							mu.Lock()
+							if firstErr == nil {
+								firstErr = fmt.Errorf("x3f: raw row %d col %d: %w", y, x, err)
+							}
+							mu.Unlock()
+							return
+						}
+						acc[c] += int16(uint16(d))
+						v := int(acc[c])
+						local = min(local, int32(v))
+						out.Pix[(y*w+x)*3+c] = uint16(max(v, 0))
+					}
 				}
 			}
+			mu.Lock()
+			if local < minAll {
+				minAll = local
+			}
+			mu.Unlock()
+		})
+		if firstErr != nil {
+			return 0, firstErr
 		}
-		return minimum, nil
+		return int(minAll), nil
 	}
 	minimum, err := decode(0)
 	if err == nil && minimum < 0 {

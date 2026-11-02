@@ -10,6 +10,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/biopoetic/foveon-lab/preset"
 	"github.com/biopoetic/foveon-lab/render"
@@ -364,19 +366,31 @@ func rawCorrectWith(ph *Photo, l *render.Linear, balance bool) {
 	if c == nil {
 		return
 	}
+	timing := os.Getenv("FOVEON_TIMING") != ""
+	mark := time.Now()
+	lap := func(name string) {
+		if timing {
+			fmt.Fprintf(os.Stderr, "  %-16s %s\n", name, time.Since(mark).Round(time.Millisecond))
+			mark = time.Now()
+		}
+	}
 	c.Apply(l)
+	lap("correct matrix")
 	if balance {
 		rawJPEGBalance(ph, l)
 	}
+	lap("jpeg balance")
 	// SPP's chroma noise reduction also removes the bright near-neutral
 	// low-frequency mottling the per-pixel denoiser leaves; do it here so
 	// every raw-based render (default, Max Detail, exports) has it.
 	render.BrightChromaDenoiseFor(l, calibGroup(ph))
+	lap("bright chroma")
 	// SPP renders a Merrill file marked AdobeRGB differently even in
 	// sRGB (render/adobergb.go).
 	if ph.props["EXIF_COLORSPACE"] == "AdobeRGB" && render.SensorGeneration(calibGroup(ph)) == "Merrill" {
 		render.ApplySPPAdobeRGB(l)
 	}
+	lap("adobe rgb")
 }
 
 // balanceRefW is the width of the one reference the DP2 balance is measured

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -146,11 +147,16 @@ func cachedRaw(ph *Photo, f *x3f.File, c *x3f.CAMF) (*x3f.RawImage, error) {
 		return nil, err
 	}
 	key := fmt.Sprintf("%s|%d|%d", ph.path, st.Size(), st.ModTime().UnixNano())
+	timing := os.Getenv("FOVEON_TIMING") != ""
+	tStart := time.Now()
 	for {
 		devRawMu.Lock()
 		if devRawOne != nil && devRawOne.key == key {
 			e := devRawOne
 			devRawMu.Unlock()
+			if timing {
+				fmt.Fprintf(os.Stderr, "  %-16s %s\n", "raw decode", "cached (0 ms)")
+			}
 			return e.raw, nil
 		}
 		if ch, ok := devRawBuild[key]; ok {
@@ -163,8 +169,13 @@ func cachedRaw(ph *Photo, f *x3f.File, c *x3f.CAMF) (*x3f.RawImage, error) {
 		devRawMu.Unlock()
 
 		raw, derr := f.DecodeRaw()
+		tDecode := time.Now()
 		if derr == nil {
 			x3f.FixBadPixels(raw, c)
+		}
+		if timing {
+			fmt.Fprintf(os.Stderr, "  %-16s %s\n", "raw decode", tDecode.Sub(tStart).Round(time.Millisecond))
+			fmt.Fprintf(os.Stderr, "  %-16s %s\n", "bad pixels", time.Since(tDecode).Round(time.Millisecond))
 		}
 		devRawMu.Lock()
 		if derr == nil {
@@ -179,6 +190,20 @@ func cachedRaw(ph *Photo, f *x3f.File, c *x3f.CAMF) (*x3f.RawImage, error) {
 
 func goDevelopFor(ph *Photo, layers, sceneWB bool, wbName string) (*x3f.CamImage, render.CamTransform, error) {
 	var t render.CamTransform
+	timing := os.Getenv("FOVEON_TIMING") != ""
+	memTiming := os.Getenv("FOVEON_TIMING_MEM") != ""
+	mark := time.Now()
+	lap := func(name string) {
+		if timing {
+			fmt.Fprintf(os.Stderr, "  %-16s %s\n", name, time.Since(mark).Round(time.Millisecond))
+			mark = time.Now()
+		}
+		if timing && memTiming {
+			var ms runtime.MemStats
+			runtime.ReadMemStats(&ms)
+			fmt.Fprintf(os.Stderr, "  mem after %-16s heap %4d MB\n", name, ms.HeapAlloc>>20)
+		}
+	}
 	f, err := x3f.Open(ph.path)
 	if err != nil {
 		return nil, t, err
@@ -187,6 +212,7 @@ func goDevelopFor(ph *Photo, layers, sceneWB bool, wbName string) (*x3f.CamImage
 	if err != nil {
 		return nil, t, err
 	}
+	lap("open+camf")
 	raw, err := cachedRaw(ph, f, c)
 	if err != nil {
 		return nil, t, err
@@ -202,6 +228,7 @@ func goDevelopFor(ph *Photo, layers, sceneWB bool, wbName string) (*x3f.CamImage
 	if err != nil {
 		return nil, t, err
 	}
+	lap("CameraLinear")
 	// (A single-sample outlier rejection ran here while the coloured dots in
 	// dark areas were being chased, but the dots turned out to be the guided
 	// filter's runaway coefficient, fixed in x3f/denoise.go: the pass cost ten
@@ -251,11 +278,17 @@ func goLinearForClass(ph *Photo, maxW int, strength float64, irWhite *[3]float64
 func goLinearForGates(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string, rebuild bool) (*render.Linear, []bool, []bool, error) {
 	rawDecodeCount.Add(1)
 	timing := os.Getenv("FOVEON_TIMING") != ""
+	memTiming := os.Getenv("FOVEON_TIMING_MEM") != ""
 	mark := time.Now()
 	lap := func(name string) {
 		if timing {
 			fmt.Fprintf(os.Stderr, "  %-16s %s\n", name, time.Since(mark).Round(time.Millisecond))
 			mark = time.Now()
+		}
+		if timing && memTiming {
+			var ms runtime.MemStats
+			runtime.ReadMemStats(&ms)
+			fmt.Fprintf(os.Stderr, "  mem after %-16s heap %4d MB\n", name, ms.HeapAlloc>>20)
 		}
 	}
 	img, t, err := goDevelopFor(ph, irWhite != nil, sceneWB, wbName)
@@ -278,6 +311,7 @@ func goLinearForGates(ph *Photo, maxW int, strength float64, irWhite *[3]float64
 			rebuilt[i] = c == x3f.HLRecovered
 			clipped[i] = c != x3f.HLNone
 		}
+		lap("highlight rebuild")
 		if os.Getenv("FOVEON_MD_DEBUG") != "" {
 			fmt.Fprintf(os.Stderr, "maxdetail %s: recovered %v lost %d partial %d\n", ph.Name, st.Recovered, st.Lost, st.Partial)
 		}
@@ -289,6 +323,7 @@ func goLinearForGates(ph *Photo, maxW int, strength float64, irWhite *[3]float64
 	} else {
 		x3f.ClipHighlights(img, t.Gain)
 	}
+	lap("clip highlights")
 	// Single-pixel hot/dead samples that the CAMF lists do not cover survive
 	// the denoiser (it smooths, but one sample far off its neighbourhood is
 	// not noise) and stand out as black/white dots once the grain around them
@@ -322,6 +357,7 @@ func goLinearForGates(ph *Photo, maxW int, strength float64, irWhite *[3]float64
 			}
 			img.Pix = lin.Pix
 		}
+		lap("despeckle")
 		x3f.Denoise(img, x3f.DenoiseOptions{Strength: strength, Scale: 1 / float64(bx), ISO: photoISO(ph), Grey: greyOf(t), NoiseAware: noiseAwareFix(calibGroup(ph)), Quattro: calibGroup(ph) == "Quattro"})
 	}
 	lap("denoise")
@@ -342,7 +378,6 @@ func goLinearForGates(ph *Photo, maxW int, strength float64, irWhite *[3]float64
 	// (render/shadowchroma.go), with noise reduction on: the colour path
 	// and colour film (its layers, fixed through the colour they make);
 	// not the IR looks, which model the layers themselves.
-	lap("develop+bin")
 	// ISO before the shadow fix: that filter uses the high-ISO ratio formula
 	// only from ISO 800 (render/shadowchroma.go), so low ISO stays
 	// bit-identical.
@@ -354,6 +389,7 @@ func goLinearForGates(ph *Photo, maxW int, strength float64, irWhite *[3]float64
 			fmt.Fprintf(os.Stderr, "shadow chroma noise %s: %.4f\n", ph.Name, noise)
 		}
 	}
+	lap("shadow chroma")
 	// Quattro chroma mottle: the per-layer denoiser removes the fine chroma
 	// noise, but 8-32 px blotches survive and SPP's band is lower. A wide,
 	// edge-aware pass on low-chroma pixels only (render/mottle.go), guided by
@@ -362,13 +398,17 @@ func goLinearForGates(ph *Photo, maxW int, strength float64, irWhite *[3]float64
 	if strength > 0 && mottleFix && calibGroup(ph) == "Quattro" && photoISO(ph) >= 6400 {
 		render.MottleChroma(l, render.MottleSigma(fullW, l.W), 0.02, 0.10)
 	}
+	lap("mottle")
 	// The body's brightness relative to its calibration group (not for the
 	// IR looks, which model the sensor layers themselves).
 	if g := render.ModelExposure(modelOf(ph)); g != 1 && irWhite == nil {
-		for i := range l.Pix {
-			l.Pix[i] *= g
-		}
+		render.ParallelRows(l.H, func(y0, y1 int) {
+			for i := y0 * l.W * 3; i < y1*l.W*3; i++ {
+				l.Pix[i] *= g
+			}
+		})
 	}
+	lap("model exposure")
 	if rebuilt != nil {
 		if img.W != classW || img.H != classH {
 			rebuilt = maxPoolGate(rebuilt, classW, classH, img.W, img.H)

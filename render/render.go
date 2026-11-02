@@ -11,13 +11,25 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/biopoetic/foveon-lab/preset"
 )
+
+// stageTiming prints the render's internal stages when FOVEON_TIMING is set,
+// so an export profile can separate tone from sharpening.
+var stageTiming = os.Getenv("FOVEON_TIMING") != ""
+
+func stageLap(name string, start time.Time) {
+	if stageTiming {
+		fmt.Fprintf(os.Stderr, "  %-16s %s\n", name, time.Since(start).Round(time.Millisecond))
+	}
+}
 
 // Linear is an RGB image in linear light, 3 float32 per pixel.
 type Linear struct {
@@ -64,15 +76,22 @@ func FrameMean(l *Linear) float32 {
 	gh := max(1, int(math.Round(float64(l.H)*float64(gw)/float64(l.W))))
 	sum := make([]float64, gw*gh)
 	n := make([]float64, gw*gh)
-	for y := 0; y < l.H; y++ {
-		gy := min(gh-1, y*gh/l.H)
-		for x := 0; x < l.W; x++ {
-			i := (y*l.W + x) * 3
-			k := gy*gw + min(gw-1, x*gw/l.W)
-			sum[k] += float64(0.2126*l.Pix[i] + 0.7152*l.Pix[i+1] + 0.0722*l.Pix[i+2])
-			n[k]++
+	// Cell-local sums: a band of grid rows still visits its pixels in the
+	// original scan order, so each cell's total is bit-identical.
+	parallelRows(gh, func(g0, g1 int) {
+		for y := 0; y < l.H; y++ {
+			gy := min(gh-1, y*gh/l.H)
+			if gy < g0 || gy >= g1 {
+				continue
+			}
+			for x := 0; x < l.W; x++ {
+				i := (y*l.W + x) * 3
+				k := gy*gw + min(gw-1, x*gw/l.W)
+				sum[k] += float64(0.2126*l.Pix[i] + 0.7152*l.Pix[i+1] + 0.0722*l.Pix[i+2])
+				n[k]++
+			}
 		}
-	}
+	})
 	var m float64
 	cnt := 0
 	for k := range sum {
@@ -279,20 +298,25 @@ func (l *Linear) Rotate(deg int) *Linear {
 	if deg != 180 {
 		o.W, o.H = h, w
 	}
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			var nx, ny int
-			switch deg {
-			case 90:
-				nx, ny = h-1-y, x
-			case 180:
-				nx, ny = w-1-x, h-1-y
-			case 270:
-				nx, ny = y, w-1-x
+	// Each output row is filled from independent source pixels (a pure copy,
+	// no arithmetic), so the rotation runs on all cores and the bytes are the
+	// same as the serial nested loop.
+	parallelRows(o.H, func(y0, y1 int) {
+		for ny := y0; ny < y1; ny++ {
+			for nx := 0; nx < o.W; nx++ {
+				var x, y int
+				switch deg {
+				case 90:
+					x, y = ny, h-1-nx
+				case 180:
+					x, y = w-1-nx, h-1-ny
+				case 270:
+					x, y = w-1-ny, nx
+				}
+				copy(o.Pix[(ny*o.W+nx)*3:][:3], l.Pix[(y*w+x)*3:][:3])
 			}
-			copy(o.Pix[(ny*o.W+nx)*3:][:3], l.Pix[(y*w+x)*3:][:3])
 		}
-	}
+	})
 	return o
 }
 
@@ -319,15 +343,23 @@ func newMask(l *Linear) *mask {
 	gw, gh := (l.W+cell-1)/cell, (l.H+cell-1)/cell
 	m := &mask{cell: float32(cell), gw: gw, gh: gh, v: make([]float32, gw*gh)}
 	cnt := make([]float32, gw*gh)
-	for y := 0; y < l.H; y++ {
-		for x := 0; x < l.W; x++ {
-			i := (y*l.W + x) * 3
-			Y := 0.2126*l.Pix[i] + 0.7152*l.Pix[i+1] + 0.0722*l.Pix[i+2]
-			g := (y/cell)*gw + x/cell
-			m.v[g] += enc(Y)
-			cnt[g]++
+	// Each grid cell has its own accumulator and its pixels are still visited
+	// in the same y, then x, order, so every cell's float sum is unchanged.
+	parallelRows(gh, func(g0, g1 int) {
+		for y := 0; y < l.H; y++ {
+			g := y / cell
+			if g < g0 || g >= g1 {
+				continue
+			}
+			for x := 0; x < l.W; x++ {
+				i := (y*l.W + x) * 3
+				Y := 0.2126*l.Pix[i] + 0.7152*l.Pix[i+1] + 0.0722*l.Pix[i+2]
+				k := g*gw + x/cell
+				m.v[k] += enc(Y)
+				cnt[k]++
+			}
 		}
-	}
+	})
 	for i := range m.v {
 		m.v[i] /= cnt[i]
 	}
@@ -340,28 +372,32 @@ func newMask(l *Linear) *mask {
 
 // boxBlur blurs v in place (horizontal then vertical) with radius r.
 func boxBlur(v, tmp []float32, w, h, r int) {
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			var s float32
-			var n float32
-			for k := max(0, x-r); k <= min(w-1, x+r); k++ {
-				s += v[y*w+k]
-				n++
+	parallelRows(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			for x := 0; x < w; x++ {
+				var s float32
+				var n float32
+				for k := max(0, x-r); k <= min(w-1, x+r); k++ {
+					s += v[y*w+k]
+					n++
+				}
+				tmp[y*w+x] = s / n
 			}
-			tmp[y*w+x] = s / n
 		}
-	}
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			var s float32
-			var n float32
-			for k := max(0, y-r); k <= min(h-1, y+r); k++ {
-				s += tmp[k*w+x]
-				n++
+	})
+	parallelRows(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			for x := 0; x < w; x++ {
+				var s float32
+				var n float32
+				for k := max(0, y-r); k <= min(h-1, y+r); k++ {
+					s += tmp[k*w+x]
+					n++
+				}
+				v[y*w+x] = s / n
 			}
-			v[y*w+x] = s / n
 		}
-	}
+	})
 }
 
 func (m *mask) at(x, y int) float32 {
@@ -515,6 +551,7 @@ func Render(b *Base, p preset.Params, c Compensation) *image.RGBA {
 // while a slider is dragged).
 func RenderOpt(b *Base, p preset.Params, c Compensation, sharp bool) *image.RGBA {
 	out := image.NewRGBA(image.Rect(0, 0, b.W, b.H))
+	t0 := time.Now()
 	renderInto(b, p, c, func(i int, r, g, bl float32) {
 		o := out.Pix[i*4:]
 		o[0] = uint8(enc(r)*255 + 0.5)
@@ -522,6 +559,8 @@ func RenderOpt(b *Base, p preset.Params, c Compensation, sharp bool) *image.RGBA
 		o[2] = uint8(enc(bl)*255 + 0.5)
 		o[3] = 255
 	})
+	stageLap("tone", t0)
+	t0 = time.Now()
 	if b.Raw && sharp {
 		sppSharpen8(out, b.scale(), b.ISO, b.Sensor)
 	}
@@ -531,6 +570,7 @@ func RenderOpt(b *Base, p preset.Params, c Compensation, sharp bool) *image.RGBA
 	if !noImpulse && b.ISO >= 800 && (b.Sensor == "DPM" || b.Sensor == "Quattro") {
 		impulseClean8(out, 80, 12)
 	}
+	stageLap("sharpening", t0)
 	return out
 }
 
@@ -538,6 +578,7 @@ func RenderOpt(b *Base, p preset.Params, c Compensation, sharp bool) *image.RGBA
 // rounding, so edited gradients don't band.
 func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 	out := image.NewRGBA64(image.Rect(0, 0, b.W, b.H))
+	t0 := time.Now()
 	renderInto(b, p, c, func(i int, r, g, bl float32) {
 		o := out.Pix[i*8:]
 		for ch, v := range [3]float32{r, g, bl} {
@@ -546,6 +587,8 @@ func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 		}
 		o[6], o[7] = 0xff, 0xff
 	})
+	stageLap("tone", t0)
+	t0 = time.Now()
 	if b.Raw {
 		sppSharpen16(out, b.scale(), b.ISO, b.Sensor)
 	}
@@ -555,6 +598,7 @@ func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 	if !noImpulse && b.ISO >= 800 && (b.Sensor == "DPM" || b.Sensor == "Quattro") {
 		impulseClean16(out, 80*257, 12*257)
 	}
+	stageLap("sharpening", t0)
 	return out
 }
 

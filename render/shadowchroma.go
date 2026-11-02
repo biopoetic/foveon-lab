@@ -3,6 +3,7 @@ package render
 import (
 	"math"
 	"sort"
+	"sync"
 	"sync/atomic"
 )
 
@@ -308,31 +309,48 @@ func ShadowChromaNoise(l *Linear) float64 {
 	w, h, n := l.W, l.H, l.W*l.H
 	var rel [3][]float32
 	Y := make([]float32, n)
-	for i := 0; i < n; i++ {
-		Y[i] = 0.2126*l.Pix[i*3] + 0.7152*l.Pix[i*3+1] + 0.0722*l.Pix[i*3+2]
-	}
+	parallelRows(n, func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			Y[i] = 0.2126*l.Pix[i*3] + 0.7152*l.Pix[i*3+1] + 0.0722*l.Pix[i*3+2]
+		}
+	})
 	for k := 0; k < 3; k++ {
 		rel[k] = make([]float32, n)
-		for i := 0; i < n; i++ {
-			rel[k][i] = (l.Pix[i*3+k] - Y[i]) / (Y[i] + 1e-3)
-		}
+		parallelRows(n, func(i0, i1 int) {
+			for i := i0; i < i1; i++ {
+				rel[k][i] = (l.Pix[i*3+k] - Y[i]) / (Y[i] + 1e-3)
+			}
+		})
 	}
 	var blur [3][]float32
 	for k := 0; k < 3; k++ {
 		blur[k] = GaussBlur(rel[k], w, h, 3)
 	}
+	// Each band collects its own samples; the median sorts them, so the
+	// collection order cannot change the answer.
+	var mu sync.Mutex
 	var v []float64
-	for i := 0; i < n; i += 3 {
-		if Y[i] < 0.005 || Y[i] > 0.04 {
-			continue
+	parallelRows(h, func(y0, y1 int) {
+		var local []float64
+		i := y0 * w
+		if m := i % 3; m != 0 {
+			i += 3 - m
 		}
-		var s float64
-		for k := 0; k < 3; k++ {
-			d := float64(rel[k][i] - blur[k][i])
-			s += d * d
+		for ; i < y1*w; i += 3 {
+			if Y[i] < 0.005 || Y[i] > 0.04 {
+				continue
+			}
+			var s float64
+			for k := 0; k < 3; k++ {
+				d := float64(rel[k][i] - blur[k][i])
+				s += d * d
+			}
+			local = append(local, math.Sqrt(s))
 		}
-		v = append(v, math.Sqrt(s))
-	}
+		mu.Lock()
+		v = append(v, local...)
+		mu.Unlock()
+	})
 	if len(v) < 500 {
 		return 0
 	}

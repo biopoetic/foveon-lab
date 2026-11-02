@@ -40,15 +40,22 @@ func NewSurround(l *Linear, frac float64) *Surround {
 	s := &Surround{gw: gw, gh: gh, sx: float64(gw) / float64(l.W), sy: float64(gh) / float64(l.H)}
 	v := make([]float32, gw*gh)
 	n := make([]float32, gw*gh)
-	for y := 0; y < l.H; y++ {
-		gy := min(gh-1, int(float64(y)*s.sy))
-		for x := 0; x < l.W; x++ {
-			i := (y*l.W + x) * 3
-			k := gy*gw + min(gw-1, int(float64(x)*s.sx))
-			v[k] += enc(0.2126*l.Pix[i] + 0.7152*l.Pix[i+1] + 0.0722*l.Pix[i+2])
-			n[k]++
+	// Each output cell is an independent accumulator, and its pixels are
+	// still added in y, then x, order: the mean is bit-identical.
+	parallelRows(gh, func(g0, g1 int) {
+		for y := 0; y < l.H; y++ {
+			gy := min(gh-1, int(float64(y)*s.sy))
+			if gy < g0 || gy >= g1 {
+				continue
+			}
+			for x := 0; x < l.W; x++ {
+				i := (y*l.W + x) * 3
+				k := gy*gw + min(gw-1, int(float64(x)*s.sx))
+				v[k] += enc(0.2126*l.Pix[i] + 0.7152*l.Pix[i+1] + 0.0722*l.Pix[i+2])
+				n[k]++
+			}
 		}
-	}
+	})
 	for i := range v {
 		if n[i] > 0 {
 			v[i] /= n[i]
@@ -75,22 +82,28 @@ func (s *Surround) At(x, y int) float32 {
 // more than sqrt(eps) and the local mean where it is flat.
 func GuidedFilter(v []float32, w, h int, sigma, eps float64) []float32 {
 	vv := make([]float32, len(v))
-	for i, x := range v {
-		vv[i] = x * x
-	}
+	parallelRows(len(v), func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			vv[i] = v[i] * v[i]
+		}
+	})
 	m := GaussBlur(v, w, h, sigma)
 	m2 := GaussBlur(vv, w, h, sigma)
 	a, b := vv, make([]float32, len(v)) // vv is no longer needed
-	for i := range v {
-		vr := max(0, m2[i]-m[i]*m[i])
-		a[i] = vr / (vr + float32(eps))
-		b[i] = m[i] - a[i]*m[i]
-	}
+	parallelRows(len(v), func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			vr := max(0, m2[i]-m[i]*m[i])
+			a[i] = vr / (vr + float32(eps))
+			b[i] = m[i] - a[i]*m[i]
+		}
+	})
 	ma := GaussBlur(a, w, h, sigma)
 	mb := GaussBlur(b, w, h, sigma)
-	for i := range v {
-		ma[i] = ma[i]*v[i] + mb[i]
-	}
+	parallelRows(len(v), func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			ma[i] = ma[i]*v[i] + mb[i]
+		}
+	})
 	return ma
 }
 

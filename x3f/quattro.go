@@ -181,15 +181,20 @@ func cameraLinearQuattro(raw *RawImage, c *CAMF, wb string, fixBad bool) (*CamIm
 	// Bottom, middle and the top binned 2×2 (on the raw scale), as one
 	// quarter-resolution image.
 	low := make([]uint16, w*h*3)
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			i := (y*w + x) * 3
-			low[i], low[i+1] = raw.Pix[i], raw.Pix[i+1]
-			t0 := (2*y)*raw.TopW + 2*x
-			s := uint32(top[t0]) + uint32(top[t0+1]) + uint32(top[t0+raw.TopW]) + uint32(top[t0+raw.TopW+1])
-			low[i+2] = uint16((s + 2) / 4)
+	// Rows are independent in all three loops below (each output pixel reads
+	// packed inputs and writes only its own slot), so the Quattro develop runs
+	// them on all cores; the arithmetic per pixel is untouched.
+	parallel(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			for x := 0; x < w; x++ {
+				i := (y*w + x) * 3
+				low[i], low[i+1] = raw.Pix[i], raw.Pix[i+1]
+				t0 := (2*y)*raw.TopW + 2*x
+				s := uint32(top[t0]) + uint32(top[t0+1]) + uint32(top[t0+raw.TopW]) + uint32(top[t0+raw.TopW+1])
+				low[i+2] = uint16((s + 2) / 4)
+			}
 		}
-	}
+	})
 	lb, ok1 := meanOver(low, w, 3, 2, c.darkRects(w, h, true))
 	tb, ok2 := meanOver(top, raw.TopW, 1, 1, c.darkRects(raw.TopW, raw.TopH, false))
 	if !ok1 || !ok2 {
@@ -217,15 +222,17 @@ func cameraLinearQuattro(raw *RawImage, c *CAMF, wb string, fixBad bool) (*CamIm
 	}
 	db := make([]float32, w*h)
 	dm := make([]float32, w*h)
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			i := y*w + x
-			b := (float64(low[i*3]) - black[0]) * scale[0]
-			m := (float64(low[i*3+1]) - black[1]) * scale[1]
-			t := (float64(low[i*3+2]) - black[2]) * scale[2]
-			db[i], dm[i] = float32(b-sb*t), float32(m-sm*t)
+	parallel(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			for x := 0; x < w; x++ {
+				i := y*w + x
+				b := (float64(low[i*3]) - black[0]) * scale[0]
+				m := (float64(low[i*3+1]) - black[1]) * scale[1]
+				t := (float64(low[i*3+2]) - black[2]) * scale[2]
+				db[i], dm[i] = float32(b-sb*t), float32(m-sm*t)
+			}
 		}
-	}
+	})
 	ub := upBicubic2x(db, w, h)
 	um := upBicubic2x(dm, w, h)
 	x0, y0, x1, y1, ok := c.keepRect(c.Matrices["ActiveImageArea"], ow, oh, false)
@@ -234,15 +241,17 @@ func cameraLinearQuattro(raw *RawImage, c *CAMF, wb string, fixBad bool) (*CamIm
 	}
 	cw, ch := x1-x0+1, y1-y0+1
 	out := &CamImage{W: cw, H: ch, Pix: make([]float32, cw*ch*3)}
-	for y := 0; y < ch; y++ {
-		for x := 0; x < cw; x++ {
-			sx, sy := x+x0, y+y0
-			t := float32((float64(top[sy*raw.TopW+sx]) - black[2]) * scale[2])
-			j := sy*ow + sx
-			d := out.Pix[(y*cw+x)*3:]
-			d[0], d[1], d[2] = float32(sb)*t+ub[j], float32(sm)*t+um[j], t
+	parallel(ch, func(r0, r1 int) {
+		for y := r0; y < r1; y++ {
+			for x := 0; x < cw; x++ {
+				sx, sy := x+x0, y+y0
+				t := float32((float64(top[sy*raw.TopW+sx]) - black[2]) * scale[2])
+				j := sy*ow + sx
+				d := out.Pix[(y*cw+x)*3:]
+				d[0], d[1], d[2] = float32(sb)*t+ub[j], float32(sm)*t+um[j], t
+			}
 		}
-	}
+	})
 	return out, nil
 }
 
@@ -267,22 +276,26 @@ func upBicubic2x(src []float32, w, h int) []float32 {
 	rt, rwt := weights(h)
 	ow := 2 * w
 	tmp := make([]float32, h*ow)
-	for y := 0; y < h; y++ {
-		row := src[y*w:]
-		for x := 0; x < ow; x++ {
-			t, k := ct[x], cwt[x]
-			tmp[y*ow+x] = row[t[0]]*k[0] + row[t[1]]*k[1] + row[t[2]]*k[2] + row[t[3]]*k[3]
+	parallel(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			row := src[y*w:]
+			for x := 0; x < ow; x++ {
+				t, k := ct[x], cwt[x]
+				tmp[y*ow+x] = row[t[0]]*k[0] + row[t[1]]*k[1] + row[t[2]]*k[2] + row[t[3]]*k[3]
+			}
 		}
-	}
+	})
 	out := make([]float32, 2*h*ow)
-	for y := 0; y < 2*h; y++ {
-		t, k := rt[y], rwt[y]
-		r0, r1, r2, r3 := tmp[t[0]*ow:], tmp[t[1]*ow:], tmp[t[2]*ow:], tmp[t[3]*ow:]
-		o := out[y*ow:]
-		for x := 0; x < ow; x++ {
-			o[x] = r0[x]*k[0] + r1[x]*k[1] + r2[x]*k[2] + r3[x]*k[3]
+	parallel(2*h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			t, k := rt[y], rwt[y]
+			r0, r1, r2, r3 := tmp[t[0]*ow:], tmp[t[1]*ow:], tmp[t[2]*ow:], tmp[t[3]*ow:]
+			o := out[y*ow:]
+			for x := 0; x < ow; x++ {
+				o[x] = r0[x]*k[0] + r1[x]*k[1] + r2[x]*k[2] + r3[x]*k[3]
+			}
 		}
-	}
+	})
 	return out
 }
 
