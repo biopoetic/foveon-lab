@@ -171,6 +171,27 @@ func TestLinearRawCameraDNG(t *testing.T) {
 	}
 }
 
+func TestAsShotWhiteXY(t *testing.T) {
+	// A file with AsShotWhiteXY but no AsShotNeutral. For the D65 white this
+	// reader's ForwardMatrix describes, the derived neutral is 1,1,1 and the
+	// patches come back unchanged; this also exercises the derive path.
+	cols := [][3]float64{{0.18, 0.18, 0.18}, {0.50, 0.20, 0.10}}
+	const w, h = 32, 16
+	d := &testDNG{w: w, h: h, bits: 16, samples: 1, cfa: []byte{0, 1, 1, 2}, cfaW: 2, cfaH: 2,
+		noNeutral: true, whiteXY: [2]float64{0.3127, 0.3290}}
+	d.vals = mosaic(w, h, cols, d.cfa)
+	img := developBytes(t, d.build(t), 0)
+	for pi, want := range cols {
+		x, y := (pi*2+1)*w/4, h/2
+		i := (y*w + x) * 3
+		for c := 0; c < 3; c++ {
+			if math.Abs(float64(img.Pix[i+c])-want[c]) > 0.015 {
+				t.Errorf("patch %d channel %d: got %.4f want %.4f", pi, c, img.Pix[i+c], want[c])
+			}
+		}
+	}
+}
+
 func TestBayerTiled(t *testing.T) {
 	cols := [][3]float64{{0.18, 0.18, 0.18}, {0.55, 0.20, 0.10}, {0.10, 0.35, 0.50}}
 	const w, h = 48, 32

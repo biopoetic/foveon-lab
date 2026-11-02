@@ -187,6 +187,7 @@ func resizeBilinear(pix []float32, sw, sh, dw, dh int) []float32 {
 // baseline exposure. approx is true when no colour matrix was usable.
 func (f *File) colour(im *rawImage) ([9]float64, [3]float64, float64, bool, error) {
 	neutral := [3]float64{1, 1, 1}
+	hasNeutral := false
 	if t, ok := f.findTag(tagAsShotNeutral); ok {
 		if v := f.floatValues(t); len(v) >= 3 {
 			ok := true
@@ -196,7 +197,9 @@ func (f *File) colour(im *rawImage) ([9]float64, [3]float64, float64, bool, erro
 					ok = false
 				}
 			}
-			if !ok {
+			if ok {
+				hasNeutral = true
+			} else {
 				neutral = [3]float64{1, 1, 1}
 			}
 		}
@@ -240,7 +243,13 @@ func (f *File) colour(im *rawImage) ([9]float64, [3]float64, float64, bool, erro
 				m = lerpMatrix(fm1, fm2, w)
 			}
 		}
-		return f.withCalibration(m), neutral, be, false, nil
+		m = f.withCalibration(m)
+		if !hasNeutral {
+			if n, ok := f.neutralFromWhite(m); ok {
+				neutral = n
+			}
+		}
+		return m, neutral, be, false, nil
 	}
 
 	cm1, ok1 := f.matrix(tagColorMatrix1)
@@ -260,19 +269,64 @@ func (f *File) colour(im *rawImage) ([9]float64, [3]float64, float64, bool, erro
 			w := (whiteTemp - t1) / (t2 - t1)
 			w = math.Max(0, math.Min(1, w))
 			m = lerpMatrix(m1, m2, w)
-		case ok1 && ok2:
+		case ok1 && ok2 && hasNeutral:
 			// No AsShotWhiteXY: pick the matrix whose own calibration
 			// white best explains the as-shot neutral.
 			if d1, d2 := f.matrixFit(cm1, t1, neutral), f.matrixFit(cm2, t2, neutral); d2 < d1 {
 				m = m2
 			}
 		}
-		return f.withCalibration(m), neutral, be, false, nil
+		m = f.withCalibration(m)
+		if !hasNeutral {
+			if n, ok := f.neutralFromWhite(m); ok {
+				neutral = n
+			}
+		}
+		return m, neutral, be, false, nil
 	}
 
 	// No matrix at all: the file is taken as linear sRGB. This is the only
 	// invented colour in the reader, and the caller says so.
 	return identity33, neutral, be, true, nil
+}
+
+// neutralFromWhite derives the camera's as-shot neutral from AsShotWhiteXY
+// when the file has no AsShotNeutral. The white is adapted to D50 and taken
+// through the inverse of the chosen camera -> XYZ D50 matrix, then scaled
+// so its largest channel is 1, which is the DNG's convention for
+// AsShotNeutral.
+func (f *File) neutralFromWhite(m [9]float64) ([3]float64, bool) {
+	t, ok := f.findTag(tagAsShotWhiteXY)
+	if !ok {
+		return [3]float64{}, false
+	}
+	v := f.floatValues(t)
+	if len(v) < 2 || v[1] == 0 {
+		return [3]float64{}, false
+	}
+	w := xyzFromXY(v[0], v[1])
+	w = mulVec(adaptToD50(w), w)
+	inv, ok := invert3x3(m)
+	if !ok {
+		return [3]float64{}, false
+	}
+	n := mulVec(inv, w)
+	top := 0.0
+	for _, x := range n {
+		if x <= 0 {
+			return [3]float64{}, false
+		}
+		if x > top {
+			top = x
+		}
+	}
+	if top <= 0 {
+		return [3]float64{}, false
+	}
+	for i := range n {
+		n[i] /= top
+	}
+	return n, true
 }
 
 // estimateWhiteTemp finds the calibration illuminant whose ColorMatrix best

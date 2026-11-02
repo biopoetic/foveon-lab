@@ -84,6 +84,8 @@ type testDNG struct {
 	extra      []tent
 	noMatrix   bool
 	noForward  bool
+	noNeutral  bool
+	whiteXY    [2]float64
 }
 
 func (d *testDNG) tag(tag, typ uint16, data []byte, count int) {
@@ -181,9 +183,13 @@ func (d *testDNG) build(t *testing.T) []byte {
 				3.2404542, -1.5371385, -0.4985314,
 				-0.9692660, 1.8760108, 0.0415560,
 				0.0556434, -0.2040259, 1.0572252)},
-			tent{50728, 5, 3, rat(1, 1, 1)},
 			tent{50778, 3, 1, sh(21)},
 		)
+		if d.noNeutral {
+			ents = append(ents, tent{50729, 5, 2, rat(d.whiteXY[0], d.whiteXY[1])})
+		} else {
+			ents = append(ents, tent{50728, 5, 3, rat(1, 1, 1)})
+		}
 		if !d.noForward {
 			ents = append(ents, tent{50964, 10, 9, srat(
 				0.4360747, 0.3850649, 0.1430804,

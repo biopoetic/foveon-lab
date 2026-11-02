@@ -8,7 +8,6 @@ package main
 // and the infrared looks (which are matrices on those layers) are hidden.
 
 import (
-	"math"
 	"strconv"
 	"strings"
 
@@ -54,11 +53,6 @@ func dngDevelopRot(ph *Photo, maxW int, rotate bool) (*render.Linear, error) {
 	return l, nil
 }
 
-// dngHasLayers reports whether ph has Foveon sensor layers the layer maths
-// can use. Only an X3F does. The UI uses the Photo's kind directly; this
-// helper keeps the server-side wording in one place.
-func dngHasLayers(ph *Photo) bool { return ph != nil && ph.Kind == "x3f" }
-
 // sourceParams removes the settings that only mean something on Foveon
 // layers from a DNG or an ordinary image. The UI hides those controls, but a
 // saved preset, an old edit or a direct API call could still carry them; the
@@ -72,18 +66,4 @@ func sourceParams(ph *Photo, p preset.Params) preset.Params {
 	p.WhiteBalance = 0
 	p.CamMode = ""
 	return p
-}
-
-// dngPixelScale is the size of the developed image relative to the raw
-// frame; kept here for the report and the tests.
-func dngPixelScale(ph *Photo) float64 {
-	f, err := dng.Open(ph.path)
-	if err != nil {
-		return 0
-	}
-	defer f.Close()
-	if f.Meta.Width == 0 {
-		return 0
-	}
-	return math.Min(1, float64(sourceW)/float64(f.Meta.Width))
 }
