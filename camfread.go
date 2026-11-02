@@ -249,6 +249,19 @@ func goLinearForClass(ph *Photo, maxW int, strength float64, irWhite *[3]float64
 // to compress open over-exposed tones only: a fully clipped area has no
 // texture to show and must stay white.
 func goLinearForGates(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string, rebuild bool) (*render.Linear, []bool, []bool, error) {
+	return goLinearForGatesExplicit(ph, maxW, strength, irWhite, sceneWB, wbName, rebuild, false)
+}
+
+// goLinearForExplicit is goLinearFor for a caller that knows whether the
+// strength was asked for explicitly (a "-dn" export) or is the app default.
+func goLinearForExplicit(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string, rebuild, explicit bool) (*render.Linear, error) {
+	l, _, _, err := goLinearForGatesExplicit(ph, maxW, strength, irWhite, sceneWB, wbName, rebuild, explicit)
+	return l, err
+}
+
+// goLinearForGatesExplicit is goLinearForGates with the explicit-strength
+// flag: an explicit -dnN keeps its number even when it equals defaultNR.
+func goLinearForGatesExplicit(ph *Photo, maxW int, strength float64, irWhite *[3]float64, sceneWB bool, wbName string, rebuild, explicit bool) (*render.Linear, []bool, []bool, error) {
 	rawDecodeCount.Add(1)
 	timing := os.Getenv("FOVEON_TIMING") != ""
 	mark := time.Now()
@@ -262,6 +275,7 @@ func goLinearForGates(ph *Photo, maxW int, strength float64, irWhite *[3]float64
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	strength = denoiseStrengthFor(ph, strength, explicit)
 	lap("develop")
 	// The gate is taken at the camera image's full resolution and brought
 	// through the same binning/resampling as the image, so its entries stay
@@ -445,7 +459,12 @@ func maxDetailRenderParams(p preset.Params) preset.Params {
 // drifted to other colours. It costs more than a normal preview because it
 // always decodes raw data, as the mode promises.
 func rawMaxDetail(ph *Photo, maxW int, strength float64) (*render.Linear, error) {
-	l, rebuilt, open, err := goLinearForGates(ph, maxW, strength, nil, false, "", true)
+	return rawMaxDetailExplicit(ph, maxW, strength, false)
+}
+
+// rawMaxDetailExplicit is rawMaxDetail for an export with an explicit NR.
+func rawMaxDetailExplicit(ph *Photo, maxW int, strength float64, explicit bool) (*render.Linear, error) {
+	l, rebuilt, open, err := goLinearForGatesExplicit(ph, maxW, strength, nil, false, "", true, explicit)
 	if err != nil {
 		return nil, err
 	}

@@ -1281,7 +1281,7 @@ func (s *server) exportImage(ph *Photo, p preset.Params, label string, comp bool
 	}
 	lf, ir := layersSource(ph, p)
 	if md {
-		l, err := rawMaxDetail(ph, 0, goStrength(rawExportColor(denoise)))
+		l, err := rawMaxDetailExplicit(ph, 0, goStrength(rawExportColor(denoise)), explicitStrength(rawExportColor(denoise)))
 		if err != nil {
 			return "", err
 		}
