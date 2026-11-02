@@ -43,6 +43,19 @@ uniform int uGrainN;
 uniform vec2 uGrainOct[9];
 uniform float uGrainRho, uGrainFine;
 uniform uint uGrainSeed;
+// SPP's Monochrome tab (render/monograin.go): the measured base gamma, the
+// toning offsets, the radial Shading Effect about the whole frame, and the
+// monochrome grain's one coarse octave plus its per-pixel octave.
+uniform bool uMonoNew;
+uniform float uMonoGamma;
+uniform vec3 uMonoTone;
+uniform float uMonoShadeR, uMonoShadeA;
+uniform vec2 uOrigin, uFull;
+uniform float uScale;
+uniform int uSGN;
+uniform vec2 uSGOct[2];
+uniform float uSGSigma, uSGMean, uSGQ, uSGFine;
+uniform uint uSGSeed;
 uniform float uNDGain;
 uniform int uGND;
 uniform float uGNDStops, uGNDCos, uGNDSin, uGNDCentre, uGNDSoft;
@@ -168,6 +181,7 @@ void main(){
     c *= uTint;
     float des = hlDesat(c);
     float Y = dot(LUMA, c);
+    if (uMonoNew && Y > 0.) Y = pow(Y, uMonoGamma);
     vec3 ch = c - Y;
     float x = enc(Y);
     float chroma = lut(1, x); x = lut(0, x);
@@ -192,6 +206,10 @@ void main(){
     }
     float des = hlDesat(c);
     float Y = dot(LUMA, c);
+    if (uMonoNew && Y > 0.){
+      float Yg = pow(Y, uMonoGamma), k = Yg / Y;
+      c *= k; Y = Yg;
+    }
     if (uFilmTone && Y > 1e-6){ float Yf = filmTone(Y); c *= Yf / Y; Y = Yf; }
     if (Y > 1e-6){
       float Y2 = Y;
@@ -211,6 +229,19 @@ void main(){
       else f *= 1.05 + 0.15 * max(hueWeight(hue, 110., 60.), hueWeight(hue, 215., 45.));
     }
     if (uMono) c = vec3(Y); else if (f != 1.) c = Y + (c - Y) * f;
+  }
+  if (uMonoNew && uMonoShadeA > 0.){
+    // render.go monoShade: radial about the WHOLE frame (a crop is placed by
+    // uOrigin/uFull), multiplicative on the encoded value, plus the measured
+    // -1/255 every shading export carries.
+    vec2 p = vec2(uOrigin.x + (float(q.x) + 0.5) / uScale, uOrigin.y + (float(q.y) + 0.5) / uScale);
+    vec2 ctr = uFull * 0.5;
+    float rn = length(p - ctr) / max(1e-6, length(ctr));
+    float inner = min(0.95, 0.72 * uMonoShadeR);
+    float tt = clamp((rn - inner) / (1. - inner), 0., 1.);
+    float gain = 1. - 0.56 * uMonoShadeA * pow(tt, 6.06 - 3.32 * uMonoShadeR);
+    float us = enc(c.r) * gain - 1. / 255.;
+    c = vec3(dec(clamp(us, 0., 1.)));
   }
   if (uGrainN > 0 || uGrainFine > 0.){
     uint i = uint(q.y * uW + q.x);
@@ -239,6 +270,27 @@ void main(){
       }
     }
     c = vec3(grain1(c.r, n.r), grain1(c.g, n.g), grain1(c.b, n.b));
+  }
+  if (uSGN > 0 || uSGFine > 0.){
+    // render/monograin.go apply: one scalar field, SPP's tone weight, in the
+    // encoded domain, with the measured positive mean.
+    uint i = uint(q.y * uW + q.x);
+    float n = 0.;
+    for (int j = 0; j < 2; j++){
+      if (j >= uSGN) break;
+      n += uSGOct[j].y * grainSample(q.x, q.y, uSGOct[j].x, uSGSeed ^ 0x1234567u ^ uint(j) * 0x9e3779b9u);
+    }
+    n += uSGFine * grainGauss(i, uSGSeed ^ 0x1234567u);
+    float u = enc(c.r);
+    float w = pow(max(0., 4. * u * (1. - u)), uSGQ);
+    u = clamp(u + (uSGMean + uSGSigma * n) * w / 255., 0., 1.);
+    c = vec3(dec(u));
+  }
+  if (uMonoNew && (uMonoTone.r != 0. || uMonoTone.g != 0. || uMonoTone.b != 0.)){
+    // render.go applyMonoTone: SPP's measured constant 8-bit offsets.
+    c = vec3(dec(clamp(enc(c.r) + uMonoTone.r, 0., 1.)),
+             dec(clamp(enc(c.g) + uMonoTone.g, 0., 1.)),
+             dec(clamp(enc(c.b) + uMonoTone.b, 0., 1.)));
   }
   // Density filters, after the grain, exactly as renderInto applies them.
   if (uNDGain != 1.) c *= uNDGain;
@@ -404,6 +456,25 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     gl.uniform2fv(u.uGrainOct, goct);
     gl.uniform1f(u.uGrainRho, r.grainRho || 0); gl.uniform1f(u.uGrainFine, r.grainFine || 0);
     gl.uniform1ui(u.uGrainSeed, (r.grainSeed || 0) >>> 0);
+    // SPP's Monochrome tab.
+    gl.uniform1i(u.uMonoNew, r.monoNew ? 1 : 0);
+    gl.uniform1f(u.uMonoGamma, r.monoGamma || 1);
+    gl.uniform3fv(u.uMonoTone, r.monoTone || [0, 0, 0]);
+    gl.uniform1f(u.uMonoShadeR, r.monoShadeR || 0);
+    gl.uniform1f(u.uMonoShadeA, r.monoShadeA || 0);
+    gl.uniform1f(u.uScale, base.hdr.scale || 1);
+    gl.uniform2f(u.uOrigin, base.hdr.ox || 0, base.hdr.oy || 0);
+    gl.uniform2f(u.uFull, base.hdr.fw || base.w, base.hdr.fh || base.h);
+    const sg = r.sGrain;
+    gl.uniform1i(u.uSGN, sg && sg.oct ? sg.oct.length : 0);
+    const sgoct = new Float32Array(4);
+    (sg && sg.oct ? sg.oct : []).slice(0, 2).forEach((o, i) => { sgoct[i * 2] = o.cell; sgoct[i * 2 + 1] = o.amp; });
+    gl.uniform2fv(u.uSGOct, sgoct);
+    gl.uniform1f(u.uSGSigma, sg ? sg.sigma || 0 : 0);
+    gl.uniform1f(u.uSGMean, sg ? sg.mean || 0 : 0);
+    gl.uniform1f(u.uSGQ, sg ? sg.q || 0 : 0);
+    gl.uniform1f(u.uSGFine, sg ? sg.fine || 0 : 0);
+    gl.uniform1ui(u.uSGSeed, sg ? (sg.seed || 0) >>> 0 : 0);
     gl.uniform1f(u.uNDGain, r.ndGain || 1);
     gl.uniform1i(u.uGND, r.gnd ? 1 : 0);
     const gnd = r.gnd || {stops: 0, cos: 1, sin: 0, centre: 0, soft: 0.5};

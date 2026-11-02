@@ -61,6 +61,10 @@ func (e flSidecarEntry) apply(p *preset.Params) {
 	p.GND, p.GNDAngle, p.GNDPos, p.GNDSoft = e.Params.GND, e.Params.GNDAngle, e.Params.GNDPos, e.Params.GNDSoft
 	p.Filter = e.Params.Filter
 	p.LayerBottom, p.LayerMiddle, p.LayerTop = e.Params.LayerBottom, e.Params.LayerMiddle, e.Params.LayerTop
+	p.MonoMixSet, p.MonoR, p.MonoG, p.MonoB = e.Params.MonoMixSet, e.Params.MonoR, e.Params.MonoG, e.Params.MonoB
+	p.MonoTone = e.Params.MonoTone
+	p.MonoShadeRadius, p.MonoShadeAmount = e.Params.MonoShadeRadius, e.Params.MonoShadeAmount
+	p.MonoGrainSize, p.MonoGrainRough = e.Params.MonoGrainSize, e.Params.MonoGrainRough
 	p.Grain, p.GrainSet, p.FilmWidth, p.Halation = e.Params.Grain, e.Params.GrainSet, e.Params.FilmWidth, e.Params.Halation
 }
 

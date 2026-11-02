@@ -42,6 +42,33 @@ type Params struct {
 	// can't be used — SPP always opens photos in Color mode, whatever its
 	// saved X3F_FilterMode says (tested).
 	Mono bool `json:"mono"`
+	// Monochrome (Foveon Lab only; not in SPP's XML): SPP's Monochrome tab.
+	// These apply when Mono is on and no film is chosen; a film's own curve
+	// and grain rule, so a film preset keeps the rendering it always had.
+	//
+	// MonoR/G/B are the Color Mixer: the share of the bottom (red), middle
+	// (green) and top (blue) sensor layer that makes the grey, as SPP's
+	// sliders do. They are normalised to sum 1, so SPP's Reset (.33/.33/.34)
+	// and a pure B (.0/.0/1) both keep the white. MonoMixSet false means the
+	// preset predates the mixer and gets SPP's Reset (equal thirds).
+	MonoMixSet bool    `json:"monoMixSet,omitempty"`
+	MonoR      float64 `json:"monoR,omitempty"`
+	MonoG      float64 `json:"monoG,omitempty"`
+	MonoB      float64 `json:"monoB,omitempty"`
+	// MonoTone is one of SPP's nine toning presets ("" = B&W): "Red",
+	// "Warm", "Sepia", "Green", "BlueGreen", "Blue", "Cold", "BluePurple",
+	// "Purple". Each is a constant offset of the 8-bit sRGB channels,
+	// measured from SPP's exports.
+	MonoTone string `json:"monoTone,omitempty"`
+	// MonoShadeRadius (0-1) and MonoShadeAmount (0 = off, 1 = full) are
+	// SPP's Shading Effect: a radial darkening of the frame's edge.
+	MonoShadeRadius float64 `json:"monoShadeRadius,omitempty"`
+	MonoShadeAmount float64 `json:"monoShadeAmount,omitempty"`
+	// MonoGrainSize and MonoGrainRough are SPP's Film Grain Size and
+	// Roughness (0 = off). This is SPP's monochrome grain, kept apart from
+	// the film library's grain below; a film turns this one off.
+	MonoGrainSize  float64 `json:"monoGrainSize,omitempty"`
+	MonoGrainRough float64 `json:"monoGrainRough,omitempty"`
 	// Layer filter (Foveon Lab only; not in SPP's XML): a gain per sensor
 	// layer in stops (0 = unchanged), applied to the camera's own layers
 	// before its colour matrix, like a filter on the lens. In Monochrome
@@ -143,6 +170,34 @@ const (
 
 // Neutral returns the do-nothing parameter set.
 func Neutral() Params { return Params{R: 1, G: 1, B: 1, ColorMode: ModeStandard} }
+
+// MonoToneNames are SPP's nine Monochrome toning presets, in SPP's order.
+var MonoToneNames = []string{
+	"Red", "Warm", "Sepia", "Green", "BlueGreen", "Blue", "Cold",
+	"BluePurple", "Purple",
+}
+
+// monoToneOffset is each SPP toning preset's constant 8-bit sRGB offset,
+// measured from the exports (task 50): the difference from the B&W base is
+// the same at every tone band, so the preset is an offset, not a curve.
+var monoToneOffset = map[string][3]float64{
+	"Red":        {13, -6, -11},
+	"Warm":       {7, -1, -17},
+	"Sepia":      {11, -2, -22},
+	"Green":      {-8, 6, -11},
+	"BlueGreen":  {-11, 5, -1},
+	"Blue":       {-12, 2, 18},
+	"Cold":       {-7, 1, 12},
+	"BluePurple": {4, -5, 9},
+	"Purple":     {6, -5, 4},
+}
+
+// MonoToneOffset returns a toning preset's 8-bit sRGB offsets and whether
+// name is one of SPP's presets.
+func MonoToneOffset(name string) ([3]float64, bool) {
+	v, ok := monoToneOffset[name]
+	return v, ok
+}
 
 // SPP colour-mode codes as used in the preset files. The mapping was inferred
 // from the pack's own documentation (Gold200 = Portrait = 6, Velvia =

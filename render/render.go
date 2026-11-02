@@ -44,6 +44,13 @@ type Linear struct {
 	// 100% window or a crop keeps the frame's, so film grain and halation,
 	// sized on the film, stay the same size.
 	Frame int
+	// OriginX/Y and FullW/H place a window inside the whole frame, in
+	// full-resolution pixels: Origin is this image's top-left, Full is the
+	// whole frame's size (0 = derive from W/H/Scale). SPP's Shading Effect
+	// is radial about the whole frame, not about a crop, so the monochrome
+	// section needs them. A whole frame has Origin 0 and Full 0.
+	OriginX, OriginY int
+	FullW, FullH     int
 	// Raw: developed from the raw data, so without the sharpening SPP (or
 	// the camera, for its JPEG) gives every image; Render adds SPP's.
 	Raw bool
@@ -119,6 +126,22 @@ func (l *Linear) scale() float64 {
 		return 1
 	}
 	return l.Scale
+}
+
+// fullSize is the whole frame's size in full-resolution pixels.
+func (l *Linear) fullSize() (w, h float64) {
+	if l.FullW > 0 && l.FullH > 0 {
+		return float64(l.FullW), float64(l.FullH)
+	}
+	s := l.scale()
+	return float64(l.W) / s, float64(l.H) / s
+}
+
+// fullCoord places output pixel (x,y) inside the whole frame, in
+// full-resolution pixels.
+func (l *Linear) fullCoord(x, y int) (fx, fy float64) {
+	s := l.scale()
+	return float64(l.OriginX) + (float64(x)+0.5)/s, float64(l.OriginY) + (float64(y)+0.5)/s
 }
 
 const lutN = 4096
@@ -282,7 +305,9 @@ func pixelGetter(img image.Image) func(x, y int) (uint8, uint8, uint8) {
 func (l *Linear) Window(x0, y0, w, h int) *Linear {
 	x0, y0 = max(0, min(x0, l.W-1)), max(0, min(y0, l.H-1))
 	w, h = max(1, min(w, l.W-x0)), max(1, min(h, l.H-y0))
-	o := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, Frame: int(math.Round(l.frame())), Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.frameMean()}
+	fw, fh := l.fullSize()
+	o := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, Frame: int(math.Round(l.frame())), Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.frameMean(),
+		OriginX: l.OriginX + x0, OriginY: l.OriginY + y0, FullW: int(math.Round(fw)), FullH: int(math.Round(fh))}
 	for y := 0; y < h; y++ {
 		copy(o.Pix[y*w*3:(y+1)*w*3], l.Pix[((y+y0)*l.W+x0)*3:])
 	}
@@ -297,6 +322,14 @@ func (l *Linear) Rotate(deg int) *Linear {
 	o := &Linear{W: w, H: h, Pix: make([]float32, len(l.Pix)), Scale: l.Scale, Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean}
 	if deg != 180 {
 		o.W, o.H = h, w
+	}
+	// A whole frame stays centred at the origin; a windowed rotation is not
+	// placed exactly (shading about the frame edge is a preview nicety).
+	o.OriginX, o.OriginY = 0, 0
+	fw, fh := l.fullSize()
+	o.FullW, o.FullH = int(math.Round(fw)), int(math.Round(fh))
+	if deg == 90 || deg == 270 {
+		o.FullW, o.FullH = int(math.Round(fh)), int(math.Round(fw))
 	}
 	// Each output row is filled from independent source pixels (a pure copy,
 	// no arithmetic), so the rotation runs on all cores and the bytes are the
@@ -327,7 +360,9 @@ func (l *Linear) Downscale(maxW int) *Linear {
 	}
 	dw := maxW
 	dh := max(1, int(math.Round(float64(l.H)*float64(dw)/float64(l.W))))
-	return &Linear{W: dw, H: dh, Pix: areaResample(l.Pix, l.W, l.H, dw, dh), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean}
+	fw, fh := l.fullSize()
+	return &Linear{W: dw, H: dh, Pix: areaResample(l.Pix, l.W, l.H, dw, dh), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean,
+		OriginX: l.OriginX, OriginY: l.OriginY, FullW: int(math.Round(fw)), FullH: int(math.Round(fh))}
 }
 
 // mask is a heavily blurred perceptual-luminance map used by Fill Light, so
@@ -615,7 +650,15 @@ func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, 
 	op := newPixOp(p, c)
 	op.forBase(b)
 	dens := densitySetupFor(p)
-	film := b.newFilm(p, op.mono || op.layerMono != nil)
+	// SPP's monochrome grain and the film library's/manual grain are two
+	// different grains. When the mono one is on, it is the grain: the film
+	// grain is skipped so a preset cannot show both at once.
+	sg := b.newMonoGrain(p, op.monoNew)
+	fp := p
+	if sg != nil {
+		fp.Grain = 0
+	}
+	film := b.newFilm(fp, op.mono || op.layerMono != nil)
 	fill := op.fill != 0 || op.fillM != nil
 	if fill {
 		b.fields()
@@ -635,7 +678,10 @@ func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, 
 				}
 				r, g, bl := film.addHalo(y*w+x, b.Pix[i], b.Pix[i+1], b.Pix[i+2])
 				r, g, bl = op.apply(r, g, bl, m, da, db)
+				r, g, bl = op.monoShade(b, x, y, r, g, bl)
 				r, g, bl = film.grain(y*w+x, r, g, bl)
+				r, g, bl = sg.apply(y*w+x, r, g, bl)
+				r, g, bl = op.applyMonoTone(r, g, bl)
 				if gain := dens.gain(x, y, w, h); gain != 1 {
 					r, g, bl = r*gain, g*gain, bl*gain
 				}
@@ -656,6 +702,15 @@ type pixOp struct {
 	undoGamma                                     bool
 	layer                                         *[9]float32 // layer filter, colour
 	layerMono                                     *[3]float32 // layer filter, monochrome grey
+
+	// Monochrome (SPP's Monochrome tab): the mixer, SPP's measured base tone,
+	// toning and shading. A film has its own curve and grain and keeps the
+	// rendering it always had, so none of this applies then.
+	monoNew   bool
+	monoGamma float32
+	monoTone  [3]float32 // 8-bit sRGB offsets / 255
+	// monoShadeR/A: SPP's Shading Effect; A 0 = off.
+	monoShadeR, monoShadeA float32
 
 	// Measured emulation (model.go), when a model is embedded.
 	measured   bool
@@ -738,6 +793,19 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	// is SPP's separate Monochrome mode, i.e. p.Mono.
 	sat := p.Saturation + c.Saturation
 	op.mono = p.Mono || p.Saturation <= -2
+	if p.Mono && p.Film == "" {
+		// SPP's Monochrome tab. The base tone is SPP's own: the linear layer
+		// mix raised to monoBaseGamma, fitted to 01-base and 06-base (task 50).
+		op.monoNew = true
+		op.monoGamma = monoBaseGamma
+		if v, ok := preset.MonoToneOffset(p.MonoTone); ok {
+			for i := range v {
+				op.monoTone[i] = float32(v[i] / 255)
+			}
+		}
+		op.monoShadeR = float32(math.Max(0, math.Min(1, p.MonoShadeRadius)))
+		op.monoShadeA = float32(math.Max(0, math.Min(1, p.MonoShadeAmount)))
+	}
 	switch {
 	case sat < 0:
 		op.satF = math.Max(0, 1+sat/2)
@@ -830,6 +898,91 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 // colourLayerScale: how much of the layer filter's stops apply in colour.
 const colourLayerScale = 0.1
 
+// monoBaseGamma is SPP's Monochrome base tone: its neutral Monochrome render
+// is our linear layer mix raised to this power before the sRGB encode. Fitted
+// to 01-base (ISO 100) and 06-base (ISO 3200), whose four-times-reduced
+// pictures agree on it: 1.084, with amplitude 0.993 and a +0.0013 black lift
+// (task 50). The old mono path used the luminance with no such curve.
+const monoBaseGamma = 1.084
+
+// monoWeights is SPP's Color Mixer: the share of the bottom (red), middle
+// (green) and top (blue) layer. SPP's Reset is equal thirds; a preset that
+// predates the mixer gets it, and a pure B is top-layer only.
+func monoWeights(p preset.Params) [3]float64 {
+	w := [3]float64{1.0 / 3, 1.0 / 3, 1.0 / 3}
+	if p.MonoMixSet {
+		w = [3]float64{p.MonoR, p.MonoG, p.MonoB}
+	}
+	for _, v := range w {
+		if v < 0 || math.IsNaN(v) {
+			w = [3]float64{1.0 / 3, 1.0 / 3, 1.0 / 3}
+			break
+		}
+	}
+	sum := w[0] + w[1] + w[2]
+	if sum <= 0 {
+		return [3]float64{1.0 / 3, 1.0 / 3, 1.0 / 3}
+	}
+	for i := range w {
+		w[i] /= sum
+	}
+	return w
+}
+
+// setMonoMix prepares SPP's monochrome grey: the mixer's layer weights with a
+// lens filter and the layer sliders' gains in front of them (G), the camera's
+// colour matrix undone to reach the layers (cc⁻¹), and the result normalised
+// so a neutral stays the same grey. With no colour matrix (a camera JPEG) the
+// mixer weights act on linear sRGB directly.
+func (op *pixOp) setMonoMix(p preset.Params, c Compensation) {
+	w := monoWeights(p)
+	ev := [3]float64{p.LayerBottom, p.LayerMiddle, p.LayerTop}
+	f := [3]float64{math.Exp2(ev[0]), math.Exp2(ev[1]), math.Exp2(ev[2])}
+	G := [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
+	if lens := lensFilter(c.Sensor, p.Filter); lens != nil {
+		G = *lens
+	}
+	for i := 0; i < 3; i++ {
+		for j := 0; j < 3; j++ {
+			G[i*3+j] *= f[i]
+		}
+	}
+	if c.CC == nil {
+		var v [3]float32
+		sum := w[0] + w[1] + w[2]
+		for j := 0; j < 3; j++ {
+			v[j] = float32(w[j] / sum)
+		}
+		op.layerMono = &v
+		return
+	}
+	inv, ok := invert3x3(*c.CC)
+	if !ok {
+		return
+	}
+	// grey = wᵀ·G·layers, layers = cc⁻¹·sRGB.
+	var u [3]float64
+	for k := 0; k < 3; k++ {
+		for i := 0; i < 3; i++ {
+			u[k] += w[i] * G[i*3+k]
+		}
+	}
+	var v [3]float32
+	var sum float64
+	for j := 0; j < 3; j++ {
+		for k := 0; k < 3; k++ {
+			v[j] += float32(u[k] * inv[k*3+j])
+		}
+		sum += float64(v[j])
+	}
+	if sum > 0 {
+		for j := range v {
+			v[j] /= float32(sum)
+		}
+	}
+	op.layerMono = &v
+}
+
 // setLayerFilter prepares the layer filter: back to the camera's
 // (white-balanced) layers with the inverse of its colour matrix, a gain per
 // layer, forward again; in colour scaled so white keeps its brightness, in
@@ -870,6 +1023,10 @@ func (op *pixOp) setLayerFilter(p preset.Params, c Compensation) {
 	}
 	if ir, mono := irLook(c.Sensor, p.Filter); ir != nil && c.CC != nil {
 		op.setIRLook(*ir, mono, p, *c.CC)
+		return
+	}
+	if op.monoNew {
+		op.setMonoMix(p, c)
 		return
 	}
 	lens := lensFilter(c.Sensor, p.Filter)
@@ -1029,6 +1186,12 @@ func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, f
 	r, g, bl = r*op.tint[0], g*op.tint[1], bl*op.tint[2]
 	desat := highlightDesat(r, g, bl)
 	Y := 0.2126*r + 0.7152*g + 0.0722*bl
+	if op.monoNew {
+		// SPP's monochrome base tone (see monoBaseGamma).
+		if Y > 0 {
+			Y = float32(math.Pow(float64(Y), monoBaseGamma))
+		}
+	}
 	cr, cg, cb := r-Y, g-Y, bl-Y
 	x, chroma := op.preL.at(enc(Y))
 	if op.fillL != nil {
@@ -1081,6 +1244,11 @@ func (op *pixOp) apply(r, g, bl, m, da, db float32) (float32, float32, float32) 
 
 	Y := 0.2126*r + 0.7152*g + 0.0722*bl
 	desat := highlightDesat(r, g, bl)
+	if op.monoNew && Y > 0 {
+		Yg := float32(math.Pow(float64(Y), monoBaseGamma))
+		k := Yg / Y
+		r, g, bl, Y = r*k, g*k, bl*k, Yg
+	}
 	if op.tone != nil && Y > 1e-6 {
 		// The film: the exposure (above) is the camera's, the tone steps
 		// (below) the print's.
@@ -1140,6 +1308,59 @@ func (op *pixOp) apply(r, g, bl, m, da, db float32) (float32, float32, float32) 
 		r, g, bl = Y+(r-Y)*ff, Y+(g-Y)*ff, Y+(bl-Y)*ff
 	}
 	return r, g, bl
+}
+
+// monoShadeAmp is how much of the encoded grey SPP's Shading Effect takes
+// away at the frame's corner at full amount, from the three exports (task
+// 50: 0.56 at the corner, the same for radius .5 and 1).
+const monoShadeAmp = 0.56
+
+// monoShade applies SPP's Shading Effect: a radial gain about the WHOLE
+// frame's centre (a crop is not the frame), falling from 1 at the radius
+// SPP calls the shading radius to 1-monoShadeAmp at the corner, and a
+// constant -1/255 that every measured shading export carries. The gain is
+// multiplicative on the encoded value: across bright and dark corners the
+// ratio was the same. Fitted to 01-shade-.5-.5, -.5-1 and -1-1; the amount
+// is mapped 0 = off to 1 = SPP's full, because SPP's .5 measured as no
+// vignette (only the -1), so its slider has a neutral in the middle.
+func (op *pixOp) monoShade(b *Base, x, y int, r, g, bl float32) (float32, float32, float32) {
+	if !op.monoNew || op.monoShadeA <= 0 {
+		return r, g, bl
+	}
+	fw, fh := b.fullSize()
+	cx, cy := fw/2, fh/2
+	px, py := b.fullCoord(x, y)
+	rn := math.Hypot(px-cx, py-cy) / math.Hypot(cx, cy)
+	rad := float64(op.monoShadeR)
+	inner := 0.72 * rad
+	if inner > 0.95 {
+		inner = 0.95
+	}
+	power := 6.06 - 3.32*rad
+	t := (rn - inner) / (1 - inner)
+	t = math.Max(0, math.Min(1, t))
+	gain := 1 - monoShadeAmp*float64(op.monoShadeA)*math.Pow(t, power)
+	sh := func(v float32) float32 {
+		u := float64(enc(v))*gain - 1.0/255.0
+		u = math.Max(0, math.Min(1, u))
+		return dec(float32(u))
+	}
+	return sh(r), sh(g), sh(bl)
+}
+
+// applyMonoTone adds SPP's toning preset: the measured 8-bit sRGB offsets,
+// clamped. They are the same at every tone band, so this is an offset and
+// not a curve (task 50).
+func (op *pixOp) applyMonoTone(r, g, bl float32) (float32, float32, float32) {
+	if !op.monoNew || op.monoTone == [3]float32{} {
+		return r, g, bl
+	}
+	out := [3]float32{r, g, bl}
+	for i := range out {
+		u := float64(enc(out[i])) + float64(op.monoTone[i])
+		out[i] = dec(float32(math.Max(0, math.Min(1, u))))
+	}
+	return out[0], out[1], out[2]
 }
 
 // sharpen16 is sharpen for 16-bit images (big-endian samples).

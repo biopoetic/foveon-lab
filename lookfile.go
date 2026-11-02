@@ -157,6 +157,13 @@ func validateLookParams(p preset.Params, nested bool) error {
 		{"layerBottom", p.LayerBottom, -12, 6},
 		{"layerMiddle", p.LayerMiddle, -12, 6},
 		{"layerTop", p.LayerTop, -12, 6},
+		{"monoR", p.MonoR, 0, 1},
+		{"monoG", p.MonoG, 0, 1},
+		{"monoB", p.MonoB, 0, 1},
+		{"monoShadeRadius", p.MonoShadeRadius, 0, 1},
+		{"monoShadeAmount", p.MonoShadeAmount, 0, 1},
+		{"monoGrainSize", p.MonoGrainSize, 0, 1},
+		{"monoGrainRough", p.MonoGrainRough, 0, 1},
 		{"grain", p.Grain, 0, 200},
 		{"filmWidth", p.FilmWidth, 0, 1000},
 		{"halation", p.Halation, 0, 1},
@@ -235,6 +242,11 @@ func validateLookParams(p preset.Params, nested bool) error {
 		case "Standard", "Vivid", "Neutral", "Portrait", "Landscape", "FCBlue":
 		default:
 			return fmt.Errorf("camMode %q is not a camera colour mode", p.CamMode)
+		}
+	}
+	if p.MonoTone != "" {
+		if _, ok := preset.MonoToneOffset(p.MonoTone); !ok {
+			return fmt.Errorf("monoTone %q is not one of SPP's toning presets", p.MonoTone)
 		}
 	}
 	if p.Filter != "" && !knownLookFilter(p.Filter) {

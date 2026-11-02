@@ -73,6 +73,16 @@ type GPUDensity struct {
 	Soft   float32 `json:"soft"`
 }
 
+// GPUMonoGrain is SPP's monochrome grain for the GPU: the same lattice
+// field monograin.go builds (one coarse octave plus the per-pixel one), the
+// peak SD and mean in 8-bit levels, the tone exponent and the seed.
+type GPUMonoGrain struct {
+	Sigma, Mean, Q float32
+	Seed           uint32
+	Fine           float32
+	Oct            []GPUGrainOct
+}
+
 // GPURecipe is a render's settings for the GPU (see web/gpu.js for the
 // order of the steps, which follows renderInto / pixOp.apply).
 type GPURecipe struct {
@@ -83,6 +93,14 @@ type GPURecipe struct {
 	Layer     *[9]float32 `json:"layer,omitempty"`
 	LayerMono *[3]float32 `json:"layerMono,omitempty"`
 	Mono      bool        `json:"mono"`
+	// SPP's Monochrome tab: the mixer's base tone, toning offsets and the
+	// Shading Effect. A film turns all of them off.
+	MonoNew    bool          `json:"monoNew,omitempty"`
+	MonoGamma  float32       `json:"monoGamma,omitempty"`
+	MonoTone   [3]float32    `json:"monoTone,omitempty"`
+	MonoShadeR float32       `json:"monoShadeR,omitempty"`
+	MonoShadeA float32       `json:"monoShadeA,omitempty"`
+	SGrain     *GPUMonoGrain `json:"sGrain,omitempty"`
 
 	Measured bool `json:"measured"`
 	// Formula path.
@@ -204,6 +222,17 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 		Gain: [3]float32{op.cr, op.cg, op.cb}, MaskScale: op.maskScale, Fill: op.fill,
 		HL: op.hl, Blk: op.blk, CT: op.ct, SatF: float32(op.satF), Mode: op.mode,
 		Tint: op.tint, SatMeasure: float32(op.satMeasure),
+		MonoNew: op.monoNew, MonoTone: op.monoTone,
+		MonoShadeR: op.monoShadeR, MonoShadeA: op.monoShadeA,
+	}
+	if op.monoNew {
+		r.MonoGamma = monoBaseGamma
+		if gp := b.monoGrainFor(p); gp != nil {
+			g := &GPUMonoGrain{Sigma: gp.sigma, Mean: gp.mean, Q: gp.q, Seed: gp.seed,
+				Fine: float32(math.Sqrt(gp.fine))}
+			g.Oct = []GPUGrainOct{{Cell: float32(gp.cell), Amp: float32(math.Sqrt(1 - gp.fine))}}
+			r.SGrain = g
+		}
 	}
 	if p.Halation > 0 {
 		r.CPU = "halation"
@@ -304,8 +333,10 @@ func f16(v float32) uint16 {
 // two surroundings' differences (W·H each).
 func (b *Base) GPUBase() []byte {
 	b.fields()
+	fw, fh := b.fullSize()
 	hdr, _ := json.Marshal(map[string]any{
 		"w": b.W, "h": b.H, "scale": b.scale(), "frame": b.frame(), "raw": b.Raw, "iso": b.ISO, "sensor": b.Sensor,
+		"ox": b.OriginX, "oy": b.OriginY, "fw": int(math.Round(fw)), "fh": int(math.Round(fh)),
 	})
 	n := b.W * b.H
 	var buf bytes.Buffer

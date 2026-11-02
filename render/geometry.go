@@ -65,6 +65,11 @@ func ApplyGeometry(l *Linear, g Geometry) *Linear {
 	ow := max(1, int(math.Round(g.W*W)))
 	oh := max(1, int(math.Round(g.H*H)))
 	out := &Linear{W: ow, H: oh, Pix: make([]float32, ow*oh*3), Scale: l.Scale, Frame: int(math.Round(l.frame())), Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.frameMean()}
+	if g.Angle == 0 {
+		out.OriginX, out.OriginY = l.OriginX+int(math.Round(g.X*W)), l.OriginY+int(math.Round(g.Y*H))
+		fw, fh := l.fullSize()
+		out.FullW, out.FullH = int(math.Round(fw)), int(math.Round(fh))
+	}
 	t := g.Angle * math.Pi / 180
 	c, s := math.Cos(t), math.Sin(t)
 	cx, cy := W/2, H/2
