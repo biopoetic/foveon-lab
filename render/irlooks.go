@@ -45,6 +45,19 @@ func irLook(sensor, filter string) (*[9]float64, bool) {
 	return &m, name == "ir720"
 }
 
+// IRCalibrated reports whether a sensor generation's infrared looks rest on
+// real full-spectrum frames. Only the Merrill generation (SD1 and the DP
+// Merrills) does; for every other generation the looks are a prediction from
+// the silicon model and the Merrill calibration, not a measurement.
+func IRCalibrated(sensor string) bool { return sensor == "Merrill" }
+
+// IRApproximate reports whether the infrared looks on this sensor are a
+// model prediction rather than a calibration. The UI must say so plainly
+// where an IR look is chosen; an unknown sensor has no IR look at all.
+func IRApproximate(sensor string) bool {
+	return sensor != "" && !IRCalibrated(sensor)
+}
+
 // IRWhite is a white surface's response, on the Sunlight-balanced layers,
 // for an infrared look (the IR cut out, the look's lens filter on): where
 // clipped highlights go instead of the visible white. nil if not an

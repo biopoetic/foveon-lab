@@ -334,6 +334,9 @@ func irFit(m model, lk irLook, refl [][]float64) ([9]float64, float64) {
 		// fits their tiny differences), which would multiply the noise as
 		// much. The smallest penalty that keeps the row's noise gain (its
 		// norm, for equal noise per white-balanced layer) under irMaxGain.
+		// The penalty is searched upward geometrically: for the deepest
+		// filters the old fixed upper bound was far too small and the row
+		// came out at 20-30x gain.
 		solve := func(lam float64) [3]float64 {
 			a := ata
 			for q := 0; q < 3; q++ {
@@ -351,8 +354,12 @@ func irFit(m model, lk irLook, refl [][]float64) ([9]float64, float64) {
 		norm := func(r [3]float64) float64 { return math.Sqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]) }
 		row := solve(0)
 		if norm(row) > irMaxGain {
-			lo, hi := 0.0, ata[0][0]+ata[1][1]+ata[2][2]
-			for it := 0; it < 60; it++ {
+			hi := 1.0
+			for norm(solve(hi)) > irMaxGain && hi < 1e18 {
+				hi *= 4
+			}
+			lo := 0.0
+			for it := 0; it < 70; it++ {
 				mid := (lo + hi) / 2
 				if norm(solve(mid)) > irMaxGain {
 					lo = mid
@@ -386,11 +393,14 @@ func irMain(path string) {
 	refl := append(irRandom(rng, 400), mats...)
 	var b strings.Builder
 	b.WriteString("{")
-	for gi, gen := range []string{"Merrill", "TRUEII", "SD9", "Quattro"} {
-		m := loadModel(gen)
-		if c, ok := irCalibrated[gen]; ok {
-			m.d2, m.d3 = c[0], c[1]
-			fmt.Printf("%s: IR-calibrated depths d2 %.2f d3 %.2f µm\n", gen, m.d2, m.d3)
+	for gi, gen := range irGenerations {
+		m := irModel(gen)
+		if d, ok := irDepths[gen]; ok {
+			if irMeasured[gen] {
+				fmt.Printf("%s: IR-measured depths d2 %.2f d3 %.2f µm\n", gen, d[0], d[1])
+			} else {
+				fmt.Printf("%s: IR-predicted depths d2 %.2f d3 %.2f µm (approximate)\n", gen, d[0], d[1])
+			}
 		}
 		var s [3]float64
 		for i := range irLams {
@@ -524,16 +534,314 @@ func irCalib() {
 	}
 }
 
-// irCalibrated: the middle zone's lower edge and the bottom zone's depth
-// (µm) measured on real full-spectrum shots, which visible light cannot
-// pin down (it barely reaches below ~4 µm; the visible fit left the bottom
-// zone at 15.8 µm, predicting twice the infrared a real SD1 gives).
-// Merrill: an SD1 Merrill with its IR-cut dust protector removed, no lens
-// filter, 2026-10-14 (SDIM0365-0368; tools/irprobe): a white window frame
-// gave bottom/top 2.35, middle/top 1.27, sunlit foliage ~4.6 and ~1.65
+// irGenerations are the sensor generations with their own layer model.
+var irGenerations = []string{"Merrill", "TRUEII", "SD9", "Quattro"}
+
+// irDepths: the middle zone's lower edge and the bottom zone's depth (µm)
+// for infrared. Merrill is measured on real full-spectrum shots (see
+// irMeasured). The other generations have no full-spectrum frames, so they
+// are predicted: the visible fit's middle edge is ~1 µm deeper than the IR
+// effective one (Merrill: 3.82 visible, 2.80 measured), so each body's
+// visible d2 is moved up by that measured offset; d3 stays at the visible
+// fit where that fit is not at a bound, and takes the Merrill prior where it
+// is (Quattro's d3 hit the fit's 20 µm cap). The app labels those looks
+// approximate.
+var irDepths = map[string][2]float64{
+	"Merrill": {2.8, 7.0}, // measured
+	"TRUEII":  {4.0, 6.6}, // predicted from 5.07/6.59
+	"SD9":     {2.4, 8.9}, // predicted from 3.41/8.88
+	"Quattro": {2.8, 7.0}, // predicted from 3.83; d3 at the 20 µm cap, so the prior
+}
+
+// irMeasured: generations whose IR depths come from real full-spectrum
+// files. Merrill: an SD1 Merrill with its IR-cut dust protector removed, no
+// lens filter, 2026-10-14 (SDIM0365-0368; tools/irprobe): a white window
+// frame gave bottom/top 2.35, middle/top 1.27, sunlit foliage ~4.6 and ~1.65
 // on the Sunlight-balanced layers; d2 2.8, d3 7.0 give 2.35, 1.27, 4.47,
 // 1.66 (IRCALIB=1 IRD2=... IRD3=...). The other generations are not
 // calibrated yet (no full-spectrum shots).
-var irCalibrated = map[string][2]float64{
-	"Merrill": {2.8, 7.0},
+var irMeasured = map[string]bool{
+	"Merrill": true,
+}
+
+// irModel is the visible-fit layer model with the generation's effective IR
+// depths in place of the visible-only fit's unconstrained ones.
+func irModel(gen string) model {
+	m := loadModel(gen)
+	if d, ok := irDepths[gen]; ok {
+		m.d2, m.d3 = d[0], d[1]
+	}
+	return m
+}
+
+// irLayerRatios is a surface's signal on the Sunlight-balanced layers,
+// normalised to a visible white (the input the IR looks take).
+func irLayerRatios(m model, refl []float64) [3]float64 {
+	var x, wht [3]float64
+	for i, l := range irLams {
+		S, V := m.fullSens(i), m.visSens(i)
+		il := planck(l, 5500)
+		for k := 0; k < 3; k++ {
+			x[k] += S[k] * il * refl[i]
+			wht[k] += V[k] * il
+		}
+	}
+	for k := range x {
+		x[k] /= wht[k]
+	}
+	return x
+}
+
+func irWhiteAndFoliage(m model) ([3]float64, [3]float64) {
+	white := make([]float64, len(irLams))
+	for i := range white {
+		white[i] = 1
+	}
+	rng := rand.New(rand.NewSource(7))
+	mats := irMaterials(rng)
+	return irLayerRatios(m, white), irLayerRatios(m, mats[0])
+}
+
+func irShare(m model) [3]float64 {
+	var s, ir [3]float64
+	for i, l := range irLams {
+		v := m.fullSens(i)
+		for k := range s {
+			s[k] += v[k]
+			if l >= 700 {
+				ir[k] += v[k]
+			}
+		}
+	}
+	for k := range s {
+		ir[k] /= s[k]
+	}
+	return ir
+}
+
+// irPredict prints the per-generation IR layer response and its error bars,
+// and the held-out-by-scene check on the one generation with real frames.
+// The central prediction uses irDepths; the range scans the measurement
+// error on Merrill and the inter-generation stack uncertainty on the others.
+// The visible-only fit's alternative is printed to show what it would claim.
+func irPredict() {
+	irGrid()
+	fmt.Println("IR layer response, Sunlight-balanced layers, white = 1 on the camera's visible white")
+	fmt.Println("gen      source     d2   d3 | white b/t        white m/t        foliage b/t      foliage m/t")
+	for _, gen := range irGenerations {
+		m := irModel(gen)
+		w, f := irWhiteAndFoliage(m)
+		d := irDepths[gen]
+		h2, h3 := 1.0, 2.0
+		if irMeasured[gen] {
+			h2, h3 = 0.2, 0.8
+		}
+		wbMin, wbMax := math.Inf(1), math.Inf(-1)
+		wmMin, wmMax := math.Inf(1), math.Inf(-1)
+		fbMin, fbMax := math.Inf(1), math.Inf(-1)
+		fmMin, fmMax := math.Inf(1), math.Inf(-1)
+		for i := 0; i <= 8; i++ {
+			for j := 0; j <= 8; j++ {
+				mm := m
+				mm.d2 = d[0] - h2 + 2*h2*float64(i)/8
+				mm.d3 = d[1] - h3 + 2*h3*float64(j)/8
+				ww, ff := irWhiteAndFoliage(mm)
+				wb, wm := ww[0]/ww[2], ww[1]/ww[2]
+				fb, fm := ff[0]/ff[2], ff[1]/ff[2]
+				wbMin, wbMax = math.Min(wbMin, wb), math.Max(wbMax, wb)
+				wmMin, wmMax = math.Min(wmMin, wm), math.Max(wmMax, wm)
+				fbMin, fbMax = math.Min(fbMin, fb), math.Max(fbMax, fb)
+				fmMin, fmMax = math.Min(fmMin, fm), math.Max(fmMax, fm)
+			}
+		}
+		src := "predicted"
+		if irMeasured[gen] {
+			src = "measured"
+		}
+		fmt.Printf("%-8s %-9s %4.1f %4.1f | %.2f [%.2f-%.2f]  %.2f [%.2f-%.2f]  %.2f [%.2f-%.2f]  %.2f [%.2f-%.2f]\n",
+			gen, src, d[0], d[1],
+			w[0]/w[2], wbMin, wbMax, w[1]/w[2], wmMin, wmMax,
+			f[0]/f[2], fbMin, fbMax, f[1]/f[2], fmMin, fmMax)
+		s := irShare(m)
+		fmt.Printf("         IR share 700-1100 nm: bottom %.0f%% middle %.0f%% top %.0f%%\n", 100*s[0], 100*s[1], 100*s[2])
+		v := loadModel(gen)
+		vw, vf := irWhiteAndFoliage(v)
+		fmt.Printf("         visible-fit alternative d2 %.2f d3 %.2f -> white %.2f/%.2f foliage %.2f/%.2f\n",
+			v.d2, v.d3, vw[0]/vw[2], vw[1]/vw[2], vf[0]/vf[2], vf[1]/vf[2])
+	}
+	irHeldOut()
+}
+
+// fitIRDepths solves for the (d2, d3) that best reproduce a measured
+// bottom/top and middle/top ratio on one scene, on the same 0.05/0.1 µm
+// grid the calibration search used.
+func fitIRDepths(base model, refl []float64, targetB, targetM float64) (d2, d3, err float64) {
+	err = math.Inf(1)
+	for a := 1.6; a <= 5.2; a += 0.05 {
+		for b := 3.0; b <= 15.0; b += 0.1 {
+			m := base
+			m.d2, m.d3 = a, b
+			r := irLayerRatios(m, refl)
+			e := math.Pow(r[0]/r[2]-targetB, 2) + math.Pow(r[1]/r[2]-targetM, 2)
+			if e < err {
+				d2, d3, err = a, b, e
+			}
+		}
+	}
+	return
+}
+
+// irHeldOut checks the Merrill prediction the only way the surviving record
+// allows: calibrate on one scene and predict the other. The four X3F files
+// themselves are no longer on disk, so the measured ratios below are the
+// ones recorded in the calibration commit and in irMeasured.
+func irHeldOut() {
+	white := make([]float64, len(irLams))
+	for i := range white {
+		white[i] = 1
+	}
+	rng := rand.New(rand.NewSource(7))
+	foliage := irMaterials(rng)[0]
+	base := loadModel("Merrill")
+	fmt.Println("\nHeld out by scene (Merrill; measured white frame 2.35/1.27, sunlit foliage 4.60/1.65):")
+	d2, d3, e := fitIRDepths(base, white, 2.35, 1.27)
+	m := base
+	m.d2, m.d3 = d2, d3
+	f := irLayerRatios(m, foliage)
+	fmt.Printf("  fit on the white frame -> d2 %.2f d3 %.2f (RMS %.3f); predicts foliage %.2f/%.2f vs measured 4.60/1.65 (%+.2f/%+.2f)\n",
+		d2, d3, math.Sqrt(e/2), f[0]/f[2], f[1]/f[2], f[0]/f[2]-4.60, f[1]/f[2]-1.65)
+	d2, d3, e = fitIRDepths(base, foliage, 4.60, 1.65)
+	m = base
+	m.d2, m.d3 = d2, d3
+	w := irLayerRatios(m, white)
+	fmt.Printf("  fit on the foliage   -> d2 %.2f d3 %.2f (RMS %.3f); predicts white  %.2f/%.2f vs measured 2.35/1.27 (%+.2f/%+.2f)\n",
+		d2, d3, math.Sqrt(e/2), w[0]/w[2], w[1]/w[2], w[0]/w[2]-2.35, w[1]/w[2]-1.27)
+}
+
+// irCheck tests every look on every generation for the properties a preset
+// must have: finite, non-degenerate rows, white at 1, no material out of
+// range, the look's tonal order, and the same filter agreeing across
+// generations. It is a model check, not a substitute for real frames.
+func irCheck() bool {
+	irGrid()
+	rng := rand.New(rand.NewSource(7))
+	mats := irMaterials(rng)
+	refl := append(irRandom(rng, 400), mats...)
+	looks := append(append([]irLook{}, irLooks...), brandIRLooks()...)
+	names := []string{"foliage", "dry grass", "blue sky", "skin", "water", "soil", "concrete"}
+	out := map[string]map[string][3]float64{}
+	ok := true
+	for _, gen := range irGenerations {
+		m := irModel(gen)
+		out[gen] = map[string][3]float64{}
+		for _, lk := range looks {
+			M, _ := irFit(m, lk, refl)
+			var fail []string
+			for r := 0; r < 3; r++ {
+				if lk.mono && r > 0 {
+					break
+				}
+				norm := 0.0
+				for k := 0; k < 3; k++ {
+					norm += M[r*3+k] * M[r*3+k]
+				}
+				norm = math.Sqrt(norm)
+				if norm < 0.5 || norm > 6.01 {
+					fail = append(fail, fmt.Sprintf("row %d norm %.2f", r, norm))
+				}
+			}
+			r := sunToLook(m, lk)
+			w := [3]float64{1 / r[0], 1 / r[1], 1 / r[2]}
+			o := apply(M, w)
+			// The deep long-pass looks are photon-starved; their ridge may
+			// leave a white surface darker than 1 (the shallow ones must
+			// keep it within 10%). This is a look brightness, not a cast.
+			whiteLo := 0.9
+			if lk.filter(700) < 0.2 {
+				whiteLo = 0.05
+			}
+			for k := 0; k < 3; k++ {
+				if o[k] < whiteLo || o[k] > 1.1 {
+					fail = append(fail, fmt.Sprintf("white %.4f", o[k]))
+				}
+			}
+			var mo [7][3]float64
+			for i := range names {
+				mo[i] = irRender(m, lk, M, mats[i])
+				out[gen][lk.name+"|"+names[i]] = mo[i]
+				for k := 0; k < 3; k++ {
+					if math.IsNaN(mo[i][k]) || mo[i][k] < -0.01 || mo[i][k] > 1.05 {
+						fail = append(fail, fmt.Sprintf("%s channel %.2f", names[i], mo[i][k]))
+					}
+				}
+			}
+			f, sky := mo[0], mo[2]
+			switch lk.name {
+			case "ir720":
+				if !(f[0] > sky[0] && sky[0] < mo[5][0] && f[0] > mo[4][0]) {
+					fail = append(fail, "720 tonal order")
+				}
+			case "ir590":
+				if math.Abs(f[0]-f[1]) > 0.02 || f[0] <= f[2] || sky[2] <= sky[0] {
+					fail = append(fail, "590 tonal order")
+				}
+			case "aerochrome":
+				if !(f[0] > f[1] && f[1] > f[2] && sky[2] > sky[1] && sky[1] > sky[0]) {
+					fail = append(fail, "aerochrome tonal order")
+				}
+			case "fs-aerochrome":
+				if !(f[0] > f[1] && f[1] > f[2] && sky[2] > sky[0] && sky[0] > sky[1]) {
+					fail = append(fail, "false-colour tonal order")
+				}
+			}
+			if len(fail) > 0 {
+				ok = false
+				fmt.Printf("FAIL %-8s %-13s %v\n", gen, lk.name, fail)
+			}
+		}
+	}
+	// The same filter on the same material should not change look between
+	// generations (the differences are the model's, to 1/255). Deep
+	// long-pass looks are near the noise floor (930 nm on the 4 µm stack is
+	// the worst) and get a wider allowance.
+	worst, worstKey := 0.0, ""
+	worstByLook := map[string]float64{}
+	deepLook := map[string]bool{}
+	for _, lk := range looks {
+		deepLook[lk.name] = lk.filter(700) < 0.2
+	}
+	for key := range out["Merrill"] {
+		look := key[:strings.LastIndex(key, "|")]
+		for k := 0; k < 3; k++ {
+			lo, hi := math.Inf(1), math.Inf(-1)
+			for _, gen := range irGenerations {
+				v := out[gen][key][k]
+				lo, hi = math.Min(lo, v), math.Max(hi, v)
+			}
+			d := hi - lo
+			if d > worstByLook[look] {
+				worstByLook[look] = d
+			}
+			if d > worst {
+				worst, worstKey = d, fmt.Sprintf("%s channel %d", key, k)
+			}
+		}
+	}
+	for _, lk := range looks {
+		if d := worstByLook[lk.name]; d > 0.005 {
+			fmt.Printf("  %-13s cross-generation spread %.4f\n", lk.name, d)
+		}
+	}
+	fmt.Printf("cross-generation worst spread %.4f (%s), limit 0.03 shallow / 0.25 deep\n", worst, worstKey)
+	for look, d := range worstByLook {
+		if (deepLook[look] && d > 0.25) || (!deepLook[look] && d > 0.03) {
+			ok = false
+		}
+	}
+	if ok {
+		fmt.Println("IR check: PASS")
+	} else {
+		fmt.Println("IR check: FAIL")
+	}
+	return ok
 }

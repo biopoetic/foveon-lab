@@ -240,6 +240,12 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
 - **Cameras:** tested on files from the SD9, SD10, SD14, SD15, SD1 Merrill, DP1, DP1 Merrill,
   dp2 Quattro, DP0 Quattro, sd Quattro and sd Quattro H. Merrill bodies get the SD1 presets,
   SD14/DP1/DP2 the SD15 presets (same sensor generations).
+- **Full-spectrum infrared is calibrated on the Merrill generation only.** Four real SD1 Merrill
+  shots with the IR-cut dust protector removed fixed its effective IR layer depths; Quattro,
+  SD14/SD15 and SD9/SD10 have no full-spectrum frames, so their looks are predicted from the same
+  silicon model and the SD1 measurement and are labelled *approximate* where the IR look is
+  chosen. The look still works, but colour and highlight recovery on those bodies are not
+  measured, and the deepest 930/1000 nm filters are photon-starved and noisy.
 - **SD9 / SD10** carry no full-size preview. Foveon Lab decodes their raw data at full resolution
   itself (a Go port of [x3fuse-core](https://github.com/sagwaco/x3fuse-core)'s decoder). A raw
   decode has no in-camera look, so it starts more neutral than the JPEG-based previews of the

@@ -578,6 +578,16 @@ func main() {
 		irCalib()
 		return
 	}
+	if os.Getenv("IRPREDICT") != "" {
+		irPredict()
+		return
+	}
+	if os.Getenv("IRCHECK") != "" {
+		if !irCheck() {
+			os.Exit(1)
+		}
+		return
+	}
 	if out := os.Getenv("IR"); out != "" {
 		irMain(out)
 		return
