@@ -321,6 +321,12 @@ func loadMeta(ph *Photo) bool {
 		if m.ApproxColour {
 			ph.Info["DNG"] += " (no colour matrix: colour approximate)"
 		}
+		if m.Notice != "" {
+			ph.Info["DNG"] += ". " + m.Notice
+		}
+		if m.Mirror {
+			ph.Info["DNG"] += ". Mirrored orientation: the turn is applied, the mirror is not"
+		}
 		// Not a Foveon file: Camera stays empty, so every film preset is
 		// offered and no camera family is implied.
 		return true

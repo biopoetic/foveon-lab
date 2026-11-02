@@ -148,6 +148,23 @@ func TestDNGPhotoEndToEnd(t *testing.T) {
 	}
 }
 
+func TestDNGOrientationMirror(t *testing.T) {
+	l := &render.Linear{W: 3, H: 2, Pix: make([]float32, 3*2*3)}
+	for i := 0; i < 6; i++ {
+		l.Pix[i*3] = float32(i)
+	}
+	mirrorLinearH(l)
+	// Row 0 was 0 1 2, now 2 1 0.
+	if l.Pix[0] != 2 || l.Pix[3] != 1 || l.Pix[6] != 0 {
+		t.Fatalf("horizontal mirror: %v", l.Pix[:9])
+	}
+	mirrorLinearV(l)
+	// Row 0 is now the old row 1: 5 4 3.
+	if l.Pix[0] != 5 || l.Pix[3] != 4 || l.Pix[6] != 3 {
+		t.Fatalf("vertical mirror: %v", l.Pix[:9])
+	}
+}
+
 func TestDNGLayersAreSanitised(t *testing.T) {
 	ph := &Photo{Kind: "dng"}
 	p := preset.Neutral()

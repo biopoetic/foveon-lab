@@ -47,10 +47,47 @@ func dngDevelopRot(ph *Photo, maxW int, rotate bool) (*render.Linear, error) {
 	if rotate && ph.Rotation != 0 {
 		l = l.Rotate(ph.Rotation)
 	}
+	if rotate && img.Meta.Mirror {
+		// TIFF orientations 2/5 mirror horizontally after the turn, 4/7
+		// vertically. Applying the mirror here means the main view is
+		// upright and unmirrored; the cull thumbnail path still gets the
+		// turn only and the list says so.
+		switch img.Meta.Orientation {
+		case 2, 5:
+			mirrorLinearH(l)
+		case 4, 7:
+			mirrorLinearV(l)
+		}
+	}
 	if iso, err := strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64); err == nil && iso > 0 {
 		l.ISO = iso
 	}
 	return l, nil
+}
+
+// mirrorLinearH/V flip an already-upright linear image in place. A DNG with a
+// mirrored TIFF Orientation is rare, but applying it is a pure copy and the
+// alternative (a note saying the picture is the wrong way round) is worse.
+func mirrorLinearH(l *render.Linear) {
+	for y := 0; y < l.H; y++ {
+		row := l.Pix[y*l.W*3 : (y+1)*l.W*3]
+		for x := 0; x < l.W/2; x++ {
+			a, b := x*3, (l.W-1-x)*3
+			row[a], row[b] = row[b], row[a]
+			row[a+1], row[b+1] = row[b+1], row[a+1]
+			row[a+2], row[b+2] = row[b+2], row[a+2]
+		}
+	}
+}
+
+func mirrorLinearV(l *render.Linear) {
+	for y := 0; y < l.H/2; y++ {
+		a := l.Pix[y*l.W*3 : (y+1)*l.W*3]
+		b := l.Pix[(l.H-1-y)*l.W*3 : (l.H-y)*l.W*3]
+		for i := range a {
+			a[i], b[i] = b[i], a[i]
+		}
+	}
 }
 
 // sourceParams removes the settings that only mean something on Foveon
