@@ -134,7 +134,9 @@ func (b *Base) newFilm(p preset.Params, mono bool) *filmOp {
 func (b *Base) newFilmOp(p preset.Params, mono, buildNoise bool) *filmOp {
 	target := p.Grain / 1000 // RMS granularity -> density sigma
 	film, hasFilm := FilmByKey(p.Film)
-	if target <= 0 && hasFilm {
+	if p.NoGrain {
+		target = 0
+	} else if target <= 0 && hasFilm {
 		// Choosing a film turns its grain on. The slider still scales it
 		// (p.Grain > 0 overrides this base value).
 		target = film.Grain / 1000

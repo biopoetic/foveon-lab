@@ -98,6 +98,9 @@ func TestFilmGrainOnByDefault(t *testing.T) {
 	if a == nil || a.sigma == 0 {
 		t.Fatal("selecting a film did not turn its grain on")
 	}
+	if off := b.newFilm(preset.Params{Film: "Ilford Pan F Plus", NoGrain: true}, true); off != nil && off.sigma != 0 {
+		t.Errorf("NoGrain still built grain: %.3f", off.sigma)
+	}
 	d := b.newFilm(preset.Params{Film: "Ilford Pan F Plus", Grain: 2 * f.Grain}, true)
 	if d.sigma < 1.9*a.sigma || d.sigma > 2.1*a.sigma {
 		t.Errorf("doubling the slider gave %.3f x the grain, want 2", d.sigma/a.sigma)

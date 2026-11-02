@@ -63,6 +63,10 @@ type Params struct {
 	Grain     float64 `json:"grain,omitempty"`
 	FilmWidth float64 `json:"filmWidth,omitempty"`
 	Halation  float64 `json:"halation,omitempty"`
+	// NoGrain turns a named film's grain off for a render that isolates its
+	// colour and tone (the Compare films tiles). It is not a user slider;
+	// choosing a film otherwise turns its grain on.
+	NoGrain bool `json:"noGrain,omitempty"`
 	// Film names the library film: its grain, and for a black-and-white
 	// film its spectral sensitivity and characteristic curve.
 	Film string `json:"film,omitempty"`
