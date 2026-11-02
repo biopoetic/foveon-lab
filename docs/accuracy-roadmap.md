@@ -2,7 +2,9 @@
 
 > The project's mission, principles and current goals are in the [manifest](MANIFEST.md). This file
 > is the detailed record of the "match SPP" work; the "Where we are" table below is from
-> 13 October 2026 (since then: SD1 3.97, DP Merrill 4.21, SD15 6.03 held out, all from the raw base).
+> 13 October 2026. The 2 November 2026 regression is 6.705 over 183 photos (DP 4.792, DPM 6.388,
+> Quattro 5.616, SD1 3.625, SD9 8.741, SD10 8.865, SD14 8.772, SD15 10.689), and the work since
+> 28 October is in "Since 28 October" below.
 
 Where Foveon Lab's preview stands against Sigma Photo Pro 6.9, and what each further step would
 take. All numbers are mean absolute difference per pixel and channel, 0–255, measured on photos the
@@ -190,6 +192,98 @@ families the model was fitted on.
 
 **Exports are automatic now:** `foveon-lab calibrate -auto -photo <name> -steps A,B,C,V,W` drives SPP
 itself (~40 s per export, unattended), so every step below that "needs exports" costs only time.
+
+## Since 28 October (2 November 2026)
+
+The full `spp-check` on 2 November reads **6.705** over 183 photos: DP 4.792, DPM 6.388, Quattro
+5.616, SD1 3.625, SD9 8.741, SD10 8.865, SD14 8.772, SD15 10.689. It is a fixed regression set, not
+a held-out one: six of the 181 sample-folder photos are non-neutral reference exports (they average
+18.90 on the `area@ev0` column instead), and the two SD1 files are the calibration pair. Held-out
+figures are named as such.
+
+### DP2 balance (1 November 2026)
+
+The original DP2 stores an Auto white balance that matches neither its own JPEG nor SPP: its raw
+render is far too red, while the DP2X, on the same calibration group, is neutral. `rawJPEGBalance`
+now measures the three channel means of one fixed 1200 px development and of the camera JPEG, and
+puts the raw on the JPEG's mean colour with a luminance-preserving gain. Frames too dark or too
+clipped for a mean are refused (mean Y < 0.01, more than 5% clipped in either image, or a gain
+outside 0.5–1.6). The gains are measured once and cached on the photo, so a crop, a list tile, a
+downsized view and Max Detail's two highlight stages all get the same numbers; a refused frame is
+refused on every path. An explicit preset white balance is left alone instead of being pulled back
+to the camera's as-shot colour. The first version re-measured whatever image it was handed, so
+different views could get different gains — that was the defect fixed on 1 November.
+
+Nine original-DP2 photos went from **8.12 to 4.18** mean; the worst two, 14.08 → 5.50 and
+13.30 → 3.72. The DP group on the full run went **6.060 → 4.792**. Two frames (2.41 and 4.62) did
+not move: they were already on the JPEG's mean or were refused by the guards.
+
+### Base-ISO texture (2 November 2026)
+
+SPP keeps more pixel-scale texture at base ISO on DPM and Quattro than our 0.3 denoise did: in the
+<0.7 px band our energy was **0.78–0.93 of SPP's**. The default is now 0.15 at ISO 400 and below on
+those two families; above ISO 400, and on every other generation, it stays 0.3. An explicit `-dnN`
+or `-nodenoise` keeps its number, including `-dn3`, which is numerically the old default. The
+regression moves DPM 6.399 → 6.388 and Quattro 5.623 → 5.616; the band measurement is the direct
+evidence, the regression is the guard that nothing else moved.
+
+High ISO was measured and deliberately left at 0.3. Less smoothing there made the frames worse: the
+missing energy is SPP's noise, which this project removes on purpose.
+
+### Max Detail's limits (31 October – 1 November 2026)
+
+Max Detail's highlight half works: it rebuilds clipped layers and ramps only the highlights the raw
+rebuilt (the leaf in SDIM0031 is the reference frame). Its shadow half is nearly invisible on a
+normally exposed frame, and that is a measured limit, not a tuning failure.
+
+On `DP1MPINE` (DPM, ISO 100), SPP's Fill Light +1 lifts the dark pixels **+1.56 EV** and doubles
+their local high-pass RMS (2.4×); Max Detail moves the same pixels **+0.02 EV**. On `SDIM0031`
+(SD1, ISO 200) it is +0.03 EV against SPP's +1.43 EV (2.8× the RMS). The reason is the display's
+black pedestal: DPM `0.001472` (-9.4 EV), Quattro `0.001513` (-9.4 EV), SD1 `0.001224` (-9.7 EV).
+Below it every raw value maps to one display value, so no post-correction curve can recover
+contrast. At base ISO the display-visible structure below the current gate is only **0–0.06 stop**
+on every body. The larger gaps — Quattro 400–6400 0.65–2.09 stop, SD14 800/1600 1.45/3.53, DP 1600
+0.58 — are 4–8 display codes at SNR 1–2, and lifting them adds grain or a grey veil.
+
+Seven candidates were tried: a lower gate, a shorter ramp, a stronger curve, a structure-gated
+region, a blind dark region at 30/50/65%, and an additive 0.004/0.5-stop region. The best changed
+10,136 pixels by at most 8 codes and added no visible 1:1 detail; the 65% blind lift turned the
+black window frame milky. None shipped. SPP's Fill Light is a stronger tone map, not more resolved
+detail: on the pine crop it flattens the tree and shifts the sky toward lavender, the look the old
+2.2× shadow curve was rejected for. Max Detail therefore keeps its highlight recovery and its open
+shadows; Fill-Light-strength shadows need a different operator and are still missing.
+
+### What failed
+
+- **The whole shadow plan above.** Nothing shipped, and the black pedestal says a post-correction
+  curve cannot reach it.
+- **Reduced-scale JPEG decode** (task 33): a half-resolution decode differs from the full one by
+  more than rounding, and still Huffman-decodes every coefficient; the realistic saving is 25–35%
+  of one decode. A custom baseline decoder is 1,000+ lines to own. Not shipped.
+- **A semaphore cap of 2** for the preview server: 12.2 s against 12.0 s on the preset grid — noise.
+- **Parallelising `NewBase`**: the mask and surround accumulators would change float addition order
+  and therefore pixels. Bit-identical is a hard rule, so the 0.2–0.5 s stays serial.
+- **A content-dependent crop of the EXIF letterbox**: the centred crop is within one row of the best
+  offset; a brute-force `y0 = 24..28` scan changed the mean by under one code.
+- **Four batch workers** (task 36): 78.1 s against 39.9 s at three on SD9/SD10; each export already
+  uses every core, so a fourth only adds contention and memory pressure.
+- **A soft Go memory limit beside the batch's admission gate**: no measurable difference (58 s with
+  and without on the same SD10 run).
+- **Parallelising the remaining float sums** (Fill Light and shadow grids, area resample, denoise):
+  rejected because it changes the last bit. Only provably independent outputs were split.
+- **A lower default denoise at high ISO** (task 37): worse on the high-ISO frames, so only base ISO
+  changed.
+
+### What's next
+
+The action plan, in order:
+
+1. DNG in a real editor.
+2. Colour noise at ISO 1600+.
+3. Full-spectrum IR for Quattro and the older bodies.
+4. Other cameras' raws in the film simulator.
+5. Film checks against real slides and prints, which needs samples.
+6. Mac Photos test and x3fuse comparison, which need the owner.
 
 ## Steps, by expected gain
 

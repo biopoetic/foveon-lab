@@ -27,30 +27,32 @@ darktable…). Other cameras' files can come in too, to go through the same film
 ## Goals and where we are
 
 Updated with each release. Errors are mean absolute difference per pixel and channel (0–255) on
-photos the fit didn't see; under ~3 is invisible.
+photos the fit didn't see; under ~3 is invisible. The 183-photo `spp-check` below is a fixed
+regression set, not all held out: six of its 181 sample-folder photos are non-neutral reference
+exports, and the two SD1 files are the calibration pair. Held-out figures are marked as such.
 
 ### 1. Match, then outmatch SPP
 
-| Goal | Done when | Now (October 2026) |
+| Goal | Done when | Now (2 November 2026) |
 |---|---|---|
 | Raw decoding | Every X3F generation, native, bit-identical to reference | ~90% — native Go, value-identical to x3f_extract on 60+ files |
-| Colour & tone vs SPP | ≤ 3/255 held out, every family | Every body has its own raw base fitted on SPP's neutral exports (~260 references). Held out: SD1 4.7, DP Merrill 5.7, SD15 5.8, DP1/DP2 5.8; Quattro 9.5, and 6.2 on the regression check since the per-model exposure (v0.4.62). Sliders: 0.3–4.7 on six SD1/SD15 photos (mean ~1.5); white balance (W02/W06) 0.7–3.0 |
-| Older cameras | SD9 / SD10 / SD14 / Quattro measured against SPP | **Done to ~9–10:** own raw bases since October 2026, held out SD10 9.5 (19 photos), SD14 9.7 (25), SD9 10.6 (13), from several bodies each (Sigma's 2003–05 sample galleries via the Internet Archive and other public samples); Auto white balance from the camera's own measurement (AutoRGBNeutral) |
-| Sharpening & detail | Matches SPP's default per ISO and generation | Done for SD1 Merrill, SD15 and the DP Merrills (their own finer mask; ISO 100 within ~1% of SPP per band) |
-| Noise reduction | Beats SPP side by side at ISO 1600+ | Detail: we keep more of the ISO 100 frame's texture than SPP on the DP1 Merrill series (ISO 1600 0.83 vs 0.71, ISO 6400 0.64 vs 0.40) and on the dp2 Quattro. Colour noise: SPP still cleaner at ISO 1600+ (colour error vs ISO 100, 4.7 vs 2.9 at 1600). Colour holds like SPP's across the ISO range (Quattro cast fixed in v0.4.63) |
+| Colour & tone vs SPP | ≤ 3/255 held out, every family | Every body has its own raw base. 183-photo regression (2 Nov): **6.705** overall — DP 4.79, DPM 6.39, Quattro 5.62, SD1 3.63, SD9 8.74, SD10 8.87, SD14 8.77, SD15 10.69. Held out, the raw mapping reads SD1 4.70, DP Merrill 5.7, SD15 5.84, DP1/DP2 5.8 (Quattro's held-out fit is the older 9.5). Sliders: 0.3–4.7 on six SD1/SD15 photos (mean ~1.5); white balance (W02/W06) 0.7–3.0 |
+| Older cameras | SD9 / SD10 / SD14 / Quattro measured against SPP | Own raw bases since October 2026. 2 Nov regression: SD10 8.87 (20 photos), SD14 8.77 (25), SD9 8.74 (12). Held out: SD10 9.5, SD14 9.7, SD9 10.6, from several bodies each (Sigma's 2003–05 public galleries and other public samples). Not done to ~3: the limit is tone, not a group correction |
+| Sharpening & detail | Matches SPP's default per ISO and generation | Done for SD1 Merrill, SD15 and the DP Merrills (their own finer mask; ISO 100 within ~1% of SPP per band); the DPM/SD1 amounts were retuned to two thirds and Quattro got SPP's sharpening (1 Nov 2026) |
+| Noise reduction | Beats SPP side by side at ISO 1600+ | Detail: we keep more of the ISO 100 frame's texture than SPP on the DP1 Merrill series (ISO 1600 0.83 vs 0.71, ISO 6400 0.64 vs 0.40) and on the dp2 Quattro. Base ISO: the <0.7 px band was 0.78–0.93 of SPP's energy, so DPM/Quattro use 0.15 denoise at ISO ≤400 (2 Nov). Colour noise: SPP is still cleaner at ISO 1600+ (colour error vs ISO 100, 4.7 vs 2.9 at 1600). Colour holds like SPP's across the ISO range (Quattro cast fixed in v0.4.63) |
 | Full-spectrum IR | Calibrated per generation | Merrill only |
-| DNG with SPP colours | The hand-off to other editors opens looking like SPP | ~85% — SPP-neutral profile embedded, not yet checked in a real editor |
+| DNG with SPP colours | The hand-off to other editors opens looking like SPP | Rendered DNG against our own render: 0.34/255 mean, 0.23 dE2000. Raw DNG tags pass DNG 1.4 on eight generations (SD9, SD10, SD14, SD15, SD1, DPM, DP, Quattro); portrait orientation was fixed 2 Nov (it was written as 1). The embedded SPP-neutral profile lands 2.1–4.4 dE2000 from our render on the other seven generations and 7.3 on the DP2, whose raw DNG keeps the file's uncorrected Auto white balance. No third-party DNG reader exists on this machine, so it has not been opened in a real editor yet |
 
 ### 2. A complete film simulator
 
-| Goal | Done when | Now (October 2026) |
+| Goal | Done when | Now (2 November 2026) |
 |---|---|---|
-| B&W film & darkroom | The makers' curves, developers, push/pull, papers and grades | 9 films with developers and push, Ilford paper grades 00–5 |
-| Colour film | The makers' curves, sensitivities and dyes for slides and negatives, checked against real slides and prints | 7 films (5 slides, 2 negatives), 2 papers, colour darkroom (Y/M/C filtration, print exposure) — not yet checked against real slides or prints |
+| B&W film & darkroom | The makers' curves, developers, push/pull, papers and grades | 9 fully modelled films with developers and push, Ilford paper grades 00–5 |
+| Colour film | The makers' curves, sensitivities and dyes for slides and negatives, checked against real slides and prints | 15 films (5 slides, 10 negatives), 2 papers, colour darkroom (Y/M/C filtration, print exposure) — not yet checked against real slides or prints |
 | Grain & halation | Each film's own granularity and halation, per format | Grain from each film's RMS (locked to the film, not a dial); halation modelled |
 | Lens filters | Physical filters through each sensor generation | Named real filters: the Wratten set on Kodak's measured transmittance (nine of ten; Wratten 47 approximate), brand filters by model (B+W, Hoya, Cokin, Tiffen, K&F, Kolari) on measured SCHOTT glass or published specs; neutral-density and graduated-ND products as density |
 | Other cameras' files | Raw files from other cameras into the same simulator | JPEG / TIFF / PNG only, no other raws yet |
-| Speed | Instant sliders | GPU preview, ~60 fps (film included) |
+| Speed | Instant sliders | GPU preview ~60 fps (film included); folder open 1.4–2.4 s (183 files, six connections), next photo 0.23 s when prefetched, preset grid 10–12 s; raw export Merrill 10.8 s, Quattro 17.5 s (2 Nov 2026, shared machine) |
 
 ## Non-goals
 

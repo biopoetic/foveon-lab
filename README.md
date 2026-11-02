@@ -29,6 +29,9 @@ renders an X3F — for anyone building X3F tools — is in [How SPP works](docs/
   - **JPEG** — full resolution, preset applied;
   - **TIFF 16-bit** — full resolution, preset applied, no 8-bit rounding (Deflate-compressed RGB, no
     alpha) for further editing in Photoshop, Affinity, GIMP…;
+  - **DNG (rendered)** — full-resolution 16-bit linear DNG of the finished look, in linear sRGB,
+    for Lightroom / Capture One / darktable / Apple Photos; it opens looking like the preview, with
+    white balance and exposure still editable;
   - **DNG (raw)** — the X3F's raw data as a DNG 1.4 with colour matrices, for Lightroom / Capture
     One / darktable (any Foveon body). A raw file can't carry the preset, so a **`.cube` LUT of the
     preset** is written next to it;
@@ -36,8 +39,8 @@ renders an X3F — for anyone building X3F tools — is in [How SPP works](docs/
     Photoshop (*Color Lookup*), Camera Raw / Lightroom (via a profile made in Camera Raw), DaVinci
     Resolve, Affinity… Apply it to a neutral rendering. It is the preview's own per-pixel maths
     (within 0.5/255 of the preview); Fill Light becomes a global shadow lift and Sharpness is left out.
-- **Batch export:** one preset (or your tuned settings) on a whole folder or every photo, as JPEG or
-  16-bit TIFF.
+- **Batch export:** one preset (or your tuned settings) on a whole folder or every photo, as JPEG,
+  16-bit TIFF or DNG.
 - **Calibration tools** measure what SPP actually does, to replace guesses with measured curves (below).
 
 Single Go binary, no runtime dependencies, runs locally on `127.0.0.1` only.
@@ -132,7 +135,7 @@ another name. The import writes the XML and its `FoveonLab_FL.json` entry, so SP
 The calibration switches (**Undo camera JPEG look**, **Size**, **Accurate preview**) live in
 **⚙ Settings** (or `C`). **★ Favorites** and **All images** stay in the header, with the cull rating and
 rejected filters in the photo list, because they choose which photos you are looking at. The photo info
-also shows the body's measured gap against SPP from the latest `spp-check`, e.g. *SD1 Merrill 4.0/255
+also shows the body's measured gap against SPP from the latest `spp-check`, e.g. *SD1 Merrill 3.6/255
 from Sigma Photo Pro on 2 photos*; the table is regenerated with `go run ./tools/sppgap -json
 docs/spp-check.json`.
 
@@ -194,12 +197,12 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
 - **Where the preview starts.** The camera's own JPEG already has the in-camera colour mode applied
   (Vivid, FC Blue…), so even before any preset it differs from SPP's neutral rendering — measured on
   13 photos: about 17–21/255 on average, up to 40 for FC Blue shots. "Compensate camera JPEG" undoes
-  part of that from the X3F metadata. **Accurate** (on by default) does better for **SD1 Merrill, DP
-  Merrill and SD15** files: it starts from the raw data (decoded natively, no external tools) mapped onto SPP's neutral
-  look — on photos the mapping was not fitted on: **SD1 3.97/255, DP Merrill 4.21, SD15 6.03**, vs
-  ~17–21 for the camera JPEG. The first view of a photo shows the JPEG at once and swaps in the
-  accurate preview when the raw decode is done (cached). A damaged embedded JPEG falls back to the
-  raw data.
+  part of that from the X3F metadata. **Accurate** (on by default) does better for every X3F
+  generation: it starts from the raw data (decoded natively, no external tools) mapped onto SPP's
+  neutral look. Held out, that mapping reads **SD1 4.70/255, DP Merrill 5.7, SD15 5.84, DP1/DP2
+  5.8**, against ~17–21 for the camera JPEG; the full 183-photo regression (not all held out) is
+  **6.705** overall. The first view of a photo shows the JPEG at once and swaps in the accurate
+  preview when the raw decode is done (cached). A damaged embedded JPEG falls back to the raw data.
 - **ColorMode codes**: all measured in SPP. 4 = Standard, 6 = Portrait, 7 = Landscape; 5 and 8 are
   two further looks (8 is more saturated with hue shifts); 0–3 and 9–12 all render like one default
   mode. Each is emulated within ~1–2/255.
@@ -217,7 +220,12 @@ foveon-lab -ai-base https://api.openai.com/v1 -ai-model <vision model> -ai-key-e
   itself (a Go port of [x3fuse-core](https://github.com/sagwaco/x3fuse-core)'s decoder). A raw
   decode has no in-camera look, so it starts more neutral than the JPEG-based previews of the
   other bodies.
-- **Raw DNG** export works for every body, Quattro included, without external tools.
+- **Raw DNG** export works for every body, Quattro included, without external tools. The rendered
+  DNG was checked against the app's own render (0.34/255 mean, 0.23 dE2000); the raw DNG's tags pass
+  DNG 1.4 on eight generations, and portrait files now carry their orientation (fixed 2 November
+  2026). The embedded SPP-neutral profile is 2.1–4.4 dE2000 from our render on the other seven
+  generations and 7.3 on the DP2, whose raw DNG keeps the file's uncorrected Auto white balance. No
+  real editor has been run on this machine, so opening in one is still to do.
 
 ## Calibration: measuring SPP instead of guessing
 
