@@ -119,14 +119,13 @@ func (site publishSite) cropRect(w, h int, c *publishCrop) (image.Rectangle, err
 }
 
 // outputSize is the JPEG's pixel size for a cropped rectangle. Fixed sites
-// are exact. Free shapes keep their own shape: 2048 on the long edge (not
-// upscaled), or 500px's 2048 on the short edge.
+// are exact. Free shapes keep their own shape and are never enlarged: 2048 on
+// the long edge, or 500px's 2048 on the short edge.
 func (site publishSite) outputSize(w, h int) (int, int) {
 	if site.W > 0 && site.H > 0 {
 		return site.W, site.H
 	}
-	if site.TargetShort > 0 {
-		short := min(w, h)
+	if short := min(w, h); site.TargetShort > 0 && short > site.TargetShort {
 		f := float64(site.TargetShort) / float64(short)
 		return max(1, int(math.Round(float64(w)*f))), max(1, int(math.Round(float64(h)*f)))
 	}

@@ -242,8 +242,8 @@ func TestPublishFreeShapesKeepTheirShape(t *testing.T) {
 		t.Fatalf("500px publish: %v", done)
 	}
 	p, _ = lines[0]["path"].(string)
-	if w, h := jpegSize(t, p); w != 3072 || h != 2048 {
-		t.Fatalf("500px %dx%d, want 3072x2048", w, h)
+	if w, h := jpegSize(t, p); w != 1200 || h != 800 {
+		t.Fatalf("500px %dx%d, want 1200x800 (never enlarged)", w, h)
 	}
 }
 

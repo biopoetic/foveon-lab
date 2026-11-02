@@ -132,7 +132,7 @@ is the fallback for a photo that has no cull decision yet.
 **Publish…** in the header (right after **Export…**) writes a JPEG at a social site's size from the
 photo you are looking at *and its current look*: Instagram portrait 1080×1350, square 1080×1080 or
 landscape 1080×566; Facebook, Flickr and Web at 2048 on the long edge; 500px at 2048 on the short
-edge. It is sRGB with the sRGB profile, and sharpened once more for the final size (the small 3×3
+edge, never enlarged. It is sRGB with the sRGB profile, and sharpened once more for the final size (the small 3×3
 unsharp mask the renderer already uses). The file goes in a `publish/` folder beside the photo, and
 a name already there is never replaced: the next one gets ` (2)`.
 
