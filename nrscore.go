@@ -42,6 +42,7 @@ import (
 	"github.com/biopoetic/foveon-lab/calib"
 	"github.com/biopoetic/foveon-lab/preset"
 	"github.com/biopoetic/foveon-lab/render"
+	"golang.org/x/image/tiff"
 )
 
 // nrMetric is one pipeline's measurement of one frame against its ISO 100
@@ -51,6 +52,25 @@ type nrMetric struct {
 	NoiseA [4]float64 `json:"noiseA"` // CIELAB a*, sigma
 	NoiseB [4]float64 `json:"noiseB"` // CIELAB b*, sigma
 	Detail [4]float64 `json:"detail"` // slope of this band on this pipeline's ISO 100
+	// ColourErrFlat/ColourErrTex are the mean CIELAB a*/b* distance from the
+	// reference over the ISO 100 flat blocks and over its textured pixels.
+	// The old headline "colour error against the ISO 100 frame" is the first
+	// of these; both are per-pixel and include noise.
+	ColourErrFlat float64 `json:"colourErrFlat"`
+	ColourErrTex  float64 `json:"colourErrTex"`
+	// ChromaErr is the RMS a*/b* distance from the reference per spatial
+	// band, 0-1, 1-2, 2-4, 4-8, 8-16, 16-32 and 32-128 px, over the flat
+	// blocks. The last two are the low-frequency blotches a per-pixel
+	// measure misses; Blotch32 is the combined 32-128 px figure.
+	ChromaErr [7]float64 `json:"chromaErr"`
+	Blotch32  float64    `json:"blotch32"`
+	// ChromaDetail is the slope of this chroma band on the reference's
+	// chroma over textured pixels: 1 = all the fine colour detail is kept.
+	ChromaDetail [4]float64 `json:"chromaDetail"`
+	// ShiftX/ShiftY: integer translation of this frame against its own ISO
+	// 100 frame, measured on the luma high-pass (0 = registered).
+	ShiftX int `json:"shiftX,omitempty"`
+	ShiftY int `json:"shiftY,omitempty"`
 	// DetailBasis is the same band-by-band slope, but on one fixed reference
 	// per ladder: the ISO 100 frame rendered with noise reduction off (the
 	// tools/sharpfit -gain basis). It does not move with the pipeline under
@@ -197,7 +217,11 @@ func nrScoreCommand(desk string) {
 	var recs []nrRecord
 	crop := nrCrop{dir: *cropDir, iso: *cropISO, size: *cropSize, x: *cropX, y: *cropY, only: *cropOnly}
 	for _, l := range ladders {
-		rs, err := scoreLadder(l, *nr, crop)
+		fixedW := ladderWidth(l)
+		if fixedW > 0 {
+			fmt.Printf("  %-22s analysis width %d px (smallest SPP export in the ladder)\n", l.key, fixedW)
+		}
+		rs, err := scoreLadder(l, *nr, crop, fixedW)
 		if err != nil {
 			fmt.Printf("%s: %v\n", l.key, err)
 			continue
@@ -319,8 +343,37 @@ type nrCrop struct {
 	only bool
 }
 
-// scoreLadder renders and measures one ladder against its ISO 100 frame.
-func scoreLadder(l *nrLadder, nr float64, crop nrCrop) ([]nrRecord, error) {
+// exportWidth reads an image's pixel width from its header only.
+func exportWidth(path string) int {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	cfg, err := tiff.DecodeConfig(f)
+	if err != nil || cfg.Width <= 0 {
+		return 0
+	}
+	return cfg.Width
+}
+
+// ladderWidth is the smallest SPP export width in the ladder. The sd Quattro
+// H exports are not all the same size (6192, 3096, 2064, 1548 px), and a
+// spatial band at a different size covers a different part of the scene, so
+// every frame is measured at this common width.
+func ladderWidth(l *nrLadder) int {
+	w := exportWidth(l.refEx)
+	for _, it := range l.items {
+		if iw := exportWidth(it.exp); iw > 0 && (w == 0 || iw < w) {
+			w = iw
+		}
+	}
+	return w
+}
+
+// scoreLadder renders and measures one ladder against its ISO 100 frame. A
+// positive fixedW resamples every frame and both references to that width.
+func scoreLadder(l *nrLadder, nr float64, crop nrCrop, fixedW int) ([]nrRecord, error) {
 	if crop.only && crop.dir != "" {
 		var out []nrRecord
 		for _, it := range l.items {
@@ -338,6 +391,9 @@ func scoreLadder(l *nrLadder, nr float64, crop nrCrop) ([]nrRecord, error) {
 				continue
 			}
 			ours, spp = matchSize(ours, spp)
+			if fixedW > 0 && ours.W > fixedW {
+				ours, spp = ours.Downscale(fixedW), spp.Downscale(fixedW)
+			}
 			saveNRCrops(crop, l.key, it.ph.Name, ours, spp)
 			out = append(out, nrRecord{Ladder: l.key, Ref: l.ref.Name, Name: it.ph.Name,
 				Group: calibGroup(it.ph), Model: modelOf(it.ph), ISO: it.iso, W: ours.W, H: ours.H, OursMS: ms})
@@ -355,6 +411,9 @@ func scoreLadder(l *nrLadder, nr float64, crop nrCrop) ([]nrRecord, error) {
 		return nil, fmt.Errorf("%s: %v", l.refEx, err)
 	}
 	refOurs, refSPP = matchSize(refOurs, refSPP)
+	if fixedW > 0 && refOurs.W > fixedW {
+		refOurs, refSPP = refOurs.Downscale(fixedW), refSPP.Downscale(fixedW)
+	}
 	// The fixed detail basis: the ISO 100 frame without noise reduction (the
 	// same raw data, app settings and size as ours), so the reference does
 	// not get softer when a pipeline's restore is switched off.
@@ -363,6 +422,9 @@ func scoreLadder(l *nrLadder, nr float64, crop nrCrop) ([]nrRecord, error) {
 		return nil, err
 	}
 	refBasis, _ = matchSize(refBasis, refSPP)
+	if fixedW > 0 && refBasis.W > fixedW {
+		refBasis = refBasis.Downscale(fixedW)
+	}
 	refBasisLab := toLab8(refBasis)
 	refOursLab, refSPPLab := toLab8(refOurs), toLab8(refSPP)
 	refOurs, refSPP = nil, nil
@@ -385,6 +447,9 @@ func scoreLadder(l *nrLadder, nr float64, crop nrCrop) ([]nrRecord, error) {
 			continue
 		}
 		ours, spp = matchSize(ours, spp)
+		if fixedW > 0 && ours.W > fixedW {
+			ours, spp = ours.Downscale(fixedW), spp.Downscale(fixedW)
+		}
 		if crop.dir != "" && it.iso == crop.iso {
 			saveNRCrops(crop, l.key, it.ph.Name, ours, spp)
 		}
@@ -407,6 +472,15 @@ func scoreLadder(l *nrLadder, nr float64, crop nrCrop) ([]nrRecord, error) {
 		oLab, sLab := toLab8(ours), toLab8(spp)
 		om := measureNR(oLab, rO, rB, selO)
 		sm := measureNR(sLab, rS, rB, selS)
+		// The same flat blocks and textured pixels for both pipelines, chosen
+		// on our ISO 100 frame; the colour split is measured against each
+		// pipeline's own ISO 100, so a static rendering difference cancels.
+		tex := texturedMask(rO)
+		strict := strictFlatMask(rO, selO)
+		om.measureColour(oLab, rO, selO, strict, tex)
+		sm.measureColour(sLab, rS, selS, strict, tex)
+		om.ShiftX, om.ShiftY = estimateShift(rO, oLab)
+		sm.ShiftX, sm.ShiftY = estimateShift(rS, sLab)
 		om.Blocks, sm.Blocks = blocks, blocks
 		out = append(out, nrRecord{
 			Ladder: l.key, Ref: l.ref.Name, Name: it.ph.Name,
@@ -1168,6 +1242,13 @@ func printNRSummary(recs []nrRecord) {
 		osatS, ssatS float64    // saturation retention (saturated flat colour)
 		oabs, sabs   float64    // absolute chroma on those blocks
 		oerr, serr   float64    // colour error
+		ocef, scef   float64    // mean a*b* error, flat blocks
+		ocet, scet   float64    // mean a*b* error, textured pixels
+		ob32, sb32   float64    // 32-64 px blotch
+		oce, sce     [7]float64 // chroma error per band
+		ocd, scd     [4]float64 // fine chroma detail slope
+		oshift       int        // largest |shift| of ours against its ISO 100
+		sshift       int        // largest |shift| of SPP against its ISO 100
 		oda2, odb2   float64    // dark a*/b*
 		sda2, sdb2   float64
 		osp, ssp     float64 // dark spread
@@ -1216,6 +1297,22 @@ func printNRSummary(recs []nrRecord) {
 		a.sabs += r.SPP.SatAbs
 		a.oerr += r.Ours.ColourErr
 		a.serr += r.SPP.ColourErr
+		a.ocef += r.Ours.ColourErrFlat
+		a.scef += r.SPP.ColourErrFlat
+		a.ocet += r.Ours.ColourErrTex
+		a.scet += r.SPP.ColourErrTex
+		a.ob32 += r.Ours.Blotch32
+		a.sb32 += r.SPP.Blotch32
+		for b := 0; b < 7; b++ {
+			a.oce[b] += r.Ours.ChromaErr[b]
+			a.sce[b] += r.SPP.ChromaErr[b]
+		}
+		for b := 0; b < 4; b++ {
+			a.ocd[b] += r.Ours.ChromaDetail[b]
+			a.scd[b] += r.SPP.ChromaDetail[b]
+		}
+		a.oshift = max(a.oshift, max(absInt(r.Ours.ShiftX), absInt(r.Ours.ShiftY)))
+		a.sshift = max(a.sshift, max(absInt(r.SPP.ShiftX), absInt(r.SPP.ShiftY)))
 		a.oda2 += r.Ours.DarkA
 		a.odb2 += r.Ours.DarkB
 		a.sda2 += r.SPP.DarkA
@@ -1270,6 +1367,36 @@ func printNRSummary(recs []nrRecord) {
 		fmt.Printf("%-24s %5g %3d  %6.3f/%5.3f %6.3f/%5.3f %6.3f/%5.3f %6.1f/%5.1f %6.2f/%5.2f\n",
 			k.body, k.iso, a.n, a.osat/n, a.ssat/n, a.osatL/n, a.ssatL/n, a.osatS/n, a.ssatS/n,
 			a.oabs/n, a.sabs/n, a.oerr/n, a.serr/n)
+	}
+	fmt.Println("\nColour split against each pipeline's own ISO 100, ours / SPP: errFlat/errTex are the mean")
+	fmt.Println("a*b* distance on the flat blocks / textured pixels; 8-16, 16-32 and 32-64 are the chroma")
+	fmt.Println("error in those spatial bands; blotch32 is the 32-64 band; chromaDet is the 0-1 px slope (1 = kept):")
+	fmt.Printf("%-24s %5s %3s %13s %13s %13s %13s %13s %13s %13s\n", "body", "ISO", "n", "errFlat", "errTex", "8-16", "16-32", "32-64", "blotch32", "chromaDet")
+	for _, k := range ks {
+		a := by[k]
+		n := float64(a.n)
+		fmt.Printf("%-24s %5g %3d %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f %6.2f/%5.2f\n",
+			k.body, k.iso, a.n,
+			a.ocef/n, a.scef/n, a.ocet/n, a.scet/n,
+			a.oce[4]/n, a.sce[4]/n, a.oce[5]/n, a.sce[5]/n, a.oce[6]/n, a.sce[6]/n,
+			a.ob32/n, a.sb32/n, a.ocd[0]/n, a.scd[0]/n)
+	}
+	fmt.Println("\nChroma error per band in strict flat colour, ours / SPP (RMS a*b* distance; the low bands are")
+	fmt.Println("the blotches a per-pixel measure misses):")
+	fmt.Printf("%-24s %5s %3s %11s %11s %11s %11s %11s %11s %11s\n", "body", "ISO", "n", "0-1", "1-2", "2-4", "4-8", "8-16", "16-32", "32-64")
+	for _, k := range ks {
+		a := by[k]
+		n := float64(a.n)
+		fmt.Printf("%-24s %5g %3d", k.body, k.iso, a.n)
+		for b := 0; b < 7; b++ {
+			fmt.Printf(" %5.2f/%4.2f", a.oce[b]/n, a.sce[b]/n)
+		}
+		fmt.Println()
+	}
+	fmt.Println("\nRegistration against each pipeline's own ISO 100 (largest |integer shift| in the group, px):")
+	for _, k := range ks {
+		a := by[k]
+		fmt.Printf("%-24s %5g %3d  ours %d  SPP %d\n", k.body, k.iso, a.n, a.oshift, a.sshift)
 	}
 	fmt.Println("\nDark tones, ours / SPP: pepper is the 1-8 px luma sigma on flat blocks with ISO 100 luma < 32;")
 	fmt.Println("dark a*/b* and spread are 16x16 block means there (neutral = 0/0, spread = low-frequency mottle):")
