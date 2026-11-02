@@ -36,7 +36,13 @@ uniform int uW, uH, uFlipOut;
 uniform bool uUndo, uUndoGamma, uMeasured, uMono, uFilmTone, uWB, uWBTaste, uMM, uMMTaste, uFillABCK, uFillLocal, uGrainMono;
 uniform int uLayerMode;   // 0 none, 1 matrix, 2 mono weights
 uniform vec3 uUndoM[3], uLayerM[3], uLayerMono, uWBM[3], uMMM[3], uGain, uTint;
-uniform float uMaskScale, uFill, uHL, uBlk, uCT, uSatF, uSatMeasure, uWBSat, uMMSat, uFilmScale, uGrain;
+uniform float uMaskScale, uFill, uHL, uBlk, uCT, uSatF, uSatMeasure, uWBSat, uMMSat, uFilmScale;
+// render/film.go's grain: spatially resolved octaves (cell in pixels,
+// density amplitude), the per-pixel fine sigma, and the common layer share.
+uniform int uGrainN;
+uniform vec2 uGrainOct[9];
+uniform float uGrainRho, uGrainFine;
+uniform uint uGrainSeed;
 uniform float uNDGain;
 uniform int uGND;
 uniform float uGNDStops, uGNDCos, uGNDSin, uGNDCentre, uGNDSoft;
@@ -111,15 +117,39 @@ vec3 colorFilm(vec3 c){
   return pow(vec3(10.), -v);
 }
 uint hash32(uint x){ x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x; }
-float gauss(uint i, uint c){
-  uint a = hash32(i * 3u + c + 0x9e3779b9u), b = hash32(a ^ 0x85ebca6bu);
+float unorm(uint h){ return float(h >> 8) * (1. / 16777216.); }
+// The same value-noise lattice and Gaussian hash as render/film.go.
+float grainLat(int x, int y, uint seed){
+  uint h = hash32(uint(x) * 0x9e3779b1u ^ uint(y) * 0x85ebca77u ^ seed);
+  return (2. * unorm(h) - 1.) * 1.7320508;
+}
+float grainSample(int px, int py, float cell, uint seed){
+  float fx = (float(px) + 0.5) / cell, fy = (float(py) + 0.5) / cell;
+  float ix = floor(fx), iy = floor(fy);
+  int x0 = int(ix), y0 = int(iy);
+  float tx = fx - ix, ty = fy - iy;
+  float a = mix(grainLat(x0, y0, seed), grainLat(x0 + 1, y0, seed), tx);
+  float b = mix(grainLat(x0, y0 + 1, seed), grainLat(x0 + 1, y0 + 1, seed), tx);
+  return mix(a, b, ty) * 1.5;
+}
+float grainOctAt(int px, int py, float cell, int j, int c){
+  return grainSample(px, py, cell, uGrainSeed ^ 0x5bf03635u ^ uint(j) * 0x9e3779b9u ^ uint(c) * 0x85ebca6bu);
+}
+float grainCommonAt(int px, int py, float cell, int j){
+  return grainSample(px, py, cell, uGrainSeed ^ 0x1234567u ^ uint(j) * 0x9e3779b9u);
+}
+float grainGauss(uint i, uint seed){
+  uint a = hash32(i * 0x9e3779b1u + seed), b = hash32(a ^ 0x85ebca6bu);
   float s = float(a & 0xffffu) + float(a >> 16) + float(b & 0xffffu) + float(b >> 16);
   return (s / 65535. - 2.) * 1.7320508;
+}
+float grainFineAt(uint i, int c){
+  return grainGauss(i, uGrainSeed ^ 0x5bf03635u ^ uint(c) * 0x85ebca6bu);
 }
 float grain1(float v, float n){
   if (v <= 0.) return v;
   float u = min(1., enc(v)), amp = 2. * sqrt(u * (1. - u));
-  return v * exp(-2.302585 * uGrain * amp * n);
+  return v * exp(-2.302585 * amp * n);
 }
 void main(){
   ivec2 q = ivec2(gl_FragCoord.xy);            // image row q.y (row 0 = top)
@@ -182,10 +212,33 @@ void main(){
     }
     if (uMono) c = vec3(Y); else if (f != 1.) c = Y + (c - Y) * f;
   }
-  if (uGrain != 0.){
+  if (uGrainN > 0 || uGrainFine > 0.){
     uint i = uint(q.y * uW + q.x);
-    if (uGrainMono){ float n = gauss(i, 0u); c = vec3(grain1(c.r, n), grain1(c.g, n), grain1(c.b, n)); }
-    else c = vec3(grain1(c.r, gauss(i, 0u)), grain1(c.g, gauss(i, 1u)), grain1(c.b, gauss(i, 2u)));
+    float sqi = sqrt(max(0., 1. - uGrainRho)), sqr = sqrt(max(0., uGrainRho));
+    vec3 n = vec3(0.);
+    for (int j = 0; j < 9; j++){
+      if (j >= uGrainN) break;
+      float cell = uGrainOct[j].x, amp = uGrainOct[j].y;
+      if (uGrainMono){
+        n += vec3(amp * grainCommonAt(q.x, q.y, cell, j));
+      } else {
+        float com = uGrainRho > 0. ? grainCommonAt(q.x, q.y, cell, j) : 0.;
+        n += vec3(amp * (sqi * grainOctAt(q.x, q.y, cell, j, 0) + sqr * com),
+                  amp * (sqi * grainOctAt(q.x, q.y, cell, j, 1) + sqr * com),
+                  amp * (sqi * grainOctAt(q.x, q.y, cell, j, 2) + sqr * com));
+      }
+    }
+    if (uGrainFine > 0.){
+      if (uGrainMono){
+        n += vec3(uGrainFine * grainGauss(i, uGrainSeed ^ 0x1234567u));
+      } else {
+        float com = uGrainRho > 0. ? grainGauss(i, uGrainSeed ^ 0x1234567u) : 0.;
+        n += vec3(uGrainFine * (sqi * grainFineAt(i, 0) + sqr * com),
+                  uGrainFine * (sqi * grainFineAt(i, 1) + sqr * com),
+                  uGrainFine * (sqi * grainFineAt(i, 2) + sqr * com));
+      }
+    }
+    c = vec3(grain1(c.r, n.r), grain1(c.g, n.g), grain1(c.b, n.b));
   }
   // Density filters, after the grain, exactly as renderInto applies them.
   if (uNDGain != 1.) c *= uNDGain;
@@ -344,7 +397,13 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     gl.uniform3fv(u.uTint, r.tint); gl.uniform1f(u.uSatMeasure, r.satMeasure);
     gl.uniform1i(u.uFillABCK, r.fillABCK ? 1 : 0); gl.uniform1i(u.uFillLocal, r.fillLocal ? 1 : 0);
     gl.uniform1fv(u.uLocal, r.fillLocal ? r.fillLocal.slice(0, 64) : new Float32Array(64));
-    gl.uniform1f(u.uGrain, r.grainSigma || 0); gl.uniform1i(u.uGrainMono, r.grainMono ? 1 : 0);
+    gl.uniform1i(u.uGrainMono, r.grainMono ? 1 : 0);
+    gl.uniform1i(u.uGrainN, r.grainOct ? r.grainOct.length : 0);
+    const goct = new Float32Array(18);
+    (r.grainOct || []).slice(0, 9).forEach((o, i) => { goct[i * 2] = o.cell; goct[i * 2 + 1] = o.amp; });
+    gl.uniform2fv(u.uGrainOct, goct);
+    gl.uniform1f(u.uGrainRho, r.grainRho || 0); gl.uniform1f(u.uGrainFine, r.grainFine || 0);
+    gl.uniform1ui(u.uGrainSeed, (r.grainSeed || 0) >>> 0);
     gl.uniform1f(u.uNDGain, r.ndGain || 1);
     gl.uniform1i(u.uGND, r.gnd ? 1 : 0);
     const gnd = r.gnd || {stops: 0, cos: 1, sin: 0, centre: 0, soft: 0.5};

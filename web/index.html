@@ -684,11 +684,13 @@ const SLIDERS = [
   ["layerBottom","Bottom layer (red)",-6,2,.05,"layer"],
   ["layerMiddle","Middle layer (green)",-6,2,.05,"layer"],
   ["layerTop","Top layer (blue)",-6,2,.05,"layer"],
-  ["grain","Film grain (RMS on the print)",0,60,.5,"film"],
+  ["grain","Film grain (RMS on the print)",0,80,.5,"film"],
 ];
-// Film grain is a film's published RMS granularity (sizes on the film, so
-// a crop or 100% view shows it larger, a reduced view finer).
-const GRAIN_TIPS = "Film grain as the RMS granularity of the final image (Selwyn's law sizes it on the film, so it depends on the film format below). With a film selected, the grain is that film's own published data: a slide's RMS, a negative's x 2.3 for the print. It is not set by hand; with no film selected it is yours to set.";
+// Film grain is a film's published (or estimated) RMS granularity, with a
+// size distribution set by the film's speed; the slider scales that film's
+// grain. A crop or 100% view shows the same physical grain, a reduced view
+// keeps the clumps that survive the pixel.
+const GRAIN_TIPS = "Film grain as the RMS granularity of the final image (Selwyn's law sizes it on the film, so it depends on the film format below). Choosing a film turns its own grain on: a slide's RMS, a negative's x 2.3 for the print, Kodak's PGI converted for the Portras and Gold, or an estimate marked (estimated) where the maker publishes no number. The slider still scales the selected film's grain; with no film selected it sets a grain by hand.";
 // Layer mix presets, in stops per sensor layer (bottom, middle, top).
 const LAYER_MIX = { top: [-6,-6,0] };
 // The colour filters on the lens (Film & Darkroom); the IR looks and layer
@@ -1441,11 +1443,11 @@ function drawFilmGrid(g){
     for (const f of list){
       const key = f.maker + " " + f.name;
       const p = {...NEUTRAL, film: key, mono: !!f.bw};
-      if (f.rms) p.grain = Math.round(f.grain * 2) / 2;
+      if (f.grain) p.grain = Math.round(f.grain * 2) / 2;
       items.push(f);
       const i = items.length - 1;
       html += `<div class="tile${key === cur ? " cur" : ""}" data-i="${i}"><div class="img"><img loading="lazy" src="${renderURL({w, params: p, norm: true})}"></div>` +
-        `<div class="cap">${esc(f.name)}<small>${esc(f.maker)}${f.iso ? " · ISO " + f.iso : ""}${f.rms ? " · RMS " + f.rms : ""}</small></div></div>`;
+        `<div class="cap">${esc(f.name)}<small>${esc(f.maker)}${f.iso ? " · ISO " + f.iso : ""}${f.rms ? " · RMS " + f.rms : f.pgi ? " · PGI " + f.pgi : f.grain_estimated ? " · grain estimated" : ""}</small></div></div>`;
     }
   }
   g.innerHTML = html;
@@ -1582,9 +1584,10 @@ async function filmsInit(){
   const kinds = {slide: "slide", neg: "B&W negative", cn: "colour negative", chromo: "chromogenic B&W"};
   const byMaker = {};
   FILMS.forEach((f, i) => (byMaker[f.maker] ||= []).push([f, i]));
+  const grainLabel = f => f.rms ? "RMS " + f.rms : f.pgi ? "PGI " + f.pgi : f.grain_estimated ? "grain " + Math.round(f.grain) + " (estimated)" : "";
   $("#filmStock").insertAdjacentHTML("beforeend", Object.keys(byMaker).sort().map(m =>
     `<optgroup label="${esc(m)}">` + byMaker[m].map(([f, i]) =>
-      `<option value="${i}"${f.rms || f.curve || f.color ? "" : " disabled"} title="${esc(f.src)}">${esc(f.name)}${f.iso ? " · ISO " + f.iso : ""} · ${kinds[f.kind] || f.kind}${f.rms ? " · RMS " + f.rms : f.pgi ? " · PGI " + f.pgi : " · no published RMS"}${f.curve ? " · darkroom" : ""}${f.color ? " · colour from data" : ""}</option>`).join("") + "</optgroup>").join(""));
+      `<option value="${i}"${f.grain || f.curve || f.color ? "" : " disabled"} title="${esc(f.src + (f.rms_note ? " — " + f.rms_note : ""))}">${esc(f.name)}${f.iso ? " · ISO " + f.iso : ""} · ${kinds[f.kind] || f.kind}${grainLabel(f) ? " · " + grainLabel(f) : ""}${f.curve ? " · darkroom" : ""}${f.color ? " · colour from data" : ""}</option>`).join("") + "</optgroup>").join(""));
   syncFilm();
 }
 // The printing papers (/api/papers).
@@ -1717,16 +1720,17 @@ function buildLensSel(){
   syncSliders();
 }
 
-// useFilm makes the photo use a library film: its grain (from its data
-// sheet), black and white for a black-and-white film (the grey from its
-// spectral sensitivity where the library has it).
+// useFilm makes the photo use a library film: its grain (published,
+// PGI-converted or estimated), black and white for a black-and-white film
+// (the grey from its spectral sensitivity where the library has it). The
+// slider still scales the grain from here.
 function useFilm(f){
   S.params.film = f ? f.maker + " " + f.name : "";
   S.params.developer = ""; S.params.devTime = 0; S.params.push = 0;
   S.params.ccY = S.params.ccM = S.params.ccC = S.params.printExp = 0;
   S.params.halation = 0;
   if (f) {
-    // The film's published granularity; 0 where its maker publishes none.
+    // The film's own grain: RMS, converted PGI, or the marked estimate.
     S.params.grain = Math.round(f.grain * 2) / 2;
     S.params.mono = !!f.bw;
   }
@@ -1825,7 +1829,11 @@ function syncFilm(){
   $("#filmStock").value = i >= 0 ? String(i) : "";
   const f = FILMS[i];
   $("#filmCmpBtn").style.display = S.photo?.kind === "x3f" ? "" : "none";
-  $("#filmSrc").innerHTML = f ? (f.rms ? `RMS ${f.rms} (${esc(f.kind === "slide" ? "on the slide" : "on the negative, ×2.3 on the print")}) · <a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.src)}</a>` : esc(f.src))
+  const src = f && f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.src)}</a>` : f ? esc(f.src) : "";
+  const grain = f ? (f.rms ? `RMS ${f.rms} (${esc(f.kind === "slide" ? "on the slide" : "on the negative, ×2.3 on the print")})`
+    : f.pgi ? `PGI ${f.pgi} (Kodak print-grain scale, converted — not RMS)`
+    : f.grain_estimated ? `grain ${f.grain.toFixed(1)} (estimated${f.rms_note ? ": " + esc(f.rms_note) : ""})` : "") : "";
+  $("#filmSrc").innerHTML = f ? (grain ? grain + " · " : "") + src
     + (f.bw ? (f.mono ? ` · black and white through its spectral sensitivity (${esc(f.spectral_src)})` : " · black and white") : "") : "";
   // A preset named after a film was made to look like it: offer the
   // real film's own rendering on top.
@@ -1985,9 +1993,10 @@ function syncSliders(){
   $("#gndSoftVal").textContent = Math.round((S.params.gndSoft ?? 0.5) * 100) + "%";
   const grainRow = document.querySelector('#panel .row[data-k="grain"]');
   if (grainRow){
-    const locked = !!S.params.film;
-    grainRow.querySelector("input").disabled = locked;
-    grainRow.classList.toggle("locked", locked);
+    // A film sets the base grain; the slider still scales it. Only a photo
+    // with no film is a free-hand RMS.
+    grainRow.querySelector("input").disabled = false;
+    grainRow.classList.remove("locked");
   }
   syncFilm();
   for (const [g, keys] of Object.entries(GROUPS)){

@@ -7,10 +7,22 @@ package render
 // makes the positive raises it ~2.3x (to an overall ~1.4), and the density
 // noise with it, so a negative's RMS 17 shows as ~40 on the positive. A
 // slide's is measured on the image itself.
+//
+// Two kinds of number are not RMS. Kodak publishes a Print Grain Index for
+// its colour negative films: a psychometric print-graininess scale on which
+// 25 is the threshold of any perceived grain and two points is one
+// just-noticeable difference (Universalis, "Photographie — Sensitométrie";
+// Kodak's US 6,091,861 gives the logarithmic relation, slope 29.64). PGI is
+// converted for the model, never treated as RMS: pgiGrain anchors PGI 25 at
+// a positive-density RMS of 4.0 and uses the measured slope. Films whose
+// maker publishes neither number carry an estimated RMS-equivalent in
+// est_rms, with the neighbouring published films it came from, and are
+// marked estimated in the data and the UI.
 
 import (
 	_ "embed"
 	"encoding/json"
+	"math"
 	"sync"
 )
 
@@ -23,12 +35,20 @@ type Film struct {
 	Name  string  `json:"name"`
 	Kind  string  `json:"kind"` // slide, neg (B&W), cn (colour negative), chromo (chromogenic B&W)
 	ISO   int     `json:"iso"`
-	RMS   float64 `json:"rms"` // 0 = the maker publishes none
-	// PGI is Kodak's Print Grain Index where that is what the maker publishes
-	// (0 = none). It is recorded, never converted: Kodak's data sheets state
-	// that the index "has a different scale which cannot be compared to rms
-	// granularity", so it cannot feed the grain model, which is RMS-based.
+	RMS   float64 `json:"rms"` // published diffuse RMS on the negative/slide; 0 = none
+	// PGI is Kodak's Print Grain Index where that is what the maker
+	// publishes (0 = none). It is a perceptual print-graininess scale, not
+	// RMS; pgiGrain converts it for the model (see the file comment).
 	PGI int `json:"pgi,omitempty"`
+	// EstRMS is an estimated RMS-equivalent on the same scale as RMS, for a
+	// film whose maker publishes none. RMSNote names the films it was
+	// estimated from; GrainEstimated carries it to the UI.
+	EstRMS  float64 `json:"est_rms,omitempty"`
+	RMSNote string  `json:"rms_note,omitempty"`
+	// GrainEstimated: EstRMS is an estimate, not a published number.
+	GrainEstimated bool `json:"grain_estimated,omitempty"`
+	// GrainSource is "rms", "pgi" or "estimated": where Grain came from.
+	GrainSource string `json:"grain_source,omitempty"`
 	// Formats are the film sizes the maker sold this stock in: "135"
 	// (35 mm), "120"/"220" (medium-format rolls), "4x5"/"8x10" (sheets),
 	// read from the film's own data sheet. Empty means unverified: the model
@@ -38,8 +58,9 @@ type Film struct {
 	FormatsSrc string   `json:"formats_src,omitempty"`
 	Src        string   `json:"src"`
 	URL        string   `json:"url,omitempty"`
-	// Grain is the RMS on the positive, the value the Film grain slider
-	// takes (0 if unknown).
+	// Grain is the positive-density RMS the model uses: a published RMS
+	// × printGain for a negative, pgiGrain for a PGI film, or EstRMS ×
+	// printGain for an estimate. GrainSource says which; 0 = none.
 	Grain float64 `json:"grain"`
 	// BW: a black-and-white film. Mono: its spectral sensitivity (from its
 	// data sheet) as weights of the white-balanced Foveon layers, per
@@ -85,6 +106,23 @@ func FilmByKey(k string) (Film, bool) {
 // ~1.4 over a negative gamma ~0.6).
 const printGain = 1.4 / 0.6
 
+// PGI conversion. Kodak's scale puts the threshold of perceived grain at
+// 25; the patent's fitted logarithmic relation has a slope of 29.64 PGI
+// points per decade of visual granularity. We anchor 25 at a positive
+// density RMS of 4.0 — a density fluctuation of 0.004, the order of the
+// finest colour negative in the library — and convert the published index
+// as a perceptual scale. This is an interpretation, not a Kodak RMS
+// measurement; the data keeps pgi separate from rms and the UI says PGI.
+const (
+	pgiThreshold = 25.0
+	pgiAnchorRMS = 4.0
+	pgiSlope     = 29.64
+)
+
+func pgiGrain(pgi int) float64 {
+	return pgiAnchorRMS * math.Pow(10, (float64(pgi)-pgiThreshold)/pgiSlope)
+}
+
 // Films is the library, with each film's grain on the positive.
 func Films() []Film {
 	var d struct {
@@ -93,7 +131,18 @@ func Films() []Film {
 	json.Unmarshal(filmsJSON, &d)
 	for i := range d.Films {
 		f := &d.Films[i]
-		f.Grain = f.RMS
+		switch {
+		case f.RMS > 0:
+			f.Grain = f.RMS
+			f.GrainSource = "rms"
+		case f.PGI > 0:
+			f.Grain = pgiGrain(f.PGI)
+			f.GrainSource = "pgi"
+		case f.EstRMS > 0:
+			f.Grain = f.EstRMS
+			f.GrainEstimated = true
+			f.GrainSource = "estimated"
+		}
 		if f.Kind != "slide" {
 			f.Grain *= printGain
 		}

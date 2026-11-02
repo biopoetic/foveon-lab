@@ -57,6 +57,13 @@ func gpuCorr(c *RawCorrection) *GPUCorr {
 	return g
 }
 
+// GPUGrainOct is one spatially resolved grain octave: its correlation
+// length in output pixels and its density-RMS amplitude.
+type GPUGrainOct struct {
+	Cell float32 `json:"cell"`
+	Amp  float32 `json:"amp"`
+}
+
 // GPUDensity is a graduated density filter's geometry for the GPU.
 type GPUDensity struct {
 	Stops  float32 `json:"stops"`
@@ -100,8 +107,15 @@ type GPURecipe struct {
 	SatMeasure float32    `json:"satMeasure"`
 
 	// Film grain (output-linear) and sharpening (on the encoded image).
-	GrainSigma float32 `json:"grainSigma"`
-	GrainMono  bool    `json:"grainMono"`
+	// The field is the same one render/film.go builds: GrainOct are the
+	// spatially resolved clumps (cell in pixels, density amplitude), and
+	// GrainFine is the per-pixel density sigma of everything finer than a
+	// pixel. GrainRho is the common share of the three colour layers.
+	GrainMono bool          `json:"grainMono"`
+	GrainRho  float32       `json:"grainRho"`
+	GrainFine float32       `json:"grainFine"`
+	GrainSeed uint32        `json:"grainSeed"`
+	GrainOct  []GPUGrainOct `json:"grainOct,omitempty"`
 	// Density filters (render/density.go): NDGain is the neutral filter's
 	// per-channel gain (1 = none); GND is a graduated filter's geometry.
 	NDGain     float32     `json:"ndGain,omitempty"`
@@ -240,8 +254,12 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 			r.FillLocal = append(tab[:], k...)
 		}
 	}
-	if film := b.newFilm(p, op.mono || op.layerMono != nil); film != nil {
-		r.GrainSigma, r.GrainMono = film.sigma, film.mono
+	if film := b.newFilmOp(p, op.mono || op.layerMono != nil, false); film != nil {
+		r.GrainMono, r.GrainRho, r.GrainFine = film.mono, film.rho, film.fine
+		r.GrainSeed = grainSeed(p)
+		for _, o := range film.oct {
+			r.GrainOct = append(r.GrainOct, GPUGrainOct{Cell: float32(o.cell), Amp: o.amp})
+		}
 	}
 	if b.Raw {
 		a, k := sppView(b.scale(), b.ISO, b.Sensor)

@@ -26,6 +26,45 @@ func TestFilms(t *testing.T) {
 	}
 }
 
+// Every film now has a grain value: published RMS, a converted PGI, or a
+// marked estimate. The PGI conversion is monotonic and separate from RMS;
+// Superia 100 and 400 share a published RMS but not a grain size.
+func TestFilmGrainSources(t *testing.T) {
+	for _, f := range Films() {
+		if f.Grain <= 0 {
+			t.Errorf("%s %s: no grain at all", f.Maker, f.Name)
+		}
+		switch f.GrainSource {
+		case "rms", "pgi", "estimated":
+		default:
+			t.Errorf("%s %s: grain source %q", f.Maker, f.Name, f.GrainSource)
+		}
+		if f.GrainSource == "estimated" && !f.GrainEstimated {
+			t.Errorf("%s %s: estimate not marked", f.Maker, f.Name)
+		}
+		if f.GrainSource == "rms" && f.GrainEstimated {
+			t.Errorf("%s %s: published RMS marked estimated", f.Maker, f.Name)
+		}
+	}
+	p160, _ := FilmByKey("Kodak Portra 160")
+	p400, _ := FilmByKey("Kodak Portra 400")
+	p800, _ := FilmByKey("Kodak Portra 800")
+	if !(p160.Grain < p400.Grain && p400.Grain < p800.Grain) {
+		t.Errorf("PGI conversion not monotonic: %.1f %.1f %.1f", p160.Grain, p400.Grain, p800.Grain)
+	}
+	s100, _ := FilmByKey("Fujifilm Fujicolor Superia 100")
+	s400, _ := FilmByKey("Fujifilm Fujicolor Superia X-TRA 400")
+	if s100.Grain != s400.Grain {
+		t.Errorf("the two Superias should share the published RMS: %.1f %.1f", s100.Grain, s400.Grain)
+	}
+	// The median is the middle of the nine log-spaced bands (index 4).
+	s100sizes, _ := grainSizes("cn", 100, 0)
+	s400sizes, _ := grainSizes("cn", 400, 0)
+	if s100sizes[4] >= s400sizes[4] {
+		t.Errorf("Superia 100 and 400 have the same grain size")
+	}
+}
+
 // One entry per film stock: an entry grouping several films ("Portra 160 /
 // 400 / 800") cannot be right now that grain comes from the selected film —
 // the films differ in speed, in grain and, for the Portras, in the curve the
