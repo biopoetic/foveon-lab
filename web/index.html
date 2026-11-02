@@ -38,7 +38,6 @@ aside{border-right:1px solid var(--line);overflow:auto;background:var(--panel)}
 #selBar{display:flex;gap:5px;align-items:center;padding:5px 8px;border-bottom:1px solid var(--line);background:var(--panel2);font-size:12px;color:var(--dim);position:sticky;top:0;z-index:2}
 #selBar button{padding:1px 7px;font-size:12px}
 #selBar #selCount{flex:1;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#exportSel{margin-left:2px}
 .ph img{width:72px;height:48px;object-fit:cover;border-radius:3px;background:#000;flex:none}
 .ph small{display:block;color:var(--dim)}
 .ph .star{margin-left:auto;flex:none;color:#555;font-size:18px;line-height:1;padding:2px 4px;border-radius:3px}
@@ -305,7 +304,6 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         </select>
         <span id="count" style="color:var(--dim)"></span>
         <button class="ai" id="aiOpen" title="Let an AI agent pick and tune the best preset for this photo">✦ AI pick</button>
-        <button id="exportSel" class="primary" title="Export the selected photos with one look">Export…</button>
       </div>
       <div class="note" id="gridNote">Pick a look to compare it on your photo, then press <b>Export</b> to save the full-size picture.</div>
       <div id="welcome">
@@ -861,8 +859,6 @@ function paintSelection(){
   document.querySelectorAll("#photoList .ph").forEach(el => el.classList.toggle("pick", S.sel.has(el.dataset.id)));
   const photo = S.photos.find(p => p.id === S.photo?.id);
   if (!n && photo){ S.sel = new Set([photo.id]); S.selAnchor = photo.id; }
-  $("#exportSel").textContent = CARD.settings?.platform === "darwin" ? "Export to Photos…" : "Export…";
-  $("#exportSel").disabled = n === 0;
 }
 
 // ---------- the filtered set ----------
@@ -3866,7 +3862,6 @@ function bind(){
   $("#lookImport").onclick = () => $("#lookFile").click();
   $("#lookFile").onchange = e => { importLookFile(e.target.files[0]); e.target.value = ""; };
   $("#saveEdits").onclick = savePhotoEdits;
-  $("#exportSel").onclick = () => batchOpen("selected");
   $("#selAll").onclick = selectAllPhotos;
   $("#selFav").onclick = selectFavoritePhotos;
   $("#selClear").onclick = () => { if (S.photo){ S.sel = new Set([S.photo.id]); S.selAnchor = S.photo.id; paintSelection(); } };
