@@ -51,6 +51,7 @@ const (
 	tagSubIFDs          = 330
 	tagFillOrder        = 266
 	tagExifIFD          = 34665
+	tagSampleFormat     = 339
 	tagCFARepeatPattern = 33421
 	tagCFAPattern       = 33422
 	tagCFAPlaneColor    = 50710
@@ -58,6 +59,8 @@ const (
 	tagLinearization    = 50712
 	tagBlackLevelRepeat = 50713
 	tagBlackLevel       = 50714
+	tagBlackLevelDeltaH = 50715
+	tagBlackLevelDeltaV = 50716
 	tagWhiteLevel       = 50717
 	tagDefaultScale     = 50718
 	tagDefaultCropOrig  = 50719
@@ -77,6 +80,10 @@ const (
 	tagForwardMatrix2   = 50965
 	tagProfileTone      = 50940
 	tagActiveArea       = 50829
+	tagMaskedAreas      = 50830
+	tagOpcodeList1      = 51008
+	tagOpcodeList2      = 51009
+	tagOpcodeList3      = 51010
 	tagISO              = 34855
 	tagDateTimeOriginal = 36867
 )
@@ -87,14 +94,18 @@ const (
 	photometricLinearRaw = 34892
 )
 
-// Compression values.
+// Compression values. 34892 is the DNG lossy-JPEG compression (0x884C), not
+// the LinearRaw photometric interpretation that shares the number; 52546 is
+// JPEG XL (DNG 1.7).
 const (
-	compressionNone     = 1
-	compressionLZW      = 5
-	compressionJPEG     = 7
-	compressionDeflate  = 8
-	compressionPackBits = 32773
-	compressionDeflate2 = 32946
+	compressionNone      = 1
+	compressionLZW       = 5
+	compressionJPEG      = 7
+	compressionDeflate   = 8
+	compressionPackBits  = 32773
+	compressionDeflate2  = 32946
+	compressionLossyJPEG = 34892
+	compressionJPEGXL    = 52546
 )
 
 // ErrUnsupported is wrapped by errors for valid DNGs whose features this
@@ -114,15 +125,31 @@ type Meta struct {
 	DateTime      string
 	ISO           float64
 	// Rotation is the clockwise rotation the file asks for in its TIFF
-	// Orientation, 0/90/180/270. Mirrored orientations are returned as their
-	// rotation (the mirroring is not applied).
+	// Orientation, 0/90/180/270. Mirror is set for TIFF orientations 2, 4,
+	// 5 and 7; ApplyOrientation applies both, while the app's own turn only
+	// applies Rotation (mirroring is rare and is reported here).
 	Rotation int
+	Mirror   bool
+	// Orientation is the TIFF Orientation value, 1-8.
+	Orientation int
 	// Bayer: the image is a colour-filter array, not an already-demosaiced
 	// LinearRaw image.
-	Bayer       bool
-	Bits        int
-	Samples     int
-	Compression int
+	Bayer bool
+	// Mono: one plane with no colour filter (Leica Monochrom style), to be
+	// shown as grey.
+	Mono         bool
+	Bits         int
+	Samples      int
+	Compression  int
+	SampleFormat int
+	// MaskedAreas is the number of MaskedAreas rectangles in the raw IFD.
+	MaskedAreas int
+	// GainMap: the raw has at least one GainMap opcode (lens shading).
+	GainMap bool
+	// Notice is a plain sentence for the UI about a DNG feature this reader
+	// could not apply (e.g. an unknown required opcode). It is empty when
+	// everything relevant was applied.
+	Notice string
 	// TwoColour: the file has no usable colour matrix; its data is taken as
 	// linear sRGB. The UI should say the colour is approximate.
 	ApproxColour bool
@@ -446,8 +473,8 @@ func (f *File) imageIFD(d *ifd) bool {
 // LinearRaw. A DNG usually keeps a JPEG preview in IFD0 and the raw in a
 // SubIFD, so this cannot simply take IFD0.
 func (f *File) chooseRaw() error {
-	var best *ifd
-	var bestScore int64 = -1
+	var best, bestPreview *ifd
+	var bestScore, bestPreviewScore int64 = -1, -1
 	for _, d := range f.ifds {
 		if !f.imageIFD(d) {
 			continue
@@ -466,15 +493,23 @@ func (f *File) chooseRaw() error {
 		}
 		score := w * h
 		// A reduced-resolution image (NewSubFileType bit 0) is a preview.
+		// It is only used when there is no full-resolution raw at all: a
+		// large LinearRaw preview must never be mistaken for the raw.
 		if n := firstUint(f, d, tagNewSubFileType); n&1 != 0 {
-			score /= 8
+			if score > bestPreviewScore {
+				bestPreview, bestPreviewScore = d, score
+			}
+			continue
 		}
 		if score > bestScore {
 			best, bestScore = d, score
 		}
 	}
 	if best == nil {
-		return errors.New("dng: no Bayer or LinearRaw image in the file")
+		best = bestPreview
+	}
+	if best == nil {
+		return errors.New("dng: no Bayer, monochrome or LinearRaw image in the file")
 	}
 	f.raw = best
 	return nil
@@ -515,6 +550,40 @@ func (f *File) readMeta() error {
 	if m.Samples == 0 {
 		m.Samples = 1
 	}
+	m.SampleFormat = int(firstUint(f, d, tagSampleFormat))
+	if m.SampleFormat == 0 {
+		m.SampleFormat = 1
+	}
+	if t, ok := d.tags[tagMaskedAreas]; ok {
+		if v := f.uintValues(t); len(v) >= 4 {
+			m.MaskedAreas = len(v) / 4
+		}
+	}
+	// One plane with no CFA (or a 1x1/one-colour CFA) is a monochrome
+	// sensor: Leica Monochrom files are written this way.
+	if m.Samples == 1 {
+		if ph := firstUint(f, d, tagPhotometric); ph == photometricLinearRaw {
+			m.Mono = true
+		} else if t, ok := d.tags[tagCFAPattern]; ok {
+			if pat := f.uintValues(t); len(pat) > 0 {
+				allSame := true
+				for _, v := range pat[1:] {
+					if v != pat[0] {
+						allSame = false
+						break
+					}
+				}
+				if allSame {
+					m.Mono = true
+					m.Bayer = false
+				}
+			}
+		}
+	}
+	m.Notice = f.opcodeNotice()
+	if f.hasGainMap() {
+		m.GainMap = true
+	}
 	m.Make = f.firstASCII(tagMake)
 	m.Model = f.firstASCII(tagModel)
 	m.UniqueModel = f.firstASCII(50708)
@@ -528,15 +597,21 @@ func (f *File) readMeta() error {
 			m.ISO = v[0]
 		}
 	}
+	m.Orientation = 1
 	if t, ok := f.findTag(tagOrientation); ok {
-		if v := f.uintValues(t); len(v) > 0 {
-			switch v[0] {
+		if v := f.uintValues(t); len(v) > 0 && v[0] >= 1 && v[0] <= 8 {
+			m.Orientation = int(v[0])
+			switch m.Orientation {
 			case 3, 4:
 				m.Rotation = 180
 			case 5, 6:
 				m.Rotation = 90
 			case 7, 8:
 				m.Rotation = 270
+			}
+			switch m.Orientation {
+			case 2, 4, 5, 7:
+				m.Mirror = true
 			}
 		}
 	}
@@ -584,21 +659,45 @@ func (f *File) hasColourMatrix() bool {
 // render. It does not read any pixels.
 func (m Meta) Readable() error {
 	switch m.Compression {
-	case 0, compressionNone, compressionLZW, compressionJPEG, compressionDeflate, compressionDeflate2, compressionPackBits:
+	case 0, compressionNone, compressionLZW, compressionJPEG, compressionDeflate, compressionDeflate2, compressionPackBits, compressionLossyJPEG:
+	case compressionJPEGXL:
+		return fmt.Errorf("JPEG XL compression (52546) is not supported: there is no pure-Go JPEG XL decoder in this app")
 	default:
 		return fmt.Errorf("compression %d is not supported", m.Compression)
 	}
 	if m.Samples != 1 && m.Samples != 3 {
 		return fmt.Errorf("%d samples per pixel is not supported", m.Samples)
 	}
+	if m.SampleFormat != 1 && m.SampleFormat != 3 {
+		return fmt.Errorf("SampleFormat %d is not supported (only unsigned integer and float)", m.SampleFormat)
+	}
+	if m.SampleFormat == 3 && m.Bits != 16 && m.Bits != 32 {
+		return fmt.Errorf("%d-bit float samples are not supported (16 and 32 bits are)", m.Bits)
+	}
+	if m.Compression == compressionLossyJPEG && m.Bits != 8 {
+		return fmt.Errorf("lossy DNG with %d-bit samples is not supported (only 8-bit JPEG)", m.Bits)
+	}
+	if m.SampleFormat != 3 && m.Bits > 16 {
+		return fmt.Errorf("%d-bit integer samples are not supported (8-16 bits are)", m.Bits)
+	}
 	return nil
 }
 
 // Description is a one-line summary for a log or a test.
 func (m Meta) Description() string {
-	bayer := "linear"
-	if m.Bayer {
-		bayer = "Bayer"
+	kind := "linear"
+	switch {
+	case m.Bayer:
+		kind = "Bayer"
+	case m.Mono:
+		kind = "monochrome"
 	}
-	return fmt.Sprintf("%dx%d %s, %d-bit, compression %d, %s %s", m.Width, m.Height, bayer, m.Bits, m.Compression, m.Make, m.Model)
+	s := fmt.Sprintf("%dx%d %s, %d-bit, compression %d, %s %s", m.Width, m.Height, kind, m.Bits, m.Compression, m.Make, m.Model)
+	if m.SampleFormat == 3 {
+		s += ", float"
+	}
+	if m.GainMap {
+		s += ", GainMap"
+	}
+	return s
 }

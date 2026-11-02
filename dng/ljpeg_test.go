@@ -33,7 +33,7 @@ func (e *jenc) pad() {
 	}
 }
 
-func losslessJPEGTest(t *testing.T, w, h, comp int, vals []int, pt int) []byte {
+func losslessJPEGTest(t *testing.T, w, h, comp int, vals []int, pt, predictor int) []byte {
 	t.Helper()
 	e := &jenc{}
 	e.b = append(e.b, 0xFF, 0xD8) // SOI
@@ -59,7 +59,7 @@ func losslessJPEGTest(t *testing.T, w, h, comp int, vals []int, pt int) []byte {
 	for c := 0; c < comp; c++ {
 		sos = append(sos, byte(c+1), 0x00)
 	}
-	sos = append(sos, 1, 0, byte(pt))
+	sos = append(sos, byte(predictor), 0, byte(pt))
 	e.b = append(e.b, 0xFF, 0xDA, byte((len(sos)+2)>>8), byte(len(sos)+2))
 	e.b = append(e.b, sos...)
 	entropyStart := len(e.b)
@@ -80,17 +80,41 @@ func losslessJPEGTest(t *testing.T, w, h, comp int, vals []int, pt int) []byte {
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			for c := 0; c < comp; c++ {
-				pred := first
+				ra, rb, rc := first, first, first
+				if x > 0 {
+					ra = cur[c][x-1]
+				}
+				if y > 0 {
+					rb = up[c][x]
+					if x > 0 {
+						rc = up[c][x-1]
+					}
+				}
+				var pred int
 				switch {
 				case y == 0 && x == 0:
 					pred = first
 				case y == 0:
-					pred = cur[c][x-1]
+					pred = ra
 				case x == 0:
-					pred = up[c][x]
-				default:
-					pred = cur[c][x-1]
+					pred = rb
+				case predictor == 1:
+					pred = ra
+				case predictor == 2:
+					pred = rb
+				case predictor == 3:
+					pred = rc
+				case predictor == 4:
+					pred = ra + rb - rc
+				case predictor == 5:
+					pred = ra + (rb-rc)/2
+				case predictor == 6:
+					pred = rb + (ra-rc)/2
+				case predictor == 7:
+					pred = (ra + rb) / 2
 				}
+				// Lossless JPEG predictors are modulo the sample precision.
+				pred &= 0xffff
 				v := vals[(y*w+x)*comp+c] >> pt
 				diff := v - pred
 				cat := 0
@@ -134,7 +158,7 @@ func TestLosslessJPEGDecode(t *testing.T) {
 		for i := range vals {
 			vals[i] = (i*7919 + 1234) & 0xFFFF
 		}
-		src := losslessJPEGTest(t, w, h, comp, vals, 0)
+		src := losslessJPEGTest(t, w, h, comp, vals, 0, 1)
 		out, err := decodeLosslessJPEG(src, comp)
 		if err != nil {
 			t.Fatalf("%d components: %v", comp, err)
@@ -150,6 +174,28 @@ func TestLosslessJPEGDecode(t *testing.T) {
 	}
 }
 
+func TestLosslessJPEGAllPredictorsAndComponents(t *testing.T) {
+	const w, h = 17, 9
+	for _, comp := range []int{1, 2, 3, 4} {
+		for predictor := 1; predictor <= 7; predictor++ {
+			vals := make([]int, w*h*comp)
+			for i := range vals {
+				vals[i] = (i*7919 + 1234 + i*i) & 0xFFFF
+			}
+			src := losslessJPEGTest(t, w, h, comp, vals, 0, predictor)
+			out, err := decodeLosslessJPEG(src, comp)
+			if err != nil {
+				t.Fatalf("%d components predictor %d: %v", comp, predictor, err)
+			}
+			for i, want := range vals {
+				if int(out[i]) != want {
+					t.Fatalf("%d components predictor %d sample %d: got %d want %d", comp, predictor, i, out[i], want)
+				}
+			}
+		}
+	}
+}
+
 func TestLosslessJPEGPointTransform(t *testing.T) {
 	const w, h = 8, 4
 	vals := make([]int, w*h)
@@ -158,7 +204,7 @@ func TestLosslessJPEGPointTransform(t *testing.T) {
 	}
 	// With Pt, the encoder stores values shifted down; the decoder shifts
 	// the difference back up, so the result is the stored value << Pt.
-	src := losslessJPEGTest(t, w, h, 1, vals, 2)
+	src := losslessJPEGTest(t, w, h, 1, vals, 2, 1)
 	out, err := decodeLosslessJPEG(src, 1)
 	if err != nil {
 		t.Fatal(err)

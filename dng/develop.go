@@ -36,7 +36,14 @@ func (f *File) Develop(maxW int) (*Image, error) {
 		return nil, err
 	}
 	var rgb []float32
-	if im.samples == 1 {
+	if im.samples == 1 && im.mono {
+		// One plane, no colour filter: a monochrome camera. Show it as grey.
+		rgb = make([]float32, im.width*im.height*3)
+		for i, v := range raw {
+			rgb[i*3], rgb[i*3+1], rgb[i*3+2] = v, v, v
+		}
+		raw = nil
+	} else if im.samples == 1 {
 		rgb = Demosaic(raw, im.width, im.height, im.cfa, im.cfaPW, im.cfaPH)
 		raw = nil
 	} else {
@@ -77,6 +84,9 @@ func (f *File) Develop(maxW int) (*Image, error) {
 			}
 		}
 	})
+	// Output-stage opcodes (FixVignetteRadial, WarpRectilinear) are applied
+	// to the developed linear image, in list order, before the geometry.
+	rgb = im.applyStage3(rgb, im.width, im.height)
 	fullW, fullH := im.width, im.height
 	if im.cropX != 0 || im.cropY != 0 || im.cropW != im.width || im.cropH != im.height {
 		rgb = crop(rgb, im.width, im.height, im.cropX, im.cropY, im.cropW, im.cropH)
@@ -185,6 +195,13 @@ func resizeBilinear(pix []float32, sw, sh, dw, dh int) []float32 {
 
 // colour returns the camera -> XYZ D50 matrix, the as-shot neutral, and the
 // baseline exposure. approx is true when no colour matrix was usable.
+//
+// The order is the DNG specification's: Chapter 5, "Mapping Raw Values to
+// Linear Reference Values" (black/white, LinearizationTable, then
+// AnalogBalance) and Chapter 6, "Mapping Camera Color Space to CIE XYZ Space"
+// (CameraCalibration, ColorMatrix or ForwardMatrix, AsShotNeutral, then
+// BaselineExposure). The matrices are folded into one 3x3 for the pixel pass;
+// the per-channel neutral is divided out first, as AsShotNeutral requires.
 func (f *File) colour(im *rawImage) ([9]float64, [3]float64, float64, bool, error) {
 	neutral := [3]float64{1, 1, 1}
 	hasNeutral := false
@@ -220,32 +237,35 @@ func (f *File) colour(im *rawImage) ([9]float64, [3]float64, float64, bool, erro
 			}
 		}
 	}
+	whiteX, whiteY, hasWhiteXY := 0.0, 0.0, false
 	whiteTemp := 0.0
 	if t, ok := f.findTag(tagAsShotWhiteXY); ok {
 		if v := f.floatValues(t); len(v) >= 2 && v[1] != 0 {
+			whiteX, whiteY, hasWhiteXY = v[0], v[1], true
 			whiteTemp = cctFromXY(v[0], v[1])
 		}
 	}
-
-	if whiteTemp == 0 {
+	if !hasWhiteXY {
 		whiteTemp = f.estimateWhiteTemp(neutral)
 	}
+
+	t1, t2 := f.illumTemp(tagCalibIllum1), f.illumTemp(tagCalibIllum2)
+	w := 0.0
+	if hasWhiteXY && t1 > 0 && t2 > 0 && t1 != t2 {
+		w = math.Max(0, math.Min(1, (whiteTemp-t1)/(t2-t1)))
+	}
+	havePair := t1 > 0 && t2 > 0 && t1 != t2
 
 	fm1, ok1 := f.matrix(tagForwardMatrix1)
 	fm2, ok2 := f.matrix(tagForwardMatrix2)
 	if ok1 {
 		m := fm1
-		if ok2 && whiteTemp > 0 {
-			t1, t2 := f.illumTemp(tagCalibIllum1), f.illumTemp(tagCalibIllum2)
-			if t1 > 0 && t2 > 0 && t1 != t2 {
-				w := (whiteTemp - t1) / (t2 - t1)
-				w = math.Max(0, math.Min(1, w))
-				m = lerpMatrix(fm1, fm2, w)
-			}
+		if ok2 && havePair && hasWhiteXY {
+			m = lerpMatrix(fm1, fm2, w)
 		}
-		m = f.withCalibration(m)
+		m = f.withCalibration(m, w)
 		if !hasNeutral {
-			if n, ok := f.neutralFromWhite(m); ok {
+			if n, ok := f.neutralFromWhite(m, whiteX, whiteY, hasWhiteXY); ok {
 				neutral = n
 			}
 		}
@@ -255,7 +275,6 @@ func (f *File) colour(im *rawImage) ([9]float64, [3]float64, float64, bool, erro
 	cm1, ok1 := f.matrix(tagColorMatrix1)
 	cm2, ok2 := f.matrix(tagColorMatrix2)
 	if ok1 || ok2 {
-		t1, t2 := f.illumTemp(tagCalibIllum1), f.illumTemp(tagCalibIllum2)
 		var m1, m2 [9]float64
 		if ok1 {
 			m1 = f.cameraToXYZ(cm1, t1)
@@ -265,20 +284,21 @@ func (f *File) colour(im *rawImage) ([9]float64, [3]float64, float64, bool, erro
 		}
 		m := m1
 		switch {
-		case ok1 && ok2 && whiteTemp > 0 && t1 > 0 && t2 > 0 && t1 != t2:
-			w := (whiteTemp - t1) / (t2 - t1)
-			w = math.Max(0, math.Min(1, w))
+		case ok1 && ok2 && havePair && hasWhiteXY:
+			// Both illuminants and the as-shot white point: interpolate
+			// between the two camera-to-XYZ matrices by the white point's
+			// position between the calibration illuminants (Chapter 6).
 			m = lerpMatrix(m1, m2, w)
 		case ok1 && ok2 && hasNeutral:
 			// No AsShotWhiteXY: pick the matrix whose own calibration
 			// white best explains the as-shot neutral.
 			if d1, d2 := f.matrixFit(cm1, t1, neutral), f.matrixFit(cm2, t2, neutral); d2 < d1 {
-				m = m2
+				m, w = m2, 1
 			}
 		}
-		m = f.withCalibration(m)
+		m = f.withCalibration(m, w)
 		if !hasNeutral {
-			if n, ok := f.neutralFromWhite(m); ok {
+			if n, ok := f.neutralFromWhite(m, whiteX, whiteY, hasWhiteXY); ok {
 				neutral = n
 			}
 		}
@@ -295,16 +315,11 @@ func (f *File) colour(im *rawImage) ([9]float64, [3]float64, float64, bool, erro
 // through the inverse of the chosen camera -> XYZ D50 matrix, then scaled
 // so its largest channel is 1, which is the DNG's convention for
 // AsShotNeutral.
-func (f *File) neutralFromWhite(m [9]float64) ([3]float64, bool) {
-	t, ok := f.findTag(tagAsShotWhiteXY)
-	if !ok {
+func (f *File) neutralFromWhite(m [9]float64, whiteX, whiteY float64, hasWhiteXY bool) ([3]float64, bool) {
+	if !hasWhiteXY || whiteY == 0 {
 		return [3]float64{}, false
 	}
-	v := f.floatValues(t)
-	if len(v) < 2 || v[1] == 0 {
-		return [3]float64{}, false
-	}
-	w := xyzFromXY(v[0], v[1])
+	w := xyzFromXY(whiteX, whiteY)
 	w = mulVec(adaptToD50(w), w)
 	inv, ok := invert3x3(m)
 	if !ok {
@@ -353,16 +368,27 @@ func (f *File) estimateWhiteTemp(neutral [3]float64) float64 {
 }
 
 // withCalibration folds the per-camera CameraCalibration matrix into the
-// camera -> XYZ matrix, as the DNG spec places it before ColorMatrix.
-func (f *File) withCalibration(m [9]float64) [9]float64 {
-	for _, tag := range []uint16{tagCameraCalib1, tagCameraCalib2} {
-		if cm, ok := f.matrix(tag); ok {
-			if cm != identity33 {
-				return mul33(m, cm)
-			}
-		}
+// camera -> XYZ matrix, as Chapter 6 places it before ColorMatrix. The two
+// calibration matrices belong to the two calibration illuminants; when both
+// exist they are interpolated with the same weight as the colour matrices.
+func (f *File) withCalibration(m [9]float64, w float64) [9]float64 {
+	c1, ok1 := f.matrix(tagCameraCalib1)
+	c2, ok2 := f.matrix(tagCameraCalib2)
+	var cm [9]float64
+	switch {
+	case ok1 && ok2:
+		cm = lerpMatrix(c1, c2, w)
+	case ok1:
+		cm = c1
+	case ok2:
+		cm = c2
+	default:
+		return m
 	}
-	return m
+	if cm == identity33 {
+		return m
+	}
+	return mul33(m, cm)
 }
 
 func (f *File) matrix(tag uint16) ([9]float64, bool) {

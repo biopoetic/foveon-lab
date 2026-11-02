@@ -1,10 +1,10 @@
 package dng
 
 // Reading the stored samples: strips or tiles, uncompressed or compressed,
-// 8/10/12/14/16-bit, little- or big-endian, with or without horizontal
-// differencing (TIFF Predictor 2). The compressed block is expanded to its
-// stored integer samples first, so the predictor and the packed-bit reader
-// see the same numbers whatever produced them.
+// 8/10/12/14/16-bit integers, 16/32-bit floats, little- or big-endian, with
+// or without horizontal differencing (TIFF Predictor 2). The compressed block
+// is expanded to its stored samples first, so the predictor and the packed-bit
+// reader see the same numbers whatever produced them.
 
 import (
 	"bytes"
@@ -13,13 +13,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"image/color"
+	"image/jpeg"
 	"io"
 	"math"
 )
 
 // readRaw reads every sample and normalises it to 0..1 with the file's black
 // and white levels. The returned slice is row-major: one value per pixel for
-// a CFA, three interleaved values per pixel for LinearRaw.
+// a CFA or monochrome image, three interleaved values per pixel for LinearRaw.
 func (f *File) readRaw(im *rawImage) ([]float32, error) {
 	total := im.width * im.height * im.samples
 	if total <= 0 {
@@ -35,6 +37,13 @@ func (f *File) readRaw(im *rawImage) ([]float32, error) {
 			return nil, err
 		}
 	}
+	// A file with masked (optically black) areas and no BlackLevel tag can
+	// have its black level measured from those pixels. Do it on stored values,
+	// before the gain map and before normalisation.
+	if len(im.black) == 0 && len(im.masked) > 0 {
+		im.estimateBlackFromMasked(raw)
+	}
+	im.applyGainMaps(raw)
 	// Black subtraction, white scaling and the linearization table. A CFA's
 	// black level can repeat over the pattern, so this is per pixel.
 	for y := 0; y < im.height; y++ {
@@ -54,9 +63,63 @@ func (f *File) readRaw(im *rawImage) ([]float32, error) {
 	return raw, nil
 }
 
+// estimateBlackFromMasked averages the stored samples of the MaskedAreas,
+// per plane (or per CFA colour when the sensor is a colour filter array).
+// The tag is the file's own declaration of optically shielded pixels, so
+// this is the DNG-sanctioned way to find black when BlackLevel is absent.
+func (im *rawImage) estimateBlackFromMasked(raw []float32) {
+	sum := [3]float64{}
+	n := [3]int{}
+	for _, a := range im.masked {
+		for y := a.top; y < a.bottom; y++ {
+			for x := a.left; x < a.right; x++ {
+				if im.samples == 1 {
+					c := im.cfaAt(x, y)
+					sum[c] += float64(raw[y*im.width+x])
+					n[c]++
+				} else {
+					i := (y*im.width + x) * 3
+					for c := 0; c < 3; c++ {
+						sum[c] += float64(raw[i+c])
+						n[c]++
+					}
+				}
+			}
+		}
+	}
+	if im.samples == 1 {
+		var v []float64
+		for c := 0; c < 3; c++ {
+			if n[c] > 0 {
+				v = append(v, sum[c]/float64(n[c]))
+			}
+		}
+		if len(v) == 1 {
+			im.black = []float64{v[0]}
+		} else if len(v) == 3 {
+			im.black = v
+			im.blackRepeatW, im.blackRepeatH = 1, 1
+			// v is per plane; levelAt sees len==samples only when samples==1,
+			// so keep it as a 2x2 BlackLevel-style repeat when possible.
+			im.black = []float64{v[0], v[1], v[1], v[2]}
+			im.blackRepeatW, im.blackRepeatH = 2, 2
+		}
+		return
+	}
+	var v []float64
+	for c := 0; c < 3; c++ {
+		if n[c] == 0 {
+			return
+		}
+		v = append(v, sum[c]/float64(n[c]))
+	}
+	im.black = v
+	im.blackRepeatW, im.blackRepeatH = 1, 1
+}
+
 func (f *File) normSample(im *rawImage, v float32, c, x, y int) float32 {
 	v64 := float64(v)
-	if len(im.linTable) > 0 {
+	if len(im.linTable) > 0 && im.sampleFmt != 3 {
 		k := int(v64)
 		if k < 0 {
 			k = 0
@@ -77,6 +140,9 @@ func (f *File) normSample(im *rawImage, v float32, c, x, y int) float32 {
 
 func (f *File) readStrips(im *rawImage, raw []float32) error {
 	nstrips := (im.height + im.rowsPerStrip - 1) / im.rowsPerStrip
+	if nstrips > 1<<20 {
+		return fmt.Errorf("dng: %d strips is too many", nstrips)
+	}
 	if len(im.stripOff) < nstrips {
 		return fmt.Errorf("dng: %d strips for %d rows", len(im.stripOff), im.height)
 	}
@@ -87,7 +153,7 @@ func (f *File) readStrips(im *rawImage, raw []float32) error {
 		if err != nil {
 			return fmt.Errorf("dng: strip %d: %w", s, err)
 		}
-		copyU32(raw[y0*im.width*im.samples:], vals)
+		copy(raw[y0*im.width*im.samples:], vals)
 	}
 	return nil
 }
@@ -95,6 +161,9 @@ func (f *File) readStrips(im *rawImage, raw []float32) error {
 func (f *File) readTiles(im *rawImage, raw []float32) error {
 	tx := (im.width + im.tileW - 1) / im.tileW
 	ty := (im.height + im.tileH - 1) / im.tileH
+	if tx <= 0 || ty <= 0 || tx > 1<<16 || ty > 1<<16 {
+		return fmt.Errorf("dng: bad tile grid %dx%d", tx, ty)
+	}
 	if len(im.tileOff) < tx*ty {
 		return fmt.Errorf("dng: %d tiles for a %dx%d grid", len(im.tileOff), tx, ty)
 	}
@@ -103,6 +172,9 @@ func (f *File) readTiles(im *rawImage, raw []float32) error {
 			t := j*tx + i
 			cols := min(im.tileW, im.width-i*im.tileW)
 			rows := min(im.tileH, im.height-j*im.tileH)
+			if cols <= 0 || rows <= 0 {
+				return fmt.Errorf("dng: zero-size tile %d", t)
+			}
 			// TIFF tiles are padded to the full tile size; some DNG writers
 			// trim the right and bottom edge tiles instead. Try the padded
 			// form first and fall back to the trimmed one.
@@ -118,7 +190,7 @@ func (f *File) readTiles(im *rawImage, raw []float32) error {
 			for r := 0; r < rows; r++ {
 				dst := raw[((j*im.tileH+r)*im.width+i*im.tileW)*im.samples:]
 				src := vals[r*stride*im.samples : (r*stride+cols)*im.samples]
-				copyU32(dst[:cols*im.samples], src)
+				copy(dst[:cols*im.samples], src)
 			}
 		}
 	}
@@ -126,12 +198,15 @@ func (f *File) readTiles(im *rawImage, raw []float32) error {
 }
 
 // blockSamples reads and expands one strip or tile of rows x cols pixels.
-func (f *File) blockSamples(im *rawImage, off uint64, counts []uint64, idx, rows, cols int) ([]uint32, error) {
+func (f *File) blockSamples(im *rawImage, off uint64, counts []uint64, idx, rows, cols int) ([]float32, error) {
 	src, err := f.blockBytes(im, off, counts, idx)
 	if err != nil {
 		return nil, err
 	}
 	n := rows * cols * im.samples
+	if n <= 0 {
+		return nil, errors.New("dng: zero samples in block")
+	}
 	if im.comp == compressionJPEG {
 		vals, err := decodeLosslessJPEG(src, im.samples)
 		if err != nil {
@@ -140,7 +215,25 @@ func (f *File) blockSamples(im *rawImage, off uint64, counts []uint64, idx, rows
 		if len(vals) != n {
 			return nil, fmt.Errorf("lossless JPEG has %d samples, block needs %d", len(vals), n)
 		}
-		return vals, nil
+		return bytesToFloat32(vals), nil
+	}
+	if im.comp == compressionLossyJPEG {
+		return decodeLossyBlock(src, im, rows, cols)
+	}
+	if im.sampleFmt == 3 {
+		want := int64(rows) * im.rowBytes(cols)
+		if int64(len(src)) < want {
+			return nil, fmt.Errorf("block has %d bytes, %d rows need %d", len(src), rows, want)
+		}
+		v, err := unpackFloats(src[:want], n, im.bits, f.bo, rows, cols*im.samples)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]float32, n)
+		for i := range v {
+			out[i] = float32(v[i])
+		}
+		return out, nil
 	}
 	want := int64(rows) * im.rowBytes(cols)
 	if int64(len(src)) < want {
@@ -151,30 +244,45 @@ func (f *File) blockSamples(im *rawImage, off uint64, counts []uint64, idx, rows
 		return nil, err
 	}
 	applyPredictor(vals, rows, cols*im.samples, im.samples, im.bits, im.predictor)
-	return vals, nil
+	return bytesToFloat32(vals), nil
 }
 
-// blockEdgeSamples handles a tile whose stored data covers only the valid
-// rows/cols rather than the padded tile.
-func (f *File) blockEdgeSamples(im *rawImage, off uint64, counts []uint64, idx, rows, cols, tileW, tileH int) ([]uint32, error) {
-	if rows >= tileH && cols >= tileW {
-		return nil, errors.New("not an edge tile")
-	}
-	src, err := f.blockBytes(im, off, counts, idx)
+// decodeLossyBlock decodes the JPEG stream of a lossy DNG (Compression
+// 34892). Go's standard image/jpeg is a pure-Go baseline/progressive decoder,
+// so there is a simple path: the block must be exactly rows x cols pixels and
+// carry one (grey) or three components. The DNG tags around it (black/white,
+// linearization, opcodes) are applied as for any other block. JPEG XL has no
+// pure-Go decoder in this tree and is refused by Readable.
+func decodeLossyBlock(src []byte, im *rawImage, rows, cols int) ([]float32, error) {
+	img, err := jpeg.Decode(bytes.NewReader(src))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lossy DNG JPEG: %w", err)
+	}
+	b := img.Bounds()
+	if b.Dx() != cols || b.Dy() != rows {
+		return nil, fmt.Errorf("lossy DNG JPEG is %dx%d, block is %dx%d", b.Dx(), b.Dy(), cols, rows)
 	}
 	n := rows * cols * im.samples
-	want := int64(rows) * im.rowBytes(cols)
-	if int64(len(src)) < want {
-		return nil, fmt.Errorf("block has %d bytes, %dx%d need %d", len(src), rows, cols, want)
+	out := make([]float32, n)
+	if im.samples == 3 {
+		for y := 0; y < rows; y++ {
+			for x := 0; x < cols; x++ {
+				r, g, bl, _ := img.At(b.Min.X+x, b.Min.Y+y).RGBA()
+				i := (y*cols + x) * 3
+				out[i] = float32(r >> 8)
+				out[i+1] = float32(g >> 8)
+				out[i+2] = float32(bl >> 8)
+			}
+		}
+		return out, nil
 	}
-	vals, err := unpackSamples(src[:want], n, im.bits, f.bo, im.fillOrder, rows, cols*im.samples)
-	if err != nil {
-		return nil, err
+	for y := 0; y < rows; y++ {
+		for x := 0; x < cols; x++ {
+			c := color.GrayModel.Convert(img.At(b.Min.X+x, b.Min.Y+y)).(color.Gray)
+			out[y*cols+x] = float32(c.Y)
+		}
 	}
-	applyPredictor(vals, rows, cols*im.samples, im.samples, im.bits, im.predictor)
-	return vals, nil
+	return out, nil
 }
 
 func (f *File) blockBytes(im *rawImage, off uint64, counts []uint64, idx int) ([]byte, error) {
@@ -187,6 +295,9 @@ func (f *File) blockBytes(im *rawImage, off uint64, counts []uint64, idx int) ([
 	}
 	if count > 512<<20 {
 		return nil, fmt.Errorf("block of %d bytes is too large", count)
+	}
+	if off > uint64(f.size) || count > uint64(f.size)-off {
+		return nil, fmt.Errorf("block %d at offset %d with %d bytes runs past the end of the file", idx, off, count)
 	}
 	src := make([]byte, count)
 	if err := f.readAt(src, int64(off)); err != nil {
@@ -201,8 +312,10 @@ func (f *File) blockBytes(im *rawImage, off uint64, counts []uint64, idx int) ([
 		return lzwDecode(src)
 	case compressionPackBits:
 		return packBits(src)
-	case compressionJPEG:
+	case compressionJPEG, compressionLossyJPEG:
 		return src, nil
+	case compressionJPEGXL:
+		return nil, unsupported("JPEG XL compression (52546): no pure-Go decoder is available")
 	}
 	return nil, unsupported("compression %d", im.comp)
 }
@@ -334,6 +447,9 @@ func packBits(src []byte) ([]byte, error) {
 			}
 			i++
 		}
+		if len(out) > 512<<20 {
+			return nil, errors.New("packbits: output too large")
+		}
 	}
 	return out, nil
 }
@@ -410,10 +526,4 @@ func lzwDecode(src []byte) ([]byte, error) {
 		}
 	}
 	return out, nil
-}
-
-func copyU32(dst []float32, src []uint32) {
-	for i, v := range src {
-		dst[i] = float32(v)
-	}
 }
