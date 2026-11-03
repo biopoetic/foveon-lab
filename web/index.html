@@ -1540,7 +1540,8 @@ function buildSliders(){
     row.querySelector("b").ondblclick = () => { if (inp.disabled) return; S.params[k] = S.base[k]; if (k === "grain") S.params.grainSet = true; syncSliders(); scheduleRender(); };
   });
   $("#filmStock").onchange = () => {
-    useFilm(FILMS[+$("#filmStock").value]);
+    const v = $("#filmStock").value;
+    useFilm(v === "" ? null : FILMS[+v]);
     $("#filmStock").blur();
   };
   $("#devSel").onchange = () => { S.params.developer = $("#devSel").value; S.params.devTime = 0; $("#devSel").blur(); syncSliders(); scheduleRender(); };
