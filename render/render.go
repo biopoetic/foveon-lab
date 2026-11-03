@@ -910,7 +910,9 @@ const monoBaseGamma = 1.084
 // predates the mixer gets it, and a pure B is top-layer only.
 func monoWeights(p preset.Params) [3]float64 {
 	w := [3]float64{1.0 / 3, 1.0 / 3, 1.0 / 3}
-	if p.MonoMixSet {
+	// A file written before the flag existed may still carry weights; honour
+	// them. Only an all-zero set is the old preset's "unset" state.
+	if p.MonoMixSet || p.MonoR != 0 || p.MonoG != 0 || p.MonoB != 0 {
 		w = [3]float64{p.MonoR, p.MonoG, p.MonoB}
 	}
 	for _, v := range w {
