@@ -31,11 +31,15 @@ func monoParams() preset.Params {
 	return p
 }
 
-func TestMonoMixerDefaultIsReset(t *testing.T) {
+func TestMonoMixerDefaultIsSPPFreshOpen(t *testing.T) {
 	w := monoWeights(preset.Params{Mono: true})
+	if w != [3]float64{0, 0, 1} {
+		t.Errorf("default mix %v, want SPP's fresh-open top layer only", w)
+	}
+	w = monoWeights(preset.Params{Mono: true, MonoMixSet: true, MonoR: 1.0 / 3, MonoG: 1.0 / 3, MonoB: 1.0 / 3})
 	for i, want := range []float64{1.0 / 3, 1.0 / 3, 1.0 / 3} {
 		if math.Abs(w[i]-want) > 1e-12 {
-			t.Errorf("default mix %v, want equal thirds", w)
+			t.Errorf("Reset mix %v, want equal thirds", w)
 		}
 	}
 	w = monoWeights(preset.Params{Mono: true, MonoMixSet: true, MonoB: 1})

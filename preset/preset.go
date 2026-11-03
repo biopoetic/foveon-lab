@@ -50,7 +50,7 @@ type Params struct {
 	// (green) and top (blue) sensor layer that makes the grey, as SPP's
 	// sliders do. They are normalised to sum 1, so SPP's Reset (.33/.33/.34)
 	// and a pure B (.0/.0/1) both keep the white. MonoMixSet false means the
-	// preset predates the mixer and gets SPP's Reset (equal thirds).
+	// mixer is unset and gets SPP's fresh-open state (top layer only).
 	MonoMixSet bool    `json:"monoMixSet,omitempty"`
 	MonoR      float64 `json:"monoR,omitempty"`
 	MonoG      float64 `json:"monoG,omitempty"`

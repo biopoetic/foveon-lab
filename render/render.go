@@ -905,11 +905,15 @@ const colourLayerScale = 0.1
 // (task 50). The old mono path used the luminance with no such curve.
 const monoBaseGamma = 1.084
 
+// monoDefaultMix is the mixer SPP shows when Monochrome is first opened:
+// the top (blue) layer only.
+var monoDefaultMix = [3]float64{0, 0, 1}
+
 // monoWeights is SPP's Color Mixer: the share of the bottom (red), middle
-// (green) and top (blue) layer. SPP's Reset is equal thirds; a preset that
-// predates the mixer gets it, and a pure B is top-layer only.
+// (green) and top (blue) layer. An unset mixer is SPP's fresh-open state,
+// the top layer alone; SPP's Reset button is equal thirds.
 func monoWeights(p preset.Params) [3]float64 {
-	w := [3]float64{1.0 / 3, 1.0 / 3, 1.0 / 3}
+	w := monoDefaultMix
 	// A file written before the flag existed may still carry weights; honour
 	// them. Only an all-zero set is the old preset's "unset" state.
 	if p.MonoMixSet || p.MonoR != 0 || p.MonoG != 0 || p.MonoB != 0 {
@@ -917,13 +921,13 @@ func monoWeights(p preset.Params) [3]float64 {
 	}
 	for _, v := range w {
 		if v < 0 || math.IsNaN(v) {
-			w = [3]float64{1.0 / 3, 1.0 / 3, 1.0 / 3}
+			w = monoDefaultMix
 			break
 		}
 	}
 	sum := w[0] + w[1] + w[2]
 	if sum <= 0 {
-		return [3]float64{1.0 / 3, 1.0 / 3, 1.0 / 3}
+		return monoDefaultMix
 	}
 	for i := range w {
 		w[i] /= sum
