@@ -492,7 +492,9 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     // without the block (an older fetch) falls back to the RGB path.
     const mLay = !!(r.monoLayers && base.layers);
     gl.uniform1i(u.uMonoLayers, mLay ? 1 : 0);
-    bind(P, "uLayerTex", 4, base.layers || luts);
+    // Unit 4 is uCFLut (a 3D texture); sharing it fails every draw with
+    // "two textures of different types use the same sampler location".
+    bind(P, "uLayerTex", 6, base.layers || luts);
     gl.uniform3fv(u.uMonoW, r.monoW || r.layerMono || [0, 0, 0]);
     gl.uniform3fv(u.uMonoG, rows3(r.monoG));
     gl.uniform3fv(u.uMonoA, r.monoA || [1, 1, 1]);
