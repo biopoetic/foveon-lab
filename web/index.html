@@ -111,6 +111,7 @@ button.on{border-color:var(--accent);color:var(--accent)}
 #panel h3{margin:4px 0 2px;font-size:13px}
 .row input:disabled{opacity:.45}
 .row.locked .lab span{opacity:.55}
+.row.idle{opacity:.5}
 #panel .subh{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin:12px 0 6px;padding-top:8px;border-top:1px solid var(--line)}
 #panel .src{color:var(--dim);font-size:12px;margin-bottom:8px;word-break:break-all}
 .row{margin:9px 0}
@@ -1533,7 +1534,14 @@ function buildSliders(){
   });
   document.querySelectorAll("#panel .row[data-k]").forEach(row => {
     const k = row.dataset.k, inp = row.querySelector("input");
-    inp.oninput = () => { const v = +inp.value; if (k.startsWith("mono")) monoTakesOver(); S.params[k] = v; if (k === "grain") S.params.grainSet = true; if (k === "monoR" || k === "monoG" || k === "monoB") S.params.monoMixSet = true; syncSliders(); scheduleRender(); };
+    inp.oninput = () => {
+      const v = +inp.value;
+      if (k.startsWith("mono")) monoTakesOver();
+      if (k === "monoR" || k === "monoG" || k === "monoB") setMixShare(k, v);
+      else S.params[k] = v;
+      if (k === "grain") S.params.grainSet = true;
+      syncSliders(); scheduleRender();
+    };
     // Release focus after a drag so the arrow keys go back to photo/preset
     // navigation instead of nudging this slider.
     inp.onchange = () => inp.blur();
@@ -1777,10 +1785,23 @@ function useFilm(f){
 // instead. The film and its grain go, Monochrome stays on, and a toast says so.
 function monoTakesOver(){
   const f = S.params.film;
-  if (!f) return;
+  // A Monochrome control does nothing in colour, so touching one turns it on.
+  if (!f){ S.params.mono = true; return; }
   useFilm(null);
   S.params.grain = 0; S.params.grainSet = true; S.params.mono = true;
   toast(`${esc(f)} removed: the Monochrome section now sets the black and white.`, 6000);
+}
+// setMixShare sets one layer's share of the grey and gives the rest to the
+// other two in their current proportion (evenly if both are 0). The renderer
+// normalises the three to sum 1, so without this a lone B slider at 1 would
+// render the same at any position.
+function setMixShare(k, v){
+  const ks = ["monoR", "monoG", "monoB"], others = ks.filter(x => x !== k);
+  const cur = others.map(x => Math.max(0, S.params.monoMixSet ? (S.params[x] || 0) : NEUTRAL[x]));
+  const sum = cur[0] + cur[1], rest = Math.max(0, 1 - v);
+  S.params.monoMixSet = true;
+  S.params[k] = v;
+  others.forEach((x, i) => { S.params[x] = sum > 0 ? rest * cur[i] / sum : rest / 2; });
 }
 // filmCompare shows the photo with the current settings in the films the
 // filters select: colour slides, colour negatives on each colour paper, and
@@ -2023,6 +2044,13 @@ function syncSliders(){
   const filmOn = !!S.params.film;
   $("#monoTone").value = S.params.monoTone || "";
   const sgOn = !!S.params.mono && !filmOn && (S.params.monoGrainSize || 0) > 0;
+  // Radius shapes the shading and roughness the grain; each does nothing
+  // while its partner is at 0, so say so instead of looking broken.
+  for (const [k, on, why] of [["monoShadeRadius", (S.params.monoShadeAmount || 0) > 0, "Shading amount"], ["monoGrainRough", (S.params.monoGrainSize || 0) > 0, "Grain size"]]){
+    const row = document.querySelector(`#panel .row[data-k="${k}"]`);
+    row.classList.toggle("idle", !on);
+    row.title = on ? "" : `No effect while ${why} is 0.`;
+  }
   $("#monoNote").innerHTML = filmOn
     ? "A film is chosen: its own curve, toning and grain replace this section. Change anything here to drop the film and use SPP's Monochrome instead."
     : S.params.mono

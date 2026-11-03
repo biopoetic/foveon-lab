@@ -4,6 +4,7 @@ package render
 // toning offsets, the Shading Effect and the monochrome grain.
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 
@@ -259,5 +260,23 @@ func BenchmarkColourRender(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		renderInto(base, preset.Neutral(), c, func(int, float32, float32, float32) {})
+	}
+}
+
+func TestMonoGrainRecipeJSONNamesMatchGPUJS(t *testing.T) {
+	// web/gpu.js reads sGrain.sigma/.mean/.q/.seed/.fine/.oct; untagged
+	// fields went out capitalised and the preview drew no grain.
+	b, err := json.Marshal(GPUMonoGrain{Sigma: 1, Mean: 1, Q: 1, Seed: 1, Fine: 1, Oct: []GPUGrainOct{{Cell: 1, Amp: 1}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"sigma", "mean", "q", "seed", "fine", "oct"} {
+		if _, ok := m[k]; !ok {
+			t.Errorf("recipe sGrain lacks %q: %s", k, b)
+		}
 	}
 }

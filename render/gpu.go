@@ -76,11 +76,15 @@ type GPUDensity struct {
 // GPUMonoGrain is SPP's monochrome grain for the GPU: the same lattice
 // field monograin.go builds (one coarse octave plus the per-pixel one), the
 // peak SD and mean in 8-bit levels, the tone exponent and the seed.
+// The field names are what web/gpu.js reads; without the tags the preview
+// got "Sigma"/"Oct", read sigma/oct as missing and drew no grain.
 type GPUMonoGrain struct {
-	Sigma, Mean, Q float32
-	Seed           uint32
-	Fine           float32
-	Oct            []GPUGrainOct
+	Sigma float32       `json:"sigma"`
+	Mean  float32       `json:"mean"`
+	Q     float32       `json:"q"`
+	Seed  uint32        `json:"seed"`
+	Fine  float32       `json:"fine"`
+	Oct   []GPUGrainOct `json:"oct"`
 }
 
 // GPURecipe is a render's settings for the GPU (see web/gpu.js for the
