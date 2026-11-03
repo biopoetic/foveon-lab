@@ -198,6 +198,12 @@ func TestMonoGrainSupersedesManualGrain(t *testing.T) {
 			t.Fatalf("manual grain was added on top of SPP's mono grain at byte %d", i)
 		}
 	}
+	// The GPU recipe must report the same: the film grain is off, the SPP
+	// grain is the one that runs.
+	r := NewGPURecipe(b, a, Compensation{CC: monoCC(), SatFactor: 1})
+	if r.SGrain == nil || r.GrainFine != 0 || len(r.GrainOct) != 0 {
+		t.Errorf("GPU recipe: sGrain %v, film fine %v, film octaves %v", r.SGrain != nil, r.GrainFine, r.GrainOct)
+	}
 }
 
 // TestMonoGrainGPUAgrees mirrors web/gpu.js's monochrome grain: the same

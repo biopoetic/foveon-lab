@@ -283,7 +283,13 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 			r.FillLocal = append(tab[:], k...)
 		}
 	}
-	if film := b.newFilmOp(p, op.mono || op.layerMono != nil, false); film != nil {
+	filmP := p
+	if op.monoNew && p.MonoGrainSize > 0 {
+		// renderInto skips the film/manual grain when SPP's mono grain is on;
+		// the recipe must do the same.
+		filmP.Grain = 0
+	}
+	if film := b.newFilmOp(filmP, op.mono || op.layerMono != nil, false); film != nil {
 		r.GrainMono, r.GrainRho, r.GrainFine = film.mono, film.rho, film.fine
 		r.GrainSeed = grainSeed(p)
 		for _, o := range film.oct {
