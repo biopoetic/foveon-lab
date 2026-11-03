@@ -44,6 +44,75 @@ const sppSharpSigma = 1.0
 // 0.0540 -> 0.0494, SD1 0.0317 -> 0.0292. FOVEON_USM_NOCLAMP=1 disables it.
 var usmClamp = os.Getenv("FOVEON_USM_NOCLAMP") == ""
 
+// usmThrOverride is a research override of the high-ISO gate scale, in
+// 8-bit levels (FOVEON_USM_T); -1 keeps the ISO-scaled default.
+var usmThrOverride = func() float32 {
+	if v := os.Getenv("FOVEON_USM_T"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
+			return float32(f)
+		}
+	}
+	return -1
+}()
+
+// usmThresh is the scale of the unsharp mask's high-ISO neighbour-range
+// gate, in 8-bit levels. The denoiser leaves a sparse white-noise tail; an
+// unsharp mask doubles an isolated one-pixel dip, and on a flat wall the
+// tone curve then turns it into a black or white speck. The gate looks at
+// the range of the eight neighbours (not the centre): a real edge, a thin
+// line or a star changes them, so the fitted amount is applied; an isolated
+// dot on a flat field does not, so the mask is held back there. It is 0 at
+// ISO 400 and below, so the base-ISO render is bit-identical, and rises 8
+// levels per ISO stop from ISO 800: 8, 16, 24, 32 at 800-6400.
+func usmThresh(iso float64) float32 {
+	if usmThrOverride >= 0 {
+		return usmThrOverride
+	}
+	if iso <= 400 {
+		return 0
+	}
+	v := 8 * (math.Log2(iso/100) - 2)
+	return float32(math.Max(0, math.Min(40, v)))
+}
+
+// usmGate maps each pixel's eight-neighbour luma range to 0..1: no
+// sharpening while the neighbours are within half the noise scale, full
+// sharpening once they span 1.5 times it.
+func usmGate(v []float32, w, h, n int, t float32) []float32 {
+	if t <= 0 {
+		return nil
+	}
+	l := make([]float32, w*h)
+	parallelRows(w*h, func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			l[i] = 0.2126*v[i*n] + 0.7152*v[i*n+1] + 0.0722*v[i*n+2]
+		}
+	})
+	g := make([]float32, w*h)
+	loT, hiT := 0.5*t, 1.5*t
+	parallelRows(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			for x := 0; x < w; x++ {
+				lo, hi := float32(math.Inf(1)), float32(math.Inf(-1))
+				for dy := -1; dy <= 1; dy++ {
+					yy := min(h-1, max(0, y+dy))
+					for dx := -1; dx <= 1; dx++ {
+						if dx == 0 && dy == 0 {
+							continue
+						}
+						q := l[yy*w+min(w-1, max(0, x+dx))]
+						lo, hi = min(lo, q), max(hi, q)
+					}
+				}
+				u := (hi - lo - loT) / (hiT - loT)
+				u = max(0, min(1, u))
+				g[y*w+x] = u * u * (3 - 2*u)
+			}
+		}
+	})
+	return g
+}
+
 // sharpAmountScale is a research multiplier on the fitted amounts
 // (FOVEON_SHARP_SCALE=0.667), used to measure one amount change without a
 // second build. 1 (the environment unset) ships.
@@ -192,10 +261,13 @@ var gauss1 = gaussKernel(1)
 // usmPlanes sharpens interleaved channels (n per pixel, the first 3
 // sharpened) given as floats: v + a·(v − gauss(v)), edges clamped. Each
 // channel goes through its own plane: a horizontal pass (no clamping away
-// from the edges) and a vertical pass accumulated row by row.
-func usmPlanes(v []float32, w, h, n int, a float32, k [7]float32) []float32 {
+// from the edges) and a vertical pass accumulated row by row. A positive
+// thr gates the mask by the eight-neighbour luma range (usmGate), so an
+// isolated noise dot is not sharpened while a real edge is.
+func usmPlanes(v []float32, w, h, n int, a float32, k [7]float32, thr float32) []float32 {
 	out := make([]float32, len(v))
 	copy(out, v)
+	gate := usmGate(v, w, h, n, thr)
 	for c := 0; c < 3; c++ {
 		pl := make([]float32, w*h)
 		parallelRows(w*h, func(i0, i1 int) {
@@ -254,7 +326,13 @@ func usmPlanes(v []float32, w, h, n int, a float32, k [7]float32) []float32 {
 				}
 				for x := 0; x < w; x++ {
 					i := (y*w + x) * n
-					v := pl[y*w+x] + a*(pl[y*w+x]-acc[x])
+					d := pl[y*w+x] - acc[x]
+					v := pl[y*w+x]
+					if gate != nil {
+						v += a * d * gate[y*w+x]
+					} else {
+						v += a * d
+					}
 					if usmClamp {
 						// Allow half the local range beyond it: a 1 px line
 						// still gains acutance, a step's halo cannot grow
@@ -299,7 +377,7 @@ func sppSharpen8Scale(img *image.RGBA, s, iso float64, sensor string, scale floa
 			v[i] = float32(img.Pix[i])
 		}
 	})
-	o := usmPlanes(v, w, h, 4, a, k)
+	o := usmPlanes(v, w, h, 4, a, k, usmThresh(iso))
 	parallelRows(len(v), func(i0, i1 int) {
 		for i := i0; i < i1; i++ {
 			if i%4 != 3 {
@@ -329,7 +407,7 @@ func sppSharpen16Scale(img *image.RGBA64, s, iso float64, sensor string, scale f
 			v[i] = float32(uint16(img.Pix[2*i])<<8 | uint16(img.Pix[2*i+1]))
 		}
 	})
-	o := usmPlanes(v, w, h, 4, a, k)
+	o := usmPlanes(v, w, h, 4, a, k, usmThresh(iso)*257)
 	parallelRows(len(v), func(i0, i1 int) {
 		for i := i0; i < i1; i++ {
 			if i%4 != 3 {

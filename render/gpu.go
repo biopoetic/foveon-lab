@@ -141,7 +141,10 @@ type GPURecipe struct {
 	SppSharpen float32     `json:"sppSharpen"`
 	// SppKernel is the blur of SPP's mask at this view (sppView).
 	SppKernel []float32 `json:"sppKernel,omitempty"`
-	Sharpen   float32   `json:"sharpen"`
+	// SppThr is the mask's high-ISO neighbour-range gate scale in 8-bit
+	// levels (sppsharpen.go usmThresh); 0 = the old mask.
+	SppThr  float32 `json:"sppThr,omitempty"`
+	Sharpen float32 `json:"sharpen"`
 
 	// A colour film (colorfilm.go): its matrices here; its curves and 3-D
 	// table from /api/gpu/colorfilm?key= (GPUColorFilmData), fetched once.
@@ -299,6 +302,7 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 	if b.Raw {
 		a, k := sppView(b.scale(), b.ISO, b.Sensor)
 		r.SppSharpen, r.SppKernel = a, k[:]
+		r.SppThr = usmThresh(b.ISO)
 	}
 	if p.Sharpness != 0 {
 		r.Sharpen = float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale())))

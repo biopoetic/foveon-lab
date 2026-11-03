@@ -311,11 +311,23 @@ void main(){ ivec2 q = ivec2(gl_FragCoord.xy); vec3 s = vec3(0.);
   o = vec4(s, 255.); }`;
   // Pass 3: vertical blur and the unsharp mask (sppsharpen.go), to 8 bits.
   const USM = HEAD + `
-uniform sampler2D uSrc, uBlur; uniform int uH; uniform float uK[7], uA;
+uniform sampler2D uSrc, uBlur; uniform int uH; uniform float uK[7], uA, uThr;
 void main(){ ivec2 q = ivec2(gl_FragCoord.xy); vec3 s = vec3(0.);
   for (int j = -3; j <= 3; j++) s += uK[j + 3] * texelFetch(uBlur, ivec2(q.x, clamp(q.y + j, 0, uH - 1)), 0).rgb;
   vec3 v = texelFetch(uSrc, q, 0).rgb;
-  o = vec4(floor(clamp(v + uA * (v - s), 0., 255.) + 0.5), 255.); }`;
+  // sppsharpen.go usmGate: the eight neighbours' luma range, not the centre.
+  ivec2 sz = textureSize(uSrc, 0);
+  float lv = dot(v, vec3(0.2126, 0.7152, 0.0722));
+  float lmin = lv, lmax = lv;
+  for (int dy = -1; dy <= 1; dy++)
+    for (int dx = -1; dx <= 1; dx++){
+      if (dx == 0 && dy == 0) continue;
+      vec3 c = texelFetch(uSrc, clamp(q + ivec2(dx, dy), ivec2(0), sz - 1), 0).rgb;
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      lmin = min(lmin, l); lmax = max(lmax, l);
+    }
+  float g = uThr > 0. ? smoothstep(0.5 * uThr, 1.5 * uThr, lmax - lmin) : 1.;
+  o = vec4(floor(clamp(v + uA * (v - s) * g, 0., 255.) + 0.5), 255.); }`;
   // Pass 4: the Sharpness slider's 3x3 cross (render.go sharpen), edges
   // untouched, then out to the canvas (flipped: canvas row 0 is the top).
   const OUT = HEAD + `
@@ -498,7 +510,7 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     if (r.sppSharpen){
       const H = progs.blurh; gl.useProgram(H.p); bind(H, "uSrc", 0, cur.tex); gl.uniform1i(H.u.uW, base.w); gl.uniform1fv(H.u.uK, r.sppKernel || K7); pass(H, fbs[1]);
       const U = progs.usm; gl.useProgram(U.p); bind(U, "uSrc", 0, cur.tex); bind(U, "uBlur", 1, fbs[1].tex);
-      gl.uniform1i(U.u.uH, base.h); gl.uniform1fv(U.u.uK, r.sppKernel || K7); gl.uniform1f(U.u.uA, r.sppSharpen); pass(U, fbs[2]);
+      gl.uniform1i(U.u.uH, base.h); gl.uniform1fv(U.u.uK, r.sppKernel || K7); gl.uniform1f(U.u.uA, r.sppSharpen); gl.uniform1f(U.u.uThr, r.sppThr || 0); pass(U, fbs[2]);
       cur = fbs[2];
     }
     const O = progs.out; gl.useProgram(O.p); bind(O, "uSrc", 0, cur.tex);

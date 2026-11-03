@@ -159,7 +159,108 @@ var (
 	// +0.5-4% came with residual +0.3-2.6% and noise +1-6%, i.e. no gain in
 	// detail per unit of noise. FOVEON_DN_GARROTE=1 for the study.
 	dnGarrote = os.Getenv("FOVEON_DN_GARROTE") != ""
+	// noFimp keeps the denoiser's isolated luma impulses, for the before
+	// crops of task 51 (FOVEON_DN_NOFIMP=1).
+	noFimp = os.Getenv("FOVEON_DN_NOFIMP") != ""
 )
+
+// rejectLumaOut removes isolated luma impulses the denoiser would otherwise
+// leave: a pixel whose luma is far outside the eight neighbours' luma, while
+// those neighbours are themselves flat, is replaced by the per-layer 3x3
+// median. It is not a median filter over the picture: a real edge, a thin
+// line or a star lights its neighbours, so the neighbour span closes the
+// gate. sig is the input luminance noise at the pixel, so the test follows
+// the ISO. A dead or hot sensor sample in the layer that dominates the
+// inverse-variance luma makes the luma collapse there; without this the
+// multiplicative put-back spreads it into all three layers as a black or
+// white speck.
+const (
+	fimpK    = 2.5 // threshold in the local luminance noise
+	fimpSpan = 6.0 // the neighbours must span less than this
+)
+
+func rejectLumaOut(img *CamImage, sig []float32, w, h int) int {
+	src := append([]float32(nil), img.Pix...)
+	n := w * h
+	l := make([]float32, n)
+	parallel(n, func(i0, i1 int) {
+		for i := i0; i < i1; i++ {
+			l[i] = 0.2126*src[i*3] + 0.7152*src[i*3+1] + 0.0722*src[i*3+2]
+		}
+	})
+	var changed int
+	parallel(h, func(y0, y1 int) {
+		var a, ch [8]float32
+		y0, y1 = max(y0, 1), min(y1, h-1)
+		for y := y0; y < y1; y++ {
+			for x := 1; x < w-1; x++ {
+				i := y*w + x
+				v := l[i]
+				lo, hi := float32(math.Inf(1)), float32(math.Inf(-1))
+				m := 0
+				for dy := -1; dy <= 1; dy++ {
+					for dx := -1; dx <= 1; dx++ {
+						if dx == 0 && dy == 0 {
+							continue
+						}
+						q := l[i+dy*w+dx]
+						a[m] = q
+						m++
+						lo, hi = min(lo, q), max(hi, q)
+					}
+				}
+				s := sig[i]
+				if s < 1e-6 {
+					s = 1e-6
+				}
+				if hi-lo >= fimpSpan*s {
+					continue
+				}
+				// An isolated dot is a local extreme: a pixel inside the
+				// neighbours' range is structure, not a speck, and need not
+				// be sorted.
+				if v >= lo && v <= hi {
+					continue
+				}
+				med := median8f32(&a)
+				if d := v - med; d <= fimpK*s && d >= -fimpK*s {
+					continue
+				}
+				for c := 0; c < 3; c++ {
+					q := 0
+					for dy := -1; dy <= 1; dy++ {
+						for dx := -1; dx <= 1; dx++ {
+							if dx == 0 && dy == 0 {
+								continue
+							}
+							ch[q] = src[(i+dy*w+dx)*3+c]
+							q++
+						}
+					}
+					img.Pix[i*3+c] = median8f32(&ch)
+				}
+				changed++
+			}
+		}
+	})
+	return changed
+}
+
+// median8f32 sorts eight samples in place and returns their median (the mean
+// of the middle two, as the impulse metric counts it).
+func median8f32(a *[8]float32) float32 {
+	s := a
+	for i := 1; i < 8; i++ {
+		v := s[i]
+		j := i
+		for j > 0 && s[j-1] > v {
+			s[j] = s[j-1]
+			j--
+		}
+		s[j] = v
+	}
+	return (s[3] + s[4]) / 2
+}
 
 // darkBoost is the per-pixel factor multiplying the luminance wavelet
 // threshold: 1 above darkHi, dnDark at and below darkLo, smooth between.
@@ -517,6 +618,19 @@ func Denoise(img *CamImage, o DenoiseOptions) {
 			}
 		}
 	}
+	// The last step: a narrow impulse reject on the finished layers. The
+	// wavelet keeps a one-pixel luma outlier (it is indistinguishable from a
+	// real point detail), and the luma put-back then paints it into all
+	// three layers. At high ISO those specks are what the eye sees on a flat
+	// wall or a grey card. Low ISO is untouched (the gate keeps the base
+	// frame bit-identical), and so is anything whose neighbours show real
+	// structure.
+	if !noFimp && o.ISO >= 800 {
+		if n := rejectLumaOut(img, sig, w, h); debugNoise {
+			fmt.Fprintf(os.Stderr, "denoise: luma impulse reject %d pixels\n", n)
+		}
+	}
+	lap("impulse reject")
 }
 
 // Detail given back after the filters, per frequency band (box radii
