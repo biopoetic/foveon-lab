@@ -1533,7 +1533,7 @@ function buildSliders(){
   });
   document.querySelectorAll("#panel .row[data-k]").forEach(row => {
     const k = row.dataset.k, inp = row.querySelector("input");
-    inp.oninput = () => { S.params[k] = +inp.value; if (k === "grain") S.params.grainSet = true; if (k === "monoR" || k === "monoG" || k === "monoB") S.params.monoMixSet = true; syncSliders(); scheduleRender(); };
+    inp.oninput = () => { const v = +inp.value; if (k.startsWith("mono")) monoTakesOver(); S.params[k] = v; if (k === "grain") S.params.grainSet = true; if (k === "monoR" || k === "monoG" || k === "monoB") S.params.monoMixSet = true; syncSliders(); scheduleRender(); };
     // Release focus after a drag so the arrow keys go back to photo/preset
     // navigation instead of nudging this slider.
     inp.onchange = () => inp.blur();
@@ -1581,8 +1581,8 @@ function buildSliders(){
   document.querySelector('#panel .row[data-k="grain"]').title = GRAIN_TIPS;
   $("#mode").onchange = () => { S.params.colorMode = +$("#mode").value; $("#mode").blur(); syncSliders(); scheduleRender(); };
   $("#mono").onchange = () => { S.params.mono = $("#mono").checked; syncSliders(); scheduleRender(); };
-  $("#monoTone").onchange = () => { S.params.monoTone = $("#monoTone").value; $("#monoTone").blur(); syncSliders(); scheduleRender(); };
-  const setMix = (r, g, b) => { S.params.monoMixSet = true; S.params.monoR = r; S.params.monoG = g; S.params.monoB = b; syncSliders(); scheduleRender(); };
+  $("#monoTone").onchange = () => { const v = $("#monoTone").value; monoTakesOver(); S.params.monoTone = v; $("#monoTone").blur(); syncSliders(); scheduleRender(); };
+  const setMix = (r, g, b) => { monoTakesOver(); S.params.monoMixSet = true; S.params.monoR = r; S.params.monoG = g; S.params.monoB = b; syncSliders(); scheduleRender(); };
   $("#monoResetMix").onclick = () => { setMix(1/3, 1/3, 1/3); $("#monoResetMix").blur(); };
   $("#monoSPPMix").onclick = () => { setMix(0, 0, 1); $("#monoSPPMix").blur(); };
   $("#rot").oninput = e => setRot(+e.target.value);
@@ -1771,6 +1771,16 @@ function useFilm(f){
     S.params.mono = !!f.bw;
   }
   syncSliders(); scheduleRender();
+}
+// monoTakesOver: a black-and-white film ticks Monochrome but owns the look,
+// so touching the Monochrome section means the user wants SPP's mono path
+// instead. The film and its grain go, Monochrome stays on, and a toast says so.
+function monoTakesOver(){
+  const f = S.params.film;
+  if (!f) return;
+  useFilm(null);
+  S.params.grain = 0; S.params.grainSet = true; S.params.mono = true;
+  toast(`${esc(f)} removed: the Monochrome section now sets the black and white.`, 6000);
 }
 // filmCompare shows the photo with the current settings in the films the
 // filters select: colour slides, colour negatives on each colour paper, and
@@ -2012,12 +2022,9 @@ function syncSliders(){
   // this section, so its controls are turned off rather than silently mixed.
   const filmOn = !!S.params.film;
   $("#monoTone").value = S.params.monoTone || "";
-  for (const el of document.querySelectorAll('#g-mono [data-k] input, #g-mono #monoTone, #g-mono #monoResetMix, #g-mono #monoSPPMix')){
-    el.disabled = filmOn;
-  }
   const sgOn = !!S.params.mono && !filmOn && (S.params.monoGrainSize || 0) > 0;
   $("#monoNote").innerHTML = filmOn
-    ? "A film is chosen: its own curve, toning and grain replace this section, so nobody gets both grains."
+    ? "A film is chosen: its own curve, toning and grain replace this section. Change anything here to drop the film and use SPP's Monochrome instead."
     : S.params.mono
       ? "SPP's Reset is .33/.33/.34 (equal layers). Its fresh open is B alone (the top layer); Reset is the tone the measured base exports use.<br>Not carried into an SPP XML: SPP has no fields for these values beyond Mono."
       : "Tick Monochrome to use SPP's mixer, toning, shading and grain. A film in Film &amp; Darkroom overrides this section.";
