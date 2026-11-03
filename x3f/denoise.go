@@ -745,6 +745,15 @@ func restoreRamp(rel, iso float64) float64 {
 // back (DP1 Merrill studio ISO 6400 vs SPP: luma 15.1 against 11.1).
 var dnLT = envFloat("FOVEON_DN_LT", 2.0)
 
+// dnGrain is the fraction of the un-denoised 0-1 px luminance residual that
+// is given back as a linear (unthresholded) blend on the noise-aware high-ISO
+// path. The noise-aware restore soft-thresholds each band, which keeps real
+// edges but removes the body of the fine noise and leaves only its >2 sigma
+// tail: a smooth field with isolated dark/light residuals. A linear blend
+// scales the tail with the body, so what remains is even, fine grain. Zero
+// keeps the old path (research switch FOVEON_DN_GRAIN).
+var dnGrain = envFloat("FOVEON_DN_GRAIN", 0.7)
+
 func restoreLuma(img *CamImage, orig []float32, wf, gw [3]float32, rel, strength float64, sig []float32, ramp float64) {
 	keep := keepFor(rel)
 	var wb [4]float32
@@ -766,13 +775,26 @@ func restoreLuma(img *CamImage, orig []float32, wf, gw [3]float32, rel, strength
 	fr := [5]float32{1, 1.0 / 3, 1.0 / 5, 1.0 / 9, 1.0 / 17}
 	lt := float32(dnLT)
 	r := float32(ramp)
+	// The linear blend follows the NR strength the way the old per-band
+	// restore did: at full strength there is no blend and the old
+	// soft-thresholded band runs; at the default (0.3) the blend is 0.7 of
+	// dnGrain.
+	g := float32(dnGrain) * rest
 	parallel(n, func(a, b int) {
 		for i := a; i < b; i++ {
-			vOld := wb[0]*(d[i]-b1[i]) + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
+			fine := d[i] - b1[i]
+			vOld := wb[0]*fine + wb[1]*(b1[i]-b2[i]) + wb[2]*(b2[i]-b4[i]) + wb[3]*(b4[i]-b8[i]) + rest*b8[i]
 			v := vOld
 			if lt > 0 && r > 0 {
 				t := lt * sig[i]
-				vNew := wb[0]*softThreshold(d[i]-b1[i], t*fr[0]) + wb[1]*softThreshold(b1[i]-b2[i], t*fr[1]) +
+				// The finest band is the fine grain. A linear blend keeps its
+				// body and scales its tail; the thresholded form would keep
+				// only the tail and leave the field around it flat.
+				vFine := wb[0] * softThreshold(fine, t*fr[0])
+				if g > 0 {
+					vFine = g * fine
+				}
+				vNew := vFine + wb[1]*softThreshold(b1[i]-b2[i], t*fr[1]) +
 					wb[2]*softThreshold(b2[i]-b4[i], t*fr[2]) + wb[3]*softThreshold(b4[i]-b8[i], t*fr[3]) +
 					rest*softThreshold(b8[i], t*fr[4])
 				v = vOld*(1-r) + vNew*r
