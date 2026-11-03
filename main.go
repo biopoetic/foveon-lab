@@ -742,7 +742,7 @@ func rawCompensation(ph *Photo) render.Compensation {
 	if camera == "" {
 		camera = calibGroup(ph)
 	}
-	return render.Compensation{SatFactor: 1, Family: x3f.PresetFamily(ph.Camera), CC: layerCC(ph), Sensor: render.SensorGeneration(calibGroup(ph)), NoModes: !x3f.HasColourModes(modelOf(ph)), Model: camera, GenericFilm: ph.Kind == "dng"}
+	return render.Compensation{SatFactor: 1, Family: x3f.PresetFamily(ph.Camera), CC: layerCC(ph), Sensor: render.SensorGeneration(calibGroup(ph)), NoModes: !x3f.HasColourModes(modelOf(ph)), Model: camera, GenericFilm: ph.Kind == "dng", ISO: photoISO(ph)}
 }
 
 func (s *server) compensation(ph *Photo, on bool) render.Compensation {

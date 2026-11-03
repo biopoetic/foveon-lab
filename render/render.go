@@ -64,6 +64,14 @@ type Linear struct {
 	// through crops, zoom windows and rotations: SPP's Fill Light depends on
 	// it, and SPP sees the whole frame. 0 = not measured yet.
 	FillMean float32
+	// MonoLayers is SPP's Monochrome layer tone: the three camera layers
+	// (bottom/middle/top) after the raw base's measured neutral curve, in
+	// linear light, 3 floats per pixel at this image's geometry. A raw
+	// development fills it (task 54); nil everywhere else. The mono path
+	// mixes these directly, in SPP's order: the layers' tone first, the
+	// mixer after, so the mix can no longer change how noise is rectified
+	// per channel.
+	MonoLayers []float32
 }
 
 // frameMean is the whole frame's mean brightness: FillMean when known, else
@@ -311,6 +319,12 @@ func (l *Linear) Window(x0, y0, w, h int) *Linear {
 	for y := 0; y < h; y++ {
 		copy(o.Pix[y*w*3:(y+1)*w*3], l.Pix[((y+y0)*l.W+x0)*3:])
 	}
+	if l.MonoLayers != nil {
+		o.MonoLayers = make([]float32, w*h*3)
+		for y := 0; y < h; y++ {
+			copy(o.MonoLayers[y*w*3:(y+1)*w*3], l.MonoLayers[((y+y0)*l.W+x0)*3:])
+		}
+	}
 	return o
 }
 
@@ -350,6 +364,25 @@ func (l *Linear) Rotate(deg int) *Linear {
 			}
 		}
 	})
+	if l.MonoLayers != nil {
+		o.MonoLayers = make([]float32, w*h*3)
+		parallelRows(o.H, func(y0, y1 int) {
+			for ny := y0; ny < y1; ny++ {
+				for nx := 0; nx < o.W; nx++ {
+					var x, y int
+					switch deg {
+					case 90:
+						x, y = ny, h-1-nx
+					case 180:
+						x, y = w-1-nx, h-1-ny
+					case 270:
+						x, y = w-1-ny, nx
+					}
+					copy(o.MonoLayers[(ny*o.W+nx)*3:][:3], l.MonoLayers[(y*w+x)*3:][:3])
+				}
+			}
+		})
+	}
 	return o
 }
 
@@ -361,8 +394,12 @@ func (l *Linear) Downscale(maxW int) *Linear {
 	dw := maxW
 	dh := max(1, int(math.Round(float64(l.H)*float64(dw)/float64(l.W))))
 	fw, fh := l.fullSize()
-	return &Linear{W: dw, H: dh, Pix: areaResample(l.Pix, l.W, l.H, dw, dh), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean,
+	o := &Linear{W: dw, H: dh, Pix: areaResample(l.Pix, l.W, l.H, dw, dh), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean,
 		OriginX: l.OriginX, OriginY: l.OriginY, FullW: int(math.Round(fw)), FullH: int(math.Round(fh))}
+	if l.MonoLayers != nil {
+		o.MonoLayers = areaResample(l.MonoLayers, l.W, l.H, dw, dh)
+	}
+	return o
 }
 
 // mask is a heavily blurred perceptual-luminance map used by Fill Light, so
@@ -518,6 +555,9 @@ type Compensation struct {
 	// Sensor is the Foveon generation for the physical lens filters
 	// ("Merrill", "TRUEII", "SD9", "Quattro"); "" = no lens filters.
 	Sensor string
+	// ISO the raw was shot at, for the Monochrome path's high-ISO tone
+	// (0 = unknown, no high-ISO term).
+	ISO float64
 	// GenericFilm: the source is a colour-managed linear RGB image with no
 	// measured sensor sensitivity (another camera's raw), so a colour film
 	// is fitted to the sRGB/CIE observer response instead of a Foveon layer
@@ -677,7 +717,7 @@ func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, 
 					}
 				}
 				r, g, bl := film.addHalo(y*w+x, b.Pix[i], b.Pix[i+1], b.Pix[i+2])
-				r, g, bl = op.apply(r, g, bl, m, da, db)
+				r, g, bl = op.applyAt(y*w+x, r, g, bl, m, da, db)
 				r, g, bl = op.monoShade(b, x, y, r, g, bl)
 				r, g, bl = film.grain(y*w+x, r, g, bl)
 				r, g, bl = sg.apply(y*w+x, r, g, bl)
@@ -709,6 +749,14 @@ type pixOp struct {
 	monoNew   bool
 	monoGamma float32
 	monoTone  [3]float32 // 8-bit sRGB offsets / 255
+	// monoLayers: SPP's per-layer tone image (Linear.MonoLayers), mixed in
+	// SPP's order; nil = the old path, which mixes in the sRGB base first.
+	monoLayers []float32
+	monoW      [3]float32 // the mixer's layer weights (bottom, middle, top)
+	monoG      [9]float32 // lens filter and the layer sliders' gains, in layer space
+	monoA      [3]float32 // high-ISO per-layer gain
+	monoF      [3]float32 // high-ISO per-layer black floor
+	monoB      float32    // high-ISO black lift before the tone power
 	// monoShadeR/A: SPP's Shading Effect; A 0 = off.
 	monoShadeR, monoShadeA float32
 
@@ -805,6 +853,16 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 		}
 		op.monoShadeR = float32(math.Max(0, math.Min(1, p.MonoShadeRadius)))
 		op.monoShadeA = float32(math.Max(0, math.Min(1, p.MonoShadeAmount)))
+		// Task 54: SPP applies its tone to each layer and mixes after; the
+		// mixer's weights also go to the per-layer path. The high-ISO terms
+		// are zero at base ISO, where the tone is the measured 1.084 curve.
+		w := monoWeights(p)
+		s := monoISORamp(c.ISO)
+		op.monoW = [3]float32{float32(w[0]), float32(w[1]), float32(w[2])}
+		op.monoA = [3]float32{float32(1 - 0.085*s), float32(1 - 0.085*s), 1}
+		op.monoF = [3]float32{float32(0.028 * s), float32(0.028 * s), 0}
+		op.monoB = float32(0.005 * s)
+		op.monoGamma = float32(monoBaseGamma + 0.116*s)
 	}
 	switch {
 	case sat < 0:
@@ -898,12 +956,27 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 // colourLayerScale: how much of the layer filter's stops apply in colour.
 const colourLayerScale = 0.1
 
+// Invert3 inverts a 3×3 row-major matrix (invert3x3 for other packages).
+func Invert3(m [9]float64) ([9]float64, bool) { return invert3x3(m) }
+
 // monoBaseGamma is SPP's Monochrome base tone: its neutral Monochrome render
 // is our linear layer mix raised to this power before the sRGB encode. Fitted
 // to 01-base (ISO 100) and 06-base (ISO 3200), whose four-times-reduced
 // pictures agree on it: 1.084, with amplitude 0.993 and a +0.0013 black lift
 // (task 50). The old mono path used the luminance with no such curve.
 const monoBaseGamma = 1.084
+
+// monoISORamp is how much of the measured high-ISO Monochrome term applies:
+// 0 at ISO 400 and below, 1 at ISO 3200 and above, linear in log2(ISO)
+// between them (task 54 measured 06 at ISO 3200; the 800/1600/6400 points
+// are an interpolation, see REPORT-54.md).
+func monoISORamp(iso float64) float64 {
+	if iso <= 400 {
+		return 0
+	}
+	s := math.Log2(iso/400) / 3
+	return math.Max(0, math.Min(1, s))
+}
 
 // monoDefaultMix is the mixer SPP shows when Monochrome is first opened:
 // the top (blue) layer only.
@@ -952,6 +1025,9 @@ func (op *pixOp) setMonoMix(p preset.Params, c Compensation) {
 		for j := 0; j < 3; j++ {
 			G[i*3+j] *= f[i]
 		}
+	}
+	for i := range op.monoG {
+		op.monoG[i] = float32(G[i])
 	}
 	if c.CC == nil {
 		var v [3]float32
@@ -1193,8 +1269,14 @@ func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, f
 	desat := highlightDesat(r, g, bl)
 	Y := 0.2126*r + 0.7152*g + 0.0722*bl
 	if op.monoNew {
-		// SPP's monochrome base tone (see monoBaseGamma).
-		if Y > 0 {
+		// SPP's monochrome base tone (see monoBaseGamma); on the per-layer
+		// path the task-54 high-ISO black lift and exponent apply instead.
+		if op.monoLayers != nil {
+			Y = max(0, Y+op.monoB)
+			if Y > 0 {
+				Y = float32(math.Pow(float64(Y), float64(op.monoGamma)))
+			}
+		} else if Y > 0 {
 			Y = float32(math.Pow(float64(Y), monoBaseGamma))
 		}
 	}
@@ -1215,6 +1297,27 @@ func (op *pixOp) applyMeasured(r, g, bl, m, da, db float32) (float32, float32, f
 	}
 	f := chroma * float32(op.satMeasure) * (1 - desat)
 	return Y2 + cr*f, Y2 + cg*f, Y2 + cb*f
+}
+
+// applyAt is apply for a pixel of a prepared Base: on the per-layer
+// Monochrome path it mixes the layer tone SPP would (each layer scaled and
+// floored, the mixer's weights after that) and carries the result as the
+// grey through the ordinary tone steps.
+func (op *pixOp) applyAt(i int, r, g, bl, m, da, db float32) (float32, float32, float32) {
+	if op.monoLayers != nil {
+		j := i * 3
+		q0, q1, q2 := op.monoLayers[j], op.monoLayers[j+1], op.monoLayers[j+2]
+		// The lens filter and the layer sliders act on the camera layers
+		// (G), then the high-ISO per-layer gain and floor, then the mixer.
+		l0 := op.monoG[0]*q0 + op.monoG[1]*q1 + op.monoG[2]*q2
+		l1 := op.monoG[3]*q0 + op.monoG[4]*q1 + op.monoG[5]*q2
+		l2 := op.monoG[6]*q0 + op.monoG[7]*q1 + op.monoG[8]*q2
+		y := op.monoW[0]*(op.monoA[0]*l0+op.monoF[0]) +
+			op.monoW[1]*(op.monoA[1]*l1+op.monoF[1]) +
+			op.monoW[2]*(op.monoA[2]*l2+op.monoF[2])
+		return op.applyMeasured(max(0, y), max(0, y), max(0, y), m, da, db)
+	}
+	return op.apply(r, g, bl, m, da, db)
 }
 
 // apply maps one linear pixel; m is the blurred perceptual luminance around
@@ -1412,6 +1515,9 @@ func sharpen(img *image.RGBA, amount float32) {
 // forBase finishes the parts of a render that depend on the image itself:
 // Fill Light's frame-mean term.
 func (op *pixOp) forBase(b *Base) {
+	if op.monoNew {
+		op.monoLayers = b.MonoLayers
+	}
 	if op.fillM != nil && op.fillL != nil && op.fillM.usesMean() && b.fillMean > 0 {
 		// In the space Fill Light sees a pixel's brightness: after the
 		// exposure step (applyMeasured's preL), so a flat frame's mean is

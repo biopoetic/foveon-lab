@@ -27,7 +27,7 @@ float dec(float x){ x = clamp(x, 0., 1.); return x <= 0.04045 ? x / 12.92 : pow(
 `;
   // Pass 1: one pixel through pixOp (+ grain), written as 8-bit values.
   const PIX = HEAD + `
-uniform sampler2D uRGB, uAux, uLut, uFilm, uCFCurve;
+uniform sampler2D uRGB, uAux, uLut, uFilm, uCFCurve, uLayerTex;
 uniform highp sampler3D uCFLut;
 uniform bool uCF;
 uniform vec3 uCFInv[3], uCFA[3], uCFB[3];   // linear sRGB -> layers; root-polynomial (r,g,b) and (√rg,√gb,√rb) rows
@@ -50,6 +50,14 @@ uniform bool uMonoNew;
 uniform float uMonoGamma;
 uniform vec3 uMonoTone;
 uniform float uMonoShadeR, uMonoShadeA;
+// Task 54: the three tone-mapped layers are a second RGB block of the base;
+// the mixer weights, high-ISO per-layer gain/floor and black lift come from
+// the recipe (render/gpu.go). When uMonoLayers is set they replace the RGB
+// base and uLayerMono.
+uniform bool uMonoLayers;
+uniform vec3 uMonoW, uMonoA, uMonoF;
+uniform vec3 uMonoG[3];
+uniform float uMonoB;
 uniform vec2 uOrigin, uFull;
 uniform float uScale;
 uniform int uSGN;
@@ -167,6 +175,9 @@ float grain1(float v, float n){
 void main(){
   ivec2 q = ivec2(gl_FragCoord.xy);            // image row q.y (row 0 = top)
   vec3 c = texelFetch(uRGB, q, 0).rgb;
+  // SPP's Monochrome mixes the toned layers (render.go applyAt): each layer
+  // is gained and floored, then the mixer's weights are applied.
+  if (uMonoLayers) c = vec3(max(0., dot(uMonoW, uMonoA * mul(uMonoG, texelFetch(uLayerTex, q, 0).rgb) + uMonoF)));
   vec3 aux = texelFetch(uAux, q, 0).rgb;      // mask, da, db
   if (uUndo){
     if (uUndoGamma) c = vec3(enc(max(0., c.r)), enc(max(0., c.g)), enc(max(0., c.b)));
@@ -181,7 +192,7 @@ void main(){
     c *= uTint;
     float des = hlDesat(c);
     float Y = dot(LUMA, c);
-    if (uMonoNew && Y > 0.) Y = pow(Y, uMonoGamma);
+    if (uMonoNew){ Y = max(0., Y + uMonoB); if (Y > 0.) Y = pow(Y, uMonoGamma); }
     vec3 ch = c - Y;
     float x = enc(Y);
     float chroma = lut(1, x); x = lut(0, x);
@@ -206,9 +217,10 @@ void main(){
     }
     float des = hlDesat(c);
     float Y = dot(LUMA, c);
-    if (uMonoNew && Y > 0.){
-      float Yg = pow(Y, uMonoGamma), k = Yg / Y;
-      c *= k; Y = Yg;
+    if (uMonoNew){
+      Y = max(0., Y + uMonoB);
+      if (Y > 0.){ float Yg = pow(Y, uMonoGamma), k = Yg / Y; c *= k; Y = Yg; }
+      else c = vec3(0.);
     }
     if (uFilmTone && Y > 1e-6){ float Yf = filmTone(Y); c *= Yf / Y; Y = Yf; }
     if (Y > 1e-6){
@@ -383,10 +395,12 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     const w = hdr.w, h = hdr.h, n = w * h;
     const rgb = new Uint16Array(buf, off, n * 3), aux = new Uint16Array(n * 3), a = new Uint16Array(buf, off + n * 6, n * 3);
     for (let j = 0; j < n; j++){ aux[j * 3] = a[j]; aux[j * 3 + 1] = a[n + j]; aux[j * 3 + 2] = a[2 * n + j]; }
-    if (base){ gl.deleteTexture(base.rgb); gl.deleteTexture(base.aux); }
+    const layerData = hdr.layers ? new Uint16Array(buf, off + n * 12, n * 3) : null;
+    if (base){ gl.deleteTexture(base.rgb); gl.deleteTexture(base.aux); if (base.layers) gl.deleteTexture(base.layers); }
     base = {key, src, w, h, hdr,
       rgb: tex(w, h, gl.RGB16F, gl.RGB, gl.HALF_FLOAT, rgb),
-      aux: tex(w, h, gl.RGB16F, gl.RGB, gl.HALF_FLOAT, aux)};
+      aux: tex(w, h, gl.RGB16F, gl.RGB, gl.HALF_FLOAT, aux),
+      layers: layerData ? tex(w, h, gl.RGB16F, gl.RGB, gl.HALF_FLOAT, layerData) : null};
     for (const f of fbs){ gl.deleteTexture(f.tex); gl.deleteFramebuffer(f.fb); }
     fbs = [0, 1, 2].map(() => { const t = tex(w, h, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, null);
       const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
@@ -474,6 +488,16 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     gl.uniform3fv(u.uMonoTone, r.monoTone || [0, 0, 0]);
     gl.uniform1f(u.uMonoShadeR, r.monoShadeR || 0);
     gl.uniform1f(u.uMonoShadeA, r.monoShadeA || 0);
+    // Task 54: the per-layer mono tone texture and its recipe terms. A base
+    // without the block (an older fetch) falls back to the RGB path.
+    const mLay = !!(r.monoLayers && base.layers);
+    gl.uniform1i(u.uMonoLayers, mLay ? 1 : 0);
+    bind(P, "uLayerTex", 4, base.layers || luts);
+    gl.uniform3fv(u.uMonoW, r.monoW || r.layerMono || [0, 0, 0]);
+    gl.uniform3fv(u.uMonoG, rows3(r.monoG));
+    gl.uniform3fv(u.uMonoA, r.monoA || [1, 1, 1]);
+    gl.uniform3fv(u.uMonoF, r.monoF || [0, 0, 0]);
+    gl.uniform1f(u.uMonoB, r.monoB || 0);
     gl.uniform1f(u.uScale, base.hdr.scale || 1);
     gl.uniform2f(u.uOrigin, base.hdr.ox || 0, base.hdr.oy || 0);
     gl.uniform2f(u.uFull, base.hdr.fw || base.w, base.hdr.fh || base.h);

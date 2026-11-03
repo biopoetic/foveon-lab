@@ -99,11 +99,20 @@ type GPURecipe struct {
 	Mono      bool        `json:"mono"`
 	// SPP's Monochrome tab: the mixer's base tone, toning offsets and the
 	// Shading Effect. A film turns all of them off.
-	MonoNew    bool          `json:"monoNew,omitempty"`
-	MonoGamma  float32       `json:"monoGamma,omitempty"`
-	MonoTone   [3]float32    `json:"monoTone,omitempty"`
-	MonoShadeR float32       `json:"monoShadeR,omitempty"`
-	MonoShadeA float32       `json:"monoShadeA,omitempty"`
+	MonoNew    bool       `json:"monoNew,omitempty"`
+	MonoGamma  float32    `json:"monoGamma,omitempty"`
+	MonoTone   [3]float32 `json:"monoTone,omitempty"`
+	MonoShadeR float32    `json:"monoShadeR,omitempty"`
+	MonoShadeA float32    `json:"monoShadeA,omitempty"`
+	// Task 54: SPP mixes tone-mapped layers after the mix; the GPU reads them
+	// from the base's second RGB block (GPUBase) and uses these weights,
+	// per-layer high-ISO gains/floors and black lift.
+	MonoLayers bool          `json:"monoLayers,omitempty"`
+	MonoW      [3]float32    `json:"monoW,omitempty"`
+	MonoG      [9]float32    `json:"monoG,omitempty"`
+	MonoA      [3]float32    `json:"monoA,omitempty"`
+	MonoF      [3]float32    `json:"monoF,omitempty"`
+	MonoB      float32       `json:"monoB,omitempty"`
 	SGrain     *GPUMonoGrain `json:"sGrain,omitempty"`
 
 	Measured bool `json:"measured"`
@@ -234,6 +243,16 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 	}
 	if op.monoNew {
 		r.MonoGamma = monoBaseGamma
+		if op.monoLayers != nil {
+			// SPP's order: the layer tone and the mixer happen before the
+			// usual steps, from the base's layer block, not from the RGB
+			// base through LayerMono.
+			r.MonoGamma = op.monoGamma
+			r.MonoLayers = true
+			r.MonoW, r.MonoA, r.MonoF, r.MonoB = op.monoW, op.monoA, op.monoF, op.monoB
+			r.MonoG = op.monoG
+			r.LayerMono = nil
+		}
 		if gp := b.monoGrainFor(p); gp != nil {
 			g := &GPUMonoGrain{Sigma: gp.sigma, Mean: gp.mean, Q: gp.q, Seed: gp.seed,
 				Fine: float32(math.Sqrt(gp.fine))}
@@ -348,23 +367,31 @@ func f16(v float32) uint16 {
 func (b *Base) GPUBase() []byte {
 	b.fields()
 	fw, fh := b.fullSize()
+	n := b.W * b.H
+	layers := len(b.MonoLayers) == n*3
 	hdr, _ := json.Marshal(map[string]any{
 		"w": b.W, "h": b.H, "scale": b.scale(), "frame": b.frame(), "raw": b.Raw, "iso": b.ISO, "sensor": b.Sensor,
-		"ox": b.OriginX, "oy": b.OriginY, "fw": int(math.Round(fw)), "fh": int(math.Round(fh)),
+		"ox": b.OriginX, "oy": b.OriginY, "fw": int(math.Round(fw)), "fh": int(math.Round(fh)), "layers": layers,
 	})
-	n := b.W * b.H
+	stride := 12
+	if layers {
+		stride = 18
+	}
 	var buf bytes.Buffer
-	buf.Grow(8 + len(hdr) + n*12)
+	buf.Grow(8 + len(hdr) + n*stride)
 	binary.Write(&buf, binary.LittleEndian, uint32(len(hdr)))
 	buf.Write(hdr)
 	for buf.Len()%2 != 0 {
 		buf.WriteByte(' ')
 	}
-	out := make([]byte, n*12)
+	out := make([]byte, n*stride)
 	parallelRows(b.H, func(y0, y1 int) {
 		for j := y0 * b.W; j < y1*b.W; j++ {
 			for k := 0; k < 3; k++ {
 				binary.LittleEndian.PutUint16(out[(j*3+k)*2:], f16(b.Pix[j*3+k]))
+				if layers {
+					binary.LittleEndian.PutUint16(out[(n*6+j*3+k)*2:], f16(b.MonoLayers[j*3+k]))
+				}
 			}
 			binary.LittleEndian.PutUint16(out[(n*3+j)*2:], f16(b.mPix[j]))
 			binary.LittleEndian.PutUint16(out[(n*4+j)*2:], f16(b.da[j]))

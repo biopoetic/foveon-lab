@@ -400,6 +400,12 @@ func rawCorrectWith(ph *Photo, l *render.Linear, balance bool) {
 	if c == nil {
 		return
 	}
+	// SPP's Monochrome mixes layers after their own tone. The camera layers
+	// are what the raw development holds before the colour raw base; take
+	// them through the raw base's neutral response now, while this image is
+	// still linear camera data (task 54: mixing the raw base's per-channel
+	// output instead rectifies per-channel noise and is what went wrong at
+	// high ISO).
 	timing := os.Getenv("FOVEON_TIMING") != ""
 	mark := time.Now()
 	lap := func(name string) {
@@ -408,6 +414,12 @@ func rawCorrectWith(ph *Photo, l *render.Linear, balance bool) {
 			mark = time.Now()
 		}
 	}
+	if l.MonoLayers == nil {
+		if cc := layerCC(ph); cc != nil {
+			l.MonoLayers = monoNeutralLayers(l, c, cc)
+		}
+	}
+	lap("mono layers")
 	c.Apply(l)
 	lap("correct matrix")
 	if balance {
@@ -436,6 +448,68 @@ const balanceRefW = 1200
 // balanceMeasures counts DP2 reference measurements (one per photo), so a
 // regression test can prove the per-call measurement is gone.
 var balanceMeasures atomic.Int64
+
+// monoNeutralLayers fills Linear.MonoLayers: SPP's monochrome layer tone.
+//
+// SPP's Monochrome mixes the three sensor layers after each has had its own
+// tone. Our colour raw base is a 3×3 matrix plus a curve per sRGB channel,
+// so applying it and then unmixing the layers (the old path) makes the
+// curve act on the channels instead of the layers. At base ISO that was
+// invisible; at ISO 3200 the curve's toe rectifies the raw noise per
+// channel, and the layer means then depend on the mix — the task-54 error.
+//
+// The layer tone is the raw base's measured response to a neutral layer:
+// feed (L,L,L) through the correction, unmix with the camera matrix, and
+// average with SPP's Reset weights. That curve is the same shape as the
+// base's own neutral tone (so ISO 100 is still the measured 1.084 curve),
+// but it is evaluated per layer on clean, denoised layer values.
+func monoNeutralLayers(l *render.Linear, c *render.RawCorrection, cc *[9]float64) []float32 {
+	inv, ok := render.Invert3(*cc)
+	if !ok {
+		return nil
+	}
+	// SPP's Reset mixer in sRGB: (1,1,1)/3 · cc⁻¹, normalised so a neutral
+	// stays the same grey.
+	var v [3]float64
+	for j := 0; j < 3; j++ {
+		v[j] = (inv[j] + inv[3+j] + inv[6+j]) / 3
+	}
+	if s := v[0] + v[1] + v[2]; s > 0 {
+		v[0], v[1], v[2] = v[0]/s, v[1]/s, v[2]/s
+	} else {
+		return nil
+	}
+	const n = 4097
+	var lut [n]float32
+	for i := 0; i < n; i++ {
+		x := float32(i) / (n - 1)
+		r, g, b := c.Pixel(x, x, x)
+		lut[i] = float32(v[0]*float64(r) + v[1]*float64(g) + v[2]*float64(b))
+	}
+	at := func(x float32) float32 {
+		if x <= 0 {
+			return 0
+		}
+		if x >= 1 {
+			return lut[n-1]
+		}
+		f := x * (n - 1)
+		i := int(f)
+		t := f - float32(i)
+		return lut[i]*(1-t) + lut[i+1]*t
+	}
+	q := make([]float32, len(l.Pix))
+	render.ParallelRows(l.H, func(y0, y1 int) {
+		for i := y0 * l.W; i < y1*l.W; i++ {
+			j := i * 3
+			r, g, b := l.Pix[j], l.Pix[j+1], l.Pix[j+2]
+			q[j] = at(float32(inv[0]*float64(r) + inv[1]*float64(g) + inv[2]*float64(b)))
+			q[j+1] = at(float32(inv[3]*float64(r) + inv[4]*float64(g) + inv[5]*float64(b)))
+			q[j+2] = at(float32(inv[6]*float64(r) + inv[7]*float64(g) + inv[8]*float64(b)))
+		}
+	})
+	return q
+}
 
 // rawJPEGBalance applies the DP2 camera-JPEG balance to a developed raw
 // image. The gains are measured once per photo from a fixed reference

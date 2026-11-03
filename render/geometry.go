@@ -65,6 +65,9 @@ func ApplyGeometry(l *Linear, g Geometry) *Linear {
 	ow := max(1, int(math.Round(g.W*W)))
 	oh := max(1, int(math.Round(g.H*H)))
 	out := &Linear{W: ow, H: oh, Pix: make([]float32, ow*oh*3), Scale: l.Scale, Frame: int(math.Round(l.frame())), Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.frameMean()}
+	if l.MonoLayers != nil {
+		out.MonoLayers = make([]float32, ow*oh*3)
+	}
 	if g.Angle == 0 {
 		out.OriginX, out.OriginY = l.OriginX+int(math.Round(g.X*W)), l.OriginY+int(math.Round(g.Y*H))
 		fw, fh := l.fullSize()
@@ -95,6 +98,15 @@ func ApplyGeometry(l *Linear, g Geometry) *Linear {
 					top := a + (b-a)*fx
 					bot := cc + (d-cc)*fx
 					out.Pix[o+k] = top + (bot-top)*fy
+					if out.MonoLayers != nil {
+						a = l.MonoLayers[(iy*l.W+ix)*3+k]
+						b = l.MonoLayers[(iy*l.W+ix1)*3+k]
+						cc = l.MonoLayers[(iy1*l.W+ix)*3+k]
+						d = l.MonoLayers[(iy1*l.W+ix1)*3+k]
+						top = a + (b-a)*fx
+						bot = cc + (d-cc)*fx
+						out.MonoLayers[o+k] = top + (bot-top)*fy
+					}
 				}
 			}
 		}
