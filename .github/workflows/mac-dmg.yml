@@ -19,7 +19,9 @@ permissions:
 
 jobs:
   dmg:
-    runs-on: macos-latest
+    # macos-latest (arm64) went unassigned for hours on 2026-11-04 ("capacity
+    # constraints"); the app is universal, so an Intel runner builds the same DMG.
+    runs-on: macos-15-intel
     steps:
       - name: Fetch the app
         env:
