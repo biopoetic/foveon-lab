@@ -48,16 +48,12 @@ func dngDevelopRot(ph *Photo, maxW int, rotate bool) (*render.Linear, error) {
 		l = l.Rotate(ph.Rotation)
 	}
 	if rotate && img.Meta.Mirror {
-		// TIFF orientations 2/5 mirror horizontally after the turn, 4/7
-		// vertically. Applying the mirror here means the main view is
-		// upright and unmirrored; the cull thumbnail path still gets the
-		// turn only and the list says so.
-		switch img.Meta.Orientation {
-		case 2, 5:
-			mirrorLinearH(l)
-		case 4, 7:
-			mirrorLinearV(l)
-		}
+		// With the turn TIFF orientations 2/4/5/7 are given (0/180/90/270
+		// clockwise), every one of them is a horizontal mirror AFTER the
+		// turn: 4 = 180 + flip H, 5 = 90 + flip H, 7 = 270 + flip H.
+		// TestDNGOrientationMatchesSpec checks all eight against
+		// dng.ApplyOrientation.
+		mirrorLinearH(l)
 	}
 	if iso, err := strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64); err == nil && iso > 0 {
 		l.ISO = iso
@@ -65,7 +61,7 @@ func dngDevelopRot(ph *Photo, maxW int, rotate bool) (*render.Linear, error) {
 	return l, nil
 }
 
-// mirrorLinearH/V flip an already-upright linear image in place. A DNG with a
+// mirrorLinearH flips an already-turned linear image left to right in place. A DNG with a
 // mirrored TIFF Orientation is rare, but applying it is a pure copy and the
 // alternative (a note saying the picture is the wrong way round) is worse.
 func mirrorLinearH(l *render.Linear) {
@@ -76,16 +72,6 @@ func mirrorLinearH(l *render.Linear) {
 			row[a], row[b] = row[b], row[a]
 			row[a+1], row[b+1] = row[b+1], row[a+1]
 			row[a+2], row[b+2] = row[b+2], row[a+2]
-		}
-	}
-}
-
-func mirrorLinearV(l *render.Linear) {
-	for y := 0; y < l.H/2; y++ {
-		a := l.Pix[y*l.W*3 : (y+1)*l.W*3]
-		b := l.Pix[(l.H-1-y)*l.W*3 : (l.H-y)*l.W*3]
-		for i := range a {
-			a[i], b[i] = b[i], a[i]
 		}
 	}
 }

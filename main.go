@@ -325,7 +325,7 @@ func loadMeta(ph *Photo) bool {
 			ph.Info["DNG"] += ". " + m.Notice
 		}
 		if m.Mirror {
-			ph.Info["DNG"] += ". Mirrored orientation: the turn is applied, the mirror is not"
+			ph.Info["DNG"] += ". Mirrored orientation (applied in the editor, not in the cull thumbnail)"
 		}
 		// Not a Foveon file: Camera stays empty, so every film preset is
 		// offered and no camera family is implied.

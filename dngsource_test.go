@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/biopoetic/foveon-lab/dng"
 	"github.com/biopoetic/foveon-lab/preset"
 	"github.com/biopoetic/foveon-lab/render"
 )
@@ -148,20 +149,42 @@ func TestDNGPhotoEndToEnd(t *testing.T) {
 	}
 }
 
-func TestDNGOrientationMirror(t *testing.T) {
-	l := &render.Linear{W: 3, H: 2, Pix: make([]float32, 3*2*3)}
-	for i := 0; i < 6; i++ {
-		l.Pix[i*3] = float32(i)
+func TestDNGOrientationMatchesSpec(t *testing.T) {
+	// The editor's path (Linear.Rotate by Meta.Rotation, then mirrorLinearH
+	// when Meta.Mirror) must equal dng.ApplyOrientation, which writes out the
+	// TIFF mappings directly, for every Orientation value.
+	const w, h = 3, 2
+	src := make([]float32, w*h*3)
+	for i := 0; i < w*h; i++ {
+		src[i*3] = float32(i + 1)
 	}
-	mirrorLinearH(l)
-	// Row 0 was 0 1 2, now 2 1 0.
-	if l.Pix[0] != 2 || l.Pix[3] != 1 || l.Pix[6] != 0 {
-		t.Fatalf("horizontal mirror: %v", l.Pix[:9])
-	}
-	mirrorLinearV(l)
-	// Row 0 is now the old row 1: 5 4 3.
-	if l.Pix[0] != 5 || l.Pix[3] != 4 || l.Pix[6] != 3 {
-		t.Fatalf("vertical mirror: %v", l.Pix[:9])
+	for o := 1; o <= 8; o++ {
+		var m dng.Meta
+		switch o {
+		case 3, 4:
+			m.Rotation = 180
+		case 5, 6:
+			m.Rotation = 90
+		case 7, 8:
+			m.Rotation = 270
+		}
+		m.Mirror = o == 2 || o == 4 || o == 5 || o == 7
+		want := dng.ApplyOrientation(&dng.Image{W: w, H: h, Pix: append([]float32(nil), src...)}, o)
+		l := &render.Linear{W: w, H: h, Pix: append([]float32(nil), src...), Scale: 1, Frame: w}
+		if m.Rotation != 0 {
+			l = l.Rotate(m.Rotation)
+		}
+		if m.Mirror {
+			mirrorLinearH(l)
+		}
+		if l.W != want.W || l.H != want.H {
+			t.Fatalf("orientation %d: size %dx%d, want %dx%d", o, l.W, l.H, want.W, want.H)
+		}
+		for i := 0; i < w*h; i++ {
+			if l.Pix[i*3] != want.Pix[i*3] {
+				t.Fatalf("orientation %d: got %v, want %v", o, l.Pix, want.Pix)
+			}
+		}
 	}
 }
 
