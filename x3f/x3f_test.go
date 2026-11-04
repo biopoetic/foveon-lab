@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"image/jpeg"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -190,5 +191,81 @@ func TestExifColourSpace(t *testing.T) {
 		if got := f.Props["EXIF_COLORSPACE"]; got != want {
 			t.Errorf("%s: EXIF_COLORSPACE %q, want %q", path, got, want)
 		}
+	}
+}
+
+// buildMonoHeaderX3F makes a minimal container with a chosen header version
+// and length, so the 3.0 Monochrome mixer field can be tested without a
+// camera file.
+func buildMonoHeaderX3F(t *testing.T, major, minor uint16, headerSize int, mix *[3]float32) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	w := func(v any) { binary.Write(&b, binary.LittleEndian, v) }
+	hdr := make([]byte, headerSize)
+	copy(hdr, "FOVb")
+	binary.LittleEndian.PutUint16(hdr[4:], minor)
+	binary.LittleEndian.PutUint16(hdr[6:], major)
+	binary.LittleEndian.PutUint32(hdr[28:], 4)
+	binary.LittleEndian.PutUint32(hdr[32:], 2)
+	if mix != nil {
+		for i, v := range mix {
+			binary.LittleEndian.PutUint32(hdr[252+4*i:], math.Float32bits(v))
+		}
+	}
+	b.Write(hdr)
+	imgOff := uint32(headerSize)
+	b.WriteString("SECi")
+	w(uint32(0))
+	w(uint32(2))
+	w(uint32(18)) // JPEG
+	w(uint32(4))
+	w(uint32(2))
+	w(uint32(0))
+	b.Write([]byte{0xFF, 0xD8, 0xFF, 0xD9})
+	imgLen := uint32(b.Len()) - imgOff
+	dirOff := uint32(b.Len())
+	b.WriteString("SECd")
+	w(uint32(0))
+	w(uint32(1))
+	w(imgOff)
+	w(imgLen)
+	b.WriteString("IMA2")
+	w(dirOff)
+	return b.Bytes()
+}
+
+func TestMonoMixHeader(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		major  uint16
+		minor  uint16
+		size   int
+		mix    *[3]float32
+		stored bool
+		want   [3]float64
+	}{
+		{"Merrill 3.0, stored equal", 3, 0, 424, &[3]float32{.33, .33, .34}, true, [3]float64{.33, .33, .34}},
+		{"Merrill 3.0, stored zero", 3, 0, 424, &[3]float32{0, 0, 0}, true, [3]float64{0, 0, 0}},
+		{"DP1M 2.3, no field", 2, 3, 264, nil, false, [3]float64{}},
+		{"Quattro 4.1, no field", 4, 1, 768, nil, false, [3]float64{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "h.X3F")
+			if err := os.WriteFile(path, buildMonoHeaderX3F(t, tc.major, tc.minor, tc.size, tc.mix), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			f, err := Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f.MonoMixStored != tc.stored {
+				t.Fatalf("MonoMixStored = %v, want %v", f.MonoMixStored, tc.stored)
+			}
+			for i := range tc.want {
+				if math.Abs(f.MonoMix[i]-tc.want[i]) > 1e-6 {
+					t.Errorf("MonoMix = %v, want %v", f.MonoMix, tc.want)
+				}
+			}
+		})
 	}
 }

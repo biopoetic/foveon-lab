@@ -30,6 +30,8 @@ type metaEntry struct {
 	Unsupported string            `json:"unsupported,omitempty"`
 	RawDecoded  bool              `json:"rawDecoded,omitempty"`
 	LowRes      bool              `json:"lowRes,omitempty"`
+	MonoFresh   [3]float64        `json:"monoFresh,omitempty"`
+	MixKnown    bool              `json:"mixKnown,omitempty"`
 }
 
 type metaCache struct {
@@ -97,6 +99,7 @@ func (c *metaCache) put(ph *Photo, size, mod int64) {
 		Props: ph.props, Camera: ph.Camera, Rotation: ph.Rotation,
 		PreviewW: ph.previewW, PreviewH: ph.previewH, Info: ph.Info,
 		Unsupported: ph.Unsupported, RawDecoded: ph.RawDecoded, LowRes: ph.LowRes,
+		MonoFresh: ph.MonoFresh, MixKnown: true,
 	}
 	c.mu.Lock()
 	c.entries[ph.path] = e
@@ -131,8 +134,14 @@ func (c *metaCache) save() {
 	os.Rename(tmp, c.path)
 }
 
-// applyMeta fills ph from a cached entry, exactly as loadMeta would.
-func applyMeta(ph *Photo, e metaEntry) {
+// applyMeta fills ph from a cached entry, exactly as loadMeta would. It
+// returns false for an entry written before the fresh-open mixer was cached,
+// so that photo's header is read once more.
+func applyMeta(ph *Photo, e metaEntry) bool {
+	if !e.MixKnown {
+		return false
+	}
+	ph.MonoFresh = e.MonoFresh
 	ph.props, ph.Camera, ph.Rotation = e.Props, e.Camera, e.Rotation
 	ph.previewW, ph.previewH = e.PreviewW, e.PreviewH
 	// Copy the info map: the cached entry may be used by a later scan while
@@ -142,6 +151,7 @@ func applyMeta(ph *Photo, e metaEntry) {
 		ph.Info[k] = v
 	}
 	ph.Unsupported, ph.RawDecoded, ph.LowRes = e.Unsupported, e.RawDecoded, e.LowRes
+	return true
 }
 
 // loadMetaCached is loadMeta with the disk read skipped when nothing about
@@ -152,8 +162,7 @@ func loadMetaCached(ph *Photo, c *metaCache) bool {
 		return false
 	}
 	size, mod := statKey(st)
-	if e, ok := c.get(ph, size, mod); ok {
-		applyMeta(ph, e)
+	if e, ok := c.get(ph, size, mod); ok && applyMeta(ph, e) {
 		if ph.Camera == "" {
 			ph.Camera = x3f.ShortModel(ph.Folder)
 		}

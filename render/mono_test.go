@@ -32,20 +32,72 @@ func monoParams() preset.Params {
 	return p
 }
 
-func TestMonoMixerDefaultIsSPPFreshOpen(t *testing.T) {
-	w := monoWeights(preset.Params{Mono: true})
-	if w != [3]float64{0, 0, 1} {
-		t.Errorf("default mix %v, want SPP's fresh-open top layer only", w)
+func ptrMix(w [3]float64) *[3]float64 { return &w }
+
+func TestMonoFreshMixRule(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   *[3]float64
+		want [3]float64
+	}{
+		{"absent header", nil, [3]float64{1.0 / 3, 1.0 / 3, 1.0 / 3}},
+		{"stored zeros", ptrMix([3]float64{0, 0, 0}), [3]float64{0, 0, 1}},
+		{"stored equal", ptrMix([3]float64{0.33, 0.33, 0.34}), [3]float64{0.33, 0.33, 0.34}},
+		{"stored B", ptrMix([3]float64{0, 0, 1}), [3]float64{0, 0, 1}},
+		{"negative", ptrMix([3]float64{-1, 0, 2}), [3]float64{1.0 / 3, 1.0 / 3, 1.0 / 3}},
+	} {
+		got := MonoFreshMix(tc.in)
+		for i := range got {
+			if math.Abs(got[i]-tc.want[i]) > 1e-9 {
+				t.Errorf("%s: %v, want %v", tc.name, got, tc.want)
+			}
+		}
 	}
-	w = monoWeights(preset.Params{Mono: true, MonoMixSet: true, MonoR: 1.0 / 3, MonoG: 1.0 / 3, MonoB: 1.0 / 3})
-	for i, want := range []float64{1.0 / 3, 1.0 / 3, 1.0 / 3} {
-		if math.Abs(w[i]-want) > 1e-12 {
+}
+
+func TestMonoMixerDefaultIsSPPFreshOpen(t *testing.T) {
+	// No header field and no compensation: SPP's fallback is equal thirds.
+	w := monoWeights(preset.Params{Mono: true}, Compensation{})
+	for i := range w {
+		if math.Abs(w[i]-1.0/3) > 1e-12 {
+			t.Errorf("default mix %v, want equal thirds", w)
+		}
+	}
+	// A stored all-zero 3.0 field opens as B.
+	b := ptrMix([3]float64{0, 0, 0})
+	w = monoWeights(preset.Params{Mono: true}, Compensation{MonoDefault: b})
+	if w != [3]float64{0, 0, 1} {
+		t.Errorf("stored-zero default mix %v, want the top layer only", w)
+	}
+	// An explicit preset mixer wins over the photo's fresh-open mix.
+	w = monoWeights(preset.Params{Mono: true, MonoMixSet: true, MonoR: 1.0 / 3, MonoG: 1.0 / 3, MonoB: 1.0 / 3}, Compensation{MonoDefault: b})
+	for i := range w {
+		if math.Abs(w[i]-1.0/3) > 1e-12 {
 			t.Errorf("Reset mix %v, want equal thirds", w)
 		}
 	}
-	w = monoWeights(preset.Params{Mono: true, MonoMixSet: true, MonoB: 1})
+	w = monoWeights(preset.Params{Mono: true, MonoMixSet: true, MonoB: 1}, Compensation{MonoDefault: ptrMix([3]float64{1.0 / 3, 1.0 / 3, 1.0 / 3})})
 	if w[0] != 0 || w[1] != 0 || w[2] != 1 {
 		t.Errorf("pure B mix %v", w)
+	}
+}
+
+// The photo's fresh-open mix must reach both the CPU op and the GPU recipe;
+// the shader itself already reads uMonoW, so this pins the shared rule at the
+// recipe boundary (task 55).
+func TestMonoFreshMixReachesGPURecipe(t *testing.T) {
+	p := preset.Params{Mono: true}
+	c := Compensation{CC: monoCC(), SatFactor: 1, MonoDefault: ptrMix([3]float64{0, 0, 1})}
+	l := monoFlat(4, 4, 0.8, 0.5, 0.2)
+	l.MonoLayers = make([]float32, 4*4*3)
+	for i := range l.MonoLayers {
+		l.MonoLayers[i] = 0.5
+	}
+	b := NewBase(l)
+	op := newPixOp(p, c)
+	r := NewGPURecipe(b, p, c)
+	if op.monoW != [3]float32{0, 0, 1} || r.MonoW != op.monoW {
+		t.Errorf("CPU %v GPU %v, want the photo's B mix", op.monoW, r.MonoW)
 	}
 }
 

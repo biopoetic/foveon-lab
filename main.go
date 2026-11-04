@@ -78,6 +78,11 @@ type Photo struct {
 	// IRApprox: the infrared looks are a model prediction on this body, not
 	// a calibration; the UI says so where an IR look is chosen.
 	IRApprox bool `json:"irApprox,omitempty"`
+	// MonoFresh is the Color Mixer SPP opens this photo with, resolved by
+	// render.MonoFreshMix (equal thirds with no header field, pure B for a
+	// stored all-zero 3.0 field). The UI shows these on its sliders when the
+	// preset's mixer is unset.
+	MonoFresh [3]float64 `json:"monoFresh"`
 
 	path      string
 	Rotation  int `json:"rotation,omitempty"` // camera/EXIF rotation, clockwise
@@ -223,6 +228,7 @@ func photoModel(ph *Photo) string {
 
 // loadMeta fills camera, rotation and shot info from the X3F header.
 func loadMeta(ph *Photo) bool {
+	ph.MonoFresh = render.MonoFreshMix(nil)
 	if ph.Kind == "x3f" {
 		f, err := x3f.Open(ph.path)
 		if err != nil {
@@ -235,6 +241,10 @@ func loadMeta(ph *Photo) bool {
 			ph.Info["ERROR"] = err.Error()
 			log.Printf("damaged %s: %v", ph.path, err)
 			return true
+		}
+		if f.MonoMixStored {
+			mix := f.MonoMix
+			ph.MonoFresh = render.MonoFreshMix(&mix)
 		}
 		ph.props, ph.Camera, ph.Rotation = f.Props, f.Camera(), f.Rotation
 		for _, im := range f.Images {
@@ -742,7 +752,8 @@ func rawCompensation(ph *Photo) render.Compensation {
 	if camera == "" {
 		camera = calibGroup(ph)
 	}
-	return render.Compensation{SatFactor: 1, Family: x3f.PresetFamily(ph.Camera), CC: layerCC(ph), Sensor: render.SensorGeneration(calibGroup(ph)), NoModes: !x3f.HasColourModes(modelOf(ph)), Model: camera, GenericFilm: ph.Kind == "dng", ISO: photoISO(ph)}
+	mix := ph.MonoFresh
+	return render.Compensation{SatFactor: 1, Family: x3f.PresetFamily(ph.Camera), CC: layerCC(ph), Sensor: render.SensorGeneration(calibGroup(ph)), NoModes: !x3f.HasColourModes(modelOf(ph)), Model: camera, GenericFilm: ph.Kind == "dng", ISO: photoISO(ph), MonoDefault: &mix}
 }
 
 func (s *server) compensation(ph *Photo, on bool) render.Compensation {
@@ -768,6 +779,8 @@ func (s *server) compensation(ph *Photo, on bool) render.Compensation {
 	c.Sensor = render.SensorGeneration(calibGroup(ph))
 	c.NoModes = modes
 	c.Model = camera
+	mix := ph.MonoFresh
+	c.MonoDefault = &mix
 	return c
 }
 

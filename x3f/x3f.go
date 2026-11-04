@@ -47,6 +47,16 @@ type File struct {
 	Images   []Image
 	Props    map[string]string
 
+	// MonoMix is the camera's Monochrome Color Mixer from the extended
+	// header, in SPP's order (bottom/red, middle/green, top/blue). It is
+	// stored by the Merrill bodies whose header is version 3.0; the field
+	// is all zero when the camera never stored a mix, which SPP opens as
+	// pure B (task 55). MonoMixStored is false for headers that do not
+	// carry the field (2.x and the Quattro TIFF header), where SPP falls
+	// back to equal thirds.
+	MonoMix       [3]float64
+	MonoMixStored bool
+
 	sections []Section // the whole directory
 
 	// Recovered is why the section directory was unusable when the
@@ -128,6 +138,21 @@ func parse(r io.ReaderAt, size int64, path string) (*File, error) {
 				return nil, err
 			}
 			f.Props = parseProps(buf)
+		}
+	}
+	// The Merrill 3.0 extended header (424 bytes) carries the camera's
+	// Monochrome mixer as three little-endian floats at 252/256/260. The
+	// float at 248 before them and at 264/268 after them are other fields
+	// (0.5 in this extended header), so the mixer is the middle trio, not
+	// the run from 248. The 2.x headers (232/264 bytes) and the Quattro
+	// TIFF header (version 4.x) have no such field.
+	if f.Version == "3.0" {
+		ext := make([]byte, 264)
+		if _, err := r.ReadAt(ext, 0); err == nil {
+			for i := range f.MonoMix {
+				f.MonoMix[i] = float64(math.Float32frombits(le.Uint32(ext[252+4*i:])))
+			}
+			f.MonoMixStored = true
 		}
 	}
 	// Quattro files carry no property list: model, ISO, shutter and

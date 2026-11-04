@@ -389,7 +389,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div class="row" data-k="monoR"><div class="lab"><span>Mix R · bottom layer</span><b title="double-click = reset">0.000</b></div><input type="range" min="0" max="1" step="0.01"></div>
         <div class="row" data-k="monoG"><div class="lab"><span>Mix G · middle layer</span><b title="double-click = reset">0.000</b></div><input type="range" min="0" max="1" step="0.01"></div>
         <div class="row" data-k="monoB"><div class="lab"><span>Mix B · top layer</span><b title="double-click = reset">1.000</b></div><input type="range" min="0" max="1" step="0.01"></div>
-        <div style="display:flex;gap:6px;margin-top:2px"><button id="monoResetMix" title="SPP's Reset: equal thirds of the three sensor layers">Reset (.33/.33/.34)</button><button id="monoSPPMix" title="SPP's state on a fresh open: the top (blue) layer alone. Clean, but its tone is not the Reset tone.">SPP fresh-open (B)</button></div>
+        <div style="display:flex;gap:6px;margin-top:2px"><button id="monoResetMix" title="SPP's Reset: equal thirds of the three sensor layers">Reset (.33/.33/.34)</button><button id="monoSPPMix" title="SPP's state on a fresh open of this photo, from its X3F header.">SPP fresh-open (photo)</button></div>
         <div class="row"><div class="lab">Toning <span class="dim" title="SPP's nine Monochrome toning presets. Each is a constant offset of the 8-bit sRGB channels, measured from SPP's exports; deep shadows clip at black, as they do in SPP.">ⓘ</span></div>
           <select id="monoTone" style="width:100%">
             <option value="">Black &amp; white (none)</option>
@@ -1144,6 +1144,9 @@ function selectPhoto(id){
   refreshList();
   if ($("#detail").classList.contains("on") && p.unsupported){ closeDetail(); return; }
   if ($("#detail").classList.contains("on")){
+    // The mixer's unset state is per photo, so the sliders must be repainted
+    // when a different file's header is now the source of the default.
+    syncSliders();
     const i = keep ? S.list.findIndex(x => x.id === keep) : -1;
     if (i >= 0){
       S.idx = i;
@@ -1592,7 +1595,15 @@ function buildSliders(){
   $("#monoTone").onchange = () => { const v = $("#monoTone").value; monoTakesOver(); S.params.monoTone = v; $("#monoTone").blur(); syncSliders(); scheduleRender(); };
   const setMix = (r, g, b) => { monoTakesOver(); S.params.monoMixSet = true; S.params.monoR = r; S.params.monoG = g; S.params.monoB = b; syncSliders(); scheduleRender(); };
   $("#monoResetMix").onclick = () => { setMix(1/3, 1/3, 1/3); $("#monoResetMix").blur(); };
-  $("#monoSPPMix").onclick = () => { setMix(0, 0, 1); $("#monoSPPMix").blur(); };
+  // Clear the explicit mixer: the renderer then uses this photo's own
+  // fresh-open mix, exactly as SPP does. Keep the ignored fields at the
+  // preset's values so "dirty" still means what the user actually changed.
+  $("#monoSPPMix").onclick = () => {
+    monoTakesOver();
+    S.params.monoMixSet = false;
+    S.params.monoR = S.base.monoR; S.params.monoG = S.base.monoG; S.params.monoB = S.base.monoB;
+    syncSliders(); scheduleRender(); $("#monoSPPMix").blur();
+  };
   $("#rot").oninput = e => setRot(+e.target.value);
   $("#rot").onchange = e => e.target.blur();
   $("#rotL").onclick = () => setRot(rotOf(S.photo.id) + 90);
@@ -1797,7 +1808,8 @@ function monoTakesOver(){
 // render the same at any position.
 function setMixShare(k, v){
   const ks = ["monoR", "monoG", "monoB"], others = ks.filter(x => x !== k);
-  const cur = others.map(x => Math.max(0, S.params.monoMixSet ? (S.params[x] || 0) : NEUTRAL[x]));
+  const curMix = effectiveMonoMix();
+  const cur = others.map(x => Math.max(0, curMix[ks.indexOf(x)]));
   const sum = cur[0] + cur[1], rest = Math.max(0, 1 - v);
   S.params.monoMixSet = true;
   S.params[k] = v;
@@ -2027,16 +2039,44 @@ function syncDev(f){
   $("#pushVal").textContent = `EI ${Math.round(d.ei * Math.pow(2, push))} (${ps})`;
 }
 
+// photoFreshMix is the Color Mixer SPP opens this photo with, as resolved
+// from its X3F header by the server. A file without the field falls back to
+// SPP's equal thirds; the server includes that fallback too.
+function photoFreshMix(){
+  const m = S.photo?.monoFresh;
+  if (Array.isArray(m) && m.length === 3 && m.every(v => Number.isFinite(v) && v >= 0)){
+    const sum = m[0] + m[1] + m[2];
+    if (sum > 1e-9) return [m[0]/sum, m[1]/sum, m[2]/sum];
+  }
+  return [1/3, 1/3, 1/3];
+}
+// effectiveMonoMix is what the sliders show and the renderer uses: the
+// preset's explicit mixer when there is one, else this photo's fresh-open one.
+function effectiveMonoMix(){
+  if (S.params?.monoMixSet){
+    const m = [S.params.monoR || 0, S.params.monoG || 0, S.params.monoB || 0];
+    const sum = m[0] + m[1] + m[2];
+    if (m.every(v => v >= 0) && sum > 1e-9) return m.map(v => v/sum);
+  }
+  return photoFreshMix();
+}
+
 function syncSliders(){
   // With no photo open there is nothing to show: filtersInit runs before the
   // first photo and used to reach this with S.params still null.
   if (!S.params) return;
+  const shownMix = effectiveMonoMix(), mixKey = {monoR:0, monoG:1, monoB:2};
   for (const row of document.querySelectorAll("#panel .row[data-k]")){
-    const k = row.dataset.k, v = S.params[k] ?? NEUTRAL[k];
+    const k = row.dataset.k;
+    let v = S.params[k] ?? NEUTRAL[k];
+    // An unset mixer is not the old hardcoded B: show the mix this photo's
+    // header stores (or SPP's equal-thirds fallback for a header without one).
+    if (k in mixKey && !S.params.monoMixSet) v = shownMix[mixKey[k]];
     row.querySelector("input").value = v;
     const three = k === "r" || k === "g" || k === "b" || k === "monoR" || k === "monoG" || k === "monoB";
     row.querySelector("b").textContent = three ? v.toFixed(3) : (v > 0 ? "+" : "") + v.toFixed(2);
-    row.classList.toggle("changed", Math.abs(v - S.base[k]) > 1e-9);
+    const mixUnchanged = k in mixKey && !S.params.monoMixSet;
+    row.classList.toggle("changed", !mixUnchanged && Math.abs(v - S.base[k]) > 1e-9);
   }
   $("#mono").checked = !!S.params.mono;
   // SPP's Monochrome tab. A film owns the look: its curve and grain replace
@@ -2051,10 +2091,12 @@ function syncSliders(){
     row.classList.toggle("idle", !on);
     row.title = on ? "" : `No effect while ${why} is 0.`;
   }
+  const fresh = photoFreshMix(), freshText = fresh.map(v => v.toFixed(3)).join("/");
+  $("#monoSPPMix").title = `SPP's state on a fresh open of this photo: ${freshText}.`;
   $("#monoNote").innerHTML = filmOn
     ? "A film is chosen: its own curve, toning and grain replace this section. Change anything here to drop the film and use SPP's Monochrome instead."
     : S.params.mono
-      ? "Starts as SPP does on a fresh open: B alone (the top layer). SPP's Reset button is .33/.33/.34 (equal layers).<br>Not carried into an SPP XML: SPP has no fields for these values beyond Mono."
+      ? `Starts as SPP does on this photo's fresh open: ${freshText}. SPP's Reset button is .33/.33/.34 (equal layers), and the same button restores the photo's own mix.<br>Not carried into an SPP XML: SPP has no fields for these values beyond Mono.`
       : "Tick Monochrome to use SPP's mixer, toning, shading and grain. A film in Film &amp; Darkroom overrides this section.";
   const lf = [S.params.layerBottom || 0, S.params.layerMiddle || 0, S.params.layerTop || 0];
   const zero = lf.every(x => Math.abs(x) < 1e-9);

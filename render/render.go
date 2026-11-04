@@ -558,6 +558,10 @@ type Compensation struct {
 	// ISO the raw was shot at, for the Monochrome path's high-ISO tone
 	// (0 = unknown, no high-ISO term).
 	ISO float64
+	// MonoDefault is the photo's fresh-open Color Mixer, already resolved
+	// from its X3F header (render.MonoFreshMix). nil = no header field, so
+	// the Monochrome default is equal thirds.
+	MonoDefault *[3]float64
 	// GenericFilm: the source is a colour-managed linear RGB image with no
 	// measured sensor sensitivity (another camera's raw), so a colour film
 	// is fitted to the sRGB/CIE observer response instead of a Foveon layer
@@ -856,11 +860,11 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 		// Task 54: SPP applies its tone to each layer and mixes after; the
 		// mixer's weights also go to the per-layer path. The high-ISO terms
 		// are zero at base ISO, where the tone is the measured 1.084 curve.
-		w := monoWeights(p)
+		w := monoWeights(p, c)
 		s := monoISORamp(c.ISO)
 		op.monoW = [3]float32{float32(w[0]), float32(w[1]), float32(w[2])}
 		op.monoA = [3]float32{float32(1 - 0.085*s), float32(1 - 0.085*s), 1}
-		op.monoF = [3]float32{float32(0.028 * s), float32(0.028 * s), 0}
+		op.monoF = [3]float32{float32(0.028 * s), float32(0.028 * s), float32(monoTopFloor(s))}
 		op.monoB = float32(0.005 * s)
 		op.monoGamma = float32(monoBaseGamma + 0.116*s)
 	}
@@ -966,44 +970,91 @@ func Invert3(m [9]float64) ([9]float64, bool) { return invert3x3(m) }
 // (task 50). The old mono path used the luminance with no such curve.
 const monoBaseGamma = 1.084
 
-// monoISORamp is how much of the measured high-ISO Monochrome term applies:
-// 0 at ISO 400 and below, 1 at ISO 3200 and above, linear in log2(ISO)
-// between them (task 54 measured 06 at ISO 3200; the 800/1600/6400 points
-// are an interpolation, see REPORT-54.md).
+// monoISORamp is how much of the measured high-ISO Monochrome term applies.
+// Task 54 fitted a straight line in log2(ISO) clamped at ISO 3200; the new
+// DP1 Merrill 400-6400 series says the response is convex: slower at 800
+// and 1600, and still growing at 6400. The exponent keeps 3200 at 1, so the
+// task-54 parameters there are unchanged, and has no upper clamp (the 6400
+// point is measured; above it is an extrapolation).
 func monoISORamp(iso float64) float64 {
 	if iso <= 400 {
 		return 0
 	}
-	s := math.Log2(iso/400) / 3
-	return math.Max(0, math.Min(1, s))
+	r := math.Log2(iso/400) / 3
+	return math.Pow(r, 1.25)
 }
 
-// monoDefaultMix is the mixer SPP shows when Monochrome is first opened:
-// the top (blue) layer only.
-var monoDefaultMix = [3]float64{0, 0, 1}
+// monoTopFloor is the top (blue) layer's black floor above ISO 3200. The
+// 06 layer exports at ISO 3200 need none (B is clean); the DP1M ISO 6400
+// export needs a small one once the lower-layer floor and the tone power
+// have been set for that ISO, so the term starts at 3200 and grows above it.
+func monoTopFloor(s float64) float64 {
+	return 0.09 * math.Max(0, s-1)
+}
 
-// monoWeights is SPP's Color Mixer: the share of the bottom (red), middle
-// (green) and top (blue) layer. An unset mixer is SPP's fresh-open state,
-// the top layer alone; SPP's Reset button is equal thirds.
-func monoWeights(p preset.Params) [3]float64 {
-	w := monoDefaultMix
-	// A file written before the flag existed may still carry weights; honour
-	// them. Only an all-zero set is the old preset's "unset" state.
-	if p.MonoMixSet || p.MonoR != 0 || p.MonoG != 0 || p.MonoB != 0 {
-		w = [3]float64{p.MonoR, p.MonoG, p.MonoB}
+var (
+	// monoEqualMix is SPP's Reset mixer and the fallback when the X3F header
+	// has no Monochrome mixer field (the 2.x and Quattro headers).
+	monoEqualMix = [3]float64{1.0 / 3, 1.0 / 3, 1.0 / 3}
+	// monoTopMix is what SPP shows when the Merrill 3.0 header's mixer field
+	// is all zero: the top (blue) layer alone.
+	monoTopMix = [3]float64{0, 0, 1}
+)
+
+// MonoFreshMix resolves the Monochrome Color Mixer SPP shows on a fresh
+// open. stored is the raw three floats from the X3F 3.0 header, or nil when
+// the file has no such field. No field => equal thirds (SPP's Reset
+// position). A stored all-zero field => pure B. A stored non-zero field is
+// normalised; a negative or non-finite field is treated as absent. This is
+// the one place the rule lives: CPU, GPU, presets and batch all obtain their
+// unset mixer through it.
+func MonoFreshMix(stored *[3]float64) [3]float64 {
+	if stored == nil {
+		return monoEqualMix
 	}
+	w := *stored
+	if w == [3]float64{} {
+		return monoTopMix
+	}
+	if w = normalMonoMix(w); w == ([3]float64{}) {
+		return monoEqualMix
+	}
+	return w
+}
+
+// normalMonoMix normalises a non-negative mixer to sum 1; it returns the
+// zero array for an invalid or all-zero one.
+func normalMonoMix(w [3]float64) [3]float64 {
+	sum := 0.0
 	for _, v := range w {
-		if v < 0 || math.IsNaN(v) {
-			w = monoDefaultMix
-			break
+		if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+			return [3]float64{}
 		}
+		sum += v
 	}
-	sum := w[0] + w[1] + w[2]
 	if sum <= 0 {
-		return monoDefaultMix
+		return [3]float64{}
 	}
 	for i := range w {
 		w[i] /= sum
+	}
+	return w
+}
+
+// monoWeights is SPP's Color Mixer: the share of the bottom (red), middle
+// (green) and top (blue) layer. An explicitly set mixer wins; otherwise the
+// photo's own fresh-open mix is used (c.MonoDefault, resolved from its
+// header by MonoFreshMix), and with no header field that is equal thirds.
+// SPP's Reset button is an explicit equal thirds.
+func monoWeights(p preset.Params, c Compensation) [3]float64 {
+	w := monoEqualMix
+	if c.MonoDefault != nil {
+		w = MonoFreshMix(c.MonoDefault)
+	}
+	if p.MonoMixSet {
+		if set := normalMonoMix([3]float64{p.MonoR, p.MonoG, p.MonoB}); set != ([3]float64{}) {
+			w = set
+		}
 	}
 	return w
 }
@@ -1014,7 +1065,7 @@ func monoWeights(p preset.Params) [3]float64 {
 // so a neutral stays the same grey. With no colour matrix (a camera JPEG) the
 // mixer weights act on linear sRGB directly.
 func (op *pixOp) setMonoMix(p preset.Params, c Compensation) {
-	w := monoWeights(p)
+	w := monoWeights(p, c)
 	ev := [3]float64{p.LayerBottom, p.LayerMiddle, p.LayerTop}
 	f := [3]float64{math.Exp2(ev[0]), math.Exp2(ev[1]), math.Exp2(ev[2])}
 	G := [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
