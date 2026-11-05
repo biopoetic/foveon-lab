@@ -574,6 +574,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <option value="any">Any speed</option>
         <option value="same">Same speed as the film in use (±1 stop)</option>
       </select>
+      <select id="filmCmpPaper" title="The colour paper the negatives are printed on (slides and black-and-white films are not affected)"></select>
     </div>
     <div id="filmCmpGrid"></div>
   </div>
@@ -1566,6 +1567,7 @@ function buildSliders(){
   $("#filmCmpClose").onclick = filmCompareClose;
   $("#filmCmpKind").onchange = () => { store.set("cmpKind", $("#filmCmpKind").value); filmCompare(); };
   $("#filmCmpIso").onchange = () => { store.set("cmpIso", $("#filmCmpIso").value); filmCompare(); };
+  $("#filmCmpPaper").onchange = () => { store.set("cmpPaper", $("#filmCmpPaper").value); filmCompare(); };
   $("#filmCmpCrop").onchange = () => { store.set("cmpCrop", $("#filmCmpCrop").value); filmCompare(); };
   // The choice of films and speed survives closing the dialog.
   $("#filmCmpKind").value = store.get("cmpKind", "colour");
@@ -1898,7 +1900,21 @@ function filmCompare(){
   const isoOK = f => isoMode !== "same" || !curFilm || (f.iso >= curFilm.iso / 2 && f.iso <= curFilm.iso * 2);
   const want = k => kind === "all" || kind === k;
   const w = 600, base = {...S.params, grain: 0, noGrain: true, monoGrainSize: 0, halation: 0, developer: "", devTime: 0, push: 0, ccY: 0, ccM: 0, ccC: 0, printExp: 0};
-  const papers = PAPERS.filter(p => p.kind === "colour");
+  const allPapers = PAPERS.filter(p => p.kind === "colour");
+  // One tile per negative, printed on the paper chosen in the header; "both"
+  // shows every colour paper side by side. With no stored choice it is the
+  // colour paper in use, else the first one.
+  const psel = $("#filmCmpPaper");
+  const inUse = allPapers.some(p => p.paper === S.params.paper) ? S.params.paper : allPapers[0]?.paper || "";
+  let paperMode = store.get("cmpPaper", "");
+  if (paperMode !== "both" && !allPapers.some(p => p.paper === paperMode)) paperMode = inUse;
+  if (psel){
+    psel.innerHTML = allPapers.map(p => `<option value="${esc(p.paper)}">Printed on ${esc(p.paper)}</option>`).join("") +
+      (allPapers.length > 1 ? `<option value="both">Every colour paper</option>` : "");
+    psel.value = paperMode;
+    psel.disabled = !want("colour") || allPapers.length < 2;
+  }
+  const papers = paperMode === "both" ? allPapers : allPapers.filter(p => p.paper === paperMode);
   // A black-and-white paper is used for the black-and-white tiles when one is
   // chosen; otherwise they are scans of the negative.
   const bwPaper = PAPERS.some(p => p.kind === "bw" && p.paper === S.params.paper) ? S.params.paper : "";
