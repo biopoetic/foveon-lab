@@ -25,24 +25,98 @@ out vec4 o;
 float enc(float x){ x = clamp(x, 0., 1.); return x <= 0.0031308 ? x * 12.92 : 1.055 * pow(x, 1. / 2.4) - 0.055; }
 float dec(float x){ x = clamp(x, 0., 1.); return x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4); }
 `;
+  // Film grain, shared by the first pass (the 1:1 render and the unsharpened
+  // path) and the output pass (task 58: at a reduced view the grain is laid
+  // on after SPP and the Sharpness slider, with the export's retained gain).
+  // render/film.go's lattice, Gaussian hash and density curve, verbatim.
+  const GRAIN = `
+uniform int uGrainN;
+uniform vec2 uGrainOct[9];
+uniform float uGrainRho, uGrainFine;
+uniform uint uGrainSeed;
+uniform bool uGrainMono, uGrainPost;
+uniform float uGrainGain;
+uint hash32(uint x){ x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x; }
+float unorm(uint h){ return float(h >> 8) * (1. / 16777216.); }
+// The same value-noise lattice and Gaussian hash as render/film.go. cell is
+// the clump's size in output pixels; a reduced view can keep a clump with
+// cell < 1 (film.go buildGrain), and the bilinear sample below is the same
+// one the CPU draws.
+float grainLat(int x, int y, uint seed){
+  uint h = hash32(uint(x) * 0x9e3779b1u ^ uint(y) * 0x85ebca77u ^ seed);
+  return (2. * unorm(h) - 1.) * 1.7320508;
+}
+float grainSample(int px, int py, float cell, uint seed){
+  float fx = (float(px) + 0.5) / cell, fy = (float(py) + 0.5) / cell;
+  float ix = floor(fx), iy = floor(fy);
+  int x0 = int(ix), y0 = int(iy);
+  float tx = fx - ix, ty = fy - iy;
+  float a = mix(grainLat(x0, y0, seed), grainLat(x0 + 1, y0, seed), tx);
+  float b = mix(grainLat(x0, y0 + 1, seed), grainLat(x0 + 1, y0 + 1, seed), tx);
+  return mix(a, b, ty) * 1.5;
+}
+float grainOctAt(int px, int py, float cell, int j, int c){
+  return grainSample(px, py, cell, uGrainSeed ^ 0x5bf03635u ^ uint(j) * 0x9e3779b9u ^ uint(c) * 0x85ebca6bu);
+}
+float grainCommonAt(int px, int py, float cell, int j){
+  return grainSample(px, py, cell, uGrainSeed ^ 0x1234567u ^ uint(j) * 0x9e3779b9u);
+}
+float grainGauss(uint i, uint seed){
+  uint a = hash32(i * 0x9e3779b1u + seed), b = hash32(a ^ 0x85ebca6bu);
+  float s = float(a & 0xffffu) + float(a >> 16) + float(b & 0xffffu) + float(b >> 16);
+  return (s / 65535. - 2.) * 1.7320508;
+}
+float grainFineAt(uint i, int c){
+  return grainGauss(i, uGrainSeed ^ 0x5bf03635u ^ uint(c) * 0x85ebca6bu);
+}
+float grain1(float v, float n){
+  if (v <= 0.) return v;
+  float u = min(1., enc(v)), amp = 4. * u * (1. - u);
+  return v * exp(-2.302585 * amp * n);
+}
+vec3 filmGrainField(int px, int py, uint i){
+  float sqi = sqrt(max(0., 1. - uGrainRho)), sqr = sqrt(max(0., uGrainRho));
+  vec3 n = vec3(0.);
+  for (int j = 0; j < 9; j++){
+    if (j >= uGrainN) break;
+    float cell = uGrainOct[j].x, amp = uGrainOct[j].y;
+    if (uGrainMono){
+      n += vec3(amp * grainCommonAt(px, py, cell, j));
+    } else {
+      float com = uGrainRho > 0. ? grainCommonAt(px, py, cell, j) : 0.;
+      n += vec3(amp * (sqi * grainOctAt(px, py, cell, j, 0) + sqr * com),
+                amp * (sqi * grainOctAt(px, py, cell, j, 1) + sqr * com),
+                amp * (sqi * grainOctAt(px, py, cell, j, 2) + sqr * com));
+    }
+  }
+  if (uGrainFine > 0.){
+    if (uGrainMono){
+      n += vec3(uGrainFine * grainGauss(i, uGrainSeed ^ 0x1234567u));
+    } else {
+      float com = uGrainRho > 0. ? grainGauss(i, uGrainSeed ^ 0x1234567u) : 0.;
+      n += vec3(uGrainFine * (sqi * grainFineAt(i, 0) + sqr * com),
+                uGrainFine * (sqi * grainFineAt(i, 1) + sqr * com),
+                uGrainFine * (sqi * grainFineAt(i, 2) + sqr * com));
+    }
+  }
+  return n;
+}
+vec3 filmGrainApply(vec3 c, vec3 n, float gain){
+  return vec3(grain1(c.r, n.r * gain), grain1(c.g, n.g * gain), grain1(c.b, n.b * gain));
+}
+`;
   // Pass 1: one pixel through pixOp (+ grain), written as 8-bit values.
-  const PIX = HEAD + `
+  const PIX = HEAD + GRAIN + `
 uniform sampler2D uRGB, uAux, uLut, uFilm, uCFCurve, uLayerTex;
 uniform highp sampler3D uCFLut;
 uniform bool uCF;
 uniform vec3 uCFInv[3], uCFA[3], uCFB[3];   // linear sRGB -> layers; root-polynomial (r,g,b) and (√rg,√gb,√rb) rows
 uniform float uCFH, uCFExp, uCFDmax, uCFN, uCFLgMin, uCFLgMax, uCFCurveN;
 uniform int uW, uH, uFlipOut;
-uniform bool uUndo, uUndoGamma, uMeasured, uMono, uFilmTone, uWB, uWBTaste, uMM, uMMTaste, uFillABCK, uFillLocal, uGrainMono;
+uniform bool uUndo, uUndoGamma, uMeasured, uMono, uFilmTone, uWB, uWBTaste, uMM, uMMTaste, uFillABCK, uFillLocal;
 uniform int uLayerMode;   // 0 none, 1 matrix, 2 mono weights
 uniform vec3 uUndoM[3], uLayerM[3], uLayerMono, uWBM[3], uMMM[3], uGain, uTint;
 uniform float uMaskScale, uFill, uHL, uBlk, uCT, uSatF, uSatMeasure, uWBSat, uMMSat, uFilmScale;
-// render/film.go's grain: spatially resolved octaves (cell in pixels,
-// density amplitude), the per-pixel fine sigma, and the common layer share.
-uniform int uGrainN;
-uniform vec2 uGrainOct[9];
-uniform float uGrainRho, uGrainFine;
-uniform uint uGrainSeed;
 // SPP's Monochrome tab (render/monograin.go): the measured base gamma, the
 // toning offsets, the radial Shading Effect about the whole frame, and the
 // monochrome grain's one coarse octave plus its per-pixel octave.
@@ -137,44 +211,6 @@ vec3 colorFilm(vec3 c){
   vec3 v = texture(uCFLut, vec3(t.b, t.g, t.r)).rgb;   // x = D_B (fastest), y = D_G, z = D_R
   return pow(vec3(10.), -v);
 }
-uint hash32(uint x){ x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x; }
-float unorm(uint h){ return float(h >> 8) * (1. / 16777216.); }
-// The same value-noise lattice and Gaussian hash as render/film.go. cell is
-// the clump's size in output pixels; a reduced view can keep a clump with
-// cell < 1 (film.go buildGrain), and the bilinear sample below is the same
-// one the CPU draws.
-float grainLat(int x, int y, uint seed){
-  uint h = hash32(uint(x) * 0x9e3779b1u ^ uint(y) * 0x85ebca77u ^ seed);
-  return (2. * unorm(h) - 1.) * 1.7320508;
-}
-float grainSample(int px, int py, float cell, uint seed){
-  float fx = (float(px) + 0.5) / cell, fy = (float(py) + 0.5) / cell;
-  float ix = floor(fx), iy = floor(fy);
-  int x0 = int(ix), y0 = int(iy);
-  float tx = fx - ix, ty = fy - iy;
-  float a = mix(grainLat(x0, y0, seed), grainLat(x0 + 1, y0, seed), tx);
-  float b = mix(grainLat(x0, y0 + 1, seed), grainLat(x0 + 1, y0 + 1, seed), tx);
-  return mix(a, b, ty) * 1.5;
-}
-float grainOctAt(int px, int py, float cell, int j, int c){
-  return grainSample(px, py, cell, uGrainSeed ^ 0x5bf03635u ^ uint(j) * 0x9e3779b9u ^ uint(c) * 0x85ebca6bu);
-}
-float grainCommonAt(int px, int py, float cell, int j){
-  return grainSample(px, py, cell, uGrainSeed ^ 0x1234567u ^ uint(j) * 0x9e3779b9u);
-}
-float grainGauss(uint i, uint seed){
-  uint a = hash32(i * 0x9e3779b1u + seed), b = hash32(a ^ 0x85ebca6bu);
-  float s = float(a & 0xffffu) + float(a >> 16) + float(b & 0xffffu) + float(b >> 16);
-  return (s / 65535. - 2.) * 1.7320508;
-}
-float grainFineAt(uint i, int c){
-  return grainGauss(i, uGrainSeed ^ 0x5bf03635u ^ uint(c) * 0x85ebca6bu);
-}
-float grain1(float v, float n){
-  if (v <= 0.) return v;
-  float u = min(1., enc(v)), amp = 4. * u * (1. - u);
-  return v * exp(-2.302585 * amp * n);
-}
 void main(){
   ivec2 q = ivec2(gl_FragCoord.xy);            // image row q.y (row 0 = top)
   vec3 c = texelFetch(uRGB, q, 0).rgb;
@@ -258,33 +294,10 @@ void main(){
     float us = enc(c.r) * gain - 1. / 255.;
     c = vec3(dec(clamp(us, 0., 1.)));
   }
-  if (uGrainN > 0 || uGrainFine > 0.){
-    uint i = uint(q.y * uW + q.x);
-    float sqi = sqrt(max(0., 1. - uGrainRho)), sqr = sqrt(max(0., uGrainRho));
-    vec3 n = vec3(0.);
-    for (int j = 0; j < 9; j++){
-      if (j >= uGrainN) break;
-      float cell = uGrainOct[j].x, amp = uGrainOct[j].y;
-      if (uGrainMono){
-        n += vec3(amp * grainCommonAt(q.x, q.y, cell, j));
-      } else {
-        float com = uGrainRho > 0. ? grainCommonAt(q.x, q.y, cell, j) : 0.;
-        n += vec3(amp * (sqi * grainOctAt(q.x, q.y, cell, j, 0) + sqr * com),
-                  amp * (sqi * grainOctAt(q.x, q.y, cell, j, 1) + sqr * com),
-                  amp * (sqi * grainOctAt(q.x, q.y, cell, j, 2) + sqr * com));
-      }
-    }
-    if (uGrainFine > 0.){
-      if (uGrainMono){
-        n += vec3(uGrainFine * grainGauss(i, uGrainSeed ^ 0x1234567u));
-      } else {
-        float com = uGrainRho > 0. ? grainGauss(i, uGrainSeed ^ 0x1234567u) : 0.;
-        n += vec3(uGrainFine * (sqi * grainFineAt(i, 0) + sqr * com),
-                  uGrainFine * (sqi * grainFineAt(i, 1) + sqr * com),
-                  uGrainFine * (sqi * grainFineAt(i, 2) + sqr * com));
-      }
-    }
-    c = vec3(grain1(c.r, n.r), grain1(c.g, n.g), grain1(c.b, n.b));
+  // At a reduced view the film grain is held back and laid on in the output
+  // pass after SPP and the Sharpness slider (task 58), with its retained gain.
+  if (!uGrainPost && (uGrainN > 0 || uGrainFine > 0.)){
+    c = filmGrainApply(c, filmGrainField(q.x, q.y, uint(q.y * uW + q.x)), 1.);
   }
   if (uSGN > 0 || uSGFine > 0.){
     // render/monograin.go apply: one scalar field, SPP's tone weight, in the
@@ -343,9 +356,10 @@ void main(){ ivec2 q = ivec2(gl_FragCoord.xy); vec3 s = vec3(0.);
     }
   float g = uThr > 0. ? smoothstep(0.5 * uThr, 1.5 * uThr, lmax - lmin) : 1.;
   o = vec4(floor(clamp(v + uA * (v - s) * g, 0., 255.) + 0.5), 255.); }`;
-  // Pass 4: the Sharpness slider's 3x3 cross (render.go sharpen), edges
-  // untouched, then out to the canvas (flipped: canvas row 0 is the top).
-  const OUT = HEAD + `
+  // Pass 4: the Sharpness slider's 3x3 cross (render.go sharpen), then the
+  // deferred film grain with the export's retained sharpening gain (task 58),
+  // then out to the canvas (flipped: canvas row 0 is the top).
+  const OUT = HEAD + GRAIN + `
 uniform sampler2D uSrc; uniform int uW, uH; uniform float uA;
 void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
   vec3 v = texelFetch(uSrc, q, 0).rgb;
@@ -353,6 +367,13 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     vec3 n = (texelFetch(uSrc, q + ivec2(-1, 0), 0).rgb + texelFetch(uSrc, q + ivec2(1, 0), 0).rgb +
               texelFetch(uSrc, q + ivec2(0, -1), 0).rgb + texelFetch(uSrc, q + ivec2(0, 1), 0).rgb) / 4.;
     v = floor(clamp(v + uA * (v - n), 0., 255.) + 0.5);
+  }
+  // film.go addGrain8: the sharpened value back to linear, the deferred
+  // density field times the retained gain, and encode again.
+  if (uGrainPost && (uGrainN > 0 || uGrainFine > 0.)){
+    vec3 lin = vec3(dec(v.r / 255.), dec(v.g / 255.), dec(v.b / 255.));
+    lin = filmGrainApply(lin, filmGrainField(q.x, q.y, uint(q.y * uW + q.x)), uGrainGain);
+    v = floor(vec3(enc(lin.r), enc(lin.g), enc(lin.b)) * 255. + 0.5);
   }
   o = vec4(v / 255., 1.); }`;
 
@@ -478,13 +499,20 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     gl.uniform3fv(u.uTint, r.tint); gl.uniform1f(u.uSatMeasure, r.satMeasure);
     gl.uniform1i(u.uFillABCK, r.fillABCK ? 1 : 0); gl.uniform1i(u.uFillLocal, r.fillLocal ? 1 : 0);
     gl.uniform1fv(u.uLocal, r.fillLocal ? r.fillLocal.slice(0, 64) : new Float32Array(64));
-    gl.uniform1i(u.uGrainMono, r.grainMono ? 1 : 0);
-    gl.uniform1i(u.uGrainN, r.grainOct ? r.grainOct.length : 0);
     const goct = new Float32Array(18);
     (r.grainOct || []).slice(0, 9).forEach((o, i) => { goct[i * 2] = o.cell; goct[i * 2 + 1] = o.amp; });
-    gl.uniform2fv(u.uGrainOct, goct);
-    gl.uniform1f(u.uGrainRho, r.grainRho || 0); gl.uniform1f(u.uGrainFine, r.grainFine || 0);
-    gl.uniform1ui(u.uGrainSeed, (r.grainSeed || 0) >>> 0);
+    // Both the first pass (1:1 and unsharpened) and the output pass (the
+    // deferred reduced-view grain) read the same grain recipe.
+    const setGrain = (gu) => {
+      gl.uniform1i(gu.uGrainMono, r.grainMono ? 1 : 0);
+      gl.uniform1i(gu.uGrainN, r.grainOct ? r.grainOct.length : 0);
+      gl.uniform2fv(gu.uGrainOct, goct);
+      gl.uniform1f(gu.uGrainRho, r.grainRho || 0); gl.uniform1f(gu.uGrainFine, r.grainFine || 0);
+      gl.uniform1ui(gu.uGrainSeed, (r.grainSeed || 0) >>> 0);
+      gl.uniform1i(gu.uGrainPost, r.grainPost ? 1 : 0);
+      gl.uniform1f(gu.uGrainGain, r.grainGain || 1);
+    };
+    setGrain(u);
     // SPP's Monochrome tab.
     gl.uniform1i(u.uMonoNew, r.monoNew ? 1 : 0);
     gl.uniform1f(u.uMonoGamma, r.monoGamma || 1);
@@ -544,6 +572,7 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     }
     const O = progs.out; gl.useProgram(O.p); bind(O, "uSrc", 0, cur.tex);
     gl.uniform1i(O.u.uW, base.w); gl.uniform1i(O.u.uH, base.h); gl.uniform1f(O.u.uA, r.sharpen || 0);
+    setGrain(O.u);
     pass(O, null);
     return true;
   }

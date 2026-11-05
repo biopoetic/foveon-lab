@@ -58,7 +58,9 @@ package render
 // every pixel spreads, but only a bright source on a dark ground shows it.
 
 import (
+	"image"
 	"math"
+	"sync"
 
 	"github.com/biopoetic/foveon-lab/preset"
 )
@@ -114,6 +116,14 @@ type filmOp struct {
 	noise []float32
 	halo  []float32 // the spread light, nil = none
 	haloK float32
+
+	// n is the view pitch over the export's pitch (1 at full resolution);
+	// reduced is n > 1. At a reduced view the grain is laid on after SPP's
+	// sharpening (deferGrain, set by the render) with deferredGain, the
+	// gain that sharpening keeps when the export is reduced to this view.
+	n          float64
+	reduced    bool
+	deferGrain bool
 }
 
 // pitch is the film width (µm) one pixel of b covers.
@@ -387,6 +397,8 @@ func (f *filmOp) buildGrain(b *Base, p preset.Params, kind string, iso, push, ta
 	if n < 1 {
 		n = 1
 	}
+	f.n = n
+	f.reduced = n > 1.0000001
 	sizes, weights := grainSizes(kind, iso, push)
 	var v48 float64
 	for i := range sizes {
@@ -397,6 +409,11 @@ func (f *filmOp) buildGrain(b *Base, p preset.Params, kind string, iso, push, ta
 	}
 	A := target / math.Sqrt(v48)
 	var sigma2, fine2 float64
+	// corrVar is the surviving sub-pixel clump variance carried by the
+	// one-pixel correlated field. All such clumps share the same cell-1
+	// kernel (their continuous cells are below a pixel), so one field with
+	// their summed variance is the same statistics for one lattice's cost.
+	var corrVar float64
 	for i := range sizes {
 		amp := A * math.Sqrt(float64(weights[i]))
 		s := sizes[i]
@@ -438,12 +455,27 @@ func (f *filmOp) buildGrain(b *Base, p preset.Params, kind string, iso, push, ta
 		cell := s / pt
 		if cell >= 1 {
 			f.oct = append(f.oct, grainOctave{cell: cell, amp: float32(amp * math.Sqrt(R))})
-		} else {
-			// Below one output pixel the clump is not resolvable here; draw
-			// its surviving variance as independent noise, as the export's
-			// reduction leaves it.
-			fine2 += v
+			continue
 		}
+		// Below one output pixel the clump is not resolvable as a field of its
+		// own. The export's 1:1 point samples alias it into a weakly
+		// correlated field when the block average is taken; the surviving
+		// variance drawn as pure white noise gives too little 48 µm and
+		// 2×/4× content, while a full one-pixel value noise overshoots. Draw
+		// it as a mix: a white share and a one-pixel box (a two-tap,
+		// value-noise) share. The reduced export's lag-1 correlation falls as
+		// 0.6/n, and a cell-1 value noise has lag-1 correlation 0.5, so the
+		// box share is λ = 1.2/n. That pins the 48 µm aperture and the
+		// further reductions to the reduced export (TestGrainScaleConsistency,
+		// TestGrainClumpAperture).
+		lambda := math.Min(1, 1.2/n)
+		fine2 += v * (1 - lambda)
+		corrVar += v * lambda
+	}
+	if corrVar > 0 {
+		// grainSample at cell 1 keeps 0.75² of a unit lattice, so the
+		// amplitude carries the 1/0.75.
+		f.oct = append(f.oct, grainOctave{cell: 1, amp: float32(math.Sqrt(corrVar) / 0.75)})
 	}
 	f.sigma = float32(math.Sqrt(sigma2))
 	f.fine = float32(math.Sqrt(fine2))
@@ -612,7 +644,129 @@ func (f *filmOp) buildNoise(b *Base, p preset.Params) {
 	}
 }
 
-// grainDensity applies one density-noise sample n to a linear pixel v. The
+// deferredGain is the factor a reduced view's grain carries when it is laid
+// on after the view's sharpening: the export's SPP mask and Sharpness slider
+// are applied at full size and then area-reduced, which keeps this much of
+// the grain. sharp false means no sharpening was applied, so the grain is the
+// plain unsharpened field (1).
+func (f *filmOp) deferredGain(b *Base, p preset.Params, sharp bool) float64 {
+	if f == nil || !f.reduced || !sharp {
+		return 1
+	}
+	g := 1.0
+	if b.Raw {
+		// The export's full-size SPP mask, seen through the reduction, is
+		// the mask at the view's true scale (1/n).
+		g *= sppGrainGain(1/f.n, b.ISO, b.Sensor)
+	}
+	if p.Sharpness != 0 {
+		g *= sliderGrainGain(f.n, p.Sharpness)
+	}
+	return g
+}
+
+// grainTable levels: the deferred grain is laid on after sharpening, over the
+// whole 8-bit image, and an exp per channel there costs more than the whole
+// render's grain did in the tone pass. The effect depends only on the input
+// 8-bit level and the density sample, so tabulate it once (256 levels × 257
+// samples over s = n·gain ∈ [-2, 2]); outside the range, evaluate exactly.
+const (
+	grainSMin = -2.0
+	grainSMax = 2.0
+	grainSN   = 257
+)
+
+var (
+	grainTableOnce sync.Once
+	grainTable     [256 * grainSN]uint8
+)
+
+func buildGrainTable() {
+	for u := 0; u < 256; u++ {
+		v := dec(float32(u) / 255)
+		for j := 0; j < grainSN; j++ {
+			s := grainSMin + (grainSMax-grainSMin)*float64(j)/float64(grainSN-1)
+			o := enc(grainDensity(v, float32(s)))*255 + 0.5
+			grainTable[u*grainSN+j] = uint8(max(0, min(255, o)))
+		}
+	}
+}
+
+// grainLevel8 is grainTable with linear interpolation on s.
+func grainLevel8(u uint8, s float32) uint8 {
+	if s < grainSMin || s > grainSMax {
+		v := dec(float32(u) / 255)
+		return uint8(max(0, min(255, enc(grainDensity(v, s))*255+0.5)))
+	}
+	f := (s - grainSMin) * (grainSN - 1) / (grainSMax - grainSMin)
+	j := int(f)
+	if j >= grainSN-1 {
+		return grainTable[int(u)*grainSN+grainSN-1]
+	}
+	t := f - float32(j)
+	a := grainTable[int(u)*grainSN+j]
+	b := grainTable[int(u)*grainSN+j+1]
+	return uint8(float32(a) + (float32(b)-float32(a))*t + 0.5)
+}
+
+// addGrain8 lays the deferred grain on an 8-bit image after sharpening. The
+// grain is applied to the sharpened value in linear light, as renderInto
+// applies it before encoding; gain is the export's retained sharpening gain.
+func (f *filmOp) addGrain8(img *image.RGBA, gain float64) {
+	if f == nil || len(f.noise) == 0 {
+		return
+	}
+	grainTableOnce.Do(buildGrainTable)
+	w, h := img.Rect.Dx(), img.Rect.Dy()
+	g := float32(gain)
+	parallelRows(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			for x := 0; x < w; x++ {
+				i := y*w + x
+				o := i * 4
+				if f.mono {
+					n := f.noise[i] * g
+					for c := 0; c < 3; c++ {
+						img.Pix[o+c] = grainLevel8(img.Pix[o+c], n)
+					}
+					continue
+				}
+				for c := 0; c < 3; c++ {
+					img.Pix[o+c] = grainLevel8(img.Pix[o+c], f.noise[i*3+c]*g)
+				}
+			}
+		}
+	})
+}
+
+// addGrain16 is addGrain8 for 16-bit sRGB (big-endian samples).
+func (f *filmOp) addGrain16(img *image.RGBA64, gain float64) {
+	if f == nil || len(f.noise) == 0 {
+		return
+	}
+	w, h := img.Rect.Dx(), img.Rect.Dy()
+	g := float32(gain)
+	parallelRows(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			for x := 0; x < w; x++ {
+				i := y*w + x
+				o := i * 8
+				for c := 0; c < 3; c++ {
+					u := uint16(img.Pix[o+c*2])<<8 | uint16(img.Pix[o+c*2+1])
+					v := dec(float32(u) / 65535)
+					n := f.noise[i] * g
+					if !f.mono {
+						n = f.noise[i*3+c] * g
+					}
+					u = uint16(max(0, min(65535, enc(grainDensity(v, n))*65535+0.5)))
+					img.Pix[o+c*2], img.Pix[o+c*2+1] = uint8(u>>8), uint8(u)
+				}
+			}
+		}
+	})
+}
+
+// grainDensity applies one density-noise sample n to a linear pixel. The
 // print/scan's local gamma 4u(1-u) fades the grain at paper white and black.
 func grainDensity(v, n float32) float32 {
 	if v <= 0 {

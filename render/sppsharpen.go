@@ -258,6 +258,68 @@ func gaussKernel(sigma float64) [7]float32 {
 // gauss1 is a normalised Gaussian kernel of sigma 1 (radius 3).
 var gauss1 = gaussKernel(1)
 
+// sppGrainGain is the gain SPP's sharpening keeps on grain after the export
+// (sharpened at full size) is area-reduced to a view n times coarser. The
+// reduced full-size mask is the mask sppView fits at the view's true scale,
+// 1/n, and the gain of a separable filter h⊗h on white grain is Σh². The
+// fit view used to sharpen its own view-scale grain with sppView at the
+// preview's scale, which is far stronger at high frequencies: at 1600 that
+// added 84% where the export keeps 35%. This is the retained gain used when
+// the grain is laid on after SPP instead (render.go, film.go deferredGain).
+func sppGrainGain(s, iso float64, sensor string) float64 {
+	a, k := sppView(s, iso, sensor)
+	if a == 0 {
+		return 1
+	}
+	var g float64
+	for j := -3; j <= 3; j++ {
+		h := -float64(a) * float64(k[j+3])
+		if j == 0 {
+			h += 1 + float64(a)
+		}
+		g += h * h
+	}
+	return math.Max(0, g)
+}
+
+// sliderGrainGain is the gain the Sharpness slider keeps on grain at a
+// reduced view: the 3×3 cross is applied at 1:1 in the export and area-
+// reduced here. The gain of a 2-D kernel through an n×n box is
+// sqrt(Σ w(dx)w(dy)·A(dx,dy)) with w(d) = 1−|d|/n and A the kernel's
+// autocorrelation (the box's own normalisation cancels in the ratio).
+func sliderGrainGain(n, sharpness float64) float64 {
+	A := math.Max(-1, math.Min(2, sharpness*1.5))
+	if A == 0 || n <= 1 {
+		return 1
+	}
+	var k [3][3]float64
+	k[1][1] = 1 + A
+	k[0][1], k[2][1], k[1][0], k[1][2] = -A/4, -A/4, -A/4, -A/4
+	r := int(math.Ceil(n))
+	var s float64
+	for dy := -r; dy <= r; dy++ {
+		wy := math.Max(0, 1-math.Abs(float64(dy))/n)
+		for dx := -r; dx <= r; dx++ {
+			wx := math.Max(0, 1-math.Abs(float64(dx))/n)
+			if wx*wy == 0 {
+				continue
+			}
+			var a float64
+			for y := 0; y < 3; y++ {
+				for x := 0; x < 3; x++ {
+					yy, xx := y+dy, x+dx
+					if yy < 0 || yy > 2 || xx < 0 || xx > 2 {
+						continue
+					}
+					a += k[y][x] * k[yy][xx]
+				}
+			}
+			s += wx * wy * a
+		}
+	}
+	return math.Sqrt(math.Max(0, s))
+}
+
 // usmPlanes sharpens interleaved channels (n per pixel, the first 3
 // sharpened) given as floats: v + a·(v − gauss(v)), edges clamped. Each
 // channel goes through its own plane: a horizontal pass (no clamping away

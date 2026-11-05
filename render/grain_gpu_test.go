@@ -126,6 +126,12 @@ func TestGrainGPUAgrees(t *testing.T) {
 			if len(r.GrainOct) != len(cpu.oct) {
 				t.Errorf("%s scale %.3f: %d recipe octaves, %d CPU", tc.name, scale, len(r.GrainOct), len(cpu.oct))
 			}
+			if want := scale < 1; r.GrainPost != want {
+				t.Errorf("%s scale %.3f: GrainPost %v, want %v", tc.name, scale, r.GrainPost, want)
+			}
+			if scale < 1 && math.Abs(float64(r.GrainGain)-cpu.deferredGain(b, p, true)) > 1e-6 {
+				t.Errorf("%s scale %.3f: grain gain %.6f, CPU %.6f", tc.name, scale, r.GrainGain, cpu.deferredGain(b, p, true))
+			}
 			for _, i := range []int{0, 1, 37, 133, 199, 1234, 5000, 19999} {
 				x, y := i%200, i/200
 				got := t47GPUField(r, i, x, y)
@@ -144,4 +150,60 @@ func TestGrainGPUAgrees(t *testing.T) {
 			}
 		}
 	}
+
+	// The sharpened path (task 58): at a reduced view the grain is laid on in
+	// the output pass, after SPP and the Sharpness slider, with the export's
+	// retained gain. Mirror web/gpu.js's OUT pass on the grain-free render
+	// (the same sharpened 8-bit image the shader's uSrc holds) and compare it
+	// with RenderOpt, which does the same in film.go addGrain8.
+	t.Run("sharpened", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			mono bool
+		}{
+			{"Kodak Tri-X Pan 400 (TX)", true},
+			{"Kodak Portra 400", false},
+		} {
+			f, _ := FilmByKey(tc.name)
+			for _, scale := range []float64{1600.0 / 4704.0, 600.0 / 4704.0} {
+				const w, h = 96, 64
+				l := flat(w, h, 0.2)
+				l.Scale, l.Frame, l.NativeFrame = scale, 4704, 4704
+				l.Raw, l.ISO, l.Sensor = true, 100, "DPM"
+				for y := 0; y < h; y++ { // a little image structure for the mask
+					for x := 0; x < w; x++ {
+						v := float32(0.2 + 0.12*math.Sin(float64(x)*0.31)*math.Cos(float64(y)*0.23))
+						for c := 0; c < 3; c++ {
+							l.Pix[(y*w+x)*3+c] = v
+						}
+					}
+				}
+				b := NewBase(l)
+				p := preset.Params{Film: tc.name, Grain: f.Grain, FilmWidth: 36, Mono: tc.mono, GrainSet: true}
+				p.Sharpness = 0.5 // the slider is part of the export's chain
+				p0 := p
+				p0.Grain = 0
+				full := RenderOpt(b, p, Compensation{}, true)
+				plain := RenderOpt(b, p0, Compensation{}, true)
+				r := NewGPURecipe(b, p, Compensation{})
+				if !r.GrainPost {
+					t.Fatalf("%s scale %.3f: recipe does not defer the grain", tc.name, scale)
+				}
+				cpu := b.newFilm(p, tc.mono)
+				gain := cpu.deferredGain(b, p, true)
+				for _, i := range []int{0, 1, 37, 133, 199, 1234, 5000, (w*h - 1)} {
+					x, y := i%w, i/w
+					n := t47GPUField(r, i, x, y)
+					for c := 0; c < 3; c++ {
+						v := dec(float32(plain.Pix[i*4+c]) / 255)
+						u := uint8(max(0, min(255, enc(t48GPUgrain1(v, n[c]*float32(gain)))*255+0.5)))
+						if d := int(full.Pix[i*4+c]) - int(u); d < -1 || d > 1 {
+							t.Errorf("%s scale %.3f pixel %d channel %d: GPU-out %d, CPU %d (gain %.5f)", tc.name, scale, i, c, u, full.Pix[i*4+c], gain)
+							break
+						}
+					}
+				}
+			}
+		}
+	})
 }

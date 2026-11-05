@@ -643,7 +643,7 @@ func Render(b *Base, p preset.Params, c Compensation) *image.RGBA {
 func RenderOpt(b *Base, p preset.Params, c Compensation, sharp bool) *image.RGBA {
 	out := image.NewRGBA(image.Rect(0, 0, b.W, b.H))
 	t0 := time.Now()
-	renderInto(b, p, c, func(i int, r, g, bl float32) {
+	film := renderIntoOpt(b, p, c, sharp, func(i int, r, g, bl float32) {
 		o := out.Pix[i*4:]
 		o[0] = uint8(enc(r)*255 + 0.5)
 		o[1] = uint8(enc(g)*255 + 0.5)
@@ -658,6 +658,12 @@ func RenderOpt(b *Base, p preset.Params, c Compensation, sharp bool) *image.RGBA
 	if p.Sharpness != 0 && sharp {
 		sharpen(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale()))))
 	}
+	// A reduced view's grain was held out of the sharpened image: lay it on
+	// now, with the gain the export's full-size sharpening keeps through the
+	// reduction (film.go deferredGain).
+	if film != nil && film.deferGrain {
+		film.addGrain8(out, film.deferredGain(b, p, sharp))
+	}
 	if !noImpulse && b.ISO >= 800 && (b.Sensor == "DPM" || b.Sensor == "Quattro") {
 		impulseClean8(out, 80, 12)
 	}
@@ -670,7 +676,7 @@ func RenderOpt(b *Base, p preset.Params, c Compensation, sharp bool) *image.RGBA
 func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 	out := image.NewRGBA64(image.Rect(0, 0, b.W, b.H))
 	t0 := time.Now()
-	renderInto(b, p, c, func(i int, r, g, bl float32) {
+	film := renderIntoOpt(b, p, c, true, func(i int, r, g, bl float32) {
 		o := out.Pix[i*8:]
 		for ch, v := range [3]float32{r, g, bl} {
 			u := uint16(enc(v)*65535 + 0.5)
@@ -686,6 +692,9 @@ func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 	if p.Sharpness != 0 {
 		sharpen16(out, float32(math.Max(-1, math.Min(2, p.Sharpness*1.5*b.scale()))))
 	}
+	if film != nil && film.deferGrain {
+		film.addGrain16(out, film.deferredGain(b, p, true))
+	}
 	if !noImpulse && b.ISO >= 800 && (b.Sensor == "DPM" || b.Sensor == "Quattro") {
 		impulseClean16(out, 80*257, 12*257)
 	}
@@ -696,6 +705,14 @@ func Render16(b *Base, p preset.Params, c Compensation) *image.RGBA64 {
 // renderInto runs the adjustment pipeline and hands every pixel (index,
 // linear RGB clamped later by the sink's encoding) to put.
 func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, bl float32)) {
+	renderIntoOpt(b, p, c, false, put)
+}
+
+// renderIntoOpt is renderInto with the film grain optionally held back: at a
+// reduced view with sharpening, the grain is added after SPP's mask (the
+// caller does it, see RenderOpt), so the view's own mask is never applied to
+// it. It returns the film op (nil when the render has no film grain).
+func renderIntoOpt(b *Base, p preset.Params, c Compensation, deferGrain bool, put func(i int, r, g, bl float32)) *filmOp {
 	w, h := b.W, b.H
 	op := newPixOp(p, c)
 	op.forBase(b)
@@ -709,6 +726,9 @@ func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, 
 		fp.Grain = 0
 	}
 	film := b.newFilm(fp, op.mono || op.layerMono != nil)
+	if film != nil && deferGrain && film.reduced {
+		film.deferGrain = true
+	}
 	fill := op.fill != 0 || op.fillM != nil
 	if fill {
 		b.fields()
@@ -729,7 +749,9 @@ func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, 
 				r, g, bl := film.addHalo(y*w+x, b.Pix[i], b.Pix[i+1], b.Pix[i+2])
 				r, g, bl = op.applyAt(y*w+x, r, g, bl, m, da, db)
 				r, g, bl = op.monoShade(b, x, y, r, g, bl)
-				r, g, bl = film.grain(y*w+x, r, g, bl)
+				if film != nil && !film.deferGrain {
+					r, g, bl = film.grain(y*w+x, r, g, bl)
+				}
 				r, g, bl = sg.apply(y*w+x, r, g, bl)
 				r, g, bl = op.applyMonoTone(r, g, bl)
 				if gain := dens.gain(x, y, w, h); gain != 1 {
@@ -739,6 +761,7 @@ func renderInto(b *Base, p preset.Params, c Compensation, put func(i int, r, g, 
 			}
 		}
 	})
+	return film
 }
 
 // pixOp is the per-pixel part of a render (everything but sharpening);

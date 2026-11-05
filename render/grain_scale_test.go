@@ -139,6 +139,73 @@ func TestGrainScaleConsistency(t *testing.T) {
 	}
 }
 
+// t58BoxAperture is the exact area average over a square aperture of side ap
+// pixels: the 48 µm measurement at a reduced view's pitch.
+func t58BoxAperture(src []float32, w, h int, ap float64) []float32 {
+	dw, dh := int(float64(w)/ap), int(float64(h)/ap)
+	out := make([]float32, dw*dh)
+	for y := 0; y < dh; y++ {
+		y0, y1 := float64(y)*ap, float64(y+1)*ap
+		for x := 0; x < dw; x++ {
+			x0, x1 := float64(x)*ap, float64(x+1)*ap
+			var s, ws float64
+			for yy := int(y0); yy < int(y1+0.999); yy++ {
+				wy := math.Min(y1, float64(yy+1)) - math.Max(y0, float64(yy))
+				if wy <= 0 {
+					continue
+				}
+				for xx := int(x0); xx < int(x1+0.999); xx++ {
+					wx := math.Min(x1, float64(xx+1)) - math.Max(x0, float64(xx))
+					if wx <= 0 {
+						continue
+					}
+					s += float64(src[yy*w+xx]) * wx * wy
+					ws += wx * wy
+				}
+			}
+			out[y*dw+x] = float32(s / ws)
+		}
+	}
+	return out
+}
+
+// TestGrainClumpAperture pins task 58's item 2: the surviving 10–16 µm
+// clumps drawn at a reduced view must give the same 48 µm aperture variance
+// as the 1:1 field area-reduced to that view, within ±10%. Before the
+// correlated-field fix the 1600 numbers were 8–11% low (Tri-X 27.5 against
+// 30.0) and the 4× reduction 13% low; the one-pixel box share is 1.2/n.
+func TestGrainClumpAperture(t *testing.T) {
+	const w1, h1 = 1200, 900
+	for _, name := range []string{
+		"Kodak Tri-X Pan 400 (TX)",
+		"Fujifilm Fujichrome Velvia 50",
+		"Kodak Portra 400",
+		"Ilford HP5 Plus",
+	} {
+		_, full := t57GrainField(t, name, w1, h1, 1)
+		for _, tc := range []struct {
+			w, h  int
+			scale float64
+			ap    float64
+		}{
+			{408, 306, 1600.0 / 4704.0, 48.0 / 22.5},
+			// At 600 px a 48 µm aperture is 0.8 px: the pixel itself.
+			{153, 115, 600.0 / 4704.0, 1},
+		} {
+			_, fresh := t57GrainField(t, name, tc.w, tc.h, tc.scale)
+			reduced := t57Area(full, w1, h1, tc.w, tc.h)
+			af := t57Sd(t58BoxAperture(fresh, tc.w, tc.h, tc.ap))
+			ar := t57Sd(t58BoxAperture(reduced, tc.w, tc.h, tc.ap))
+			ratio := af / ar
+			fmt.Printf("GRAINAPER %-32s %4dpx ap %.2f: fresh %.5f reduced %.5f ratio %.3f\n",
+				name, tc.w, tc.ap, af, ar, ratio)
+			if ratio < 0.90 || ratio > 1.10 {
+				t.Errorf("%s at %d px: 48 µm aperture %.5f, reduced export %.5f, ratio %.3f, want ±10%%", name, tc.w, af, ar, ratio)
+			}
+		}
+	}
+}
+
 // TestGrainFullResolutionUnchanged pins the 1:1 field to the old model: the
 // full-resolution export is the calibration reference and must not move.
 func TestGrainFullResolutionUnchanged(t *testing.T) {

@@ -147,6 +147,11 @@ type GPURecipe struct {
 	GrainFine float32       `json:"grainFine"`
 	GrainSeed uint32        `json:"grainSeed"`
 	GrainOct  []GPUGrainOct `json:"grainOct,omitempty"`
+	// Task 58: at a reduced view the shader holds the grain out of the first
+	// pass and lays it on in the output pass, after SPP and the Sharpness
+	// slider, with GrainGain (the export's retained sharpening gain).
+	GrainPost bool    `json:"grainPost,omitempty"`
+	GrainGain float32 `json:"grainGain,omitempty"`
 	// Density filters (render/density.go): NDGain is the neutral filter's
 	// per-channel gain (1 = none); GND is a graduated filter's geometry.
 	NDGain     float32     `json:"ndGain,omitempty"`
@@ -320,6 +325,12 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 		r.GrainSeed = grainSeed(p)
 		for _, o := range film.oct {
 			r.GrainOct = append(r.GrainOct, GPUGrainOct{Cell: float32(o.cell), Amp: o.amp})
+		}
+		// A reduced view's grain is laid on after the sharpening passes (the
+		// same decision and gain as RenderOpt).
+		if film.reduced {
+			r.GrainPost = true
+			r.GrainGain = float32(film.deferredGain(b, p, true))
 		}
 	}
 	if b.Raw {
