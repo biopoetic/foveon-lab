@@ -112,8 +112,11 @@ type Params struct {
 	Developer string  `json:"developer,omitempty"`
 	DevTime   float64 `json:"devTime,omitempty"`
 	Push      float64 `json:"push,omitempty"`
-	// Paper: a printing paper from the library ("" = a scan), at Grade
-	// ("00", "0" … "5"; "" = 2).
+	// Paper: a printing paper from the library, at Grade ("00", "0" … "5";
+	// "" = 2). "" itself means a scan for a black-and-white film and the
+	// first colour paper for a colour negative — the old behaviour, kept so
+	// presets saved before the scan existed render as they did. "scan" asks
+	// for a colour negative's scan explicitly.
 	Paper string `json:"paper,omitempty"`
 	Grade string `json:"grade,omitempty"`
 	// CamMode (Foveon Lab only; not in SPP's XML): one of the camera's own

@@ -1900,17 +1900,21 @@ function filmCompare(){
   const isoOK = f => isoMode !== "same" || !curFilm || (f.iso >= curFilm.iso / 2 && f.iso <= curFilm.iso * 2);
   const want = k => kind === "all" || kind === k;
   const w = 600, base = {...S.params, grain: 0, noGrain: true, monoGrainSize: 0, halation: 0, developer: "", devTime: 0, push: 0, ccY: 0, ccM: 0, ccC: 0, printExp: 0};
-  const allPapers = PAPERS.filter(p => p.kind === "colour");
-  // One tile per negative, printed on the paper chosen in the header; "both"
-  // shows every colour paper side by side. With no stored choice it is the
-  // colour paper in use, else the first one.
+  const allPapers = PAPERS.filter(p => p.kind === "colour")
+    .sort((a, b) => (a.paper === "scan" ? 0 : 1) - (b.paper === "scan" ? 0 : 1));
+  // One tile per negative, printed on the paper chosen in the header (or
+  // scanned, with no print at all); "both" shows every colour paper and the
+  // scan side by side. With no stored choice it is the colour paper in use,
+  // else the first one.
   const psel = $("#filmCmpPaper");
-  const inUse = allPapers.some(p => p.paper === S.params.paper) ? S.params.paper : allPapers[0]?.paper || "";
+  const firstPrint = allPapers.find(p => p.paper !== "scan");
+  const inUse = allPapers.some(p => p.paper === S.params.paper) ? S.params.paper : firstPrint?.paper || "";
   let paperMode = store.get("cmpPaper", "");
   if (paperMode !== "both" && !allPapers.some(p => p.paper === paperMode)) paperMode = inUse;
+  const paperLabel = p => p === "scan" ? "None (scan)" : "Printed on " + p;
   if (psel){
-    psel.innerHTML = allPapers.map(p => `<option value="${esc(p.paper)}">Printed on ${esc(p.paper)}</option>`).join("") +
-      (allPapers.length > 1 ? `<option value="both">Every colour paper</option>` : "");
+    psel.innerHTML = allPapers.map(p => `<option value="${esc(p.paper)}">${esc(paperLabel(p.paper))}</option>`).join("") +
+      (allPapers.length > 1 ? `<option value="both">Every paper and scan</option>` : "");
     psel.value = paperMode;
     psel.disabled = !want("colour") || allPapers.length < 2;
   }
@@ -1923,7 +1927,9 @@ function filmCompare(){
     for (const f of FILMS.filter(f => f.color && f.kind === "slide" && isoOK(f)))
       tiles.push({label: f.name, sub: "slide · ISO " + f.iso, film: f.maker + " " + f.name, paper: "", mono: false});
     for (const f of FILMS.filter(f => f.color && f.kind === "cn" && isoOK(f)))
-      for (const p of papers) tiles.push({label: f.name, sub: "negative printed on " + p.paper, film: f.maker + " " + f.name, paper: p.paper, mono: false});
+      for (const p of papers) tiles.push({label: f.name,
+        sub: p.paper === "scan" ? "negative scanned (no print)" : "negative printed on " + p.paper,
+        film: f.maker + " " + f.name, paper: p.paper, mono: false});
   }
   if (want("bw")) {
     // Only films with their own curve: without one the tile would be a plain
@@ -2068,17 +2074,28 @@ function snapPush(v){
 // syncDev shows the development controls of a film with a characteristic
 // curve: its data sheet's developers, time and push.
 // syncPaper fills the Paper menu with the papers of a kind ("bw" with a
-// scan option and grades; "colour": the first is the default).
+// scan option and grades; "colour": the negative's scan first, then the
+// colour papers, the first paper the default for an old edit that has none).
 function syncPaper(kind){
   const sel = $("#paperSel"), list = PAPERS.filter(p => p.kind === kind);
+  // The colour scan is the first entry (a photographer who wants no print
+  // should find it there); the library's first real paper stays the default
+  // when the params carry no paper at all, so old edits keep printing.
+  const ordered = kind === "colour"
+    ? [...list.filter(p => p.paper === "scan"), ...list.filter(p => p.paper !== "scan")]
+    : list;
   if (sel.dataset.kind !== kind){
     sel.innerHTML = (kind === "bw" ? `<option value="">None (scan)</option>` : "") +
-      list.map(p => `<option value="${esc(p.paper)}" title="${esc(p.src)}">${esc(p.paper)}</option>`).join("");
+      ordered.map(p => `<option value="${esc(p.paper)}" title="${esc(p.src)}">${p.paper === "scan" ? "None (scan)" : esc(p.paper)}</option>`).join("");
     sel.dataset.kind = kind;
     $("#paperRow").title = PAPER_TIP[kind];
   }
-  const paper = list.find(x => x.paper === S.params.paper) || (kind === "colour" ? list[0] : null);
-  $("#cprintRows").style.display = kind === "colour" ? "" : "none";
+  const paper = list.find(x => x.paper === S.params.paper) ||
+    (kind === "colour" ? list.find(x => x.paper !== "scan") : null);
+  const scan = kind === "colour" && paper && paper.paper === "scan";
+  // A scan has no enlarger and no paper: the filtration and print exposure
+  // rows mean nothing, so they are hidden rather than silently ignored.
+  $("#cprintRows").style.display = kind === "colour" && !scan ? "" : "none";
   if (kind === "colour"){
     for (const [k, c] of [["ccY", "Y"], ["ccM", "M"], ["ccC", "C"]]){
       const v = S.params[k] || 0;
@@ -2094,11 +2111,13 @@ function syncPaper(kind){
   $("#gradeSel").innerHTML = grades ? ["00","0","1","2","3","4","5"].map(g => `<option value="${g}">${g}</option>`).join("") : "";
   $("#gradeSel").style.display = grades ? "" : "none";
   if (grades) $("#gradeSel").value = S.params.grade || "2";
-  $("#paperSrc").innerHTML = paper ? `(<a href="${esc(paper.url)}" target="_blank" rel="noopener" title="${esc(paper.src)}">data sheet</a>)` : "";
+  $("#paperSrc").innerHTML = !paper ? "" :
+    paper.url ? `(<a href="${esc(paper.url)}" target="_blank" rel="noopener" title="${esc(paper.src)}">data sheet</a>)` :
+    `(<span title="${esc(paper.src)}">scan</span>)`;
 }
 const PAPER_TIP = {
   bw: "The print: the enlarger's light through the negative onto a printing paper, at a contrast grade. The printer exposes so that the negative's mid-grey prints mid-grey; the paper's curve sets how the highlights roll off and how deep the blacks go (its D-max). None = a scan of the negative.",
-  colour: "The print: a 3200 K enlarger lamp through the negative (its orange mask too) onto colour paper. The filtration is set so the negative's grey prints neutral 18% grey; the paper's own layers, curves and dyes make the print, seen in daylight."};
+  colour: "The print: a 3200 K enlarger lamp through the negative (its orange mask too) onto colour paper. The filtration is set so the negative's grey prints neutral 18% grey; the paper's own layers, curves and dyes make the print, seen in daylight. None (scan) reads the negative's densities, takes off its orange mask (its own D-min), and inverts each layer with per-channel black and white points and a gentle scan tone — flatter than a print, as a scan is."};
 function syncDev(f){
   // Black-and-white negatives with a curve: developer, time, push, and
   // B&W papers. Colour negatives: colour papers and the maker's published

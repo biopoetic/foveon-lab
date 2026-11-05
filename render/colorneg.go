@@ -133,9 +133,18 @@ func ColorNegPushes(key string) []FilmPush {
 // default).
 func ColorPapers() []string { return colorNegs().order }
 
+// PaperScan is the pseudo-paper that shows a colour negative as a scan
+// instead of a print. It is a distinct value, not "": old edits and presets
+// saved before the scan existed have no paper at all, and those must keep
+// printing on the first colour paper (see colorFilmOnPush), while a scan is
+// something the photographer chose explicitly.
+const PaperScan = "scan"
+
 // PaperInfo is a printing paper in the library, for the editor's Paper
 // menu: Kind "bw" (Papers, printed at a contrast grade) or "colour"
-// (ColorPapers, for colour negatives).
+// (ColorPapers, for colour negatives). The colour list also carries the
+// scan pseudo-paper (PaperScan) as its last entry: the UI shows it first,
+// because a photographer who wants no print should find it there.
 type PaperInfo struct {
 	Paper string `json:"paper"`
 	Src   string `json:"src"`
@@ -144,7 +153,7 @@ type PaperInfo struct {
 }
 
 // PaperList is every printing paper: black-and-white, then colour (the
-// default colour paper first).
+// default colour paper first, the scan last).
 func PaperList() []PaperInfo {
 	var out []PaperInfo
 	for _, p := range Papers() {
@@ -154,6 +163,10 @@ func PaperList() []PaperInfo {
 		p := colorNegs().papers[name]
 		out = append(out, PaperInfo{p.Paper, p.Src, p.URL, "colour"})
 	}
+	out = append(out, PaperInfo{PaperScan,
+		"A scan of the colour negative: its densities less its own D-min (the orange mask), " +
+			"inverted with per-channel black and white points and a gentle scan tone curve; no paper is printed",
+		"", "colour"})
 	return out
 }
 
@@ -485,6 +498,156 @@ func newColorNeg(d *colorNegData, pp *colorPaperData, sensor string, push float6
 		return lut
 	}
 	f.lut = f.printLUT(bestLg)
+	return f
+}
+
+// A colour negative shown as a scan, not printed. The scan is the same kind
+// of 3-D table over the negative's Status M densities as the print, so the
+// GPU needs no new shader path: only the table differs.
+//
+//  1. Read the negative's densities D (Status M, as the print does).
+//  2. Subtract the film's own D-min per channel: that is the orange mask,
+//     which a scanner removes before it inverts.
+//  3. Invert: s = (d - black)/(white - black), where black and white are the
+//     negative's own densities 6 stops below and 3 stops above the scene's
+//     mid-grey (the latitude this model covers). One mapping per layer takes
+//     its density to the same s for a neutral exposure, so a grey scale stays
+//     neutral; one exposure gain then puts the film's mid-grey at 18% — the
+//     grey balance a Frontier or a careful manual inversion sets with its
+//     per-channel black and white points. (The gain also keeps every film's
+//     scan at the same brightness, however thin its negative is.)
+//  4. A gentle tone curve: s^scanGamma in display space, with the sRGB
+//     transfer applied for the linear table, and a soft shoulder above 0.8
+//     so a pushed/underexposed negative does not hard-clip. 1.0 would be a
+//     straight inversion; 0.9 opens the shadows a little. It is deliberately
+//     much flatter than a paper's contrast, so a scan looks like a scan.
+const (
+	scanShadowStops    = 6.0
+	scanHighlightStops = 3.0
+	scanGamma          = 0.9
+	scanMidGrey        = 0.18 // linear, the print model's mid-grey
+)
+
+// newColorScan prepares negative d as a scan for sensor, at push stops.
+func newColorScan(d *colorNegData, sensor string, push float64) *colorFilm {
+	S := layerSens(sensor)
+	if S == nil {
+		return nil
+	}
+	char, ei := negFamily(d, push)
+	grey := sourceGrey(sensor)
+	f := &colorFilm{hWhite: 10 / ei / grey, ei: ei}
+	if !fitLayerMap(f, S, d.Sens) {
+		return nil
+	}
+	for k, n := range [3]string{"R", "G", "B"} {
+		f.curve[k] = char[n]
+	}
+	var dmin [3]float64
+	for k := range dmin {
+		dmin[k] = f.curve[k][0][1]
+		for _, p := range f.curve[k] {
+			dmin[k] = math.Min(dmin[k], p[1])
+		}
+	}
+	lgGrey := math.Log10(grey * f.hWhite)
+	var Dn, black, white [3]float64
+	for k := 0; k < 3; k++ {
+		Dn[k] = f.density(k, lgGrey)
+		black[k] = f.density(k, lgGrey-scanShadowStops*math.Log10(2)) - dmin[k]
+		white[k] = f.density(k, lgGrey+scanHighlightStops*math.Log10(2)) - dmin[k]
+		if black[k] < 0 {
+			black[k] = 0
+		}
+		if white[k] < black[k]+0.05 {
+			white[k] = black[k] + 0.05
+		}
+	}
+	// Sample the exposure window. Every neutral exposure must give the same
+	// tone value in all three layers; that is what keeps a grey scale
+	// neutral, not just mid-grey. Build one mapping per layer from its own
+	// density to the common (mean) inverted value, then interpolate it.
+	const scanSamples = 257
+	var smap [3][][2]float64
+	for k := range smap {
+		smap[k] = make([][2]float64, 0, scanSamples)
+	}
+	lg0 := lgGrey - scanShadowStops*math.Log10(2)
+	lg1 := lgGrey + scanHighlightStops*math.Log10(2)
+	for i := 0; i < scanSamples; i++ {
+		lg := lg0 + (lg1-lg0)*float64(i)/(scanSamples-1)
+		var D, s [3]float64
+		var mean float64
+		for k := 0; k < 3; k++ {
+			D[k] = f.density(k, lg)
+			s[k] = (D[k] - dmin[k] - black[k]) / (white[k] - black[k])
+			s[k] = math.Max(0, math.Min(1, s[k]))
+			mean += s[k] / 3
+		}
+		for k := 0; k < 3; k++ {
+			smap[k] = append(smap[k], [2]float64{D[k], mean})
+		}
+	}
+	// A toe that is flat in density over part of the window would otherwise
+	// map a whole range of exposures to the same s; keep the highest s at
+	// each density, so a neutral shadow does not split between layers.
+	for k := 0; k < 3; k++ {
+		out := smap[k][:0]
+		for _, p := range smap[k] {
+			if len(out) > 0 && p[0] <= out[len(out)-1][0]+1e-6 {
+				out[len(out)-1][1] = math.Max(out[len(out)-1][1], p[1])
+			} else {
+				out = append(out, p)
+			}
+		}
+		smap[k] = out
+	}
+	// The scanner's exposure: the film's mid-grey lands at 18% (one gain for
+	// all layers, so the balance the maps just built is not disturbed).
+	var sMid float64
+	for k := 0; k < 3; k++ {
+		s := (Dn[k] - dmin[k] - black[k]) / (white[k] - black[k])
+		sMid += math.Max(0, math.Min(1, s)) / 3
+	}
+	gain := scanMidGrey / math.Max(srgbToLinear(math.Pow(sMid, scanGamma)), 1e-6)
+	f.lut = make([]float32, cfLutN*cfLutN*cfLutN*3)
+	step := cfLutDMax / (cfLutN - 1)
+	parallelRows(cfLutN, func(a0, a1 int) {
+		for a := a0; a < a1; a++ {
+			for b := 0; b < cfLutN; b++ {
+				for c := 0; c < cfLutN; c++ {
+					i := ((a*cfLutN+b)*cfLutN + c) * 3
+					var sv [3]float64
+					for k, D := range [3]float64{float64(a) * step, float64(b) * step, float64(c) * step} {
+						sv[k] = pinterp(smap[k], D)
+					}
+					// Deep shadows: below 0.18 of the scale the three layers
+					// meet at the film base, where a tiny curve difference is a
+					// big colour cast. Below 0.06 they are simply the same
+					// value, and above it they ease to their common value; a
+					// scan's deepest blacks are neutral.
+					if mean := (sv[0] + sv[1] + sv[2]) / 3; mean < 0.18 {
+						w := 1.0
+						if mean >= 0.06 {
+							w = 1 - (mean-0.06)/0.12
+						}
+						for k := range sv {
+							sv[k] = sv[k]*(1-w) + mean*w
+						}
+					}
+					for k, s := range sv {
+						lin := srgbToLinear(math.Pow(s, scanGamma)) * gain
+						// A soft shoulder above 0.8: a thin or pushed negative
+						// still keeps its highlights instead of clipping flat.
+						if lin > 0.8 {
+							lin = 0.8 + 0.2*(1-math.Exp(-(lin-0.8)/0.2))
+						}
+						f.lut[i+k] = float32(-math.Log10(math.Max(1e-7, lin)))
+					}
+				}
+			}
+		}
+	})
 	return f
 }
 

@@ -190,9 +190,10 @@ var (
 // colorFilmFor is film key prepared for sensor, nil if either has no model.
 func colorFilmFor(key, sensor string) *colorFilm { return colorFilmOn(key, "", sensor, ColorPrint{}) }
 
-// colorFilmOn is film key (a slide, or a negative printed on paper; ""
-// = the first colour paper, with the enlarger's colour head cp) prepared
-// for sensor, nil if any has no model. A colour negative is at box speed.
+// colorFilmOn is film key (a slide, or a negative printed on paper or
+// scanned; "" = the first colour paper, with the enlarger's colour head cp;
+// PaperScan = a scan) prepared for sensor, nil if any has no model. A colour
+// negative is at box speed.
 func colorFilmOn(key, paper, sensor string, cp ColorPrint) *colorFilm {
 	return colorFilmOnPush(key, paper, sensor, 0, cp)
 }
@@ -202,14 +203,21 @@ func colorFilmOn(key, paper, sensor string, cp ColorPrint) *colorFilm {
 // when the sheet publishes none. Slides ignore push.
 func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *colorFilm {
 	if n := colorNegs().negs[key]; n != nil {
-		if paper == "" || colorNegs().papers[paper] == nil {
+		scan := paper == PaperScan
+		// A scan is chosen explicitly. An empty or unknown paper keeps the
+		// old meaning: the first colour paper (so presets saved before the
+		// paper menu, and before the scan existed, render as they did).
+		if !scan && (paper == "" || colorNegs().papers[paper] == nil) {
 			if o := colorNegs().order; len(o) > 0 {
 				paper = o[0]
 			}
 		}
-		pp := colorNegs().papers[paper]
-		if pp == nil {
-			return nil
+		var pp *colorPaperData
+		if !scan {
+			pp = colorNegs().papers[paper]
+			if pp == nil {
+				return nil
+			}
 		}
 		colorFilmMu.Lock()
 		k := key + "|" + paper + "|" + sensor + "|" + strconv.FormatFloat(push, 'g', -1, 64)
@@ -220,7 +228,11 @@ func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *co
 			// hold no lock across it, so the preset grid's distinct films
 			// build on different cores instead of one after another. A
 			// duplicate build for the same key is harmless.
-			f = newColorNeg(n, pp, sensor, push)
+			if scan {
+				f = newColorScan(n, sensor, push)
+			} else {
+				f = newColorNeg(n, pp, sensor, push)
+			}
 			colorFilmMu.Lock()
 			if old, ok := colorFilmCache[k]; ok {
 				f = old
@@ -229,7 +241,8 @@ func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *co
 			}
 			colorFilmMu.Unlock()
 		}
-		if f == nil || cp == (ColorPrint{}) {
+		// A scan has no enlarger filtration to apply.
+		if f == nil || scan || cp == (ColorPrint{}) {
 			return f
 		}
 		// The darkroom's filtration: its own table (the last one kept per
