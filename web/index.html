@@ -1922,12 +1922,11 @@ function filmCompare(){
   // The crop is the 100% window (zoomQuery's z=1 form) at 240 x 160 device
   // pixels, from the frame centre or from the centre of the 100% view.
   const seq = ++FILM_CMP_SEQ;
-  const dpr = window.devicePixelRatio || 1, cw = 240, ch = 160;
+  const dpr = window.devicePixelRatio || 1;
+  let cw = 240, ch = 160;
   const cropMode = filmCompareCropControl();
   const zx = cropMode === "zoom" ? ZOOM.cx : .5;
   const zy = cropMode === "zoom" ? ZOOM.cy : .5;
-  const cropURLs = tiles.map(t => renderURL({w: cw, params: filmCompareCropParams(t), norm: true}) +
-    `&z=1&zx=${zx.toFixed(4)}&zy=${zy.toFixed(4)}&zw=${cw}&zh=${ch}`);
   const cur = S.params.film || "", curPaper = S.params.paper || "";
   $("#filmCmpGrid").innerHTML = tiles.map((t, i) => {
     const on = t.film === cur && (t.paper === curPaper || (!curPaper && t.paper === (t.mono ? bwPaper : papers[0]?.paper)));
@@ -1941,6 +1940,15 @@ function filmCompare(){
     useFilm(f || null);
     filmCompareClose();
   });
+  // The crop fills the tile's width at one image pixel per device pixel, so
+  // it never leaves a black strip beside it (the tile width is known only
+  // once the grid is laid out, hence the URLs are built here).
+  $("#filmCmp").classList.add("on"); // visible, so the tile has a width
+  const tw = $("#filmCmpGrid .tile .img")?.clientWidth || 0;
+  if (tw > 0){ cw = Math.min(800, Math.round(tw * dpr / 8) * 8); ch = Math.round(cw / 2 / 8) * 8; }
+  $("#filmCmpGrid").querySelectorAll(".grain img").forEach(im => { im.style.width = cw / dpr + "px"; im.style.height = ch / dpr + "px"; });
+  const cropURLs = tiles.map(t => renderURL({w: cw, params: filmCompareCropParams(t), norm: true}) +
+    `&z=1&zx=${zx.toFixed(4)}&zy=${zy.toFixed(4)}&zw=${cw}&zh=${ch}`);
   // Queue the crops only after every tile picture has loaded or failed.
   const pics = [...$("#filmCmpGrid").querySelectorAll("img.pic")];
   let left = pics.length;
