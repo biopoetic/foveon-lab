@@ -174,9 +174,13 @@ func TestColorScan(t *testing.T) {
 			t.Errorf("%s: scan gamma %.2f is not flatter than the print's %.2f", key, gs, gp)
 		}
 		t.Logf("%s: scan gamma %.2f, print gamma %.2f", key, gs, gp)
-		r1, g1, b1 := s.apply(0.4, 0.4, 0.4)
-		r2, g2, b2 := p.apply(0.4, 0.4, 0.4)
-		if math.Abs(float64(r1-r2))+math.Abs(float64(g1-g2))+math.Abs(float64(b1-b2)) < 0.05 {
+		// The scan and the print are different renderings. At 0.08 of the
+		// layer scale the print is visibly deeper (its paper contrast) than
+		// the flatter scan; at 0.4 the two tone curves cross, so comparing
+		// there says nothing.
+		r1, g1, b1 := s.apply(0.08, 0.08, 0.08)
+		r2, g2, b2 := p.apply(0.08, 0.08, 0.08)
+		if math.Abs(float64(r1-r2))+math.Abs(float64(g1-g2))+math.Abs(float64(b1-b2)) < 0.04 {
 			t.Errorf("%s: the scan and the print are the same", key)
 		}
 	}

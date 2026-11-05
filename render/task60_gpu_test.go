@@ -62,13 +62,15 @@ func t60GPUFilm(r *GPURecipe, c [3]float32) [3]float32 {
 		D[k] = t60GPUCurve(f, k, math.Log10(math.Max(h, 1e-6)))
 	}
 	// The texture is sampled with t = (D/dmax*(N-1)+0.5)/N and LINEAR
-	// filtering: x = D/dmax*(N-1), clamped, then trilinear.
+	// filtering: x = D/dmax*(N-1), clamped, then trilinear. N comes from the
+	// table's own header (a scan uses a finer table than a print).
+	n := f.lutSize()
 	var x [3]float64
 	var i0 [3]int
 	var fr [3]float64
 	for k := 0; k < 3; k++ {
-		x[k] = t60Clamp(D[k]/cfLutDMax, 0, 1) * (cfLutN - 1)
-		i0[k] = int(math.Min(x[k], cfLutN-2))
+		x[k] = t60Clamp(D[k]/cfLutDMax, 0, 1) * float64(n-1)
+		i0[k] = int(math.Min(x[k], float64(n)-2))
 		fr[k] = x[k] - float64(i0[k])
 	}
 	// NewGPURecipe stores the film whose view gain GPUColorFilmData folds into
@@ -86,7 +88,7 @@ func t60GPUFilm(r *GPURecipe, c [3]float32) [3]float32 {
 				j[k], w = i0[k], w*(1-fr[k])
 			}
 		}
-		idx := ((j[0]*cfLutN+j[1])*cfLutN + j[2]) * 3
+		idx := ((j[0]*n+j[1])*n + j[2]) * 3
 		for k := 0; k < 3; k++ {
 			out[k] += w * (float64(f.lut[idx+k]) - lg)
 		}

@@ -140,6 +140,9 @@ func ColorPapers() []string { return colorNegs().order }
 // something the photographer chose explicitly.
 const PaperScan = "scan"
 
+// isScanPaper reports whether paper asks for a colour negative's scan.
+func isScanPaper(paper string) bool { return paper == PaperScan }
+
 // PaperInfo is a printing paper in the library, for the editor's Paper
 // menu: Kind "bw" (Papers, printed at a contrast grade) or "colour"
 // (ColorPapers, for colour negatives). The colour list also carries the
@@ -164,8 +167,10 @@ func PaperList() []PaperInfo {
 		out = append(out, PaperInfo{p.Paper, p.Src, p.URL, "colour"})
 	}
 	out = append(out, PaperInfo{PaperScan,
-		"A scan of the colour negative: its densities less its own D-min (the orange mask), " +
-			"inverted with per-channel black and white points and a gentle scan tone curve; no paper is printed",
+		"A generic scan of the colour negative: its Status M densities less its own D-min " +
+			"(the orange mask), inverted with one fixed negative gamma and a black level, " +
+			"grey-balanced at the film's mid-grey, and mapped by one fixed negative profile; " +
+			"no paper is printed",
 		"", "colour"})
 	return out
 }
@@ -501,32 +506,248 @@ func newColorNeg(d *colorNegData, pp *colorPaperData, sensor string, push float6
 	return f
 }
 
-// A colour negative shown as a scan, not printed. The scan is the same kind
-// of 3-D table over the negative's Status M densities as the print, so the
-// GPU needs no new shader path: only the table differs.
+// A colour negative shown as a scan, not printed. The scan is a real lab
+// scanner's job, not the film's inverse: a Frontier, a Noritsu or a camera
+// scan with a standard inversion does not know the film's spectral
+// sensitivities or its characteristic curves. It reads the negative's
+// densities with its own three fixed channels, subtracts the orange base,
+// grey-balances the frame, and maps the result to RGB with one fixed
+// conversion. Each film's curves, dye set, layer crosstalk and sensitivities
+// therefore show in the scan, which is the point: Portra scans warm and soft,
+// Ektar punchy, Fuji negatives have their greens.
 //
-//  1. Read the negative's densities D (Status M, as the print does).
-//  2. Subtract the film's own D-min per channel: that is the orange mask,
-//     which a scanner removes before it inverts.
-//  3. Invert: s = (d - black)/(white - black), where black and white are the
-//     negative's own densities 6 stops below and 3 stops above the scene's
-//     mid-grey (the latitude this model covers). One mapping per layer takes
-//     its density to the same s for a neutral exposure, so a grey scale stays
-//     neutral; one exposure gain then puts the film's mid-grey at 18% — the
-//     grey balance a Frontier or a careful manual inversion sets with its
-//     per-channel black and white points. (The gain also keeps every film's
-//     scan at the same brightness, however thin its negative is.)
-//  4. A gentle tone curve: s^scanGamma in display space, with the sRGB
-//     transfer applied for the linear table, and a soft shoulder above 0.8
-//     so a pushed/underexposed negative does not hard-clip. 1.0 would be a
-//     straight inversion; 0.9 opens the shadows a little. It is deliberately
-//     much flatter than a paper's contrast, so a scan looks like a scan.
+// The scan is the same kind of 3-D table over the negative's Status M
+// densities as the print, so the GPU needs no new shader path: only the table
+// differs. The model's densities are read as the scanner's three channel
+// readings: Status M is what a negative is measured in, and a scanner's
+// channels are close enough (this is stated in REPORT-63).
+//
+//  1. Read D (Status M, as the print does). Subtract the film's D-min per
+//     channel: a scanner measures the rebate, so this is legitimate film
+//     knowledge (the orange mask).
+//  2. Invert with ONE fixed curve for every film, the film's characteristic
+//     slope γ: scene light = 10^(e/γ_s) - B, with e = D - Dmin (the negative's
+//     base-relative transmission is 10^-e; its reciprocal is the light).
+//     Colour negatives are published with a mid-scale slope of about 0.6 (the
+//     library's own sheets: 0.55-0.64), so γ_s = 0.6, one round value. B is
+//     one black level, 0.8, just below the base's own light (see scanCurve).
+//     This is not the film's own curve inverted: every film goes through the
+//     same slope and black level, so a film whose toe, shoulder or layer
+//     balance differs keeps that difference.
+//  3. One grey balance at the film's mid-grey: a scanner's auto balance makes
+//     a neutral grey neutral, so the three channel gains put the film's 18%
+//     grey at the same linear level. That is three gains, not a per-layer
+//     curve; the film's own layer balance above and below mid-grey survives.
+//     The same gains carry the one exposure gain for 18%, so mid-grey lands
+//     at linear 0.18.
+//  4. ONE fixed 3x3 to the output RGB: the scanner's negative profile. It is
+//     derived once, from the average over the library's ten colour negatives
+//     of each negative's own 3x3 from its linearised channel readings to
+//     linear sRGB (the same reflectance spectra as the layer map, through
+//     that negative's curves and base). Averaging is what makes it generic:
+//     no one film's dyes are the profile, so a film whose sensitivities or
+//     dye crosstalk differ from the average shows its own colour. It is not a
+//     per-film inverse.
+//  5. Tone: one gentle scanner curve on luminance, the same for every film: a
+//     mild contrast of 1.06 around mid-grey in log light (fixed at 0.18, so it
+//     cannot move the grey balance) and a soft shoulder above 0.95. It scales
+//     all three channels together, so it cannot rotate hue or desaturate. It
+//     is this model's own choice, not a Frontier or Noritsu default: no
+//     manufacturer's curve was copied.
+//  6. The neutral density trajectory is made neutral in the table itself
+//     (a 0.055-density tube around it), so the trilinear interpolation between
+//     nodes cannot put a cast into a neutral wedge at the toe or the top. A
+//     near-neutral guard (C* below 8) is the safety net the tube's fade needs.
 const (
-	scanShadowStops    = 6.0
-	scanHighlightStops = 3.0
-	scanGamma          = 0.9
-	scanMidGrey        = 0.18 // linear, the print model's mid-grey
+	scanNegGamma     = 0.6   // the colour negative's published mid-scale slope
+	scanBlackPoint   = 0.8   // scanner black level, below the film base
+	scanMidGrey      = 0.18  // linear, the print model's mid-grey
+	scanToneContrast = 1.06  // gentle S around mid-grey, fixed at 0.18
+	scanShoulder     = 0.95  // soft shoulder above this
+	scanLinMax       = 1e6   // stop a blank sky or a specular from overflowing
+	scanNeutralTube  = 0.055 // density radius of the neutral tube
+	scanNeutralCore  = 0.045
+	scanLutN         = 65 // samples per density axis
 )
+
+// scanCurve is the scanner's one fixed inversion for the density above the
+// film base: scene linear = 10^(e/γ_s) - B, with e = D - Dmin. The negative's
+// base-relative transmission is 10^-e; raising it to -1/γ_s recovers the
+// light that exposed the film (the negative's published slope is γ_s), and B
+// is the scanner's black level. B sits a little below the film base's own
+// light (0.8, not 1.0): a black level exactly at the base clips the film's
+// toe, where a real negative's density rises slowly, and sent the darkest 5%
+// of a normal frame to pure black; leaving a little of the base in the black
+// keeps the toe's tones. It is one constant for every film.
+func scanCurve(e float64) float64 {
+	if e <= 0 {
+		return 1 - scanBlackPoint
+	}
+	return math.Pow(10, e/scanNegGamma) - scanBlackPoint
+}
+
+// scanTone is the scanner's gentle tone curve on luminance Y: a mild contrast
+// fixed at mid-grey, then a soft shoulder. Monotone, so it cannot invert the
+// image; it acts on luminance only.
+func scanTone(Y float64) float64 {
+	if Y <= 0 {
+		return 0
+	}
+	y := scanMidGrey * math.Pow(Y/scanMidGrey, scanToneContrast)
+	if y > scanShoulder {
+		y = scanShoulder + (1-scanShoulder)*(1-math.Exp(-(y-scanShoulder)/(1-scanShoulder)))
+	}
+	return y
+}
+
+// scanMatrixFor is one negative's own 3x3 from its linearised channel
+// readings to linear sRGB. The readings are exactly the ones newColorScan
+// makes: the scene's linear sRGB through the same sRGB->layers map the render
+// uses, that negative's characteristic curves, D-min removed, the fixed γ_s
+// inverted, and the film's mid-grey balanced to 0.18. It is fitted on the
+// same reflectance spectra the layer map is fitted on.
+func scanMatrixFor(d *colorNegData) ([9]float64, bool) {
+	sp := spectral()
+	rf := &colorFilm{hWhite: 10 / d.ISO / scanMidGrey}
+	if !fitLayerMap(rf, layerSens("sRGB"), d.Sens) {
+		return [9]float64{}, false
+	}
+	var white [3]float64
+	for i, l := range sp.lams {
+		c := cmf1931(l)
+		for k := 0; k < 3; k++ {
+			white[k] += c[k] * sp.illum[i]
+		}
+	}
+	var wrgb [3]float64
+	for k := 0; k < 3; k++ {
+		wrgb[k] = xyzToLinSRGB[k*3]*white[0] + xyzToLinSRGB[k*3+1]*white[1] + xyzToLinSRGB[k*3+2]*white[2]
+	}
+	var dmin [3]float64
+	for k, n := range [3]string{"R", "G", "B"} {
+		dmin[k] = d.Char[n][0][1]
+		for _, p := range d.Char[n] {
+			dmin[k] = math.Min(dmin[k], p[1])
+		}
+	}
+	hw := 10 / d.ISO / scanMidGrey
+	var Lg [3]float64
+	for k, n := range [3]string{"R", "G", "B"} {
+		Dg := pinterp(d.Char[n], math.Log10(scanMidGrey*hw))
+		Lg[k] = scanCurve(Dg - dmin[k])
+	}
+	train := append(append([][]float64{}, fitSpectra()...), make([]float64, len(sp.lams)))
+	for i := range train[len(train)-1] {
+		train[len(train)-1][i] = 1
+	}
+	var ata, atb [9]float64
+	for _, r := range train {
+		var xyz [3]float64
+		for i := range sp.lams {
+			e := sp.illum[i] * r[i]
+			c := cmf1931(sp.lams[i])
+			for k := 0; k < 3; k++ {
+				xyz[k] += c[k] * e
+			}
+		}
+		var rgb [3]float64
+		for k := 0; k < 3; k++ {
+			rgb[k] = (xyzToLinSRGB[k*3]*xyz[0] + xyzToLinSRGB[k*3+1]*xyz[1] + xyzToLinSRGB[k*3+2]*xyz[2]) / wrgb[k]
+		}
+		x := rpFeatures(float32(rgb[0]), float32(rgb[1]), float32(rgb[2]))
+		var h [3]float64
+		for k := 0; k < 3; k++ {
+			for j := 0; j < 3; j++ {
+				h[k] += float64(rf.rp[k*3+j])*float64(x[j]) + float64(rf.rp[9+k*3+j])*float64(x[3+j])
+			}
+		}
+		var L [3]float64
+		for k, n := range [3]string{"R", "G", "B"} {
+			D := pinterp(d.Char[n], math.Log10(math.Max(h[k]*hw, 1e-6)))
+			L[k] = scanMidGrey * scanCurve(D-dmin[k]) / math.Max(Lg[k], 1e-9)
+		}
+		for a := 0; a < 3; a++ {
+			for b := 0; b < 3; b++ {
+				ata[a*3+b] += L[a] * L[b]
+			}
+		}
+		for k := 0; k < 3; k++ {
+			for j := 0; j < 3; j++ {
+				atb[k*3+j] += rgb[k] * L[j]
+			}
+		}
+	}
+	Ainv, ok := invert3x3(ata)
+	if !ok {
+		return [9]float64{}, false
+	}
+	var M [9]float64
+	for k := 0; k < 3; k++ {
+		for i := 0; i < 3; i++ {
+			M[k*3+i] = atb[k*3]*Ainv[i] + atb[k*3+1]*Ainv[3+i] + atb[k*3+2]*Ainv[6+i]
+		}
+	}
+	for k := 0; k < 3; k++ {
+		s := M[k*3] + M[k*3+1] + M[k*3+2]
+		if math.Abs(s) < 1e-9 {
+			return [9]float64{}, false
+		}
+		for i := 0; i < 3; i++ {
+			M[k*3+i] /= s
+		}
+	}
+	return M, true
+}
+
+// scanProfile is the scanner's one fixed negative profile: the average of the
+// library's ten negatives, each fitted by scanMatrixFor. It is built once.
+var scanProfile = sync.OnceValue(func() [9]float64 {
+	var M [9]float64
+	var n int
+	for _, d := range colorNegs().negs {
+		m, ok := scanMatrixFor(d)
+		if !ok {
+			continue
+		}
+		for i := range M {
+			M[i] += m[i]
+		}
+		n++
+	}
+	if n == 0 {
+		return [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
+	}
+	for i := range M {
+		M[i] /= float64(n)
+	}
+	// Normalise each row so an exact neutral reading maps to itself.
+	for k := 0; k < 3; k++ {
+		s := M[k*3] + M[k*3+1] + M[k*3+2]
+		if math.Abs(s) < 1e-9 {
+			continue
+		}
+		for i := 0; i < 3; i++ {
+			M[k*3+i] /= s
+		}
+	}
+	return M
+})
+
+// scanAB is the CIELAB a*, b* of a linear-sRGB value, for the scan's
+// near-neutral guard.
+func scanAB(r, g, b float64) (a, bb float64) {
+	x := 0.4124*r + 0.3576*g + 0.1805*b
+	y := 0.2126*r + 0.7152*g + 0.0722*b
+	z := 0.0193*r + 0.1192*g + 0.9505*b
+	f := func(v float64) float64 {
+		if v > 216.0/24389 {
+			return math.Cbrt(v)
+		}
+		return (24389.0/27*v + 16) / 116
+	}
+	fx, fy, fz := f(x/0.9505), f(y), f(z/1.089)
+	return 500 * (fx - fy), 200 * (fy - fz)
+}
 
 // newColorScan prepares negative d as a scan for sensor, at push stops.
 func newColorScan(d *colorNegData, sensor string, push float64) *colorFilm {
@@ -550,99 +771,118 @@ func newColorScan(d *colorNegData, sensor string, push float64) *colorFilm {
 			dmin[k] = math.Min(dmin[k], p[1])
 		}
 	}
+	// 2 + 3. The fixed inversion, and the film's grey balance at mid-grey,
+	// folded together into the one exposure gain for 18%.
 	lgGrey := math.Log10(grey * f.hWhite)
-	var Dn, black, white [3]float64
+	var gain [3]float64
 	for k := 0; k < 3; k++ {
-		Dn[k] = f.density(k, lgGrey)
-		black[k] = f.density(k, lgGrey-scanShadowStops*math.Log10(2)) - dmin[k]
-		white[k] = f.density(k, lgGrey+scanHighlightStops*math.Log10(2)) - dmin[k]
-		if black[k] < 0 {
-			black[k] = 0
-		}
-		if white[k] < black[k]+0.05 {
-			white[k] = black[k] + 0.05
-		}
+		Dg := f.density(k, lgGrey)
+		Lg := scanCurve(Dg - dmin[k])
+		gain[k] = scanMidGrey / math.Max(Lg, 1e-9)
 	}
-	// Sample the exposure window. Every neutral exposure must give the same
-	// tone value in all three layers; that is what keeps a grey scale
-	// neutral, not just mid-grey. Build one mapping per layer from its own
-	// density to the common (mean) inverted value, then interpolate it.
-	const scanSamples = 257
-	var smap [3][][2]float64
-	for k := range smap {
-		smap[k] = make([][2]float64, 0, scanSamples)
-	}
-	lg0 := lgGrey - scanShadowStops*math.Log10(2)
-	lg1 := lgGrey + scanHighlightStops*math.Log10(2)
-	for i := 0; i < scanSamples; i++ {
-		lg := lg0 + (lg1-lg0)*float64(i)/(scanSamples-1)
-		var D, s [3]float64
-		var mean float64
+	prof := scanProfile()
+	// core: the negative's densities -> the scan's linear sRGB (steps 2-5).
+	core := func(D [3]float64) [3]float64 {
+		var L [3]float64
 		for k := 0; k < 3; k++ {
-			D[k] = f.density(k, lg)
-			s[k] = (D[k] - dmin[k] - black[k]) / (white[k] - black[k])
-			s[k] = math.Max(0, math.Min(1, s[k]))
-			mean += s[k] / 3
-		}
-		for k := 0; k < 3; k++ {
-			smap[k] = append(smap[k], [2]float64{D[k], mean})
-		}
-	}
-	// A toe that is flat in density over part of the window would otherwise
-	// map a whole range of exposures to the same s; keep the highest s at
-	// each density, so a neutral shadow does not split between layers.
-	for k := 0; k < 3; k++ {
-		out := smap[k][:0]
-		for _, p := range smap[k] {
-			if len(out) > 0 && p[0] <= out[len(out)-1][0]+1e-6 {
-				out[len(out)-1][1] = math.Max(out[len(out)-1][1], p[1])
-			} else {
-				out = append(out, p)
+			L[k] = scanCurve(D[k]-dmin[k]) * gain[k]
+			if L[k] > scanLinMax {
+				L[k] = scanLinMax
 			}
 		}
-		smap[k] = out
+		var rgb [3]float64
+		for k := 0; k < 3; k++ {
+			rgb[k] = prof[k*3]*L[0] + prof[k*3+1]*L[1] + prof[k*3+2]*L[2]
+		}
+		Y := 0.2126*rgb[0] + 0.7152*rgb[1] + 0.0722*rgb[2]
+		if Y > 0 {
+			Y2 := scanTone(Y)
+			for k := range rgb {
+				rgb[k] *= Y2 / Y
+			}
+		}
+		for k := range rgb {
+			if rgb[k] < 0 {
+				rgb[k] = 0
+			}
+		}
+		return rgb
 	}
-	// The scanner's exposure: the film's mid-grey lands at 18% (one gain for
-	// all layers, so the balance the maps just built is not disturbed).
-	var sMid float64
-	for k := 0; k < 3; k++ {
-		s := (Dn[k] - dmin[k] - black[k]) / (white[k] - black[k])
-		sMid += math.Max(0, math.Min(1, s)) / 3
+	// 6. The neutral density trajectory, and its luminance through steps 2-5:
+	// the tube pulls the table's cells around it onto this neutral value, so
+	// trilinear interpolation cannot put a cast into a neutral wedge.
+	lo, hi := f.curve[0][0][0], f.curve[0][len(f.curve[0])-1][0]
+	for k := 1; k < 3; k++ {
+		if x := f.curve[k][0][0]; x < lo {
+			lo = x
+		}
+		if x := f.curve[k][len(f.curve[k])-1][0]; x > hi {
+			hi = x
+		}
 	}
-	gain := scanMidGrey / math.Max(srgbToLinear(math.Pow(sMid, scanGamma)), 1e-6)
-	f.lut = make([]float32, cfLutN*cfLutN*cfLutN*3)
-	step := cfLutDMax / (cfLutN - 1)
-	parallelRows(cfLutN, func(a0, a1 int) {
+	const scanNeutralN = 256
+	nD := make([][3]float64, scanNeutralN)
+	nh := make([]float64, scanNeutralN)
+	for i := 0; i < scanNeutralN; i++ {
+		lg := lo + (hi-lo)*float64(i)/(scanNeutralN-1)
+		for k := 0; k < 3; k++ {
+			nD[i][k] = f.density(k, lg)
+		}
+		rgb := core(nD[i])
+		nh[i] = 0.2126*rgb[0] + 0.7152*rgb[1] + 0.0722*rgb[2]
+	}
+	f.lutN = scanLutN
+	f.lut = make([]float32, scanLutN*scanLutN*scanLutN*3)
+	step := cfLutDMax / (scanLutN - 1)
+	parallelRows(scanLutN, func(a0, a1 int) {
 		for a := a0; a < a1; a++ {
-			for b := 0; b < cfLutN; b++ {
-				for c := 0; c < cfLutN; c++ {
-					i := ((a*cfLutN+b)*cfLutN + c) * 3
-					var sv [3]float64
-					for k, D := range [3]float64{float64(a) * step, float64(b) * step, float64(c) * step} {
-						sv[k] = pinterp(smap[k], D)
+			for b := 0; b < scanLutN; b++ {
+				for c := 0; c < scanLutN; c++ {
+					i := ((a*scanLutN+b)*scanLutN + c) * 3
+					D := [3]float64{float64(a) * step, float64(b) * step, float64(c) * step}
+					rgb := core(D)
+					best, bestI := math.Inf(1), 0
+					for j := range nD {
+						d := 0.0
+						for k := 0; k < 3; k++ {
+							if x := math.Abs(D[k] - nD[j][k]); x > d {
+								d = x
+							}
+						}
+						if d < best {
+							best, bestI = d, j
+						}
 					}
-					// Deep shadows: below 0.18 of the scale the three layers
-					// meet at the film base, where a tiny curve difference is a
-					// big colour cast. Below 0.06 they are simply the same
-					// value, and above it they ease to their common value; a
-					// scan's deepest blacks are neutral.
-					if mean := (sv[0] + sv[1] + sv[2]) / 3; mean < 0.18 {
+					if best < scanNeutralTube {
 						w := 1.0
-						if mean >= 0.06 {
-							w = 1 - (mean-0.06)/0.12
+						if best > scanNeutralCore {
+							u := (best - scanNeutralCore) / (scanNeutralTube - scanNeutralCore)
+							w = 1 - u*u*(3-2*u)
 						}
-						for k := range sv {
-							sv[k] = sv[k]*(1-w) + mean*w
+						for k := range rgb {
+							rgb[k] = rgb[k]*(1-w) + nh[bestI]*w
 						}
 					}
-					for k, s := range sv {
-						lin := srgbToLinear(math.Pow(s, scanGamma)) * gain
-						// A soft shoulder above 0.8: a thin or pushed negative
-						// still keeps its highlights instead of clipping flat.
-						if lin > 0.8 {
-							lin = 0.8 + 0.2*(1-math.Exp(-(lin-0.8)/0.2))
+					// Safety net for the toe and the top, where the curve's
+					// shoulder compresses density: a cell within C* 4 of
+					// neutral is a neutral tone, not a colour (skin is around
+					// 15-20), so pull it onto its luminance; 4-8 fades out.
+					// This is on perceptible chroma, so a faintly tinted scene
+					// colour survives, and it cannot touch a saturated one.
+					if a, b := scanAB(rgb[0], rgb[1], rgb[2]); math.Hypot(a, b) < 8 {
+						C := math.Hypot(a, b)
+						w := 1.0
+						if C > 4 {
+							u := (C - 4) / 4
+							w = 1 - u*u*(3-2*u)
 						}
-						f.lut[i+k] = float32(-math.Log10(math.Max(1e-7, lin)))
+						Y := 0.2126*rgb[0] + 0.7152*rgb[1] + 0.0722*rgb[2]
+						for k := range rgb {
+							rgb[k] = rgb[k]*(1-w) + Y*w
+						}
+					}
+					for k := range rgb {
+						f.lut[i+k] = float32(-math.Log10(math.Max(1e-7, rgb[k])))
 					}
 				}
 			}

@@ -203,7 +203,7 @@ func GPUColorFilmData(key string) ([]byte, bool) {
 	if f == nil {
 		return nil, false
 	}
-	hdr, _ := json.Marshal(map[string]any{"n": cfLutN, "dmax": cfLutDMax, "curveN": gpuCFCurveN, "lgMin": gpuCFLgMin, "lgMax": gpuCFLgMax})
+	hdr, _ := json.Marshal(map[string]any{"n": f.lutSize(), "dmax": cfLutDMax, "curveN": gpuCFCurveN, "lgMin": gpuCFLgMin, "lgMax": gpuCFLgMax})
 	var buf bytes.Buffer
 	binary.Write(&buf, binary.LittleEndian, uint32(len(hdr)))
 	buf.Write(hdr)
@@ -278,7 +278,14 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 		r.GND = &GPUDensity{Stops: float32(dens.stops), Cos: float32(dens.cos), Sin: float32(dens.sin), Centre: float32(dens.centre), Soft: float32(dens.soft)}
 	}
 	if f := op.cfilm; f != nil {
-		key := fmt.Sprintf("%s|%s|%s|%s", p.Film, p.Paper, c.Sensor, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}.key())
+		keySensor := c.Sensor
+		if isScanPaper(p.Paper) {
+			// A scan is fitted to the colourimetric sRGB response, not to a
+			// camera body's layers (render.newPixOp); the recipe must cache
+			// the same film the CPU built.
+			keySensor = "sRGB"
+		}
+		key := fmt.Sprintf("%s|%s|%s|%s", p.Film, p.Paper, keySensor, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}.key())
 		gpuCFMu.Lock()
 		gpuCFKeys[key] = f
 		gpuCFMu.Unlock()

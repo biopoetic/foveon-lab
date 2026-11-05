@@ -700,6 +700,13 @@ func layersSource(ph *Photo, p preset.Params) (string, bool) {
 		return p.Filter, true
 	}
 	if render.IsColorFilm(p.Film) && goRaw && ph.Kind == "x3f" && ph.Unsupported == "" && rawDecodable(ph.props) {
+		// A scan starts from the same linear-sRGB base as the no-film render:
+		// a lab scanner does not know the camera, and the scan is measured
+		// against that render. Its film model is fitted to the sRGB response
+		// (render.newColorScan), so the camera's layer source must not run.
+		if p.Paper == render.PaperScan {
+			return "", false
+		}
 		src := "film"
 		if n := cameraWBName(p.WhiteBalance); n != "" {
 			src += "@wb:" + n

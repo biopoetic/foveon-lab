@@ -908,7 +908,20 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	}
 	op.setLayerFilter(p, c)
 	op.tone = newFilmTone(p)
-	if c.CC != nil {
+	if isScanPaper(p.Paper) {
+		// A generic scan is made from the base's linear sRGB, not from the
+		// camera's sensor layers: a lab scanner does not know the body, and
+		// the scan is measured against the no-film render. Fit the film to
+		// the colourimetric sRGB response and feed it the pixels directly (the
+		// DNG/GenericFilm treatment).
+		if f := colorFilmOnPush(p.Film, p.Paper, "sRGB", p.Push, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}); f != nil {
+			op.cfilm = f
+			for i := range op.cfInv {
+				op.cfInv[i] = 0
+			}
+			op.cfInv[0], op.cfInv[4], op.cfInv[8] = 1, 1, 1
+		}
+	} else if c.CC != nil {
 		if f := colorFilmOnPush(p.Film, p.Paper, c.Sensor, p.Push, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}); f != nil {
 			if inv, ok := invert3x3(*c.CC); ok {
 				op.cfilm = f

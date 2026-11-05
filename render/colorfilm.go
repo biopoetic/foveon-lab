@@ -162,7 +162,12 @@ type colorFilm struct {
 	rp     [18]float32
 	hWhite float64 // lux·s at the sensor's saturation (layer value 1)
 	curve  [3][][2]float64
-	lut    []float32 // cfLutN^3 × 3: -log10 of linear sRGB, over (D_R, D_G, D_B)
+	lut    []float32 // lutSize()^3 × 3: -log10 of linear sRGB, over (D_R, D_G, D_B)
+	// lutN is the table's samples per density axis when it is not the
+	// default cfLutN. A scan uses a finer table: its neutral scale is a
+	// curve through the density cube, and at 33³ the trilinear
+	// interpolation around that curve left a visible wedge cast at the toe.
+	lutN int
 	// readLam: the channels' reading wavelengths (R, G, B) the grey balance
 	// gives; greyRMS its remaining error (natural log of R/G and B/G).
 	readLam [3]float64
@@ -446,6 +451,15 @@ func (f *colorFilm) apply(r, g, b float32) (float32, float32, float32) {
 	return f.fromExposure(h)
 }
 
+// lutSize is the table's samples per density axis (cfLutN unless a finer
+// table was built, as for the scan).
+func (f *colorFilm) lutSize() int {
+	if f.lutN > 0 {
+		return f.lutN
+	}
+	return cfLutN
+}
+
 // fromExposure is the film's linear sRGB for its layer exposures h (white
 // = 1): each layer's curve, then the table.
 func (f *colorFilm) fromExposure(h [3]float64) (float32, float32, float32) {
@@ -455,10 +469,11 @@ func (f *colorFilm) fromExposure(h [3]float64) (float32, float32, float32) {
 		D[k] = f.density(k, math.Log2(math.Max(h[k]*f.hWhite, 1e-6))*ln10ln2)
 	}
 	// Trilinear in the table.
+	n := f.lutSize()
 	var idx [3]int
 	var fr [3]float64
 	for k := 0; k < 3; k++ {
-		x := math.Max(0, math.Min(cfLutN-1-1e-9, D[k]/cfLutDMax*(cfLutN-1)))
+		x := math.Max(0, math.Min(float64(n)-1-1e-9, D[k]/cfLutDMax*float64(n-1)))
 		idx[k] = int(x)
 		fr[k] = x - float64(idx[k])
 	}
@@ -473,7 +488,7 @@ func (f *colorFilm) fromExposure(h [3]float64) (float32, float32, float32) {
 				j[k], w = idx[k], w*(1-fr[k])
 			}
 		}
-		i := ((j[0]*cfLutN+j[1])*cfLutN + j[2]) * 3
+		i := ((j[0]*n+j[1])*n + j[2]) * 3
 		for k := 0; k < 3; k++ {
 			out[k] += w * float64(f.lut[i+k])
 		}
