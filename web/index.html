@@ -161,6 +161,12 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 #filmCmp .box{width:min(1500px,96vw);max-height:94vh;overflow:auto}
 #filmCmpGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}
 #filmCmpGrid .tile.cur{border-color:var(--accent)}
+/* The 1:1 crop under each picture: its CSS width is naturalWidth / devicePixelRatio,
+   so one image pixel is one device pixel. It stays at that size and is clipped by
+   the tile, never stretched to the tile's width. */
+#filmCmpGrid .tile .grain{position:relative;overflow:hidden;background:#000;border-top:1px solid var(--line);line-height:0}
+#filmCmpGrid .tile .grain img{display:block;width:auto;height:auto;max-width:none;object-fit:none;image-rendering:pixelated}
+#filmCmpGrid .tile .grain::after{content:"100%";position:absolute;right:4px;top:4px;font:9px/1.4 system-ui,sans-serif;letter-spacing:.06em;color:#fff;background:#0007;border-radius:3px;padding:0 4px;pointer-events:none}
 #foldersDlg .box{width:min(780px,94vw);max-height:92vh}
 .fchips{display:flex;flex-wrap:wrap;gap:6px;min-height:26px}
 .fchip{display:inline-flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:2px 4px 2px 10px;font-size:12px;max-width:100%}
@@ -557,7 +563,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
 </div>
 <div id="filmCmp" class="modal">
   <div class="box">
-    <div style="display:flex;align-items:center;gap:8px"><b style="flex:1">Films on this photo</b><span class="dim">Exposures matched · no grain here: open a film at 1:1 to see it · click one to use it · Esc closes</span><button id="filmCmpClose">Close</button></div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="flex:1">Films on this photo</b><span class="dim">Exposures matched · the crops under each picture are 100% and include grain · the tiles do not · click one to use it · Esc closes</span><label class="dim" style="display:flex;align-items:center;gap:4px" title="Where the 100% crops are taken from">Crop <select id="filmCmpCrop" disabled><option value="centre">centre</option><option value="zoom">where I zoomed</option></select></label><button id="filmCmpClose">Close</button></div>
     <div style="display:flex;gap:8px;margin:10px 0">
       <select id="filmCmpKind" title="Which films to compare">
         <option value="colour">Colour films</option>
@@ -1560,9 +1566,11 @@ function buildSliders(){
   $("#filmCmpClose").onclick = filmCompareClose;
   $("#filmCmpKind").onchange = () => { store.set("cmpKind", $("#filmCmpKind").value); filmCompare(); };
   $("#filmCmpIso").onchange = () => { store.set("cmpIso", $("#filmCmpIso").value); filmCompare(); };
+  $("#filmCmpCrop").onchange = () => { store.set("cmpCrop", $("#filmCmpCrop").value); filmCompare(); };
   // The choice of films and speed survives closing the dialog.
   $("#filmCmpKind").value = store.get("cmpKind", "colour");
   $("#filmCmpIso").value = store.get("cmpIso", "any");
+  $("#filmCmpCrop").value = store.get("cmpCrop", "zoom") === "centre" ? "centre" : "zoom";
   $("#filmCmp").onclick = e => { if (e.target.id === "filmCmp") filmCompareClose(); };
   $("#paperSel").onchange = () => { S.params.paper = $("#paperSel").value; $("#paperSel").blur(); syncSliders(); scheduleRender(); };
   $("#gradeSel").onchange = () => { S.params.grade = $("#gradeSel").value; $("#gradeSel").blur(); syncSliders(); scheduleRender(); };
@@ -1818,7 +1826,69 @@ function setMixShare(k, v){
 // filmCompare shows the photo with the current settings in the films the
 // filters select: colour slides, colour negatives on each colour paper, and
 // black-and-white films (each with its own developer data, no grain); a
-// click uses the film.
+// click uses the film. Under every tile is a 1:1 crop with that film's
+// grain, so the grain can be compared too.
+let FILM_CMP_SEQ = 0;
+// filmCompareCropControl enables the crop selector only while the 100% view
+// is open (its centre is what "where I zoomed" means) and returns the mode in
+// force. The stored choice survives closing the view.
+function filmCompareCropControl(){
+  const sel = $("#filmCmpCrop");
+  if (!sel) return "centre";
+  const stored = store.get("cmpCrop", "zoom") === "centre" ? "centre" : "zoom";
+  sel.disabled = !ZOOM.on;
+  sel.value = ZOOM.on ? stored : "centre";
+  sel.title = ZOOM.on
+    ? "Where the 1:1 crops are taken from: the frame centre, or the centre of the 100% view"
+    : "Open the 100% view (Z) to take the crops where you zoomed";
+  return sel.value;
+}
+// filmCompareCropParams is the tile's settings with the grain useFilm(f)
+// would set: the film's own value, grainSet, mono for a black-and-white
+// film, and the tile's paper. The "No film" crop keeps the editor's own
+// grain (Mono SPP grain included) as the reference.
+function filmCompareCropParams(t){
+  const p = {...t.params, noGrain: false};
+  if (t.film){
+    const f = FILMS.find(x => x.maker + " " + x.name === t.film);
+    p.grain = f ? Math.round(f.grain * 2) / 2 : 0;
+    p.grainSet = true;
+    p.mono = !!f?.bw;
+  } else {
+    // The No film tile is the reference. With no film chosen it shows the
+    // editor's own grain (manual or SPP Mono); while a film is in use, that
+    // film's grain value belongs to the film, so the reference is clean.
+    const noFilm = !S.params.film;
+    p.grain = noFilm ? (S.params.grain || 0) : 0;
+    p.grainSet = noFilm ? !!S.params.grainSet : true;
+    p.mono = S.params.mono;
+    p.monoGrainSize = noFilm ? (S.params.monoGrainSize || 0) : 0;
+    p.monoGrainRough = noFilm ? (S.params.monoGrainRough ?? .5) : .5;
+  }
+  return p;
+}
+// filmCompareCrops loads the 1:1 crops one at a time in tile order, after
+// every tile picture has loaded: the pictures decide when the panel opens,
+// and each crop is the existing 100% window render from the cached full
+// frame (a few tens of ms once that frame is developed).
+function filmCompareCrops(tiles, urls, seq){
+  const grid = $("#filmCmpGrid"), dpr = window.devicePixelRatio || 1;
+  let i = 0;
+  const next = () => {
+    if (seq !== FILM_CMP_SEQ || i >= tiles.length) return;
+    const k = i++;
+    const img = grid.querySelector(`.grain[data-i="${k}"] img`);
+    if (!img){ next(); return; }
+    img.onload = () => {
+      if (seq !== FILM_CMP_SEQ) return;
+      img.style.width = (img.naturalWidth / dpr) + "px";
+      next();
+    };
+    img.onerror = () => { if (seq === FILM_CMP_SEQ) next(); };
+    img.src = urls[k];
+  };
+  next();
+}
 function filmCompare(){
   if (!S.photo || !S.params) return;
   const kind = $("#filmCmpKind")?.value || "colour";
@@ -1827,7 +1897,7 @@ function filmCompare(){
   // "Same speed" is within one stop of the film in use.
   const isoOK = f => isoMode !== "same" || !curFilm || (f.iso >= curFilm.iso / 2 && f.iso <= curFilm.iso * 2);
   const want = k => kind === "all" || kind === k;
-  const w = 600, base = {...S.params, grain: 0, noGrain: true, halation: 0, developer: "", devTime: 0, push: 0, ccY: 0, ccM: 0, ccC: 0, printExp: 0};
+  const w = 600, base = {...S.params, grain: 0, noGrain: true, monoGrainSize: 0, halation: 0, developer: "", devTime: 0, push: 0, ccY: 0, ccM: 0, ccC: 0, printExp: 0};
   const papers = PAPERS.filter(p => p.kind === "colour");
   // A black-and-white paper is used for the black-and-white tiles when one is
   // chosen; otherwise they are scans of the negative.
@@ -1847,11 +1917,23 @@ function filmCompare(){
       tiles.push({label: f.name, sub: (f.kind === "chromo" ? "chromogenic" : "black & white") + " · ISO " + f.iso,
                   film: f.maker + " " + f.name, paper: bwPaper, mono: true});
   }
+  for (const t of tiles)
+    t.params = {...base, film: t.film, paper: t.paper, mono: t.film ? !!t.mono : S.params.mono};
+  // The crop is the 100% window (zoomQuery's z=1 form) at 240 x 160 device
+  // pixels, from the frame centre or from the centre of the 100% view.
+  const seq = ++FILM_CMP_SEQ;
+  const dpr = window.devicePixelRatio || 1, cw = 240, ch = 160;
+  const cropMode = filmCompareCropControl();
+  const zx = cropMode === "zoom" ? ZOOM.cx : .5;
+  const zy = cropMode === "zoom" ? ZOOM.cy : .5;
+  const cropURLs = tiles.map(t => renderURL({w: cw, params: filmCompareCropParams(t), norm: true}) +
+    `&z=1&zx=${zx.toFixed(4)}&zy=${zy.toFixed(4)}&zw=${cw}&zh=${ch}`);
   const cur = S.params.film || "", curPaper = S.params.paper || "";
   $("#filmCmpGrid").innerHTML = tiles.map((t, i) => {
     const on = t.film === cur && (t.paper === curPaper || (!curPaper && t.paper === (t.mono ? bwPaper : papers[0]?.paper)));
-    const params = {...base, film: t.film, paper: t.paper, mono: t.film ? !!t.mono : S.params.mono};
-    return `<div class="tile${on ? " cur" : ""}" data-i="${i}"><div class="img"><img src="${renderURL({w, params, norm: true})}"></div><div class="cap">${esc(t.label)}<small>${esc(t.sub)}</small></div></div>`;
+    return `<div class="tile${on ? " cur" : ""}" data-i="${i}"><div class="img"><img class="pic" src="${renderURL({w, params: t.params, norm: true})}"></div>` +
+      `<div class="grain" data-i="${i}"><img alt="" title="100% crop with this film's grain" style="width:${cw / dpr}px"></div>` +
+      `<div class="cap">${esc(t.label)}<small>${esc(t.sub)}</small></div></div>`;
   }).join("");
   $("#filmCmpGrid").querySelectorAll(".tile").forEach(el => el.onclick = () => {
     const t = tiles[+el.dataset.i], f = FILMS.find(x => x.maker + " " + x.name === t.film);
@@ -1859,9 +1941,21 @@ function filmCompare(){
     useFilm(f || null);
     filmCompareClose();
   });
+  // Queue the crops only after every tile picture has loaded or failed.
+  const pics = [...$("#filmCmpGrid").querySelectorAll("img.pic")];
+  let left = pics.length;
+  const start = () => filmCompareCrops(tiles, cropURLs, seq);
+  if (!left) start();
+  else {
+    const done = () => { if (--left === 0) start(); };
+    for (const im of pics){
+      if (im.complete) done();
+      else { im.addEventListener("load", done, {once:true}); im.addEventListener("error", done, {once:true}); }
+    }
+  }
   $("#filmCmp").classList.add("on");
 }
-function filmCompareClose(){ $("#filmCmp").classList.remove("on"); $("#filmCmpGrid").innerHTML = ""; }
+function filmCompareClose(){ FILM_CMP_SEQ++; $("#filmCmp").classList.remove("on"); $("#filmCmpGrid").innerHTML = ""; }
 // FILM_FORMATS maps a film's documented sizes to the frame widths the grain
 // model uses (long side, mm). A 120 or 220 roll takes any of the medium-format
 // backs, so both are offered; the sheets map to their inch size.
