@@ -110,31 +110,36 @@ func TestGrainGPUAgrees(t *testing.T) {
 		{"Ilford Delta 3200", true},
 	} {
 		f, _ := FilmByKey(tc.name)
-		l := flat(200, 100, 0.5)
-		l.Frame, l.Scale = 4704, 1 // 7.65 µm pixels: some octaves are spatial
-		b := NewBase(l)
-		p := preset.Params{Film: tc.name, Grain: f.Grain, FilmWidth: 36}
-		cpu := b.newFilm(p, tc.mono)
-		r := NewGPURecipe(b, p, Compensation{})
-		if r.GrainMono != tc.mono {
-			t.Errorf("%s: mono %v", tc.name, r.GrainMono)
-		}
-		if len(r.GrainOct) != len(cpu.oct) {
-			t.Errorf("%s: %d recipe octaves, %d CPU", tc.name, len(r.GrainOct), len(cpu.oct))
-		}
-		for _, i := range []int{0, 1, 37, 133, 199, 1234, 5000, 19999} {
-			x, y := i%200, i/200
-			got := t47GPUField(r, i, x, y)
-			for c := 0; c < 3; c++ {
-				var want float32
-				if tc.mono {
-					want = cpu.noise[i]
-				} else {
-					want = cpu.noise[i*3+c]
-				}
-				if d := math.Abs(float64(got[c] - want)); d > 2e-5 {
-					t.Errorf("%s pixel %d channel %d: GPU %.7f, CPU %.7f", tc.name, i, c, got[c], want)
-					break
+		// 1:1 and the two fit widths the proof uses. At a reduced view the
+		// recipe now carries surviving clumps in GrainOct (cell may be < 1);
+		// the shader's grainSample has to draw them exactly as the CPU does.
+		for _, scale := range []float64{1, 1600.0 / 4704.0, 600.0 / 4704.0} {
+			l := flat(200, 100, 0.5)
+			l.Frame, l.Scale, l.NativeFrame = 4704, scale, 4704
+			b := NewBase(l)
+			p := preset.Params{Film: tc.name, Grain: f.Grain, FilmWidth: 36}
+			cpu := b.newFilm(p, tc.mono)
+			r := NewGPURecipe(b, p, Compensation{})
+			if r.GrainMono != tc.mono {
+				t.Errorf("%s: mono %v", tc.name, r.GrainMono)
+			}
+			if len(r.GrainOct) != len(cpu.oct) {
+				t.Errorf("%s scale %.3f: %d recipe octaves, %d CPU", tc.name, scale, len(r.GrainOct), len(cpu.oct))
+			}
+			for _, i := range []int{0, 1, 37, 133, 199, 1234, 5000, 19999} {
+				x, y := i%200, i/200
+				got := t47GPUField(r, i, x, y)
+				for c := 0; c < 3; c++ {
+					var want float32
+					if tc.mono {
+						want = cpu.noise[i]
+					} else {
+						want = cpu.noise[i*3+c]
+					}
+					if d := math.Abs(float64(got[c] - want)); d > 2e-5 {
+						t.Errorf("%s scale %.3f pixel %d channel %d: GPU %.7f, CPU %.7f", tc.name, scale, i, c, got[c], want)
+						break
+					}
 				}
 			}
 		}

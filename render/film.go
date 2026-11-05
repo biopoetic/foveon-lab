@@ -269,10 +269,124 @@ func grainRho(kind string, mono bool) float32 {
 	return 0.90
 }
 
+// fullPitch is the pitch of the full-resolution render the user exports: the
+// film width over the whole frame's native long side. A view rendered from a
+// binned or reduced source keeps the same film (and the same export), so the
+// grain's scale reference is the native frame, not the source the view was
+// decoded from.
+func (b *Base) fullPitch(p preset.Params) float64 {
+	fw := p.FilmWidth
+	if fw <= 0 {
+		fw = 36
+	}
+	n := b.NativeFrame
+	if n <= 0 {
+		n = int(math.Round(b.frame()))
+	}
+	if n <= 0 {
+		return b.pitch(p)
+	}
+	return math.Max(minPitch, fw*1000/float64(n))
+}
+
+// grainBoxRatio is the variance a point-sampled value-noise octave of cell c
+// pixels keeps when n×n pixels are area-averaged, relative to its variance at
+// one sample per pixel. c is the octave's cell in full-resolution pixels; n
+// is the view pitch over the full-resolution pitch. The field is separable,
+// so the 2-D ratio is the square of the 1-D one.
+//
+// The model used to assume the continuous aperture factor at every pitch.
+// That factor is right for a field sampled on the film, but the export's
+// pixels are point samples: a clump only 1–2 px across is undersampled, and
+// an area reduction keeps less of it than the continuous aperture predicts.
+// This is the actual reduction: for a few block phases, sum the interpolation
+// weights of the n samples in a block, and take the variance of that average
+// against the phase-averaged variance of one sample (1.5 for grainSample's
+// 1.5 scaling).
+func grainBoxRatio(c, n float64) float64 {
+	if n <= 1.0000001 {
+		return 1
+	}
+	const blocks = 256
+	var vsum float64
+	for k := 0; k < blocks; k++ {
+		start := math.Mod(float64(k)*n, 1) // block start in the pixel grid
+		// Lattice cells touched by samples start..start+n.
+		i0 := int(math.Floor((start + 0.5) / c))
+		i1 := int(math.Ceil((start + n + 0.5) / c))
+		if i1 < i0 {
+			i1 = i0
+		}
+		a := make([]float64, i1-i0+3)
+		var wsum float64
+		for x := 0; x <= int(math.Ceil(n)); x++ {
+			lo := math.Max(start, float64(x))
+			hi := math.Min(start+n, float64(x+1))
+			if hi <= lo {
+				continue
+			}
+			w := (hi - lo) / n
+			wsum += w
+			u := (start + float64(x) + 0.5) / c
+			i := int(math.Floor(u))
+			t := u - float64(i)
+			if i < i0 || i+1 >= i0+len(a) {
+				continue
+			}
+			a[i-i0] += w * 1.5 * (1 - t)
+			a[i-i0+1] += w * 1.5 * t
+		}
+		if wsum <= 0 {
+			continue
+		}
+		var v float64
+		for _, k := range a {
+			v += k * k
+		}
+		vsum += v
+	}
+	// One sample's phase-averaged variance is 1.5: the 1.5 interpolation
+	// scale over the cell's 2/3 mean squared triangle.
+	r := (vsum / blocks) / 1.5
+	if r < 0 {
+		return 0
+	}
+	return r * r
+}
+
+// grainFineFactor is the variance an independent per-pixel field keeps when
+// n×n output pixels are area-averaged (the 2-D squared 1-D weight sum).
+func grainFineFactor(n float64) float64 {
+	if n <= 1.0000001 {
+		return 1
+	}
+	nx := int(math.Ceil(n)) + 1
+	var sum, sq float64
+	for x := 0; x < nx; x++ {
+		lo := math.Max(0, float64(x))
+		hi := math.Min(n, float64(x+1))
+		if hi > lo {
+			w := hi - lo
+			sum += w
+			sq += w * w
+		}
+	}
+	if sum <= 0 {
+		return 1
+	}
+	f := sq / (sum * sum)
+	return f * f
+}
+
 // buildGrain sizes the field on the film and normalizes it so a 48 µm
 // aperture measures the published (or estimated) G.
 func (f *filmOp) buildGrain(b *Base, p preset.Params, kind string, iso, push, target float64, buildNoise bool) {
 	pt := b.pitch(p)
+	p1 := b.fullPitch(p)
+	n := pt / p1 // how many full-resolution pixels this view's pixel covers
+	if n < 1 {
+		n = 1
+	}
 	sizes, weights := grainSizes(kind, iso, push)
 	var v48 float64
 	for i := range sizes {
@@ -286,15 +400,49 @@ func (f *filmOp) buildGrain(b *Base, p preset.Params, kind string, iso, push, ta
 	for i := range sizes {
 		amp := A * math.Sqrt(float64(weights[i]))
 		s := sizes[i]
-		F := grainAperture(s, pt)
-		sigma2 += amp * amp * F
-		if s >= pt {
-			// A clump at or above the pixel size is drawn as a spatial
-			// field; its pixel value keeps the variance the pixel aperture
-			// leaves, so the same calibration holds at every view size.
-			f.oct = append(f.oct, grainOctave{cell: s / pt, amp: float32(amp * math.Sqrt(F))})
+		if n <= 1.0000001 {
+			// The full-resolution export is the reference: keep its field
+			// exactly as it was, so the 1:1 render and its 48 µm
+			// calibration do not move.
+			F := grainAperture(s, pt)
+			sigma2 += amp * amp * F
+			if s >= pt {
+				f.oct = append(f.oct, grainOctave{cell: s / pt, amp: float32(amp * math.Sqrt(F))})
+			} else {
+				fine2 += amp * amp * F
+			}
+			continue
+		}
+		if s < p1 {
+			// Fine at the export's pitch: it is independent per-pixel noise
+			// there, so an area reduction scales its variance by 1/n². The
+			// continuous aperture factor at this coarser pitch is larger
+			// (it lets a barely-fine clump survive), and using it is what
+			// made the fit view carry more grain than the export reduced.
+			v := amp * amp * grainAperture(s, p1) * grainFineFactor(n)
+			sigma2 += v
+			fine2 += v
+			continue
+		}
+		// A clump at or above the export's pixel: it is a spatial field in
+		// the export, and the box reduction keeps only part of it. Draw it
+		// at this view's scale with that surviving variance, so a reduced
+		// view matches the export and a further reduction keeps the same
+		// clump rather than new white noise.
+		R := grainBoxRatio(s/p1, n)
+		if R <= 0 {
+			continue
+		}
+		v := amp * amp * R
+		sigma2 += v
+		cell := s / pt
+		if cell >= 1 {
+			f.oct = append(f.oct, grainOctave{cell: cell, amp: float32(amp * math.Sqrt(R))})
 		} else {
-			fine2 += amp * amp * F
+			// Below one output pixel the clump is not resolvable here; draw
+			// its surviving variance as independent noise, as the export's
+			// reduction leaves it.
+			fine2 += v
 		}
 	}
 	f.sigma = float32(math.Sqrt(sigma2))

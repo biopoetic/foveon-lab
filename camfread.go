@@ -351,6 +351,7 @@ func goLinearForGatesExplicit(ph *Photo, maxW int, strength float64, irWhite *[3
 	// stars and specular points, whose PSF lights the neighbours. Research
 	// switch FOVEON_DN_NOSPECK=1 renders the "before" for the speckle crops.
 	fullW := img.W
+	nativeLong := max(img.W, img.H)
 	// The binning factor is chosen for both paths, so a denoised view and the
 	// plain one come out at the same size: with noise reduction the frame is
 	// binned first (binning averages noise), and either way the source is
@@ -397,6 +398,13 @@ func goLinearForGatesExplicit(ph *Photo, maxW int, strength float64, irWhite *[3
 	// bit-identical.
 	l.ISO, _ = strconv.ParseFloat(strings.TrimSpace(ph.props["ISO"]), 64)
 	l.Sensor = render.SharpKey(calibGroup(ph))
+	// The view may be decoded from a binned raw (a 1600 px fit view of a
+	// 4704 px frame is binned 2x). The film grain still belongs to the
+	// film, and the export is the full-resolution render, so keep the
+	// native long side as its scale reference.
+	if nativeLong > max(l.W, l.H) {
+		l.NativeFrame = nativeLong
+	}
 	if strength > 0 && !noShadowChroma && (irWhite == nil || sceneWB) {
 		noise := render.ShadowChromaFix(l, fullW, t.Colour)
 		if os.Getenv("FOVEON_DN_DEBUG") != "" {

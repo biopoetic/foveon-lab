@@ -64,7 +64,7 @@ func ApplyGeometry(l *Linear, g Geometry) *Linear {
 	W, H := float64(l.W), float64(l.H)
 	ow := max(1, int(math.Round(g.W*W)))
 	oh := max(1, int(math.Round(g.H*H)))
-	out := &Linear{W: ow, H: oh, Pix: make([]float32, ow*oh*3), Scale: l.Scale, Frame: int(math.Round(l.frame())), Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.frameMean()}
+	out := &Linear{W: ow, H: oh, Pix: make([]float32, ow*oh*3), Scale: l.Scale, Frame: int(math.Round(l.frame())), NativeFrame: l.NativeFrame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.frameMean()}
 	if l.MonoLayers != nil {
 		out.MonoLayers = make([]float32, ow*oh*3)
 	}

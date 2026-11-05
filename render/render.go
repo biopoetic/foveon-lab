@@ -44,6 +44,12 @@ type Linear struct {
 	// 100% window or a crop keeps the frame's, so film grain and halation,
 	// sized on the film, stay the same size.
 	Frame int
+	// NativeFrame is the whole frame's long side in the sensor's native
+	// pixels, when this image was decoded from a binned or otherwise
+	// reduced source (0 = unknown, use Frame/frame()). The film grain uses
+	// it as the export's scale reference: a fit view decoded from a binned
+	// raw must still draw the grain the full-resolution export would carry.
+	NativeFrame int
 	// OriginX/Y and FullW/H place a window inside the whole frame, in
 	// full-resolution pixels: Origin is this image's top-left, Full is the
 	// whole frame's size (0 = derive from W/H/Scale). SPP's Shading Effect
@@ -314,7 +320,7 @@ func (l *Linear) Window(x0, y0, w, h int) *Linear {
 	x0, y0 = max(0, min(x0, l.W-1)), max(0, min(y0, l.H-1))
 	w, h = max(1, min(w, l.W-x0)), max(1, min(h, l.H-y0))
 	fw, fh := l.fullSize()
-	o := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, Frame: int(math.Round(l.frame())), Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.frameMean(),
+	o := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, Frame: int(math.Round(l.frame())), NativeFrame: l.NativeFrame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.frameMean(),
 		OriginX: l.OriginX + x0, OriginY: l.OriginY + y0, FullW: int(math.Round(fw)), FullH: int(math.Round(fh))}
 	for y := 0; y < h; y++ {
 		copy(o.Pix[y*w*3:(y+1)*w*3], l.Pix[((y+y0)*l.W+x0)*3:])
@@ -333,7 +339,7 @@ func (l *Linear) Rotate(deg int) *Linear {
 		return l
 	}
 	w, h := l.W, l.H
-	o := &Linear{W: w, H: h, Pix: make([]float32, len(l.Pix)), Scale: l.Scale, Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean}
+	o := &Linear{W: w, H: h, Pix: make([]float32, len(l.Pix)), Scale: l.Scale, Frame: l.Frame, NativeFrame: l.NativeFrame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean}
 	if deg != 180 {
 		o.W, o.H = h, w
 	}
@@ -394,7 +400,7 @@ func (l *Linear) Downscale(maxW int) *Linear {
 	dw := maxW
 	dh := max(1, int(math.Round(float64(l.H)*float64(dw)/float64(l.W))))
 	fw, fh := l.fullSize()
-	o := &Linear{W: dw, H: dh, Pix: areaResample(l.Pix, l.W, l.H, dw, dh), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean,
+	o := &Linear{W: dw, H: dh, Pix: areaResample(l.Pix, l.W, l.H, dw, dh), Scale: l.scale() * float64(dw) / float64(l.W), Frame: l.Frame, NativeFrame: l.NativeFrame, Raw: l.Raw, ISO: l.ISO, Sensor: l.Sensor, FillMean: l.FillMean,
 		OriginX: l.OriginX, OriginY: l.OriginY, FullW: int(math.Round(fw)), FullH: int(math.Round(fh))}
 	if l.MonoLayers != nil {
 		o.MonoLayers = areaResample(l.MonoLayers, l.W, l.H, dw, dh)

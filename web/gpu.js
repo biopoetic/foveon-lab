@@ -139,7 +139,10 @@ vec3 colorFilm(vec3 c){
 }
 uint hash32(uint x){ x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x; }
 float unorm(uint h){ return float(h >> 8) * (1. / 16777216.); }
-// The same value-noise lattice and Gaussian hash as render/film.go.
+// The same value-noise lattice and Gaussian hash as render/film.go. cell is
+// the clump's size in output pixels; a reduced view can keep a clump with
+// cell < 1 (film.go buildGrain), and the bilinear sample below is the same
+// one the CPU draws.
 float grainLat(int x, int y, uint seed){
   uint h = hash32(uint(x) * 0x9e3779b1u ^ uint(y) * 0x85ebca77u ^ seed);
   return (2. * unorm(h) - 1.) * 1.7320508;
