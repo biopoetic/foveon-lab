@@ -90,6 +90,9 @@ func (s *server) developSource(ctx context.Context, ph *Photo, p preset.Params, 
 	}
 	if ir {
 		c = layerCompensation(c)
+		// A colour film's @wb suffix developed the layers with the preset's
+		// balance already.
+		wbDeveloped = modeDevelopedWB(lf)
 	}
 	c.WBDeveloped = wbDeveloped
 	return src, p, c, md, nil

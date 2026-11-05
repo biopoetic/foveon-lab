@@ -342,6 +342,20 @@ func rawLinear(ph *Photo, maxW int, color string) (*render.Linear, error) {
 	return rawLinearFor(ph, maxW, color, "")
 }
 
+// splitFilterWB splits a raw-source filter spec into its filter and the
+// camera white balance it names: "wb:Shade" (the normal rawwb path) and
+// "film@wb:Shade" (a colour film developed under that balance). A spec with
+// no balance returns it unchanged.
+func splitFilterWB(spec string) (filter, wb string) {
+	if base, w, ok := strings.Cut(spec, "@wb:"); ok {
+		return base, w
+	}
+	if w, ok := strings.CutPrefix(spec, "wb:"); ok {
+		return "", w
+	}
+	return spec, ""
+}
+
 // rawLinearFor: for an infrared look (irFilter "ir-..."), the
 // Sunlight-balanced sensor layers (native decode only), with no raw base
 // on top and clipped highlights going to that look's white.
@@ -349,10 +363,10 @@ func rawLinearFor(ph *Photo, maxW int, color, irFilter string) (*render.Linear, 
 	var l *render.Linear
 	// "wb:<name>": the normal raw rendering, developed with that camera
 	// white balance (a preset's WhiteBalance code, cameraWBName).
+	// "film@wb:<name>": a colour film's layers, developed with that balance
+	// (layersSource): the light is balanced before the emulsion.
 	wbName := ""
-	if w, ok := strings.CutPrefix(irFilter, "wb:"); ok {
-		wbName, irFilter = w, ""
-	}
+	irFilter, wbName = splitFilterWB(irFilter)
 	irWhite := render.IRWhite(render.SensorGeneration(calibGroup(ph)), irFilter)
 	if irFilter == "film" {
 		// Colour film: the layers, clipped highlights to white.
@@ -675,12 +689,22 @@ func irLayers(ph *Photo, p preset.Params) bool {
 // than the SPP look, and which: an IR look (its filter name), or a colour
 // film ("film": its physics starts from the scene, white-balanced as the
 // photo is — camera Auto, as SPP — not from SPP's rendering).
+//
+// A colour film with a preset camera white balance is "film@wb:<name>": the
+// balance belongs to the light before the emulsion, so the raw layers are
+// developed with that balance and the film sees balanced light. Without it
+// the film branch would keep only the as-shot Auto balance: the measured
+// model (which holds SPP's WhiteBalance mapping) is off under a colour film.
 func layersSource(ph *Photo, p preset.Params) (string, bool) {
 	if irLayers(ph, p) {
 		return p.Filter, true
 	}
 	if render.IsColorFilm(p.Film) && goRaw && ph.Kind == "x3f" && ph.Unsupported == "" && rawDecodable(ph.props) {
-		return "film", true
+		src := "film"
+		if n := cameraWBName(p.WhiteBalance); n != "" {
+			src += "@wb:" + n
+		}
+		return src, true
 	}
 	return "", false
 }
@@ -693,6 +717,13 @@ func wbSource(ph *Photo, p preset.Params) (string, bool) {
 		return "", false
 	}
 	return "wb:" + n, true
+}
+
+// modeDevelopedWB reports whether the source mode already developed the raw
+// with the preset's white balance (the measured WB mapping must then not run
+// again): a rawwb source, or a colour film's @wb suffix.
+func modeDevelopedWB(mode string) bool {
+	return strings.HasPrefix(mode, "rawwb:") || strings.Contains(mode, "@wb:")
 }
 
 // layerCompensation is the compensation for a render from the layers: the

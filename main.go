@@ -973,7 +973,7 @@ func (s *server) renderBase(w http.ResponseWriter, r *http.Request) (*render.Bas
 	if strings.HasPrefix(mode, "rawlayers:") {
 		comp = layerCompensation(comp)
 	}
-	comp.WBDeveloped = strings.HasPrefix(mode, "rawwb:")
+	comp.WBDeveloped = modeDevelopedWB(mode)
 	return b, p, comp, true
 }
 
