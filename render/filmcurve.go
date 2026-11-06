@@ -26,6 +26,12 @@ package render
 // between the positive's log brightness follows the negative's density at
 // 1 / gamma_ref, so the standard development's straight part prints 1:1 and
 // the film's own shape is what shows. The paper's curve is not modelled yet.
+// Scan (no paper): a scanner, not a print. It reads the density above the
+// film's base+fog, sets the black point there with a small fixed headroom,
+// inverts with ONE fixed slope for every film (the same scanner as the colour
+// negatives, so the film's own toe and shoulder are what shape the shadows),
+// puts the metered grey at 18%, and applies one gentle tone on luminance.
+// The base never maps to pure black: the headroom is what a scanner leaves.
 
 import (
 	_ "embed"
@@ -314,6 +320,20 @@ const (
 	filmToneMax = 64.0
 )
 
+// A scan of a black-and-white negative is made by the same machinery for every
+// film: bwScanGamma is the one fixed inversion slope (the colour negatives'
+// scanner slope, gamma_s = 0.6 in colorneg.go), bwScanBlack is the fixed
+// headroom above pure black that the film's base+fog is set to (linear Y; L*
+// ~3.7 after the tone), bwScanTone is the one gentle tone on luminance, and
+// bwScanToe eases the lower midtones back up: at the fixed slope they fall
+// faster on the contrastier films than the old per-film inverse made them.
+const (
+	bwScanGamma = 0.6
+	bwScanBlack = 0.005
+	bwScanTone  = 1.06
+	bwScanToe   = 0.85
+)
+
 type filmTone struct {
 	lut   [filmToneN + 1]float32
 	scale float32 // filmToneN / filmToneMax^(1/4)
@@ -331,7 +351,6 @@ func newFilmTone(p preset.Params) *filmTone {
 		return nil
 	}
 	dv := c.DevelopmentFor(p)
-	gRef := c.GammaRef()
 	iso := float64(f.ISO)
 	// The metered grey's exposure, moved by the developer's speed: a
 	// developer rated at EI 320 for ISO 400 needs 1/3 stop more.
@@ -366,13 +385,35 @@ func newFilmTone(p preset.Params) *filmTone {
 		k := lgE(dmin+0.745) + dGrey
 		printY = func(d float64) float64 { return math.Pow(10, -(pinterp(g, k-d) - dmin)) }
 	} else {
-		// No paper (a scan): the film base prints black and the grey grey;
-		// in between the print's log brightness follows the density at
-		// 1/gamma_ref.
-		pos := func(d float64) float64 { return math.Pow(10, (d-dGrey)/gRef) }
-		black := pos(fog)
-		norm := 0.18 / (pos(dGrey) - black)
-		printY = func(d float64) float64 { return (pos(d) - black) * norm }
+		// A scan is what a scanner makes of the negative. Its black point is
+		// the film's base+fog with a small fixed headroom (bwScanBlack), it
+		// inverts the density with ONE fixed slope for every film (bwScanGamma,
+		// the colour negatives' scanner slope) and puts the metered grey at
+		// 18%. The only film-dependent term is the density itself, so the
+		// film's own toe, shoulder and contrast decide how fast the shadows
+		// fall. The gentle tone on luminance (bwScanTone) is the same for every
+		// film and the same as the colour scan's.
+		light := func(d float64) float64 { return math.Pow(10, (d-fog)/bwScanGamma) - 1 }
+		lightGrey := light(dGrey)
+		if lightGrey <= 0 {
+			lightGrey = 1e-9
+		}
+		printY = func(d float64) float64 {
+			y := bwScanBlack + (0.18-bwScanBlack)*light(d)/lightGrey
+			if y <= 0 {
+				return 0
+			}
+			y = 0.18 * math.Pow(y/0.18, bwScanTone)
+			// The one gentle toe: keep the black point and 18% grey, lift
+			// the lower midtones, leave the highlights to the tone/shoulder.
+			if black := 0.18 * math.Pow(bwScanBlack/0.18, bwScanTone); y < 0.18 && y > black {
+				y = black + (0.18-black)*math.Pow((y-black)/(0.18-black), bwScanToe)
+			}
+			if y > 0.95 {
+				y = 0.95 + 0.05*(1-math.Exp(-(y-0.95)/0.05))
+			}
+			return y
+		}
 	}
 	t := &filmTone{scale: float32(filmToneN / math.Pow(filmToneMax, 0.25))}
 	for i := 0; i <= filmToneN; i++ {
