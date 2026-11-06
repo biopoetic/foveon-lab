@@ -700,38 +700,21 @@ func scanMatrixFor(d *colorNegData) ([9]float64, bool) {
 }
 
 // scanProfile is the scanner's one fixed negative profile: the average of the
-// library's ten negatives, each fitted by scanMatrixFor. It is built once.
-var scanProfile = sync.OnceValue(func() [9]float64 {
-	var M [9]float64
-	var n int
-	for _, d := range colorNegs().negs {
-		m, ok := scanMatrixFor(d)
-		if !ok {
-			continue
-		}
-		for i := range M {
-			M[i] += m[i]
-		}
-		n++
+// library's ten negatives, each fitted by scanMatrixFor. It was fitted once on
+// the task-63 library and is pinned here rather than recomputed from the
+// current data. A scanner's negative profile is a property of the scanner (its
+// channels and the one inversion), not of whichever film sheet was corrected
+// last: recomputing it after the task-64 curve corrections would move every
+// other film's scan by a few 1e-3, although no other film changed. The numbers
+// are that task-63 average (REPORT-63 §2); after the task-64 corrections the
+// ten-film average would differ by at most 0.0068.
+var scanProfile = func() [9]float64 {
+	return [9]float64{
+		1.3534365036171707, -0.27231520041960572, -0.081121303197565039,
+		-0.044727459328964034, 1.1300816603296684, -0.085354201000704441,
+		-0.054605683087417527, -0.025311947254529784, 1.0799176303419473,
 	}
-	if n == 0 {
-		return [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
-	}
-	for i := range M {
-		M[i] /= float64(n)
-	}
-	// Normalise each row so an exact neutral reading maps to itself.
-	for k := 0; k < 3; k++ {
-		s := M[k*3] + M[k*3+1] + M[k*3+2]
-		if math.Abs(s) < 1e-9 {
-			continue
-		}
-		for i := 0; i < 3; i++ {
-			M[k*3+i] /= s
-		}
-	}
-	return M
-})
+}
 
 // scanAB is the CIELAB a*, b* of a linear-sRGB value, for the scan's
 // near-neutral guard.

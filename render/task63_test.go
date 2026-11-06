@@ -62,9 +62,10 @@ func TestColorScanGenericWedge63(t *testing.T) {
 	}
 }
 
-// The scanner's negative profile is one fixed 3x3, the average over the
-// library's negatives, and each row sums to 1 so an exact neutral reading
-// maps to neutral.
+// The scanner's negative profile is one fixed 3x3, pinned to the task-63
+// average over the library's negatives (task 64 froze it so correcting one
+// film cannot move every other film's scan), and each row sums to 1 so an
+// exact neutral reading maps to neutral.
 func TestColorScanGenericProfile63(t *testing.T) {
 	M := scanProfile()
 	for k := 0; k < 3; k++ {

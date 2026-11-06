@@ -157,11 +157,10 @@ func TestColorScan(t *testing.T) {
 			}
 			t.Logf("%s scan: grey %.3f -> %.4f %.4f %.4f (a* %.2f b* %.2f)", key, g, r, gg, b, a, bb)
 		}
-		// Flatter than the paper print, and different from it. Pro 800Z at
-		// box speed is the exception: its negative is so thin that any scan
-		// exposed to 18% must stretch it (that is a property of the negative,
-		// not the tone curve), so the flatter-than-a-print check is on the
-		// films the task's proof uses.
+		// Flatter than the paper print, and different from it. The check is
+		// on the films the task's proof uses; the Pro films' curves are now
+		// registered on their published ISO speed (task 64), so Pro 800Z is
+		// no longer a thin-negative exception.
 		p := colorFilmOn(key, "Kodak Portra Endura", "Merrill", ColorPrint{})
 		gamma := func(f *colorFilm) float64 {
 			y1 := task61Luma(f.apply(0.032, 0.032, 0.032))
