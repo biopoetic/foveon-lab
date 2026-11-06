@@ -53,6 +53,13 @@ type colorFilmData struct {
 	Char map[string][][2]float64 `json:"char"` // R, G, B: log H -> Status A density
 	Sens map[string][][2]float64 `json:"sens"` // R, G, B: nm -> log relative sensitivity
 	Dye  map[string][][2]float64 `json:"dye"`  // C, M, Y: nm -> normalised spectral density
+	// Shift is a per-layer log-exposure registration (decades, R G B),
+	// subtracted from log H when a layer's curve is read. A sheet may draw
+	// the three characteristic curves at the layer's own effective exposure
+	// rather than at one common log H; the registration puts them back on a
+	// common exposure axis so that a neutral exposure is neutral. Zero (the
+	// field absent) leaves the digitised axis untouched.
+	Shift []float64 `json:"shift,omitempty"`
 }
 
 var colorFilmData_ = sync.OnceValue(func() map[string]*colorFilmData {
@@ -162,7 +169,10 @@ type colorFilm struct {
 	rp     [18]float32
 	hWhite float64 // lux·s at the sensor's saturation (layer value 1)
 	curve  [3][][2]float64
-	lut    []float32 // lutSize()^3 × 3: -log10 of linear sRGB, over (D_R, D_G, D_B)
+	// shift: per-layer log-exposure registration (decades, R G B), see
+	// colorFilmData.Shift. Zero for every film digitised on one common axis.
+	shift [3]float64
+	lut   []float32 // lutSize()^3 × 3: -log10 of linear sRGB, over (D_R, D_G, D_B)
 	// lutN is the table's samples per density axis when it is not the
 	// default cfLutN. A scan uses a finer table: its neutral scale is a
 	// curve through the density cube, and at 33³ the trilinear
@@ -314,6 +324,9 @@ func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 	for k, n := range names {
 		f.curve[k] = d.Char[n]
 	}
+	if len(d.Shift) == 3 {
+		copy(f.shift[:], d.Shift)
+	}
 	// 4. Dyes. Channel k (R, G, B) reads the dyes' density at one
 	// wavelength λ_k (a narrow-band reading, as Status A's filters): D =
 	// A(λ)·c, so the dye amounts are c = A⁻¹·D. The λ_k are fitted to the
@@ -453,8 +466,10 @@ func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 // same for every slide (as bwScanBlack is for every black-and-white film).
 const slideBlack = 0.005
 
-// density is layer k's density at log exposure lg.
-func (f *colorFilm) density(k int, lg float64) float64 { return pinterp(f.curve[k], lg) }
+// density is layer k's density at log exposure lg (after its registration).
+func (f *colorFilm) density(k int, lg float64) float64 {
+	return pinterp(f.curve[k], lg-f.shift[k])
+}
 
 // apply takes one pixel of white-balanced sensor layers (relative to the
 // metered exposure: 1 = a white of reflectance 1) to the slide's linear

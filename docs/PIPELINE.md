@@ -247,6 +247,26 @@ direction on these films, and the task says to change nothing on colour when
 that is the case. REPORT-67 has the wedge, the reading-wavelength scan and the
 evidence.
 
+### 7b. The per-layer curve registration (task 68)
+
+The five task-67 slides print their three characteristic curves at one common
+log H: at the ISO mid-grey the red-, green- and blue-sensitive layers have the
+same density, so equal layer exposures make a neutral grey. Some of the sheets
+added in task 68 draw each layer's curve at that layer's own effective
+exposure; read on one common axis the three curves do not meet at the mid-grey,
+and the model's grey carries a cast that changes with exposure.
+
+`colorFilmData.Shift` (`shift` in `render/colorfilms.json`, decades R G B)
+registers each layer's curve onto the common axis: `colorFilm.density` reads
+`log H - shift[k]`. It is zero (the field absent) for the five task-67 films,
+whose bytes are unchanged; for the task-68 films it is a small registration
+(≤0.17 decade) chosen from the sheet's own three curves so that a neutral
+exposure is neutral. It is a curve-basis correction, not a colour look:
+`TestSlideNoShift67` pins the five at zero, `TestSlideWedge68` pins the
+registered films' neutral wedge drift at |Δa*|, |Δb*| ≤ 3 over −4…+2 stops, and
+`TestColorFilmSlides` keeps the strict absolute-neutrality check for the films
+with no registration.
+
 ---
 
 ## 8. What is not modelled here
