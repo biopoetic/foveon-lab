@@ -30,8 +30,11 @@ package render
 // film's base+fog, sets the black point there with a small fixed headroom,
 // inverts with ONE fixed slope for every film (the same scanner as the colour
 // negatives, so the film's own toe and shoulder are what shape the shadows),
-// puts the metered grey at 18%, and applies one gentle tone on luminance.
-// The base never maps to pure black: the headroom is what a scanner leaves.
+// puts the metered grey at 18%, and applies one gentle tone on luminance. The
+// highlight side is a scanner's too: one smooth shoulder, starting well below
+// white and asymptotic to a paper white below the display's clip, so the
+// negative's long highlight range keeps its gradation instead of burning out.
+// The base never maps to pure black and the shoulder never reaches 255.
 
 import (
 	_ "embed"
@@ -327,12 +330,38 @@ const (
 // ~3.7 after the tone), bwScanTone is the one gentle tone on luminance, and
 // bwScanToe eases the lower midtones back up: at the fixed slope they fall
 // faster on the contrastier films than the old per-film inverse made them.
+//
+// bwScanKnee and bwScanWhite are the scanner's highlight side, one rule for
+// every film. The shoulder starts at bwScanKnee (linear Y; L* ~80, about 1.7
+// stops above 18% grey, well below white) and rolls off smoothly from there.
+// It is asymptotic to bwScanWhite instead of 1: a negative's shoulder covers
+// several stops of density, and if the scan's white were the display's 255
+// all of that range would flatten to one value. At 0.985 the paper white is
+// 8-bit 253, so the densest negative still has gradation and no pixel of a
+// normally exposed frame reaches 254. One fixed function, no per-film term:
+// the film's density is the only input that differs between films.
 const (
 	bwScanGamma = 0.6
 	bwScanBlack = 0.005
 	bwScanTone  = 1.06
 	bwScanToe   = 0.85
+	bwScanKnee  = 0.6
+	bwScanWhite = 0.985
 )
+
+// bwScanShoulder is the scan's one highlight roll-off. Below the knee it is
+// the identity (so the toe and the midtones are untouched); above it, the
+// excess over the knee is compressed by a Reinhard-type curve, asymptotic to
+// the paper white. It is continuous with slope 1 at the knee, so the shoulder
+// starts without a kink.
+func bwScanShoulder(y float64) float64 {
+	if y <= bwScanKnee {
+		return y
+	}
+	d := bwScanWhite - bwScanKnee
+	x := y - bwScanKnee
+	return bwScanKnee + d*x/(x+d)
+}
 
 type filmTone struct {
 	lut   [filmToneN + 1]float32
@@ -409,10 +438,12 @@ func newFilmTone(p preset.Params) *filmTone {
 			if black := 0.18 * math.Pow(bwScanBlack/0.18, bwScanTone); y < 0.18 && y > black {
 				y = black + (0.18-black)*math.Pow((y-black)/(0.18-black), bwScanToe)
 			}
-			if y > 0.95 {
-				y = 0.95 + 0.05*(1-math.Exp(-(y-0.95)/0.05))
-			}
-			return y
+			// The scan's white point: one shoulder for every film. The old
+			// fixed 0.95 shoulder took inputs of 2-5x white and flattened them
+			// all to 255; this one starts well below white and is asymptotic
+			// to the paper white, so a normally exposed frame keeps its
+			// highlight gradation.
+			return bwScanShoulder(y)
 		}
 	}
 	t := &filmTone{scale: float32(filmToneN / math.Pow(filmToneMax, 0.25))}
