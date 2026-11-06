@@ -176,6 +176,11 @@ type colorFilm struct {
 	// mid-grey (the eye adapted to the light box). 1 for a negative, whose
 	// print exposure is set by its own table.
 	gain float64
+	// black: the viewing black level of a slide (linear light, relative to
+	// the display white): the light a light box's or scanner's black point
+	// still passes at the film's D-max. 0 for a negative, whose black comes
+	// from its own print/scan table.
+	black float64
 	// filtration: a printed negative's enlarger filtration (log10 gain per
 	// paper layer, R G B).
 	filtration [3]float64
@@ -431,8 +436,22 @@ func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 			f.gain = 0.18 / y
 		}
 	}
+	// The viewing black point: a light box or a scanner never reaches zero
+	// light. A slide's D-max is about 3.5, whose transmission is ~0.03% of
+	// the clear film's; mapped straight to a display that is black, and the
+	// darkest tones lose their gradation and their colour (task 67). The
+	// scanner's black point keeps a little light there, the same fixed
+	// headroom the black-and-white scan uses (bwScanBlack): half a percent
+	// of the light box's white, one constant for every slide.
+	f.black = slideBlack
 	return f
 }
+
+// slideBlack is the viewing black level of a slide: linear light, relative to
+// the display white, that the film's D-max still passes on a light box or in
+// a scanner. It is a property of the viewing system, not of the film, and the
+// same for every slide (as bwScanBlack is for every black-and-white film).
+const slideBlack = 0.005
 
 // density is layer k's density at log exposure lg.
 func (f *colorFilm) density(k int, lg float64) float64 { return pinterp(f.curve[k], lg) }
@@ -493,11 +512,13 @@ func (f *colorFilm) fromExposure(h [3]float64) (float32, float32, float32) {
 			out[k] += w * float64(f.lut[i+k])
 		}
 	}
-	// 10^-out as exp2(-out·log2(10)), same trick.
+	// 10^-out as exp2(-out·log2(10)), same trick; the viewing black level is
+	// the light a light box's black point still passes, so it is added after
+	// the viewing exposure (not scaled by it).
 	g := f.viewGain()
-	return float32(math.Exp2(-out[0]*log2of10) * g),
-		float32(math.Exp2(-out[1]*log2of10) * g),
-		float32(math.Exp2(-out[2]*log2of10) * g)
+	return float32(math.Exp2(-out[0]*log2of10)*g + f.black),
+		float32(math.Exp2(-out[1]*log2of10)*g + f.black),
+		float32(math.Exp2(-out[2]*log2of10)*g + f.black)
 }
 
 // viewGain is the film's viewing exposure (1 when unset, e.g. for negatives).

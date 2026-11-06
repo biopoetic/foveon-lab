@@ -74,7 +74,8 @@ func t60GPUFilm(r *GPURecipe, c [3]float32) [3]float32 {
 		fr[k] = x[k] - float64(i0[k])
 	}
 	// NewGPURecipe stores the film whose view gain GPUColorFilmData folds into
-	// the table; fold it the same way here.
+	// the table; fold it the same way here. A slide's viewing black level is
+	// additive and comes from the recipe (web/gpu.js adds uCFBlack).
 	g := f.viewGain()
 	lg := math.Log10(g)
 	var out [3]float64
@@ -94,9 +95,9 @@ func t60GPUFilm(r *GPURecipe, c [3]float32) [3]float32 {
 		}
 	}
 	return [3]float32{
-		float32(math.Exp2(-out[0] * log2of10)),
-		float32(math.Exp2(-out[1] * log2of10)),
-		float32(math.Exp2(-out[2] * log2of10)),
+		float32(math.Exp2(-out[0]*log2of10) + float64(cf.Black)),
+		float32(math.Exp2(-out[1]*log2of10) + float64(cf.Black)),
+		float32(math.Exp2(-out[2]*log2of10) + float64(cf.Black)),
 	}
 }
 

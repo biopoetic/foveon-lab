@@ -215,6 +215,40 @@ suffix is only added on the film branch, and the IR branch returns first.
 
 ---
 
+## 7a. The colour slide's viewing model (task 67)
+
+A slide is not a print: it is viewed by transmitted light from a light box
+(or read by a scanner). The slide path (`newColorFilm`/`fromExposure` in
+`render/colorfilm.go`) already divided the film's transmission by its D-min
+white (the eye adapted to the clearest part of the slide), and scaled the
+scene's mid-grey to 18% (the print convention, so a comparison with a print is
+not an exposure comparison).
+
+Task 67 added the other half of a viewer's black point: **no light box and no
+scanner reaches zero light at the film's D-max**. The film's D-max is about
+3.5, i.e. ~0.03% of the clear film's transmission; mapped straight to a
+display that is pure black, the deepest tones lost their gradation and their
+colour. `slideBlack` = 0.005 linear (half a percent of the display white, the
+same 5‰ headroom the black-and-white scan uses, `bwScanBlack`) is now added to
+each channel **after** the viewing gain, so it is a property of the viewing
+system and not of the film (it is not scaled by the film's gain). It is one
+constant for every slide.
+
+The GPU gets it as `uCFBlack` in `web/gpu.js` (`colorFilm(...) + vec3(uCFBlack)`),
+carried in the recipe's `GPUColorFilm.Black` (`render/gpu.go`); it is a scalar
+uniform, not a texture unit, and `TestSlideGPUBlack67` pins GPU = CPU at 0
+8-bit levels. The negative/print path has `black = 0`, so its bytes are
+unchanged.
+
+The colour model (the sensor→layer fit, the Status A curves and their fitted
+read wavelengths, the dye spectra and the 5500 K viewing light) is **not**
+changed: the sheets' own data does not produce the web's magenta-cool
+direction on these films, and the task says to change nothing on colour when
+that is the case. REPORT-67 has the wedge, the reading-wavelength scan and the
+evidence.
+
+---
+
 ## 8. What is not modelled here
 
 * Camera JPEG/TIFF sources skip S1–S10: they are decoded to linear sRGB
