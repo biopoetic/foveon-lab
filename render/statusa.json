@@ -1,0 +1,29 @@
+{
+  "standard": "ISO 5-3:1995, Photography — Density measurements — Part 3: Spectral conditions",
+  "designation": "ANSI/ISO 5-3-1995, ANSI/NAPM IT2.18-1996",
+  "note": "Identical to ISO 5-3:1995 (Foreword). The values below are Table 3, page 7 (PDF p. 16), 'Status A — log10 spectral products n_A (Normalized to 5,000 peak)'.",
+  "source": "ANSI/ISO 5-3-1995, ANSI/NAPM IT2.18-1996, Table 3, p. 7. US federal incorporated-by-reference copy (AIMM IT2.18:1996, 36 CFR 1238.14(d)(2)), published by the Office of the Federal Register.",
+  "url": "https://law.resource.org/pub/us/cfr/ibr/001/aimm.it2.18.1996.pdf",
+  "sha256": "6357992b5a498402a23e9ca60c65e02deb58848fb7bb84f24e5f5011972d2b39",
+  "normalized": 5.0,
+  "units": "log10 spectral product, 10 nm, normalised so each channel's peak is 5.000; a channel's relative spectral product is 10^(value - 5)",
+  "interpolation": "linear in log10 between the 10 nm values; the printed edge slopes extend the log10 values outside the tabulated span",
+  "channels": {
+    "R": {
+      "points": [[600, 2.568], [610, 4.638], [620, 5.000], [630, 4.871], [640, 4.604], [650, 4.286], [660, 3.900], [670, 3.551], [680, 3.165], [690, 2.776], [700, 2.383], [710, 1.970], [720, 1.551], [730, 1.141], [740, 0.741], [750, 0.341]],
+      "below": [600, 0.270],
+      "above": [750, -0.040]
+    },
+    "G": {
+      "points": [[500, 1.650], [510, 3.822], [520, 4.782], [530, 5.000], [540, 4.906], [550, 4.644], [560, 4.221], [570, 3.609], [580, 2.766], [590, 1.579]],
+      "below": [500, 0.220],
+      "above": [590, -0.170]
+    },
+    "B": {
+      "points": [[420, 3.602], [430, 4.819], [440, 5.000], [450, 4.912], [460, 4.620], [470, 4.040], [480, 2.989], [490, 1.566], [500, 0.165]],
+      "below": [420, 0.380],
+      "above": [500, -0.140]
+    }
+  },
+  "figure": "Figure B.3, page 15 (PDF p. 24): the plotted Status A blue/green/red spectral products agree with these tabulated values (blue peak 440 nm, green 530 nm, red 620 nm)."
+}

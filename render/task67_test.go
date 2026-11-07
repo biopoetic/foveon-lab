@@ -39,6 +39,11 @@ func TestSlideBlackPoint67(t *testing.T) {
 		if f == nil {
 			t.Fatalf("%s: no model", key)
 		}
+		// The five task-67 films stay on the fitted read: task 73 found no
+		// registration evidence for them, so their bytes must not move.
+		if f.integrated {
+			t.Errorf("%s: task-67 film moved to the integrated read", key)
+		}
 		if math.Abs(f.black-slideBlack) > 1e-12 {
 			t.Errorf("%s: viewing black %.5f, want %.5f", key, f.black, slideBlack)
 		}
@@ -77,6 +82,10 @@ func TestSlideWedge67(t *testing.T) {
 		f := colorFilmOn(key, "", "Merrill", ColorPrint{})
 		if f == nil {
 			t.Fatalf("%s: no model", key)
+		}
+		// Task 73: no registration evidence, so the fitted read stays.
+		if f.integrated {
+			t.Errorf("%s: task-67 film moved to the integrated read", key)
 		}
 		var pts [][2]float64
 		var ys []float64

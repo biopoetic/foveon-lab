@@ -60,6 +60,13 @@ type colorFilmData struct {
 	// common exposure axis so that a neutral exposure is neutral. Zero (the
 	// field absent) leaves the digitised axis untouched.
 	Shift []float64 `json:"shift,omitempty"`
+	// ReadStatusA marks a slide whose Status A densities are read through
+	// the standard's full spectral products (statusa.go) rather than at one
+	// fitted wavelength per channel. Only a film whose mid-grey registration
+	// is inside the digitisation tolerance and whose measured grey balance
+	// does not get worse than the fitted read carries it (task 73); every
+	// other slide keeps the fitted read byte for byte.
+	ReadStatusA bool `json:"read_statusa,omitempty"`
 	// IRApprox marks Kodak Ektachrome Infrared (EIR), whose cyan-forming
 	// layer is infrared-sensitive: no X3F carries an infrared channel, so
 	// the IR layer's exposure is estimated from a scale-invariant vegetation
@@ -195,10 +202,27 @@ type colorFilm struct {
 	// curve through the density cube, and at 33³ the trilinear
 	// interpolation around that curve left a visible wedge cast at the toe.
 	lutN int
-	// readLam: the channels' reading wavelengths (R, G, B) the grey balance
-	// gives; greyRMS its remaining error (natural log of R/G and B/G).
+	// readLam: a negative's fitted reading wavelengths (R, G, B). For a slide
+	// it is the nominal Status A peak wavelengths (R/G/B 620/530/440 nm),
+	// reported for orientation only: a slide read through the full Status A
+	// responses has no fitted read (task 72). greyRMS is the remaining
+	// neutral error (natural log of R/G and B/G), the same units before and
+	// after task 72.
 	readLam [3]float64
 	greyRMS float64
+	// integrated: the dyes are read through the published Status A spectral
+	// products (statusa.go), not at one wavelength per channel.
+	integrated bool
+	// eps2: the dyes' spectral densities on the Status A integration grid,
+	// times log2(10), so T = exp2(-Σ c·eps2).
+	eps2 [][3]float64
+	// aInv: inverse of the dye densities at the nominal Status A peaks; it is
+	// only the starting point of the integrated Newton solve.
+	aInv [9]float64
+	// invFails and invMaxRes: diagnostics of the integrated LUT solve — cells
+	// that did not reach 1e-6 D, and the largest residual seen.
+	invFails  int
+	invMaxRes float64
 	// gain: the viewing exposure of a slide, so the scene's mid-grey prints
 	// mid-grey (the eye adapted to the light box). 1 for a negative, whose
 	// print exposure is set by its own table.
@@ -325,7 +349,231 @@ func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *co
 	return f
 }
 
+// newColorFilm dispatches a slide to the read its data supports: the
+// integrated Status A read with a mid-grey registration (task 73) for the
+// films marked ReadStatusA, and the fitted one-wavelength read (v0.4.108) for
+// every other slide, including EIR. The fitted path is unchanged, so a film
+// that is not marked renders byte for byte as before.
 func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
+	if d.ReadStatusA && !d.IRApprox {
+		return newColorFilmStatusA(d, sensor)
+	}
+	return newColorFilmLambda(d, sensor)
+}
+
+// newColorFilmStatusA builds a slide read through the published ISO 5-3
+// Status A spectral products (statusa.go). The sheet's Status A densities are
+// what a densitometer reports through S_k(λ):
+//
+//	D_k(c) = −log10( ∫ 10^(−Σ c_j·ε_j(λ))·S_k(λ) dλ / ∫ S_k(λ) dλ )
+//
+// and the dye amounts c are the inverse of that. The R and B curves carry the
+// film's mid-grey registration (colorFilmData.Shift), solved from one exposure
+// for each kept film; nothing else is fitted.
+func newColorFilmStatusA(d *colorFilmData, sensor string) *colorFilm {
+	S := layerSens(sensor)
+	grey := sourceGrey(sensor)
+	if S == nil {
+		return nil
+	}
+	sp := spectral()
+	names := [3]string{"R", "G", "B"}
+	// 1. Sensor layers (or linear sRGB on a non-raw source) -> film
+	// exposures (fitLayerMap).
+	f := &colorFilm{hWhite: 10 / d.ISO / grey, irApprox: d.IRApprox}
+	if d.IRApprox {
+		// EIR's layers: R (cyan dye) is infrared-sensitive, G (magenta) is
+		// red-sensitive, B (yellow) is green-sensitive. Fit the two visible
+		// layers from the sheet's own sensitivities; the IR layer is left to
+		// apply's irEstimate. The film is always shot through a Wratten 12
+		// yellow filter, so the sheet's blue sensitivity of every layer is
+		// cut before the fit.
+		t12 := func(pts [][2]float64) [][2]float64 {
+			out := make([][2]float64, len(pts))
+			for i, p := range pts {
+				t := 1 / (1 + math.Exp(-(p[0]-485)/10))
+				if t < 1e-3 {
+					t = 1e-3
+				}
+				out[i] = [2]float64{p[0], p[1] + math.Log10(t)}
+			}
+			return out
+		}
+		vis := map[string][][2]float64{
+			"R": t12(d.Sens["G"]), // red-sensitive / magenta-forming
+			"G": t12(d.Sens["B"]), // green-sensitive / yellow-forming
+			"B": t12(d.Sens["B"]), // fitted and ignored
+		}
+		if !fitLayerMap(f, S, vis) {
+			return nil
+		}
+		var red, green [6]float32
+		copy(red[:3], f.rp[0:3])
+		copy(red[3:], f.rp[9:12])
+		copy(green[:3], f.rp[3:6])
+		copy(green[3:], f.rp[12:15])
+		for i := range f.rp {
+			f.rp[i] = 0
+		}
+		// The IR layer (row 0) is not a linear combination of the visible
+		// layers; apply computes it with irEstimate. The row stays zero so a
+		// reader cannot mistake it for the model.
+		copy(f.rp[3:6], red[:3])
+		copy(f.rp[12:15], red[3:])
+		copy(f.rp[6:9], green[:3])
+		copy(f.rp[15:18], green[3:])
+	} else if !fitLayerMap(f, S, d.Sens) {
+		return nil
+	}
+	for k, n := range names {
+		f.curve[k] = d.Char[n]
+	}
+	if len(d.Shift) == 3 {
+		copy(f.shift[:], d.Shift)
+	}
+	// 4. Dyes. The sheet's Status A densities are what a densitometer
+	// reports through its three published spectral products S_k(λ):
+	//
+	//	D_k(c) = −log10( ∫ 10^(−Σ c_j·ε_j(λ))·S_k(λ) dλ / ∫ S_k(λ) dλ )
+	//
+	// and the dye amounts c are the inverse of that. There is no reading
+	// wavelength and nothing to fit: S_k is the standard's table
+	// (statusa.json), and the film's own dyes and curves are the data. The
+	// inverse is Newton from the nominal Status A peaks; it runs here, at
+	// build time, never per pixel.
+	dyes := [3]string{"C", "M", "Y"}
+	eps := make([][3]float64, len(sp.lams))
+	for i, l := range sp.lams {
+		for j, n := range dyes {
+			eps[i][j] = math.Max(0, pinterp(d.Dye[n], l))
+		}
+	}
+	cmfE := make([][3]float64, len(sp.lams))
+	for i, l := range sp.lams {
+		c := cmf1931(l)
+		for k := range c {
+			cmfE[i][k] = c[k] * sp.illum[i]
+		}
+	}
+	slide := func(c [3]float64) [3]float64 {
+		var xyz [3]float64
+		for i := range sp.lams {
+			t := math.Pow(10, -(c[0]*eps[i][0] + c[1]*eps[i][1] + c[2]*eps[i][2]))
+			for k := 0; k < 3; k++ {
+				xyz[k] += cmfE[i][k] * t
+			}
+		}
+		return [3]float64{
+			xyzToLinSRGB[0]*xyz[0] + xyzToLinSRGB[1]*xyz[1] + xyzToLinSRGB[2]*xyz[2],
+			xyzToLinSRGB[3]*xyz[0] + xyzToLinSRGB[4]*xyz[1] + xyzToLinSRGB[5]*xyz[2],
+			xyzToLinSRGB[6]*xyz[0] + xyzToLinSRGB[7]*xyz[1] + xyzToLinSRGB[8]*xyz[2],
+		}
+	}
+	// The Status A grid is shared; sample the dyes on it.
+	lamsA := statusAGrid().lams
+	f.integrated = true
+	f.eps2 = make([][3]float64, len(lamsA))
+	for i, l := range lamsA {
+		for j, n := range dyes {
+			f.eps2[i][j] = math.Max(0, pinterp(d.Dye[n], l)) * log2of10
+		}
+	}
+	// The Newton start is the old narrow-band solution at the status peaks
+	// (620/530/440 nm). Those are fixed by the standard, not fitted, and are
+	// used for nothing else.
+	f.readLam = [3]float64{620, 530, 440}
+	var A [9]float64 // A[k][j]: dye j's density at channel k's peak
+	for k := 0; k < 3; k++ {
+		for j, n := range dyes {
+			A[k*3+j] = pinterp(d.Dye[n], f.readLam[k])
+		}
+	}
+	ok := false
+	f.aInv, ok = invert3x3(A)
+	if !ok {
+		f.aInv = [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
+	}
+	var dmin [3]float64
+	for k := range dmin {
+		dmin[k] = f.curve[k][0][1]
+		for _, p := range f.curve[k] {
+			dmin[k] = math.Min(dmin[k], p[1])
+		}
+	}
+	// Grey balance: neutral exposures from 1/16 to 2× mid-grey's, read
+	// through the integrated Status A. Nothing is fitted; this is the error
+	// that remains.
+	var e float64
+	w := slide(f.amountsStatusA(dmin))
+	for s := -4.0; s <= 1.01; s += 0.5 {
+		lg := math.Log10(grey*f.hWhite) + s*math.Log10(2)
+		D := [3]float64{f.density(0, lg), f.density(1, lg), f.density(2, lg)}
+		v := slide(f.amountsStatusA(D))
+		if v[0] <= 0 || v[1] <= 0 || v[2] <= 0 {
+			e = math.Inf(1)
+			break
+		}
+		rg := math.Log(v[0]/w[0]) - math.Log(v[1]/w[1])
+		bg := math.Log(v[2]/w[2]) - math.Log(v[1]/w[1])
+		e += rg*rg + bg*bg
+	}
+	f.greyRMS = math.Sqrt(math.Min(e, 1e12) / 11)
+	rgbOf := func(D [3]float64) [3]float64 { return slide(f.amountsStatusA(D)) }
+	// The eye adapts to the slide's clearest part: D-min is white.
+	white := rgbOf(dmin)
+	f.lut = make([]float32, cfLutN*cfLutN*cfLutN*3)
+	step := cfLutDMax / (cfLutN - 1)
+	var statMu sync.Mutex
+	parallelRows(cfLutN, func(a0, a1 int) {
+		fails, maxRes := 0, 0.0
+		for a := a0; a < a1; a++ {
+			for b := 0; b < cfLutN; b++ {
+				for c := 0; c < cfLutN; c++ {
+					D := [3]float64{float64(a) * step, float64(b) * step, float64(c) * step}
+					amt, _, res := f.invertStatusA(D)
+					if res > 1e-6 {
+						fails++
+						if res > maxRes {
+							maxRes = res
+						}
+					}
+					rgb := slide(amt)
+					i := ((a*cfLutN+b)*cfLutN + c) * 3
+					for k := 0; k < 3; k++ {
+						f.lut[i+k] = float32(-math.Log10(math.Max(1e-7, rgb[k]/white[k])))
+					}
+				}
+			}
+		}
+		statMu.Lock()
+		f.invFails += fails
+		if maxRes > f.invMaxRes {
+			f.invMaxRes = maxRes
+		}
+		statMu.Unlock()
+	})
+	// Viewing exposure: a slide's absolute densities land dark on screen (a
+	// mid-grey comes out near 0.09, not 0.18), because the eye adapts to the
+	// light box. Normalise so the scene's mid-grey prints mid-grey.
+	f.gain = 1
+	mg := midGreyLayer
+	if r, g, b := f.fromExposure([3]float64{mg, mg, mg}); true {
+		if y := 0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b); y > 1e-6 {
+			f.gain = 0.18 / y
+		}
+	}
+	// The viewing black point: a light box or a scanner never reaches zero
+	// light. A slide's D-max is about 3.5, whose transmission is ~0.03% of
+	// the clear film's; mapped straight to a display that is black, and the
+	// darkest tones lose their gradation and their colour (task 67). The
+	// scanner's black point keeps a little light there, the same fixed
+	// headroom the black-and-white scan uses (bwScanBlack): half a percent
+	// of the light box's white, one constant for every slide.
+	f.black = slideBlack
+	return f
+}
+
+func newColorFilmLambda(d *colorFilmData, sensor string) *colorFilm {
 	S := layerSens(sensor)
 	grey := sourceGrey(sensor)
 	if S == nil {

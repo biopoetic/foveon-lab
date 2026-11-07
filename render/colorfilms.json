@@ -27992,10 +27992,11 @@
     ]
    },
    "shift": [
-    0.02,
+    -0.051,
     0.0,
-    0.03
-   ]
+    0.052
+   ],
+   "read_statusa": true
   },
   {
    "film": "Kodak Ektachrome 64T (EPY)",
@@ -30163,10 +30164,11 @@
     ]
    },
    "shift": [
+    -0.082,
     0.0,
-    0.0,
-    0.055
-   ]
+    0.080
+   ],
+   "read_statusa": true
   },
   {
    "film": "Kodak Ektachrome E100G",
@@ -31930,10 +31932,11 @@
     ]
    },
    "shift": [
-    0.03,
+    -0.064,
     0.0,
-    0.05
-   ]
+    0.084
+   ],
+   "read_statusa": true
   },
   {
    "film": "Kodak Ektachrome E100GX",
@@ -33697,10 +33700,11 @@
     ]
    },
    "shift": [
-    0.06,
+    -0.036,
     0.0,
-    0.03
-   ]
+    0.064
+   ],
+   "read_statusa": true
   },
   {
    "film": "Kodak Ektachrome E100VS",

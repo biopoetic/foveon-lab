@@ -22,7 +22,19 @@ func TestColorFilmSlides(t *testing.T) {
 		if f == nil {
 			t.Fatalf("no model for %s", key)
 		}
-		t.Logf("%s: layers -> film %.3f; reading wavelengths R/G/B %.0f nm, grey error %.3f", key, f.rp, f.readLam, f.greyRMS)
+		t.Logf("%s: layers -> film %.3f; reading wavelengths R/G/B %.0f nm, grey error %.3f, integrated %v", key, f.rp, f.readLam, f.greyRMS, f.integrated)
+		if t73IsStatusA(key) != f.integrated {
+			t.Errorf("%s: integrated %v but read_statusa %v", key, f.integrated, t73IsStatusA(key))
+		}
+		if f.integrated {
+			// A task-73 film is read through the full Status A products and
+			// registered at the ISO mid-grey: that exposure, not a fitted
+			// wavelength, must be neutral.
+			L, a, b := t73MidLab(f)
+			if math.Abs(a) > 0.5 || math.Abs(b) > 0.5 || L < 45 || L > 55 {
+				t.Errorf("%s: mid-grey L* %.2f a* %+.2f b* %+.2f, want neutral 18%% grey", key, L, a, b)
+			}
+		}
 		for _, g := range []float32{0.01, 0.05, 0.128, 0.5, 1, 2} {
 			r, gg, b := f.apply(g, g, g)
 			t.Logf("  grey %.2f -> %.4f %.4f %.4f", g, r, gg, b)

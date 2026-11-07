@@ -90,6 +90,20 @@ func TestSlideWedge68(t *testing.T) {
 		if f == nil {
 			t.Fatalf("%s: no model", key)
 		}
+		d := colorFilmData_()[key]
+		if d.ReadStatusA != f.integrated {
+			t.Errorf("%s: integrated %v but read_statusa %v", key, f.integrated, d.ReadStatusA)
+		}
+		if f.integrated {
+			// Task 73: one registration per kept film, inside the stated
+			// tolerance, and the ISO mid-grey is neutral.
+			if len(d.Shift) != 3 || math.Abs(d.Shift[0]) > t73Tolerance || math.Abs(d.Shift[2]) > t73Tolerance {
+				t.Errorf("%s: registration %v is outside %.2f decade", key, d.Shift, t73Tolerance)
+			}
+			if L, a, b := t73MidLab(f); math.Abs(a) > 0.5 || math.Abs(b) > 0.5 || L < 45 || L > 55 {
+				t.Errorf("%s: mid-grey L* %.2f a* %+.2f b* %+.2f", key, L, a, b)
+			}
+		}
 		var pts [][2]float64
 		var ys []float64
 		for s := -4.0; s <= 2.01; s += 1 {
@@ -144,6 +158,12 @@ func TestSlideBlack68(t *testing.T) {
 		}
 		if math.Abs(a) > 3 || math.Abs(bb) > 3 {
 			t.Errorf("%s: deep shadow a* %+.2f b* %+.2f", key, a, bb)
+		}
+		// A task-73 film carries the registration into the shadow too: the
+		// measured deep shadow is neutral to the task-67 tolerance, not just
+		// the wide t68 band.
+		if f.integrated && (math.Abs(a) > 1 || math.Abs(bb) > 1) {
+			t.Errorf("%s: registered deep shadow a* %+.2f b* %+.2f, want neutral", key, a, bb)
 		}
 	}
 }
