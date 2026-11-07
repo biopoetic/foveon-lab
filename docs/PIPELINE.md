@@ -296,9 +296,13 @@ For EIR (and only EIR) `colorFilmData.IRApprox` switches the model to an
   conifer at 6% linear green receives as much estimated infrared as a sunlit
   leaf, so its cyan layer is cleared and it goes red/magenta. A blue-dominant
   sky (`(B-R)/(R+G+B)` high) gets almost no infrared and keeps its cyan dye, so
-  it stays blue. Elsewhere the estimate is the visible luminance, with lit
-  non-vegetation (skin, paint, soil) at least 0.30 and deep shadow/dark hair at
-  their own luminance (a dark non-plant is not lifted). The old task-69 proxy
+  it stays blue. Elsewhere the estimate is the visible luminance, tending
+  smoothly to a plant-free reflectance floor of 0.30 for lit objects (skin,
+  paint, soil): `lit = Y + (max(Y,0.30)-Y)·smoothstep(0.02,0.10,Y)`. The ramp
+  is continuous in `Y`; a hard threshold at 0.04 would make every noisy dark
+  hair or shadowed-skin pixel flip its IR by 7x (task 71's posterised red
+  patches). Deep shadow and dark hair therefore stay at their own luminance
+  and are not lifted. The old task-69 proxy
   `IR = G + 1.5(G-R) - 1.2(B-G)` scaled with visible brightness and left dark
   foliage teal; it is gone.
 

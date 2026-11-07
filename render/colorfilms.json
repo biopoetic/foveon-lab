@@ -50592,696 +50592,864 @@
   {
    "film": "Fujifilm Fujichrome Sensia 200",
    "iso": 200,
-   "src": "Fujifilm FUJICHROME Sensia 200 [RM], data sheet AF3-080E, p. 5: characteristic curves (Status A, daylight 1/50 s, absolute log H in lux-seconds) and spectral sensitivities from the vector figure, its fragments joined in order into one monotone curve per layer at 0.05 decade / 5 nm; the proxy axis was found to be inverted in the first pass (the cause of task 68's 3.32 drift) and is corrected here. The dye figure is a raster; the dyes are borrowed from the same-generation Fujichrome set printed by Velvia 100 / Astia 100F / Provia 400X. The curves are registered by the density alignment at the ISO mid-grey (shift R +0.015, B +0.035 decade). Process E-6/CR-56.",
+   "src": "Fujifilm FUJICHROME Sensia 200 [RM], data sheet AF3-080E, p. 5: characteristic curves (Status A, daylight 1/50 s, absolute log H in lux-seconds) and spectral sensitivities from the vector figure, its fragments joined in order into one monotone curve per layer at 0.05 decade / 5 nm. The x-axis is read from the printed labels: -3.0, -2.0, -1.0 and 0.0 sit on the interior grid lines (label centres 646, 928, 1209.5 and 1509 px on a 400 dpi render; lines at 651.5, 939.5, 1219.5 and 1505 px), every other of the nine lines, so the plot box is log H -3.5 ... +0.5 and the curves run -3.5 ... 0.0, inside it. Task 69's proxy xr=(-3.16, 0.03) compressed the axis and shifted it; task 71 re-corrected it from the labels. The dye figure is a raster; the dyes are borrowed from the same-generation Fujichrome set printed by Velvia 100 / Astia 100F / Provia 400X. Registered by the density alignment at the ISO mid-grey (shift R +0.020, B +0.045). Process E-6/CR-56.",
    "url": "https://125px.com/docs/film/fuji/sensia_200_datasheet.pdf",
    "char": {
     "R": [
      [
-      -3.161,
+      -3.501,
       3.0997
      ],
      [
-      -3.111,
+      -3.451,
       3.0997
      ],
      [
-      -3.061,
-      3.099
+      -3.401,
+      3.0993
      ],
      [
-      -3.012,
-      3.0977
+      -3.351,
+      3.0985
      ],
      [
-      -2.962,
+      -3.301,
+      3.0972
+     ],
+     [
+      -3.251,
       3.0955
      ],
      [
-      -2.912,
-      3.0923
+      -3.201,
+      3.0929
      ],
      [
-      -2.862,
-      3.0879
+      -3.151,
+      3.0897
      ],
      [
-      -2.812,
-      3.0821
+      -3.101,
+      3.0856
      ],
      [
-      -2.762,
+      -3.051,
+      3.0806
+     ],
+     [
+      -3.001,
       3.0745
      ],
      [
-      -2.712,
-      3.0648
+      -2.951,
+      3.0671
      ],
      [
-      -2.663,
-      3.0524
+      -2.901,
+      3.0579
      ],
      [
-      -2.613,
-      3.0365
+      -2.851,
+      3.0467
      ],
      [
-      -2.563,
+      -2.801,
+      3.0331
+     ],
+     [
+      -2.751,
       3.0161
      ],
      [
-      -2.513,
-      2.9875
+      -2.701,
+      2.994
      ],
      [
-      -2.463,
-      2.9461
+      -2.651,
+      2.965
      ],
      [
-      -2.413,
-      2.8908
+      -2.601,
+      2.9251
      ],
      [
-      -2.364,
+      -2.551,
+      2.8778
+     ],
+     [
+      -2.501,
       2.8227
      ],
      [
-      -2.314,
-      2.7422
+      -2.451,
+      2.7599
      ],
      [
-      -2.264,
-      2.6502
+      -2.401,
+      2.6892
      ],
      [
-      -2.214,
-      2.5477
+      -2.351,
+      2.6107
      ],
      [
-      -2.164,
+      -2.301,
+      2.5263
+     ],
+     [
+      -2.251,
       2.4364
      ],
      [
-      -2.114,
-      2.3181
+      -2.201,
+      2.3422
      ],
      [
-      -2.064,
-      2.1945
+      -2.151,
+      2.2444
      ],
      [
-      -2.015,
-      2.0679
+      -2.101,
+      2.1442
      ],
      [
-      -1.965,
+      -2.051,
+      2.0425
+     ],
+     [
+      -2.001,
       1.9403
      ],
      [
-      -1.915,
-      1.8135
+      -1.951,
+      1.8388
      ],
      [
-      -1.865,
-      1.6893
+      -1.901,
+      1.7389
      ],
      [
-      -1.815,
-      1.5691
+      -1.851,
+      1.6411
      ],
      [
-      -1.765,
+      -1.801,
+      1.546
+     ],
+     [
+      -1.751,
       1.4538
      ],
      [
-      -1.715,
-      1.3445
+      -1.701,
+      1.3664
      ],
      [
-      -1.666,
-      1.2393
+      -1.651,
+      1.2813
      ],
      [
-      -1.616,
-      1.1368
+      -1.601,
+      1.1982
      ],
      [
-      -1.566,
+      -1.551,
+      1.1168
+     ],
+     [
+      -1.501,
       1.0375
      ],
      [
-      -1.516,
-      0.9422
+      -1.451,
+      0.961
      ],
      [
-      -1.466,
-      0.8527
+      -1.401,
+      0.8877
      ],
      [
-      -1.416,
-      0.7702
+      -1.351,
+      0.8187
      ],
      [
-      -1.367,
+      -1.301,
+      0.7547
+     ],
+     [
+      -1.251,
       0.6958
      ],
      [
-      -1.317,
-      0.6293
+      -1.201,
+      0.6421
      ],
      [
-      -1.267,
-      0.5686
+      -1.151,
+      0.5924
      ],
      [
-      -1.217,
-      0.5108
+      -1.101,
+      0.5453
      ],
      [
-      -1.167,
+      -1.051,
+      0.4993
+     ],
+     [
+      -1.001,
       0.4532
      ],
      [
-      -1.117,
-      0.3975
+      -0.951,
+      0.4082
      ],
      [
-      -1.067,
-      0.3461
+      -0.901,
+      0.3659
      ],
      [
-      -1.018,
-      0.3005
+      -0.851,
+      0.327
      ],
      [
-      -0.968,
+      -0.801,
+      0.292
+     ],
+     [
+      -0.751,
       0.2611
      ],
      [
-      -0.918,
-      0.2279
+      -0.701,
+      0.2342
      ],
      [
-      -0.868,
-      0.2007
+      -0.651,
+      0.2109
      ],
      [
-      -0.818,
-      0.1787
+      -0.601,
+      0.1911
      ],
      [
-      -0.768,
+      -0.551,
+      0.1747
+     ],
+     [
+      -0.501,
       0.1613
      ],
      [
-      -0.719,
-      0.1479
+      -0.451,
+      0.1503
      ],
      [
-      -0.669,
-      0.1369
+      -0.401,
+      0.141
      ],
      [
-      -0.619,
-      0.1279
+      -0.351,
+      0.1331
      ],
      [
-      -0.569,
+      -0.301,
+      0.1263
+     ],
+     [
+      -0.251,
       0.1206
      ],
      [
-      -0.519,
-      0.1148
+      -0.201,
+      0.1158
      ],
      [
-      -0.469,
-      0.1101
+      -0.151,
+      0.1119
      ],
      [
-      -0.419,
-      0.1065
+      -0.101,
+      0.1086
      ],
      [
-      -0.37,
+      -0.051,
+      0.1059
+     ],
+     [
+      -0.001,
       0.1038
      ]
     ],
     "G": [
      [
-      -3.165,
+      -3.506,
       3.2332
      ],
      [
-      -3.115,
-      3.2326
+      -3.456,
+      3.2328
      ],
      [
-      -3.065,
-      3.2318
+      -3.406,
+      3.2322
      ],
      [
-      -3.015,
-      3.2304
+      -3.356,
+      3.2313
      ],
      [
-      -2.965,
+      -3.306,
+      3.2301
+     ],
+     [
+      -3.255,
       3.2283
      ],
      [
-      -2.915,
-      3.2253
+      -3.205,
+      3.2261
      ],
      [
-      -2.865,
-      3.2207
+      -3.155,
+      3.2229
      ],
      [
-      -2.815,
-      3.2142
+      -3.105,
+      3.2185
      ],
      [
-      -2.765,
+      -3.055,
+      3.2127
+     ],
+     [
+      -3.005,
       3.205
      ],
      [
-      -2.715,
-      3.1919
+      -2.955,
+      3.195
      ],
      [
-      -2.665,
-      3.1739
+      -2.905,
+      3.182
      ],
      [
-      -2.615,
-      3.1503
+      -2.855,
+      3.1653
      ],
      [
-      -2.566,
+      -2.805,
+      3.1446
+     ],
+     [
+      -2.755,
       3.1199
      ],
      [
-      -2.516,
-      3.0831
+      -2.705,
+      3.0911
      ],
      [
-      -2.466,
-      3.0371
+      -2.654,
+      3.0576
      ],
      [
-      -2.416,
-      2.9781
+      -2.604,
+      3.0166
      ],
      [
-      -2.366,
+      -2.554,
+      2.9647
+     ],
+     [
+      -2.504,
       2.9039
      ],
      [
-      -2.316,
-      2.8164
+      -2.454,
+      2.8351
      ],
      [
-      -2.266,
-      2.7171
+      -2.404,
+      2.7588
      ],
      [
-      -2.216,
-      2.6079
+      -2.354,
+      2.6754
      ],
      [
-      -2.166,
+      -2.304,
+      2.5853
+     ],
+     [
+      -2.254,
       2.4906
      ],
      [
-      -2.116,
-      2.367
+      -2.204,
+      2.3922
      ],
      [
-      -2.066,
-      2.2391
+      -2.154,
+      2.2908
      ],
      [
-      -2.016,
-      2.1086
+      -2.103,
+      2.1873
      ],
      [
-      -1.966,
+      -2.053,
+      2.0824
+     ],
+     [
+      -2.003,
       1.9774
      ],
      [
-      -1.916,
-      1.8474
+      -1.953,
+      1.8733
      ],
      [
-      -1.867,
-      1.7202
+      -1.903,
+      1.7706
      ],
      [
-      -1.817,
-      1.5976
+      -1.853,
+      1.67
      ],
      [
-      -1.767,
+      -1.803,
+      1.5734
+     ],
+     [
+      -1.753,
       1.4812
      ],
      [
-      -1.717,
-      1.3724
+      -1.703,
+      1.3935
      ],
      [
-      -1.667,
-      1.2694
+      -1.653,
+      1.31
      ],
      [
-      -1.617,
-      1.1673
+      -1.603,
+      1.2287
      ],
      [
-      -1.567,
+      -1.553,
+      1.1468
+     ],
+     [
+      -1.502,
       1.0651
      ],
      [
-      -1.517,
-      0.9652
+      -1.452,
+      0.9849
      ],
      [
-      -1.467,
-      0.8704
+      -1.402,
+      0.9073
      ],
      [
-      -1.417,
-      0.7836
+      -1.352,
+      0.8346
      ],
      [
-      -1.367,
+      -1.302,
+      0.767
+     ],
+     [
+      -1.252,
       0.7057
      ],
      [
-      -1.317,
-      0.6359
+      -1.202,
+      0.6495
      ],
      [
-      -1.267,
-      0.5737
+      -1.152,
+      0.5978
      ],
      [
-      -1.217,
-      0.5164
+      -1.102,
+      0.55
      ],
      [
-      -1.168,
+      -1.052,
+      0.5052
+     ],
+     [
+      -1.002,
       0.4607
      ],
      [
-      -1.118,
-      0.4072
+      -0.951,
+      0.4175
      ],
      [
-      -1.068,
-      0.3586
+      -0.901,
+      0.3773
      ],
      [
-      -1.018,
-      0.3159
+      -0.851,
+      0.3409
      ],
      [
-      -0.968,
+      -0.801,
+      0.3081
+     ],
+     [
+      -0.751,
       0.2792
      ],
      [
-      -0.918,
-      0.2486
+      -0.701,
+      0.254
      ],
      [
-      -0.868,
-      0.2238
+      -0.651,
+      0.2331
      ],
      [
-      -0.818,
-      0.2051
+      -0.601,
+      0.2159
      ],
      [
-      -0.768,
+      -0.551,
+      0.2017
+     ],
+     [
+      -0.501,
       0.1896
      ],
      [
-      -0.718,
-      0.1763
+      -0.451,
+      0.1789
      ],
      [
-      -0.668,
-      0.1651
+      -0.401,
+      0.1694
      ],
      [
-      -0.618,
-      0.1556
+      -0.35,
+      0.1611
      ],
      [
-      -0.568,
+      -0.3,
+      0.1539
+     ],
+     [
+      -0.25,
       0.1477
      ],
      [
-      -0.518,
-      0.1413
+      -0.2,
+      0.1425
      ],
      [
-      -0.468,
-      0.1362
+      -0.15,
+      0.1381
      ],
      [
-      -0.419,
-      0.1322
+      -0.1,
+      0.1345
      ],
      [
-      -0.369,
+      -0.05,
+      0.1316
+     ],
+     [
+      0.0,
       0.1294
      ]
     ],
     "B": [
      [
-      -3.154,
+      -3.492,
       3.3451
      ],
      [
-      -3.104,
-      3.3395
+      -3.442,
+      3.3406
      ],
      [
-      -3.054,
-      3.333
+      -3.393,
+      3.3357
      ],
      [
-      -3.005,
-      3.3256
+      -3.343,
+      3.3303
      ],
      [
-      -2.955,
+      -3.293,
+      3.3239
+     ],
+     [
+      -3.243,
       3.3168
      ],
      [
-      -2.905,
-      3.3064
+      -3.193,
+      3.3087
      ],
      [
-      -2.855,
-      3.2938
+      -3.143,
+      3.2994
      ],
      [
-      -2.806,
-      3.2786
+      -3.093,
+      3.2883
      ],
      [
-      -2.756,
+      -3.043,
+      3.2753
+     ],
+     [
+      -2.993,
       3.2599
      ],
      [
-      -2.706,
-      3.2364
+      -2.944,
+      3.2418
      ],
      [
-      -2.657,
-      3.207
+      -2.894,
+      3.2196
      ],
      [
-      -2.607,
-      3.1697
+      -2.844,
+      3.193
      ],
      [
-      -2.557,
+      -2.794,
+      3.1613
+     ],
+     [
+      -2.744,
       3.1231
      ],
      [
-      -2.507,
-      3.0658
+      -2.694,
+      3.0787
      ],
      [
-      -2.458,
-      2.9945
+      -2.644,
+      3.0258
      ],
      [
-      -2.408,
-      2.9094
+      -2.594,
+      2.9626
      ],
      [
-      -2.358,
+      -2.544,
+      2.8905
+     ],
+     [
+      -2.494,
       2.8107
      ],
      [
-      -2.308,
-      2.7019
+      -2.445,
+      2.7244
      ],
      [
-      -2.259,
-      2.5858
+      -2.395,
+      2.633
      ],
      [
-      -2.209,
-      2.4645
+      -2.345,
+      2.5377
      ],
      [
-      -2.159,
+      -2.295,
+      2.4397
+     ],
+     [
+      -2.245,
       2.3403
      ],
      [
-      -2.109,
-      2.2153
+      -2.195,
+      2.2403
      ],
      [
-      -2.06,
-      2.091
+      -2.145,
+      2.1405
      ],
      [
-      -2.01,
-      1.9686
+      -2.095,
+      2.0416
      ],
      [
-      -1.96,
+      -2.045,
+      1.9443
+     ],
+     [
+      -1.996,
       1.8491
      ],
      [
-      -1.91,
-      1.7331
+      -1.946,
+      1.7561
      ],
      [
-      -1.861,
-      1.621
+      -1.896,
+      1.6653
      ],
      [
-      -1.811,
-      1.5116
+      -1.846,
+      1.5767
      ],
      [
-      -1.761,
+      -1.796,
+      1.4899
+     ],
+     [
+      -1.746,
       1.4032
      ],
      [
-      -1.712,
-      1.2962
+      -1.696,
+      1.3174
      ],
      [
-      -1.662,
-      1.1919
+      -1.646,
+      1.2333
      ],
      [
-      -1.612,
-      1.0928
+      -1.596,
+      1.1517
      ],
      [
-      -1.562,
+      -1.547,
+      1.0736
+     ],
+     [
+      -1.497,
       0.9995
      ],
      [
-      -1.513,
-      0.9134
+      -1.447,
+      0.9298
      ],
      [
-      -1.463,
-      0.8339
+      -1.397,
+      0.8648
      ],
      [
-      -1.413,
-      0.7601
+      -1.347,
+      0.8036
      ],
      [
-      -1.363,
+      -1.297,
+      0.746
+     ],
+     [
+      -1.247,
       0.6914
      ],
      [
-      -1.314,
-      0.6271
+      -1.197,
+      0.6397
      ],
      [
-      -1.264,
-      0.566
+      -1.147,
+      0.5903
      ],
      [
-      -1.214,
-      0.5076
+      -1.097,
+      0.5426
      ],
      [
-      -1.164,
+      -1.048,
+      0.4963
+     ],
+     [
+      -0.998,
       0.4527
      ],
      [
-      -1.115,
-      0.4022
+      -0.948,
+      0.4119
      ],
      [
-      -1.065,
-      0.3563
+      -0.898,
+      0.3741
      ],
      [
-      -1.015,
-      0.3151
+      -0.848,
+      0.3393
      ],
      [
-      -0.965,
+      -0.798,
+      0.3074
+     ],
+     [
+      -0.748,
       0.2789
      ],
      [
-      -0.916,
-      0.248
+      -0.698,
+      0.2537
      ],
      [
-      -0.866,
-      0.2229
+      -0.648,
+      0.2322
      ],
      [
-      -0.816,
-      0.204
+      -0.599,
+      0.2146
      ],
      [
-      -0.767,
+      -0.549,
+      0.2008
+     ],
+     [
+      -0.499,
       0.1889
      ],
      [
-      -0.717,
-      0.1759
+      -0.449,
+      0.1784
      ],
      [
-      -0.667,
-      0.1648
+      -0.399,
+      0.169
      ],
      [
-      -0.617,
-      0.1553
+      -0.349,
+      0.1608
      ],
      [
-      -0.568,
+      -0.299,
+      0.1537
+     ],
+     [
+      -0.249,
       0.1475
      ],
      [
-      -0.518,
-      0.1413
+      -0.199,
+      0.1424
      ],
      [
-      -0.468,
-      0.1363
+      -0.15,
+      0.1382
      ],
      [
-      -0.418,
-      0.1326
+      -0.1,
+      0.1347
      ],
      [
-      -0.369,
+      -0.05,
+      0.132
+     ],
+     [
+      0.0,
       0.1299
      ]
     ]
@@ -52175,9 +52343,9 @@
     ]
    },
    "shift": [
-    0.015,
+    0.02,
     0.0,
-    0.035
+    0.045
    ]
   },
   {
@@ -54062,7 +54230,7 @@
   {
    "film": "Kodak Ektachrome Professional Infrared (EIR)",
    "iso": 200,
-   "src": "Kodak EKTACHROME Professional Infrared EIR Film, publication TI-2323 (Sept 2005), p. 7 characteristic curves and spectral sensitivities and p. 8 spectral-dye-density curves, all vector. False colour: the yellow-forming layer is green-sensitive (B read), the magenta-forming layer red-sensitive (G read) and the cyan-forming layer infrared-sensitive (R read); the film is shot through a Wratten 12 yellow filter, applied to the visible sensitivities. APPROXIMATION: a normal X3F carries no infrared channel, so the IR layer's exposure is estimated from a scale-invariant vegetation index on the white-balanced camera layers: vi = (G - (R+B)/2) / (R+G+B) with low B/G marks foliage, which gets a plant-like 0.45 NIR reflectance independent of visible brightness, so a dark conifer goes red/magenta; a blue-dominant sky gets almost no IR and stays blue; lit non-vegetation (skin, paint, soil) gets the visible luminance but at least 0.30, while deep shadow and dark hair stay at their luminance. The curves are registered to the ISO mid-grey (shift R -0.76, G -0.65, B -0.97 decade; the sheet prints no absolute exposure scale on this figure). This is a false-colour approximation, flagged in /api/films; it is not a measurement of infrared.",
+   "src": "Kodak EKTACHROME Professional Infrared EIR Film, publication TI-2323 (Sept 2005), p. 7 characteristic curves and spectral sensitivities and p. 8 spectral-dye-density curves, all vector. False colour: the yellow-forming layer is green-sensitive (B read), the magenta-forming layer red-sensitive (G read) and the cyan-forming layer infrared-sensitive (R read); the film is shot through a Wratten 12 yellow filter, applied to the visible sensitivities. APPROXIMATION: a normal X3F carries no infrared channel, so the IR layer's exposure is estimated from a scale-invariant vegetation index on the white-balanced camera layers: vi = (G - (R+B)/2) / (R+G+B) with low B/G marks foliage, which gets a plant-like 0.45 NIR reflectance independent of visible brightness, so a dark conifer goes red/magenta; a blue-dominant sky gets almost no IR and stays blue; lit non-vegetation (skin, paint, soil) tends to a 0.30 NIR reflectance through a smooth 0.02..0.10 luminance ramp (not a threshold), so deep shadow and dark hair keep their own luminance and do not posterise. The curves are registered to the ISO mid-grey (shift R -0.76, G -0.65, B -0.97 decade; the sheet prints no absolute exposure scale on this figure). This is a false-colour approximation, flagged in /api/films; it is not a measurement of infrared.",
    "url": "https://125px.com/docs/film/kodak/ti2323-Ektachrome_EIR.pdf",
    "char": {
     "R": [

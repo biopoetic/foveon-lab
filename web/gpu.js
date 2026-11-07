@@ -201,8 +201,9 @@ float cfCurve(int k, float lg){
 // EIR's visible-light estimate of the infrared-sensitive cyan layer
 // (render/colorfilm.go irEstimate). The vegetation index is a chromaticity
 // ratio, independent of brightness; a plant gets a 0.45 NIR reflectance, a
-// blue sky almost none, and lit non-vegetation the visible luminance (at
-// least 0.40); deep shadow stays at its visible luminance.
+// blue sky almost none, and lit non-vegetation the visible luminance, tending
+// to at least 0.30 through a smooth 0.02..0.10 luminance ramp (a threshold
+// here would posterise dark skin and hair).
 float irEstimate(vec3 p){
   float s = p.r + p.g + p.b + 1e-6;
   float vi = (p.g - 0.5 * (p.r + p.b)) / s;
@@ -211,8 +212,7 @@ float irEstimate(vec3 p){
   float be = (p.b - p.r) / s;
   float sky = smoothstep(0.06, 0.22, be);
   float y = dot(vec3(0.2126, 0.7152, 0.0722), p);
-  float lit = y;
-  if (y > 0.04) lit = max(y, 0.30);
+  float lit = y + (max(y, 0.30) - y) * smoothstep(0.02, 0.10, y);
   return veg * 0.45 + (1.0 - veg) * (1.0 - sky) * lit;
 }
 vec3 colorFilm(vec3 c){

@@ -558,9 +558,14 @@ func (f *colorFilm) density(k int, lg float64) float64 {
 // estimate is the visible luminance, except for a blue-dominant sky, whose
 // brightness comes from blue light the infrared-sensitive layer does not see:
 // that pixel's IR is driven to zero so its cyan dye stays and the sky stays
-// blue. Lit non-vegetation carries at least a 0.30 NIR reflectance (skin,
-// paint and soil reflect 30% or more); deep shadow and dark hair stay at their
-// visible luminance rather than being lifted.
+// blue. Lit non-vegetation tends to a 0.30 NIR reflectance (skin, paint and
+// soil reflect 30% or more); deep shadow and dark hair stay at their visible
+// luminance rather than being lifted. The transition is a smooth ramp over
+// y = 0.02..0.10 rather than a threshold at 0.04: a step there would make
+// every noisy dark-skin or hair pixel flip its IR by a factor of seven, which
+// showed as hard red/black patches in the portrait (task 71). With the ramp,
+// lit = y below 0.02; it rises continuously to 0.30 at 0.10 (while y < 0.30);
+// above 0.10 it is max(y, 0.30).
 //
 // This is an approximation of a film with no infrared data, not a
 // measurement; the UI flags it (Film.Approximate).
@@ -572,10 +577,7 @@ func irEstimate(r, g, b float64) float64 {
 	be := (b - r) / s
 	sky := smoothstep(0.06, 0.22, be)
 	y := 0.2126*r + 0.7152*g + 0.0722*b
-	lit := y
-	if y > 0.04 {
-		lit = math.Max(y, 0.30)
-	}
+	lit := y + (math.Max(y, 0.30)-y)*smoothstep(0.02, 0.10, y)
 	return veg*0.45 + (1-veg)*(1-sky)*lit
 }
 
