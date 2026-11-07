@@ -1648,7 +1648,7 @@ async function filmsInit(){
     : f.rms ? "RMS " + f.rms : f.pgi ? "PGI " + f.pgi : f.grain_estimated ? "grain " + Math.round(f.grain) + " (estimated)" : "";
   $("#filmStock").insertAdjacentHTML("beforeend", Object.keys(byMaker).sort().map(m =>
     `<optgroup label="${esc(m)}">` + byMaker[m].map(([f, i]) =>
-      `<option value="${i}"${f.grain || f.curve || f.color ? "" : " disabled"} title="${esc(f.src + (f.grain_note ? " — " + f.grain_note : "") + (f.rms_note ? " — " + f.rms_note : ""))}">${esc(f.name)}${f.iso ? " · ISO " + f.iso : ""} · ${kinds[f.kind] || f.kind}${grainLabel(f) ? " · " + grainLabel(f) : ""}${f.curve ? " · darkroom" : ""}${f.color ? " · colour from data" : ""}</option>`).join("") + "</optgroup>").join(""));
+      `<option value="${i}"${f.grain || f.curve || f.color ? "" : " disabled"} title="${esc(f.src + (f.grain_note ? " — " + f.grain_note : "") + (f.rms_note ? " — " + f.rms_note : ""))}">${esc(f.name)}${f.iso ? " · ISO " + f.iso : ""} · ${kinds[f.kind] || f.kind}${grainLabel(f) ? " · " + grainLabel(f) : ""}${f.curve ? " · darkroom" : ""}${f.color ? (f.approximate ? " · approximate" : " · colour from data") : ""}</option>`).join("") + "</optgroup>").join(""));
   syncFilm();
 }
 // The printing papers (/api/papers).
@@ -2040,7 +2040,8 @@ function syncFilm(){
     : f.grain_estimated ? `grain ${f.grain.toFixed(1)} (estimated${f.rms_note ? ": " + esc(f.rms_note) : ""})` : "") : "";
   $("#filmSrc").title = f?.grain_note || "";
   $("#filmSrc").innerHTML = f ? (grain ? grain + " · " : "") + src
-    + (f.bw ? (f.mono ? ` · black and white through its spectral sensitivity (${esc(f.spectral_src)})` : " · black and white") : "") : "";
+    + (f.bw ? (f.mono ? ` · black and white through its spectral sensitivity (${esc(f.spectral_src)})` : " · black and white") : "")
+    + (f.approximate ? " · <b>approximate</b>: the photo has no infrared, so the film's infrared layer is estimated from visible light" : "") : "";
   // A preset named after a film was made to look like it: offer the
   // real film's own rendering on top.
   const p = current(), link = p && p.film && p.film !== S.params?.film ? FILMS.find(x => x.maker + " " + x.name === p.film) : null;
