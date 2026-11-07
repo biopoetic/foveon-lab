@@ -30,13 +30,14 @@ func TestColorFilmSlides(t *testing.T) {
 				// The absolute-neutrality check is the one the five films
 				// digitised on one common axis already met. A sheet whose
 				// three curves are drawn on per-layer effective exposures
-				// (stored as Shift) carries its own balance; the wedge drift
-				// is tested in task68_test.go instead.
-				if len(colorFilmData_()[key].Shift) == 0 {
+				// (stored as Shift) carries its own balance; a push family or
+				// a false-colour film (OwnBalance) has none to meet. The wedge
+				// drift is tested in task68_test.go / task69_test.go instead.
+				if len(colorFilmData_()[key].Shift) == 0 && !colorFilmData_()[key].OwnBalance && !colorFilmData_()[key].IRApprox {
 					t.Errorf("%s: grey %.2f not neutral: %.4f %.4f %.4f", key, g, r, gg, b)
 				}
 			}
-			if g == 0.128 {
+			if g == 0.128 && !colorFilmData_()[key].IRApprox {
 				// The scene's mid-grey must print as mid-grey: the slide's
 				// viewing exposure (the eye adapted to the light box).
 				y := 0.2126*float64(r) + 0.7152*float64(gg) + 0.0722*float64(b)

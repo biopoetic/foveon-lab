@@ -88,6 +88,10 @@ type Film struct {
 	// Color: a colour film rendered from its own layers and dyes
 	// (colorfilm.go, colorneg.go).
 	Color bool `json:"color,omitempty"`
+	// Approximate: the film's model is an approximation, not a measurement
+	// from the photo. Only Ektachrome Infrared carries it: a normal X3F has
+	// no infrared channel, so its IR layer is estimated from visible light.
+	Approximate bool `json:"approximate,omitempty"`
 	// Push: a colour negative's published push families (stops over its
 	// ISO, the exposure index they are rated at, and the sheet's page).
 	// Empty for every other film and for a negative whose maker publishes
@@ -273,6 +277,9 @@ func Films() []Film {
 		}
 		f.Curve = filmCurves()[f.Maker+" "+f.Name]
 		f.Color = IsColorFilm(f.Maker + " " + f.Name)
+		if d := colorFilmData_()[f.Maker+" "+f.Name]; d != nil {
+			f.Approximate = d.IRApprox
+		}
 		f.Push = ColorNegPushes(f.Maker + " " + f.Name)
 	}
 	return d.Films

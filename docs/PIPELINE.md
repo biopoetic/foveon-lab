@@ -267,6 +267,45 @@ registered films' neutral wedge drift at |Δa*|, |Δb*| ≤ 3 over −4…+2 sto
 `TestColorFilmSlides` keeps the strict absolute-neutrality check for the films
 with no registration.
 
+### 7c. Ektachrome Infrared: the one approximate colour film (task 69)
+
+EIR's three layers are not red, green and blue: the yellow-forming layer is
+green-sensitive, the magenta-forming layer red-sensitive and the cyan-forming
+layer infrared-sensitive, and the film is always shot through a Wratten 12
+yellow filter. A normal X3F has no infrared channel — the camera's IR-cut
+filter is in place and the silicon calibration ends at 720 nm — so the film
+cannot be measured from the photo.
+
+For EIR (and only EIR) `colorFilmData.IRApprox` switches the model to an
+**approximation**:
+
+* the film's two visible-sensitive layers are fitted from the sheet's own
+  sensitivities (with the Wratten 12 edge applied) to **colourimetric linear
+  sRGB**, not to the Foveon layers; the camera's colour matrix has already
+  separated green from red there. `newPixOp` therefore feeds EIR linear sRGB
+  (its inverse matrix is the identity), and `newColorFilm` uses the sRGB
+  observer for the fit;
+* the infrared-sensitive cyan layer's exposure is estimated from visible
+  light: `IR = G + 1.5(G-R) - 1.2(B-G)` on white-balanced linear sRGB
+  (coefficients sum to one, so white stays white). Foliage — strong
+  green-over-red contrast, low blue — is bright in this estimate and therefore
+  forms little cyan dye, so it goes red/magenta; a blue sky gets almost no
+  infrared and goes cyan/blue. The sheet's own characteristic curves and dye
+  spectra render the result.
+
+This is a model change, isolated to EIR: every other film's bytes are
+unchanged. The film's `src` says it is an approximation and
+`Film.Approximate` (`approximate` in `/api/films`) carries that to the UI, so a
+user is told "approximate: no infrared in the photo". `TestEIRApprox` pins the
+flag, the identity input and the red-vegetation/blue-sky behaviour;
+`TestSlideGPU69` pins GPU = CPU. The sheet's exposure axis is registered to the
+ISO mid-grey (`shift` R -0.76, G -0.65, B -0.97 decade: EIR's figure prints no
+absolute scale), which also keeps its shadows in the slide's black band.
+
+`TestColorFilmSlides` keeps the absolute-neutrality check for every film
+except a registered, false-colour or own-balance one; `TestSlideWedge69`
+reports the false-colour wedge but exempts it.
+
 ---
 
 ## 8. What is not modelled here

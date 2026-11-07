@@ -60,6 +60,17 @@ type colorFilmData struct {
 	// common exposure axis so that a neutral exposure is neutral. Zero (the
 	// field absent) leaves the digitised axis untouched.
 	Shift []float64 `json:"shift,omitempty"`
+	// IRApprox marks Kodak Ektachrome Infrared (EIR), whose cyan-forming
+	// layer is infrared-sensitive: no X3F carries an infrared channel, so
+	// the IR layer's exposure is estimated from the visible green-over-red
+	// contrast (its documented false-colour mapping) rather than measured.
+	// This is an approximation and the UI says so.
+	IRApprox bool `json:"ir_approx,omitempty"`
+	// OwnBalance marks a film whose sheet is not neutral at the ISO
+	// mid-grey: a push family (P1600's pushed curves) or a false-colour
+	// film. The strict absolute-neutrality check does not apply; the wedge
+	// drift is reported by the tests and the report.
+	OwnBalance bool `json:"own_balance,omitempty"`
 }
 
 var colorFilmData_ = sync.OnceValue(func() map[string]*colorFilmData {
@@ -168,7 +179,11 @@ type colorFilm struct {
 	// times (√rg, √gb, √rb).
 	rp     [18]float32
 	hWhite float64 // lux·s at the sensor's saturation (layer value 1)
-	curve  [3][][2]float64
+	// irApprox: EIR's visible-light approximation. Its input is
+	// colourimetric linear sRGB, not Foveon layers; newPixOp feeds it
+	// directly (identity inverse matrix) and the UI flags it.
+	irApprox bool
+	curve    [3][][2]float64
 	// shift: per-layer log-exposure registration (decades, R G B), see
 	// colorFilmData.Shift. Zero for every film digitised on one common axis.
 	shift [3]float64
@@ -310,15 +325,63 @@ func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *co
 
 func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 	S := layerSens(sensor)
+	grey := sourceGrey(sensor)
+	if d.IRApprox {
+		// EIR's visible-light estimate is made on colourimetric linear sRGB,
+		// not on the sensor's overlapping layers: the camera's own colour
+		// matrix has already separated green from red there. The caller
+		// feeds sRGB values instead of Foveon layers for this film.
+		S = srgbSens()
+		grey = 0.18
+	}
 	if S == nil {
 		return nil
 	}
 	sp := spectral()
 	names := [3]string{"R", "G", "B"}
-	grey := sourceGrey(sensor)
-	// 1. Sensor layers -> film exposures (fitLayerMap).
-	f := &colorFilm{hWhite: 10 / d.ISO / grey}
-	if !fitLayerMap(f, S, d.Sens) {
+	// 1. Sensor layers (or linear sRGB for the IR approximation) -> film
+	// exposures (fitLayerMap).
+	f := &colorFilm{hWhite: 10 / d.ISO / grey, irApprox: d.IRApprox}
+	if d.IRApprox {
+		// EIR's layers: R (cyan dye) is infrared-sensitive, G (magenta) is
+		// red-sensitive, B (yellow) is green-sensitive. Fit the two visible
+		// layers from the sheet's own sensitivities, then replace the IR
+		// layer's exposure with the documented visible-light estimate. The
+		// film is always shot through a Wratten 12 yellow filter, so the
+		// sheet's blue sensitivity of every layer is cut before the fit.
+		t12 := func(pts [][2]float64) [][2]float64 {
+			out := make([][2]float64, len(pts))
+			for i, p := range pts {
+				t := 1 / (1 + math.Exp(-(p[0]-485)/10))
+				if t < 1e-3 {
+					t = 1e-3
+				}
+				out[i] = [2]float64{p[0], p[1] + math.Log10(t)}
+			}
+			return out
+		}
+		vis := map[string][][2]float64{
+			"R": t12(d.Sens["G"]), // red-sensitive / magenta-forming
+			"G": t12(d.Sens["B"]), // green-sensitive / yellow-forming
+			"B": t12(d.Sens["B"]), // fitted and ignored
+		}
+		if !fitLayerMap(f, S, vis) {
+			return nil
+		}
+		var red, green [6]float32
+		copy(red[:3], f.rp[0:3])
+		copy(red[3:], f.rp[9:12])
+		copy(green[:3], f.rp[3:6])
+		copy(green[3:], f.rp[12:15])
+		for i := range f.rp {
+			f.rp[i] = 0
+		}
+		f.rp[0], f.rp[1], f.rp[2] = -1.5, 3.7, -1.2 // cyan / IR layer
+		copy(f.rp[3:6], red[:3])
+		copy(f.rp[12:15], red[3:])
+		copy(f.rp[6:9], green[:3])
+		copy(f.rp[15:18], green[3:])
+	} else if !fitLayerMap(f, S, d.Sens) {
 		return nil
 	}
 	for k, n := range names {
@@ -408,16 +471,25 @@ func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 		return e
 	}
 	best, lam := math.Inf(1), [3]float64{}
-	for lr := 590.0; lr <= 690; lr += 5 {
-		for lg := 515.0; lg <= 580; lg += 5 {
-			for lb := 420.0; lb <= 475; lb += 5 {
-				if e := greyErr([3]float64{lr, lg, lb}); e < best {
-					best, lam = e, [3]float64{lr, lg, lb}
+	if d.IRApprox {
+		// A false-colour film has no grey axis to fit a balance to: Status A
+		// reads its three dyes at their own bands, as the sheet's
+		// densitometry does. Fix the read wavelengths there and report the
+		// remaining grey error rather than searching for a neutral.
+		lam = [3]float64{650, 540, 450}
+		best = greyErr(lam)
+	} else {
+		for lr := 590.0; lr <= 690; lr += 5 {
+			for lg := 515.0; lg <= 580; lg += 5 {
+				for lb := 420.0; lb <= 475; lb += 5 {
+					if e := greyErr([3]float64{lr, lg, lb}); e < best {
+						best, lam = e, [3]float64{lr, lg, lb}
+					}
 				}
 			}
 		}
 	}
-	f.readLam, f.greyRMS = lam, math.Sqrt(best/11)
+	f.readLam, f.greyRMS = lam, math.Sqrt(math.Min(best, 1e12)/11)
 	Ainv, ok := readAt(lam)
 	if !ok {
 		return nil
@@ -444,7 +516,11 @@ func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 	// mid-grey comes out near 0.09, not 0.18), because the eye adapts to the
 	// light box. Normalise so the scene's mid-grey prints mid-grey.
 	f.gain = 1
-	if r, g, b := f.fromExposure([3]float64{midGreyLayer, midGreyLayer, midGreyLayer}); true {
+	mg := midGreyLayer
+	if d.IRApprox {
+		mg = 0.18 // its input is linear sRGB, whose mid-grey is 18%
+	}
+	if r, g, b := f.fromExposure([3]float64{mg, mg, mg}); true {
 		if y := 0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b); y > 1e-6 {
 			f.gain = 0.18 / y
 		}
