@@ -37,8 +37,19 @@ jobs:
           lipo -archs "$APP/Contents/MacOS/foveon-lab"
           if [ -e "$APP/Contents/MacOS/x3f_extract" ]; then lipo -archs "$APP/Contents/MacOS/x3f_extract"; fi
           codesign --verify --deep --strict --verbose=2 "$APP"
-          xcrun stapler validate "$APP"
-          spctl --assess --type execute --verbose=4 "$APP"
+          # stapler and spctl ask Apple's servers (CloudKit ticket lookup);
+          # the runner's connection to them drops now and then ("The network
+          # connection was lost", error 68 — v0.4.109 and v0.4.110 both failed
+          # once on it). Retry those two; a real signing fault fails every try.
+          retry() {
+            for i in 1 2 3 4 5; do
+              "$@" && return 0
+              echo "attempt $i failed: $*"; sleep $((i * 15))
+            done
+            return 1
+          }
+          retry xcrun stapler validate "$APP"
+          retry spctl --assess --type execute --verbose=4 "$APP"
 
       - name: Smoke test (starts, serves, quits)
         run: |
