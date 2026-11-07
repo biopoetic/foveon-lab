@@ -1,14 +1,16 @@
 package render
 
-// Task 69: the last eight slide films.
+// Task 69: the last eight slide films; task 70 corrected two axes, returned
+// P1600 to the generic look, and replaced EIR's brightness-scaled IR proxy
+// with a scale-invariant vegetation estimate.
 //
 // Velvia 50, Provia 100F, Sensia 100 and Fujichrome 64T Type II are digitised
 // from the embedded raster figures of their makers' sheets; Sensia 200/400
-// join the vector fragments and borrow the shared Fuji dye set; P1600 is the
-// published push family with a flat D-max extension below -3.0; EIR is the
+// join the vector fragments and borrow the shared Fuji dye set. EIR is the
 // false-colour film, modelled with a visible-light estimate of its infrared
-// layer because no X3F carries an infrared channel. EIR is flagged
-// approximate in /api/films.
+// layer because no X3F carries an infrared channel; it is flagged approximate
+// in /api/films. P1600 has no model (see REPORT-70): its published push family
+// cannot be registered to the neutral wedge, so it keeps the generic look.
 
 import (
 	"math"
@@ -24,7 +26,6 @@ var t69Films = []string{
 	"Fujifilm Fujichrome 64T Type II",
 	"Fujifilm Fujichrome Sensia 200",
 	"Fujifilm Fujichrome Sensia 400",
-	"Kodak Ektachrome P1600 (at EI 1600)",
 	"Kodak Ektachrome Professional Infrared (EIR)",
 }
 
@@ -65,9 +66,9 @@ func TestSlideData69(t *testing.T) {
 	}
 }
 
-// The wedge, -4..+2 stops. P1600's pushed family cannot be registered to
-// better than ~7 (its layers have different gradients); EIR is false colour
-// and has no neutral. Every other new film is inside the task's 3.
+// The wedge, -4..+2 stops. P1600 has no model (its pushed layers cannot be
+// registered to better than ~7, so it keeps the generic look); EIR is false
+// colour and has no neutral. Every other film is inside the task's 3.
 func TestSlideWedge69(t *testing.T) {
 	for _, key := range t69Films {
 		f := colorFilmOn(key, "", "Merrill", ColorPrint{})
@@ -95,9 +96,6 @@ func TestSlideWedge69(t *testing.T) {
 			worst = math.Max(worst, math.Max(math.Abs(p[0]-ma), math.Abs(p[1]-mb)))
 		}
 		limit := 3.0
-		if key == "Kodak Ektachrome P1600 (at EI 1600)" {
-			limit = 8.0 // the sheet's own push balance; see REPORT-69
-		}
 		if key == "Kodak Ektachrome Professional Infrared (EIR)" {
 			t.Logf("%-46s false colour: balance a* %+.2f b* %+.2f, spread %.2f (exempt)", key, ma, mb, worst)
 			continue
@@ -141,10 +139,10 @@ func TestSlideBlack69(t *testing.T) {
 	}
 }
 
-// GPU = CPU for Velvia 50, P1600 and EIR. EIR is fed linear sRGB on both
-// paths (its inverse matrix is identity), so no shader branch is needed.
+// GPU = CPU for Velvia 50, Provia 100F and EIR. EIR has a shader branch for
+// its estimated IR layer (web/gpu.js irEstimate), mirrored by t60GPUFilm.
 func TestSlideGPU69(t *testing.T) {
-	for _, key := range []string{"Fujifilm Fujichrome Velvia 50", "Kodak Ektachrome P1600 (at EI 1600)", "Kodak Ektachrome Professional Infrared (EIR)"} {
+	for _, key := range []string{"Fujifilm Fujichrome Velvia 50", "Fujifilm Fujichrome Provia 100F", "Kodak Ektachrome Professional Infrared (EIR)"} {
 		const w, h = 32, 24
 		l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, ISO: 100, Sensor: "Merrill"}
 		for y := 0; y < h; y++ {
@@ -226,8 +224,24 @@ func TestEIRApprox(t *testing.T) {
 	if !(sb > 3*sr) {
 		t.Errorf("sky is not on the blue side: %.3f %.3f %.3f", sr, sg, sb)
 	}
-	// The IR proxy's coefficients sum to one: white stays white.
-	if s := float64(f.rp[0] + f.rp[1] + f.rp[2]); math.Abs(s-1) > 1e-6 {
-		t.Errorf("IR proxy coefficients sum to %v", s)
+	// The vegetation index is a chromaticity ratio: the IR estimate of a leaf
+	// does not change when the leaf is darker, so a conifer at 6% has the
+	// same NIR as a sunlit one.
+	if a, b := irEstimate(0.04, 0.20, 0.06), irEstimate(0.02, 0.10, 0.03); math.Abs(a-b) > 1e-6 {
+		t.Errorf("IR estimate is not scale-invariant on vegetation: %.4f vs %.4f", a, b)
+	}
+	if v := irEstimate(0.04, 0.20, 0.06); math.Abs(v-0.45) > 0.02 {
+		t.Errorf("vegetation IR %.3f, want a plant-like 0.45", v)
+	}
+	if v := irEstimate(0.15, 0.25, 0.70); v > 0.02 {
+		t.Errorf("blue sky IR %.3f, want near zero", v)
+	}
+	if v := irEstimate(0.45, 0.25, 0.18); v < 0.28 {
+		t.Errorf("skin-like IR %.3f, want moderately high", v)
+	}
+	// The IR layer is not a linear proxy any more: its root-polynomial row is
+	// zero and apply computes it from the estimate.
+	if f.rp[0] != 0 || f.rp[1] != 0 || f.rp[2] != 0 {
+		t.Errorf("IR layer still has a linear row: %v", f.rp[0:3])
 	}
 }

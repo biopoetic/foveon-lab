@@ -924,13 +924,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 	} else if c.CC != nil {
 		if f := colorFilmOnPush(p.Film, p.Paper, c.Sensor, p.Push, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}); f != nil {
 			op.cfilm = f
-			if f.irApprox {
-				// EIR is fed colourimetric linear sRGB, not sensor layers.
-				for i := range op.cfInv {
-					op.cfInv[i] = 0
-				}
-				op.cfInv[0], op.cfInv[4], op.cfInv[8] = 1, 1, 1
-			} else if inv, ok := invert3x3(*c.CC); ok {
+			if inv, ok := invert3x3(*c.CC); ok {
 				for i, v := range inv {
 					op.cfInv[i] = float32(v)
 				}

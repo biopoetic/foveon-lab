@@ -59,6 +59,11 @@ func t60GPUFilm(r *GPURecipe, c [3]float32) [3]float32 {
 	var D [3]float64
 	for k := 0; k < 3; k++ {
 		h := (float64(ha[k]) + float64(hb[k])) * float64(cf.HWhite)
+		if k == 0 && cf.IR {
+			// EIR: the shader replaces the IR layer's exposure with the
+			// false-colour estimate (web/gpu.js irEstimate).
+			h = irEstimate(float64(l[0]), float64(l[1]), float64(l[2])) * float64(cf.HWhite)
+		}
 		D[k] = t60GPUCurve(f, k, math.Log10(math.Max(h, 1e-6)))
 	}
 	// The texture is sampled with t = (D/dmax*(N-1)+0.5)/N and LINEAR

@@ -62,14 +62,15 @@ type colorFilmData struct {
 	Shift []float64 `json:"shift,omitempty"`
 	// IRApprox marks Kodak Ektachrome Infrared (EIR), whose cyan-forming
 	// layer is infrared-sensitive: no X3F carries an infrared channel, so
-	// the IR layer's exposure is estimated from the visible green-over-red
-	// contrast (its documented false-colour mapping) rather than measured.
-	// This is an approximation and the UI says so.
+	// the IR layer's exposure is estimated from a scale-invariant vegetation
+	// index and the pixel's visible luminance (irEstimate) rather than
+	// measured. This is an approximation and the UI says so.
 	IRApprox bool `json:"ir_approx,omitempty"`
 	// OwnBalance marks a film whose sheet is not neutral at the ISO
-	// mid-grey: a push family (P1600's pushed curves) or a false-colour
-	// film. The strict absolute-neutrality check does not apply; the wedge
-	// drift is reported by the tests and the report.
+	// mid-grey: a published push family, say. The strict
+	// absolute-neutrality check does not apply; the wedge drift is reported
+	// by the tests and the report. No film in the library sets it now that
+	// P1600 has no model (REPORT-70).
 	OwnBalance bool `json:"own_balance,omitempty"`
 }
 
@@ -179,9 +180,10 @@ type colorFilm struct {
 	// times (√rg, √gb, √rb).
 	rp     [18]float32
 	hWhite float64 // lux·s at the sensor's saturation (layer value 1)
-	// irApprox: EIR's visible-light approximation. Its input is
-	// colourimetric linear sRGB, not Foveon layers; newPixOp feeds it
-	// directly (identity inverse matrix) and the UI flags it.
+	// irApprox: EIR's visible-light approximation. Its source is the film's
+	// ordinary one (the camera's layers, or linear sRGB for a non-raw
+	// source); apply estimates the IR layer with irEstimate instead of a
+	// linear row, and the UI flags the film as approximate.
 	irApprox bool
 	curve    [3][][2]float64
 	// shift: per-layer log-exposure registration (decades, R G B), see
@@ -326,29 +328,21 @@ func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *co
 func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 	S := layerSens(sensor)
 	grey := sourceGrey(sensor)
-	if d.IRApprox {
-		// EIR's visible-light estimate is made on colourimetric linear sRGB,
-		// not on the sensor's overlapping layers: the camera's own colour
-		// matrix has already separated green from red there. The caller
-		// feeds sRGB values instead of Foveon layers for this film.
-		S = srgbSens()
-		grey = 0.18
-	}
 	if S == nil {
 		return nil
 	}
 	sp := spectral()
 	names := [3]string{"R", "G", "B"}
-	// 1. Sensor layers (or linear sRGB for the IR approximation) -> film
+	// 1. Sensor layers (or linear sRGB on a non-raw source) -> film
 	// exposures (fitLayerMap).
 	f := &colorFilm{hWhite: 10 / d.ISO / grey, irApprox: d.IRApprox}
 	if d.IRApprox {
 		// EIR's layers: R (cyan dye) is infrared-sensitive, G (magenta) is
 		// red-sensitive, B (yellow) is green-sensitive. Fit the two visible
-		// layers from the sheet's own sensitivities, then replace the IR
-		// layer's exposure with the documented visible-light estimate. The
-		// film is always shot through a Wratten 12 yellow filter, so the
-		// sheet's blue sensitivity of every layer is cut before the fit.
+		// layers from the sheet's own sensitivities; the IR layer is left to
+		// apply's irEstimate. The film is always shot through a Wratten 12
+		// yellow filter, so the sheet's blue sensitivity of every layer is
+		// cut before the fit.
 		t12 := func(pts [][2]float64) [][2]float64 {
 			out := make([][2]float64, len(pts))
 			for i, p := range pts {
@@ -376,7 +370,9 @@ func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 		for i := range f.rp {
 			f.rp[i] = 0
 		}
-		f.rp[0], f.rp[1], f.rp[2] = -1.5, 3.7, -1.2 // cyan / IR layer
+		// The IR layer (row 0) is not a linear combination of the visible
+		// layers; apply computes it with irEstimate. The row stays zero so a
+		// reader cannot mistake it for the model.
 		copy(f.rp[3:6], red[:3])
 		copy(f.rp[12:15], red[3:])
 		copy(f.rp[6:9], green[:3])
@@ -517,9 +513,6 @@ func newColorFilm(d *colorFilmData, sensor string) *colorFilm {
 	// light box. Normalise so the scene's mid-grey prints mid-grey.
 	f.gain = 1
 	mg := midGreyLayer
-	if d.IRApprox {
-		mg = 0.18 // its input is linear sRGB, whose mid-grey is 18%
-	}
 	if r, g, b := f.fromExposure([3]float64{mg, mg, mg}); true {
 		if y := 0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b); y > 1e-6 {
 			f.gain = 0.18 / y
@@ -547,6 +540,45 @@ func (f *colorFilm) density(k int, lg float64) float64 {
 	return pinterp(f.curve[k], lg-f.shift[k])
 }
 
+// irEstimate is EIR's visible-light estimate of the infrared-sensitive cyan
+// layer's exposure (white-balanced linear sRGB or camera layers, white = 1).
+// A normal X3F has no infrared channel, so the film's one job — foliage red,
+// sky blue, skin pale — has to be inferred from the visible chromaticity.
+//
+// The vegetation test is a chromaticity ratio, independent of brightness:
+//
+//	vi = (G − (R+B)/2) / (R+G+B)      the green side of the green–magenta axis
+//	bg = B / G                        low blue-green: separates foliage from sky
+//
+// (G−R)/(G+R) alone puts a blue sky above a dark pine on the Foveon base,
+// whose green layer sees blue; the (R+B)/2 axis with low B/G does not. Where
+// the index says vegetation the layer gets a plant-like NIR reflectance of
+// 0.45 of white, independent of how dark the leaf looks in visible light — a
+// dark conifer reflects as much near-infrared as a sunlit one. Elsewhere the
+// estimate is the visible luminance, except for a blue-dominant sky, whose
+// brightness comes from blue light the infrared-sensitive layer does not see:
+// that pixel's IR is driven to zero so its cyan dye stays and the sky stays
+// blue. Lit non-vegetation carries at least a 0.30 NIR reflectance (skin,
+// paint and soil reflect 30% or more); deep shadow and dark hair stay at their
+// visible luminance rather than being lifted.
+//
+// This is an approximation of a film with no infrared data, not a
+// measurement; the UI flags it (Film.Approximate).
+func irEstimate(r, g, b float64) float64 {
+	s := r + g + b + 1e-6
+	vi := (g - 0.5*(r+b)) / s
+	bg := b / (g + 1e-6)
+	veg := smoothstep(0.00, 0.06, vi) * (1 - smoothstep(0.80, 1.02, bg))
+	be := (b - r) / s
+	sky := smoothstep(0.06, 0.22, be)
+	y := 0.2126*r + 0.7152*g + 0.0722*b
+	lit := y
+	if y > 0.04 {
+		lit = math.Max(y, 0.30)
+	}
+	return veg*0.45 + (1-veg)*(1-sky)*lit
+}
+
 // apply takes one pixel of white-balanced sensor layers (relative to the
 // metered exposure: 1 = a white of reflectance 1) to the slide's linear
 // sRGB.
@@ -554,6 +586,12 @@ func (f *colorFilm) apply(r, g, b float32) (float32, float32, float32) {
 	x := rpFeatures(r, g, b)
 	var h [3]float64
 	for k := 0; k < 3; k++ {
+		if k == 0 && f.irApprox {
+			// EIR's IR layer is not a linear combination of the visible
+			// layers: it is the false-colour estimate above.
+			h[0] = irEstimate(float64(r), float64(g), float64(b))
+			continue
+		}
 		for j := 0; j < 3; j++ {
 			h[k] += float64(f.rp[k*3+j]*x[j] + f.rp[9+k*3+j]*x[3+j])
 		}

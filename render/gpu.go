@@ -180,6 +180,10 @@ type GPUColorFilm struct {
 	// light box's/scanner's black point still passes, added after the table's
 	// viewing gain. 0 for a negative.
 	Black float32 `json:"black,omitempty"`
+	// IR marks EIR's estimated infrared layer: the shader replaces the first
+	// layer's exposure with irEstimate (colorfilm.go) instead of the linear
+	// root-polynomial row (whose row 0 is zero for such a film).
+	IR bool `json:"ir,omitempty"`
 }
 
 // GPU colour-film tables: each layer's curve sampled over log H, and the
@@ -293,7 +297,7 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 		gpuCFMu.Lock()
 		gpuCFKeys[key] = f
 		gpuCFMu.Unlock()
-		r.ColorFilm = &GPUColorFilm{Key: key, RP: f.rp, Inv: op.cfInv, HWhite: float32(f.hWhite), Exp: op.exp, Black: float32(f.black)}
+		r.ColorFilm = &GPUColorFilm{Key: key, RP: f.rp, Inv: op.cfInv, HWhite: float32(f.hWhite), Exp: op.exp, Black: float32(f.black), IR: f.irApprox}
 	}
 	if op.tone != nil && !op.measured {
 		r.FilmTone, r.FilmToneScale = op.tone.lut[:], op.tone.scale

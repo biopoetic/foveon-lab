@@ -267,7 +267,7 @@ registered films' neutral wedge drift at |Δa*|, |Δb*| ≤ 3 over −4…+2 sto
 `TestColorFilmSlides` keeps the strict absolute-neutrality check for the films
 with no registration.
 
-### 7c. Ektachrome Infrared: the one approximate colour film (task 69)
+### 7c. Ektachrome Infrared: the one approximate colour film (tasks 69–70)
 
 EIR's three layers are not red, green and blue: the yellow-forming layer is
 green-sensitive, the magenta-forming layer red-sensitive and the cyan-forming
@@ -280,27 +280,41 @@ For EIR (and only EIR) `colorFilmData.IRApprox` switches the model to an
 **approximation**:
 
 * the film's two visible-sensitive layers are fitted from the sheet's own
-  sensitivities (with the Wratten 12 edge applied) to **colourimetric linear
-  sRGB**, not to the Foveon layers; the camera's colour matrix has already
-  separated green from red there. `newPixOp` therefore feeds EIR linear sRGB
-  (its inverse matrix is the identity), and `newColorFilm` uses the sRGB
-  observer for the fit;
-* the infrared-sensitive cyan layer's exposure is estimated from visible
-  light: `IR = G + 1.5(G-R) - 1.2(B-G)` on white-balanced linear sRGB
-  (coefficients sum to one, so white stays white). Foliage — strong
-  green-over-red contrast, low blue — is bright in this estimate and therefore
-  forms little cyan dye, so it goes red/magenta; a blue sky gets almost no
-  infrared and goes cyan/blue. The sheet's own characteristic curves and dye
-  spectra render the result.
+  sensitivities (with the Wratten 12 edge applied) to the same source the
+  render feeds the film: the camera's own layers on an X3F (linear sRGB on a
+  non-raw source). EIR uses the ordinary camera-matrix path, not a special
+  input;
+* the infrared-sensitive cyan layer's exposure is estimated from a
+  **scale-invariant vegetation index** (`irEstimate`, `render/colorfilm.go`):
+
+      vi = (G - (R+B)/2) / (R+G+B)      green side of the green-magenta axis
+      bg = B / G                        low blue-green separates foliage from sky
+      veg = smoothstep(0, 0.06, vi) * (1 - smoothstep(0.80, 1.02, bg))
+
+  A pixel the index calls vegetation gets a plant-like NIR reflectance of
+  **0.45 of white**, independent of how dark it looks in visible light: a
+  conifer at 6% linear green receives as much estimated infrared as a sunlit
+  leaf, so its cyan layer is cleared and it goes red/magenta. A blue-dominant
+  sky (`(B-R)/(R+G+B)` high) gets almost no infrared and keeps its cyan dye, so
+  it stays blue. Elsewhere the estimate is the visible luminance, with lit
+  non-vegetation (skin, paint, soil) at least 0.30 and deep shadow/dark hair at
+  their own luminance (a dark non-plant is not lifted). The old task-69 proxy
+  `IR = G + 1.5(G-R) - 1.2(B-G)` scaled with visible brightness and left dark
+  foliage teal; it is gone.
 
 This is a model change, isolated to EIR: every other film's bytes are
 unchanged. The film's `src` says it is an approximation and
 `Film.Approximate` (`approximate` in `/api/films`) carries that to the UI, so a
 user is told "approximate: no infrared in the photo". `TestEIRApprox` pins the
-flag, the identity input and the red-vegetation/blue-sky behaviour;
-`TestSlideGPU69` pins GPU = CPU. The sheet's exposure axis is registered to the
-ISO mid-grey (`shift` R -0.76, G -0.65, B -0.97 decade: EIR's figure prints no
+flag, the scale invariance of the vegetation estimate and the red-vegetation /
+blue-sky behaviour; `TestSlideGPU69` pins GPU = CPU (the shader has the same
+`irEstimate` branch). The sheet's exposure axis is registered to the ISO
+mid-grey (`shift` R -0.76, G -0.65, B -0.97 decade: EIR's figure prints no
 absolute scale), which also keeps its shadows in the slide's black band.
+
+On the proof photographs the approximation renders foliage red/magenta, a blue
+sky and light, golden skin; it is still an estimate from visible light, not a
+measurement of infrared (REPORT-70 §3).
 
 `TestColorFilmSlides` keeps the absolute-neutrality check for every film
 except a registered, false-colour or own-balance one; `TestSlideWedge69`

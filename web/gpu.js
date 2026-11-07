@@ -112,6 +112,7 @@ uniform highp sampler3D uCFLut;
 uniform bool uCF;
 uniform vec3 uCFInv[3], uCFA[3], uCFB[3];   // linear sRGB -> layers; root-polynomial (r,g,b) and (√rg,√gb,√rb) rows
 uniform float uCFH, uCFExp, uCFDmax, uCFN, uCFLgMin, uCFLgMax, uCFCurveN, uCFBlack;
+uniform bool uCFIR;   // EIR: the first layer's exposure is the false-colour IR estimate
 uniform int uW, uH, uFlipOut;
 uniform bool uUndo, uUndoGamma, uMeasured, uMono, uFilmTone, uWB, uWBTaste, uMM, uMMTaste, uFillABCK, uFillLocal;
 uniform int uLayerMode;   // 0 none, 1 matrix, 2 mono weights
@@ -197,6 +198,23 @@ float cfCurve(int k, float lg){
   float a = texelFetch(uCFCurve, ivec2(i, k), 0).r, b = texelFetch(uCFCurve, ivec2(i + 1, k), 0).r;
   return a + (b - a) * (f - float(i));
 }
+// EIR's visible-light estimate of the infrared-sensitive cyan layer
+// (render/colorfilm.go irEstimate). The vegetation index is a chromaticity
+// ratio, independent of brightness; a plant gets a 0.45 NIR reflectance, a
+// blue sky almost none, and lit non-vegetation the visible luminance (at
+// least 0.40); deep shadow stays at its visible luminance.
+float irEstimate(vec3 p){
+  float s = p.r + p.g + p.b + 1e-6;
+  float vi = (p.g - 0.5 * (p.r + p.b)) / s;
+  float bg = p.b / (p.g + 1e-6);
+  float veg = smoothstep(0.0, 0.06, vi) * (1.0 - smoothstep(0.80, 1.02, bg));
+  float be = (p.b - p.r) / s;
+  float sky = smoothstep(0.06, 0.22, be);
+  float y = dot(vec3(0.2126, 0.7152, 0.0722), p);
+  float lit = y;
+  if (y > 0.04) lit = max(y, 0.30);
+  return veg * 0.45 + (1.0 - veg) * (1.0 - sky) * lit;
+}
 vec3 colorFilm(vec3 c){
   // One mul per statement: ANGLE (Direct3D) got a nested
   // mul(a, mul(b, c)) of uniform arrays wrong.
@@ -206,6 +224,7 @@ vec3 colorFilm(vec3 c){
   vec3 ha = mul(uCFA, l);
   vec3 hb = mul(uCFB, s);
   vec3 h = (ha + hb) * uCFH;
+  if (uCFIR) h.r = irEstimate(l) * uCFH;
   vec3 D = vec3(cfCurve(0, log(max(h.r, 1e-6)) / log(10.)), cfCurve(1, log(max(h.g, 1e-6)) / log(10.)), cfCurve(2, log(max(h.b, 1e-6)) / log(10.)));
   vec3 t = (clamp(D / uCFDmax, 0., 1.) * (uCFN - 1.) + 0.5) / uCFN;
   vec3 v = texture(uCFLut, vec3(t.b, t.g, t.r)).rgb;   // x = D_B (fastest), y = D_G, z = D_R
@@ -556,6 +575,7 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
       gl.uniform3fv(u.uCFInv, rows3(r.colorFilm.inv)); gl.uniform3fv(u.uCFA, rp.slice(0, 9)); gl.uniform3fv(u.uCFB, rp.slice(9, 18));
       gl.uniform1f(u.uCFH, r.colorFilm.hWhite); gl.uniform1f(u.uCFExp, r.colorFilm.exp);
       gl.uniform1f(u.uCFBlack, r.colorFilm.black || 0);
+      gl.uniform1i(u.uCFIR, r.colorFilm.ir ? 1 : 0);
       gl.uniform1f(u.uCFDmax, cf.hdr.dmax); gl.uniform1f(u.uCFN, cf.hdr.n); gl.uniform1f(u.uCFLgMin, cf.hdr.lgMin); gl.uniform1f(u.uCFLgMax, cf.hdr.lgMax); gl.uniform1f(u.uCFCurveN, cf.hdr.curveN);
       gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_3D, cf.lut); gl.uniform1i(u.uCFLut, 4);
       bind(P, "uCFCurve", 5, cf.curve);
