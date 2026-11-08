@@ -27,8 +27,14 @@ func TestFilmCurves(t *testing.T) {
 		}
 		g := c.GammaRef()
 		// ISO speed: the curve's fog + 0.1 point near 0.8/ISO lux·s (the
-		// axis read right); the tone puts it there exactly.
-		off := c.SpeedPoint() - math.Log10(0.8/float64(f.ISO))
+		// axis read right); the tone puts it there exactly. T-MAX P3200's
+		// sheet gives its nominal speed as EI 800-1000, not the 3200 on the
+		// box (F-32 p. 17), so the sheet's EI is the reference there.
+		iso := float64(f.ISO)
+		if key == "Kodak T-Max P3200" {
+			iso = c.Developers[0].EI
+		}
+		off := c.SpeedPoint() - math.Log10(0.8/iso)
 		if !c.Relative && math.Abs(off) > 0.35 {
 			t.Errorf("%s: speed point %.2f stops from the box speed", key, off/math.Log10(2))
 		}
