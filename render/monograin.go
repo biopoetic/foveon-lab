@@ -17,7 +17,8 @@ package render
 // on after SPP's sharpening and the Sharpness slider, like the film grain
 // (task 58): the export's grain was sharpened at 1:1 and then reduced, so the
 // view draws the variance that reduction keeps (grainBoxRatio, grainFineFactor)
-// with the sharpening gain it retains. The 1:1 path is the old code exactly.
+// with the sharpening gain it retains. The 1:1 path keeps the pre-sharpen
+// order (task 82 refit its clump and spectrum, not its order).
 
 import (
 	"image"
@@ -87,6 +88,14 @@ func (b *Base) monoGrainN() float64 {
 // monoGrainBase is the 1:1 model: the measured peak SD and mean, the coarse
 // correlation length c1 in full-resolution pixels, and the roughness
 // variance share f.
+//
+// Task 82 refit the clump and its spectrum from the SPP 1:1 exports, keeping
+// the .5/.5 point (the task-81 test's pin) exactly: c1 is 1.875 at Size .5,
+// 1.90 at .1 and 2.15 at 1. The measured SPP integral ACF width grows from
+// about 1.9 to 2.15 px over that range. The fine share is a quadratic in
+// Roughness (0 at .1, .175 at .5, .27 at 1 at Size .5), reduced with Size
+// above .5 (SPP's large-size clumps are coarser, so a smaller white share
+// gives the same ACF) and raised a little below .5.
 func (b *Base) monoGrainBase(p preset.Params) (*monoGrainParams, float64, float64) {
 	size := math.Max(0, math.Min(1, p.MonoGrainSize))
 	rough := math.Max(0, math.Min(1, p.MonoGrainRough))
@@ -95,12 +104,21 @@ func (b *Base) monoGrainBase(p preset.Params) (*monoGrainParams, float64, float6
 	}
 	// A(size): the peak SD, interpolating the measured .1/.5/1 points
 	// (2.72, 11.97, 31.14 at Roughness .5); B the measured roughness gain,
-	// whose slope is steeper on the finer sizes.
+	// whose slope is steeper on the finer sizes. Task 82 refit the slope at
+	// Size .1 (the measured .1/.1 is 0.57 of .1/.5, not 0.63); it is
+	// unchanged at .5 and 1 (.650 and .300).
+	slope := 1.2014 - 1.3042*size + 0.4028*size*size
+	bb := 1 + (rough-0.5)*slope
 	a := 16.9*size*size + 13.0*size + 1.25
-	bb := 1 + (rough-0.5)*(1.0-0.7*size)
 	sd := a * bb
-	fine := math.Max(0, math.Min(0.5, 0.45*rough-0.05))
-	c1 := 1.75 + 0.25*size
+	ds := size - 0.5
+	c1 := 1.875 + 0.2097*ds + 0.6806*ds*ds
+	f0 := -0.275*rough*rough + 0.6025*rough - 0.0575
+	fine := f0 - (0.15+0.04*rough)*math.Max(0, size-0.5) + 0.125*math.Max(0, 0.5-size)*rough
+	if fine < 1e-6 {
+		fine = 0
+	}
+	fine = math.Max(0, math.Min(0.5, fine))
 	gp := &monoGrainParams{
 		size: size, rough: rough,
 		oct:   []grainOctave{{cell: c1, amp: float32(math.Sqrt(1 - fine))}},
