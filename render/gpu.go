@@ -85,6 +85,11 @@ type GPUMonoGrain struct {
 	Seed  uint32        `json:"seed"`
 	Fine  float32       `json:"fine"`
 	Oct   []GPUGrainOct `json:"oct"`
+	// Task 81: at a reduced view the mono grain is laid on after SPP and
+	// the Sharpness slider in the output pass, with Gain (the export's
+	// retained sharpening gain), exactly as the CPU does.
+	Post bool    `json:"post,omitempty"`
+	Gain float32 `json:"gain,omitempty"`
 }
 
 // GPURecipe is a render's settings for the GPU (see web/gpu.js for the
@@ -266,10 +271,20 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 			r.MonoG = op.monoG
 			r.LayerMono = nil
 		}
-		if gp := b.monoGrainFor(p); gp != nil {
+		var gp *monoGrainParams
+		if b.monoGrainN() > 1.0000001 {
+			// The GPU always runs SPP and the slider, so a reduced view
+			// uses the deferred grain (task 81).
+			gp = b.monoGrainDeferredFor(p)
+		} else {
+			gp = b.monoGrainFor(p)
+		}
+		if gp != nil {
 			g := &GPUMonoGrain{Sigma: gp.sigma, Mean: gp.mean, Q: gp.q, Seed: gp.seed,
-				Fine: float32(math.Sqrt(gp.fine))}
-			g.Oct = []GPUGrainOct{{Cell: float32(gp.cell), Amp: float32(math.Sqrt(1 - gp.fine))}}
+				Fine: float32(math.Sqrt(gp.fine)), Post: gp.deferred, Gain: float32(gp.gain)}
+			for _, o := range gp.oct {
+				g.Oct = append(g.Oct, GPUGrainOct{Cell: float32(o.cell), Amp: o.amp})
+			}
 			r.SGrain = g
 		}
 	}

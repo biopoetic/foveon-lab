@@ -105,8 +105,47 @@ vec3 filmGrainApply(vec3 c, vec3 n, float gain){
   return vec3(grain1(c.r, n.r * gain), grain1(c.g, n.g * gain), grain1(c.b, n.b * gain));
 }
 `;
+  // SPP's monochrome grain (render/monograin.go), shared by the first pass
+  // (1:1 and the unsharpened path) and the output pass (task 81: a reduced
+  // view lays it on after SPP and the Sharpness slider, with the export's
+  // retained sharpening gain). One coarse octave (cell 1 when the reduced
+  // clump is below a pixel) and the per-pixel Gaussian.
+  const MONO = `
+uniform vec3 uMonoTone;
+uniform int uSGN;
+uniform vec2 uSGOct[2];
+uniform float uSGSigma, uSGMean, uSGQ, uSGFine;
+uniform uint uSGSeed;
+uniform bool uSGPost;
+uniform float uSGGain;
+float monoGrainField(int px, int py, uint i){
+  float n = 0.;
+  for (int j = 0; j < 2; j++){
+    if (j >= uSGN) break;
+    n += uSGOct[j].y * grainSample(px, py, uSGOct[j].x, uSGSeed ^ 0x1234567u ^ uint(j) * 0x9e3779b9u);
+  }
+  n += uSGFine * grainGauss(i, uSGSeed ^ 0x1234567u);
+  return n;
+}
+// render/monograin.go apply: the tone weight in the encoded domain.
+vec3 monoGrainApplyLin(vec3 c, float n, float gain){
+  float u = enc(c.r);
+  float w = pow(max(0., 4. * u * (1. - u)), uSGQ);
+  u = clamp(u + (uSGMean + uSGSigma * n * gain) * w / 255., 0., 1.);
+  return vec3(dec(u));
+}
+// monograin.go add8: the sharpened value is already 8-bit and toned; recover
+// the grey the weight is read on from channel 0, then add the same delta to
+// all three so SPP's constant toning is preserved.
+vec3 monoGrainApply8(vec3 v, float n, float gain){
+  float u = v.r / 255. - uMonoTone.r;
+  float w = pow(max(0., 4. * u * (1. - u)), uSGQ);
+  float d = (uSGMean + uSGSigma * n * gain) * w / 255.;
+  return floor(clamp(vec3(v.r / 255. + d, v.g / 255. + d, v.b / 255. + d), 0., 1.) * 255. + 0.5);
+}
+`;
   // Pass 1: one pixel through pixOp (+ grain), written as 8-bit values.
-  const PIX = HEAD + GRAIN + `
+  const PIX = HEAD + GRAIN + MONO + `
 uniform sampler2D uRGB, uAux, uLut, uFilm, uCFCurve, uLayerTex;
 uniform highp sampler3D uCFLut;
 uniform bool uCF;
@@ -123,7 +162,6 @@ uniform float uMaskScale, uFill, uHL, uBlk, uCT, uSatF, uSatMeasure, uWBSat, uMM
 // monochrome grain's one coarse octave plus its per-pixel octave.
 uniform bool uMonoNew;
 uniform float uMonoGamma;
-uniform vec3 uMonoTone;
 uniform float uMonoShadeR, uMonoShadeA;
 // Task 54: the three tone-mapped layers are a second RGB block of the base;
 // the mixer weights, high-ISO per-layer gain/floor and black lift come from
@@ -135,10 +173,6 @@ uniform vec3 uMonoG[3];
 uniform float uMonoB;
 uniform vec2 uOrigin, uFull;
 uniform float uScale;
-uniform int uSGN;
-uniform vec2 uSGOct[2];
-uniform float uSGSigma, uSGMean, uSGQ, uSGFine;
-uniform uint uSGSeed;
 uniform float uNDGain;
 uniform int uGND;
 uniform float uGNDStops, uGNDCos, uGNDSin, uGNDCentre, uGNDSoft;
@@ -318,20 +352,10 @@ void main(){
   if (!uGrainPost && (uGrainN > 0 || uGrainFine > 0.)){
     c = filmGrainApply(c, filmGrainField(q.x, q.y, uint(q.y * uW + q.x)), 1.);
   }
-  if (uSGN > 0 || uSGFine > 0.){
-    // render/monograin.go apply: one scalar field, SPP's tone weight, in the
-    // encoded domain, with the measured positive mean.
-    uint i = uint(q.y * uW + q.x);
-    float n = 0.;
-    for (int j = 0; j < 2; j++){
-      if (j >= uSGN) break;
-      n += uSGOct[j].y * grainSample(q.x, q.y, uSGOct[j].x, uSGSeed ^ 0x1234567u ^ uint(j) * 0x9e3779b9u);
-    }
-    n += uSGFine * grainGauss(i, uSGSeed ^ 0x1234567u);
-    float u = enc(c.r);
-    float w = pow(max(0., 4. * u * (1. - u)), uSGQ);
-    u = clamp(u + (uSGMean + uSGSigma * n) * w / 255., 0., 1.);
-    c = vec3(dec(u));
+  // A reduced view holds SPP's mono grain back and lays it on in the output
+  // pass after the Sharpness slider (task 81), with its retained gain.
+  if (!uSGPost && (uSGN > 0 || uSGFine > 0.)){
+    c = monoGrainApplyLin(c, monoGrainField(q.x, q.y, uint(q.y * uW + q.x)), 1.);
   }
   if (uMonoNew && (uMonoTone.r != 0. || uMonoTone.g != 0. || uMonoTone.b != 0.)){
     // render.go applyMonoTone: SPP's measured constant 8-bit offsets.
@@ -376,9 +400,10 @@ void main(){ ivec2 q = ivec2(gl_FragCoord.xy); vec3 s = vec3(0.);
   float g = uThr > 0. ? smoothstep(0.5 * uThr, 1.5 * uThr, lmax - lmin) : 1.;
   o = vec4(floor(clamp(v + uA * (v - s) * g, 0., 255.) + 0.5), 255.); }`;
   // Pass 4: the Sharpness slider's 3x3 cross (render.go sharpen), then the
-  // deferred film grain with the export's retained sharpening gain (task 58),
-  // then out to the canvas (flipped: canvas row 0 is the top).
-  const OUT = HEAD + GRAIN + `
+  // deferred film grain with the export's retained sharpening gain (task 58)
+  // and the deferred mono grain (task 81), then out to the canvas (flipped:
+  // canvas row 0 is the top).
+  const OUT = HEAD + GRAIN + MONO + `
 uniform sampler2D uSrc; uniform int uW, uH; uniform float uA;
 void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
   vec3 v = texelFetch(uSrc, q, 0).rgb;
@@ -393,6 +418,9 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     vec3 lin = vec3(dec(v.r / 255.), dec(v.g / 255.), dec(v.b / 255.));
     lin = filmGrainApply(lin, filmGrainField(q.x, q.y, uint(q.y * uW + q.x)), uGrainGain);
     v = floor(vec3(enc(lin.r), enc(lin.g), enc(lin.b)) * 255. + 0.5);
+  }
+  if (uSGPost && (uSGN > 0 || uSGFine > 0.)){
+    v = monoGrainApply8(v, monoGrainField(q.x, q.y, uint(q.y * uW + q.x)), uSGGain);
   }
   o = vec4(v / 255., 1.); }`;
 
@@ -532,10 +560,29 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
       gl.uniform1f(gu.uGrainGain, r.grainGain || 1);
     };
     setGrain(u);
+    // SPP's Monochrome grain (render/monograin.go), shared by the two passes:
+    // a reduced view's grain is laid on in the output pass (task 81).
+    const setSG = (gu) => {
+      const sg = r.sGrain;
+      gl.uniform1i(gu.uSGN, sg && sg.oct ? sg.oct.length : 0);
+      const sgoct = new Float32Array(4);
+      (sg && sg.oct ? sg.oct : []).slice(0, 2).forEach((o, i) => { sgoct[i * 2] = o.cell; sgoct[i * 2 + 1] = o.amp; });
+      gl.uniform2fv(gu.uSGOct, sgoct);
+      gl.uniform1f(gu.uSGSigma, sg ? sg.sigma || 0 : 0);
+      gl.uniform1f(gu.uSGMean, sg ? sg.mean || 0 : 0);
+      gl.uniform1f(gu.uSGQ, sg ? sg.q || 0 : 0);
+      gl.uniform1f(gu.uSGFine, sg ? sg.fine || 0 : 0);
+      gl.uniform1ui(gu.uSGSeed, sg ? (sg.seed || 0) >>> 0 : 0);
+      gl.uniform1i(gu.uSGPost, sg && sg.post ? 1 : 0);
+      // uSGGain is only read by the output pass's monoGrainApply8, so the
+      // first pass may have optimised it out.
+      if (gu.uSGGain) gl.uniform1f(gu.uSGGain, sg && sg.gain ? sg.gain : 1);
+      gl.uniform3fv(gu.uMonoTone, r.monoTone || [0, 0, 0]);
+    };
+    setSG(u);
     // SPP's Monochrome tab.
     gl.uniform1i(u.uMonoNew, r.monoNew ? 1 : 0);
     gl.uniform1f(u.uMonoGamma, r.monoGamma || 1);
-    gl.uniform3fv(u.uMonoTone, r.monoTone || [0, 0, 0]);
     gl.uniform1f(u.uMonoShadeR, r.monoShadeR || 0);
     gl.uniform1f(u.uMonoShadeA, r.monoShadeA || 0);
     // Task 54: the per-layer mono tone texture and its recipe terms. A base
@@ -553,16 +600,6 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     gl.uniform1f(u.uScale, base.hdr.scale || 1);
     gl.uniform2f(u.uOrigin, base.hdr.ox || 0, base.hdr.oy || 0);
     gl.uniform2f(u.uFull, base.hdr.fw || base.w, base.hdr.fh || base.h);
-    const sg = r.sGrain;
-    gl.uniform1i(u.uSGN, sg && sg.oct ? sg.oct.length : 0);
-    const sgoct = new Float32Array(4);
-    (sg && sg.oct ? sg.oct : []).slice(0, 2).forEach((o, i) => { sgoct[i * 2] = o.cell; sgoct[i * 2 + 1] = o.amp; });
-    gl.uniform2fv(u.uSGOct, sgoct);
-    gl.uniform1f(u.uSGSigma, sg ? sg.sigma || 0 : 0);
-    gl.uniform1f(u.uSGMean, sg ? sg.mean || 0 : 0);
-    gl.uniform1f(u.uSGQ, sg ? sg.q || 0 : 0);
-    gl.uniform1f(u.uSGFine, sg ? sg.fine || 0 : 0);
-    gl.uniform1ui(u.uSGSeed, sg ? (sg.seed || 0) >>> 0 : 0);
     gl.uniform1f(u.uNDGain, r.ndGain || 1);
     gl.uniform1i(u.uGND, r.gnd ? 1 : 0);
     const gnd = r.gnd || {stops: 0, cos: 1, sin: 0, centre: 0, soft: 0.5};
@@ -594,6 +631,7 @@ void main(){ ivec2 q = ivec2(int(gl_FragCoord.x), uH - 1 - int(gl_FragCoord.y));
     const O = progs.out; gl.useProgram(O.p); bind(O, "uSrc", 0, cur.tex);
     gl.uniform1i(O.u.uW, base.w); gl.uniform1i(O.u.uH, base.h); gl.uniform1f(O.u.uA, r.sharpen || 0);
     setGrain(O.u);
+    setSG(O.u);
     pass(O, null);
     return true;
   }

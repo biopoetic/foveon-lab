@@ -12,8 +12,15 @@ package render
 // The field is the same value-noise lattice and Gaussian the film grain uses
 // (grain.go), so web/gpu.js draws exactly the same numbers. One coarse
 // octave sets the size; a per-pixel octave is the roughness.
+//
+// At a reduced view (task 81) the grain is held out of the tone pass and laid
+// on after SPP's sharpening and the Sharpness slider, like the film grain
+// (task 58): the export's grain was sharpened at 1:1 and then reduced, so the
+// view draws the variance that reduction keeps (grainBoxRatio, grainFineFactor)
+// with the sharpening gain it retains. The 1:1 path is the old code exactly.
 
 import (
+	"image"
 	"math"
 
 	"github.com/biopoetic/foveon-lab/preset"
@@ -27,17 +34,28 @@ type monoGrain struct {
 	fine           float32
 	seed           uint32
 	noise          []float32
+	// deferred: at a reduced view the grain is laid on after sharpening,
+	// with gain (the export's retained sharpening gain), not in the tone pass.
+	deferred bool
+	gain     float32
+	// toning is SPP's constant per-channel 8-bit offset, so the deferred
+	// grain can recover the grey it is weighted on after the toning was
+	// applied (zero for B&W).
+	toning [3]float32
 }
 
 // monoGrainParams are the numbers both the CPU field and the GPU recipe are
 // built from.
 type monoGrainParams struct {
 	size, rough float64
-	cell        float64 // coarse correlation length, output pixels
-	fine        float64 // share of the variance in the per-pixel octave
-	sigma, mean float32 // 8-bit levels
+	oct         []grainOctave // spatial octaves at this view (cell in pixels)
+	fine        float64       // variance share of the per-pixel octave
+	sigma, mean float32       // 8-bit levels at the view's scale
 	q           float32
 	seed        uint32
+	n           float64 // view pitch over the export's (1 at full resolution)
+	deferred    bool
+	gain        float64
 }
 
 func monoGrainSeed(p preset.Params) uint32 {
@@ -47,85 +65,199 @@ func monoGrainSeed(p preset.Params) uint32 {
 	return hash32(h)
 }
 
-// monoGrainFor computes the model for this Base's view scale. SPP's grain is
-// per full-resolution pixel; a reduced view covers more than one, so the
-// amplitude falls with the linear scale (four pixels average to half the SD)
-// and the clumps shrink with it.
-func (b *Base) monoGrainFor(p preset.Params) *monoGrainParams {
+// monoGrainN is the view pitch over the full-resolution export's: 1 at 1:1,
+// 2.94 for a 1600 px view of a 4704 px frame, 7.84 for 600 px. It uses the
+// native frame, so a fit view decoded from a binned raw still knows the
+// export's size (the same reference film.go fullPitch uses).
+func (b *Base) monoGrainN() float64 {
+	if b.NativeFrame <= 0 {
+		return 1
+	}
+	w := float64(max(b.W, b.H))
+	if w <= 0 {
+		return 1
+	}
+	n := float64(b.NativeFrame) / w
+	if n < 1 {
+		return 1
+	}
+	return n
+}
+
+// monoGrainBase is the 1:1 model: the measured peak SD and mean, the coarse
+// correlation length c1 in full-resolution pixels, and the roughness
+// variance share f.
+func (b *Base) monoGrainBase(p preset.Params) (*monoGrainParams, float64, float64) {
 	size := math.Max(0, math.Min(1, p.MonoGrainSize))
 	rough := math.Max(0, math.Min(1, p.MonoGrainRough))
 	if size <= 0 {
-		return nil
-	}
-	sc := b.scale()
-	if sc <= 0 {
-		sc = 1
+		return nil, 0, 0
 	}
 	// A(size): the peak SD, interpolating the measured .1/.5/1 points
 	// (2.72, 11.97, 31.14 at Roughness .5); B the measured roughness gain,
 	// whose slope is steeper on the finer sizes.
 	a := 16.9*size*size + 13.0*size + 1.25
 	bb := 1 + (rough-0.5)*(1.0-0.7*size)
-	sigma := float32(a * bb * sc)
-	mean := float32((0.16*a*bb - 0.95) * sc)
+	sd := a * bb
 	fine := math.Max(0, math.Min(0.5, 0.45*rough-0.05))
+	c1 := 1.75 + 0.25*size
 	gp := &monoGrainParams{
 		size: size, rough: rough,
-		cell:  math.Max(0.5, (1.75+0.25*size)*sc),
+		oct:   []grainOctave{{cell: c1, amp: float32(math.Sqrt(1 - fine))}},
 		fine:  fine,
-		sigma: sigma, mean: mean,
+		sigma: float32(sd), mean: float32(0.16*a*bb - 0.95),
 		q:    monoGrainQ,
 		seed: monoGrainSeed(p),
+		n:    1,
+	}
+	return gp, sd, c1
+}
+
+// monoGrainFor computes the model for this Base's view scale. The old path:
+// it is the 1:1 code exactly and the unsharpened reduced-view path (a quick
+// preview while a slider is dragged). A sharpened reduced view uses
+// monoGrainDeferredFor instead.
+func (b *Base) monoGrainFor(p preset.Params) *monoGrainParams {
+	base, sd, _ := b.monoGrainBase(p)
+	if base == nil {
+		return nil
+	}
+	sc := b.scale()
+	if sc <= 0 {
+		sc = 1
+	}
+	gp := *base
+	gp.sigma = float32(sd * sc)
+	gp.mean = float32((0.16*sd - 0.95) * sc)
+	gp.oct = make([]grainOctave, len(base.oct))
+	for i, o := range base.oct {
+		gp.oct[i] = grainOctave{cell: math.Max(0.5, o.cell*sc), amp: o.amp}
 	}
 	// Our grain is added before Render's SPP sharpening; SPP's exported grain
 	// has already been sharpened. Size the model so the sharpened picture
 	// carries the measured SD.
-	if g := b.monoGrainSharpGain(gp); g > 1 {
+	if g := b.monoGrainSharpGain(&gp); g > 1 {
 		gp.sigma /= float32(g)
 	}
-	return gp
+	return &gp
+}
+
+// monoGrainDeferredFor is the reduced-view model (task 81). The export's
+// grain, sharpened at 1:1 and area-reduced to this view, keeps:
+//
+//	V = (1-f)·R(c1,n) + f·F(n)
+//
+// of the 1:1 field's variance (R the discrete box-reduction ratio for the
+// coarse lattice, F the per-pixel white factor) and the sharpening gain
+// G = sppGrainGain(1/n) × sliderGrainGain(n, Sharpness). The view draws a
+// unit field with that variance at the view's scale, is laid on after SPP and
+// the slider, and is scaled by G.  The clump is below one view pixel
+// (c1/n < 1 at every view width), so it is drawn as white noise with a small
+// one-pixel correlated share λ that keeps the reduced export's correlation
+// width; λ is the coarse variance's share and is fitted from the 1:1 reduced
+// field (the same small share task 58 fitted for the film grain's sub-pixel
+// clumps, but smaller here because SPP's mono clump is only 1–2 px at 1:1).
+func (b *Base) monoGrainDeferredFor(p preset.Params) *monoGrainParams {
+	base, sd, _ := b.monoGrainBase(p)
+	if base == nil {
+		return nil
+	}
+	n := b.monoGrainN()
+	if n <= 1.0000001 {
+		return b.monoGrainFor(p)
+	}
+	varRed, varOut, rho1 := b.monoGrainRetained(base, n, p.Sharpness)
+	if varRed <= 0 || varOut <= 0 {
+		return nil
+	}
+	// SPP's mask gain at 1:1 on this field (the pre-slider stage the 1:1
+	// model divides by). This is the same 192-px estimate the 1:1 model uses;
+	// the 256-px reduced-field simulation would estimate it differently at the
+	// coarse Size 1 and move the 1:1-relative variance by 12%.
+	g1 := b.monoGrainSharpGainAt(base, 1)
+	if g1 < 1 {
+		g1 = 1
+	}
+	// The deferred field is drawn with the reduced unsharpened variance and
+	// then scaled by the retained sharpening gain; the 1:1 pre-sharpen field
+	// is sd/g1.
+	gp := *base
+	gp.n = n
+	gp.deferred = true
+	gp.sigma = float32(sd / g1 * math.Sqrt(varRed))
+	gp.gain = math.Sqrt(varOut / varRed)
+	// The sharpened, reduced field's correlation: white plus a one-pixel
+	// value noise, whose lag-1 correlation is 0.5. This keeps the clump
+	// width the export's reduction keeps (lambda is near 0 at a strong
+	// Sharpness, which whitens the grain).
+	lambda := math.Max(0, math.Min(0.9, 2*rho1))
+	gp.fine = 1 - lambda
+	gp.oct = nil
+	if lambda > 0 {
+		// grainSample at cell 1 keeps 0.75² of a unit lattice, so the
+		// amplitude carries the 1/0.75.
+		gp.oct = []grainOctave{{cell: 1, amp: float32(math.Sqrt(lambda) / 0.75)}}
+	}
+	return &gp
 }
 
 // monoGrainSharpGain is how much SPP's own sharpening (sppsharpen.go) raises
 // this view's grain SD. SPP's exported grain has already been through it, and
 // our grain is added before Render's sharpening, so the model's sigma is
-// divided by this. A small field with the same cell and fine share is run
+// divided by this. A small field with the same octaves and fine share is run
 // through the same 7-tap unsharp mask; the gain is a property of the noise,
 // not of the picture.
 func (b *Base) monoGrainSharpGain(gp *monoGrainParams) float64 {
+	return b.monoGrainSharpGainAt(gp, b.scale())
+}
+
+func (b *Base) monoGrainSharpGainAt(gp *monoGrainParams, scale float64) float64 {
 	if !b.Raw {
 		return 1
 	}
-	a, k := sppView(b.scale(), b.ISO, b.Sensor)
+	a, k := sppView(scale, b.ISO, b.Sensor)
 	if a == 0 {
 		return 1
 	}
 	const n = 192
-	lw := int(math.Ceil(float64(n)/gp.cell)) + 3
-	lat := grainLattice(lw, lw, gp.seed^0x1234567)
-	field := make([]float32, n*n)
-	amp := math.Sqrt(1 - gp.fine)
-	fine := math.Sqrt(gp.fine)
-	for y := 0; y < n; y++ {
-		for x := 0; x < n; x++ {
-			i := y*n + x
-			field[i] = float32(amp) * grainSample(lat, lw, x, y, gp.cell)
-			if fine > 0 {
-				field[i] += float32(fine) * grainGauss(i, gp.seed^0x1234567)
-			}
-		}
-	}
-	var s, s2 float64
-	for _, v := range field {
-		s += float64(v)
-		s2 += float64(v) * float64(v)
-	}
-	mean := s / float64(n*n)
-	vin := s2/float64(n*n) - mean*mean
+	field := monoUnitField(n, gp)
+	vin := monoVariance(field)
 	if vin <= 0 {
 		return 1
 	}
 	// Separable 7-tap blur (clamped edges), then the unsharp mask.
+	out := monoUSMField(field, n, a, k)
+	vout := monoVariance(out)
+	if vout <= vin {
+		return 1
+	}
+	return math.Sqrt(vout / vin)
+}
+
+// monoUnitField builds a unit-variance field with gp's octaves and fine
+// share: the same lattice and Gaussian as the real field, on an n×n patch.
+func monoUnitField(n int, gp *monoGrainParams) []float32 {
+	field := make([]float32, n*n)
+	for j, o := range gp.oct {
+		lw := int(math.Ceil(float64(n)/o.cell)) + 3
+		lat := grainLattice(lw, lw, gp.seed^0x1234567^uint32(j)*0x9e3779b9)
+		for y := 0; y < n; y++ {
+			for x := 0; x < n; x++ {
+				field[y*n+x] += o.amp * grainSample(lat, lw, x, y, o.cell)
+			}
+		}
+	}
+	if gp.fine > 0 {
+		fine := float32(math.Sqrt(gp.fine))
+		for i := range field {
+			field[i] += fine * grainGauss(i, gp.seed^0x1234567)
+		}
+	}
+	return field
+}
+
+// monoUSMField applies SPP's separable 7-tap unsharp mask to an n×n field.
+func monoUSMField(field []float32, n int, a float32, k [7]float32) []float32 {
 	tmp := make([]float32, n*n)
 	blur := make([]float32, n*n)
 	for y := 0; y < n; y++ {
@@ -146,18 +278,113 @@ func (b *Base) monoGrainSharpGain(gp *monoGrainParams) float64 {
 			blur[y*n+x] = v
 		}
 	}
-	var o2, om float64
+	out := make([]float32, len(field))
 	for i, v := range field {
-		d := v + a*(v-blur[i])
-		o2 += float64(d) * float64(d)
-		om += float64(d)
+		out[i] = v + a*(v-blur[i])
 	}
-	om /= float64(n * n)
-	vout := o2/float64(n*n) - om*om
-	if vout <= vin {
-		return 1
+	return out
+}
+
+func monoVariance(v []float32) float64 {
+	var s, s2 float64
+	for _, x := range v {
+		s += float64(x)
+		s2 += float64(x) * float64(x)
 	}
-	return math.Sqrt(vout / vin)
+	n := float64(len(v))
+	return s2/n - (s/n)*(s/n)
+}
+
+// monoReduce area-reduces an n×n field to dw×dh (boxTaps, the app's own
+// fractional box) and returns the reduced field.
+func monoReduce(src []float32, n, dw, dh int) []float32 {
+	tx, ty := boxTaps(n, dw), boxTaps(n, dh)
+	tmp := make([]float32, dw*n)
+	for y := 0; y < n; y++ {
+		row, out := src[y*n:], tmp[y*dw:]
+		for x, ts := range tx {
+			var v float32
+			for _, t := range ts {
+				v += row[t.i] * t.w
+			}
+			out[x] = v
+		}
+	}
+	dst := make([]float32, dw*dh)
+	for y, ts := range ty {
+		out := dst[y*dw : (y+1)*dw]
+		for _, t := range ts {
+			row := tmp[t.i*dw : (t.i+1)*dw]
+			for i, v := range row {
+				out[i] += v * t.w
+			}
+		}
+	}
+	return dst
+}
+
+// monoLag1 is the lag-1 autocorrelation (both axes, mean removed) of a
+// dw×dh field.
+func monoLag1(v []float32, dw, dh int) float64 {
+	var mean float64
+	for _, x := range v {
+		mean += float64(x)
+	}
+	mean /= float64(len(v))
+	var num, den float64
+	for y := 1; y < dh; y++ {
+		for x := 1; x < dw; x++ {
+			i := y*dw + x
+			a := float64(v[i]) - mean
+			for _, j := range [2]int{i - 1, i - dw} {
+				b := float64(v[j]) - mean
+				num += a * b
+				den += a * a
+			}
+		}
+	}
+	if den <= 0 {
+		return 0
+	}
+	return num / den
+}
+
+// monoGrainRetained is how the export's 1:1 mono field survives SPP's mask
+// and the Sharpness slider at 1:1 and the area reduction to n. A unit field
+// with the same lattice and fine split is built, sharpened with the very
+// masks RenderOpt uses, box-reduced, and measured: varRed is the reduced
+// unsharpened field's variance, varOut the reduced sharpened field's, and
+// rho1 the reduced field's lag-1 correlation. This is grainBoxRatio/grainFineFactor
+// derived for the mono lattice, with the two sharpeners' interaction kept
+// instead of approximating them as white-grain gains (which overestimated
+// the retained gain at Sharpness +1 by 20–30%).
+func (b *Base) monoGrainRetained(gp *monoGrainParams, n, sharpness float64) (varRed, varOut, rho1 float64) {
+	const N = 256
+	dw := max(1, int(math.Round(float64(N)/n)))
+	raw := monoUnitField(N, gp)
+	varRed = monoVariance(monoReduce(raw, N, dw, dw))
+	out := raw
+	if b.Raw {
+		if a, k := sppView(1, b.ISO, b.Sensor); a != 0 {
+			out = monoUSMField(raw, N, a, k)
+		}
+	}
+	if sharpness != 0 {
+		av := float32(math.Max(-1, math.Min(2, sharpness*1.5)))
+		v := append([]float32(nil), out...)
+		for y := 1; y < N-1; y++ {
+			for x := 1; x < N-1; x++ {
+				i := y*N + x
+				nb := (out[i-1] + out[i+1] + out[i-N] + out[i+N]) / 4
+				v[i] = out[i] + av*(out[i]-nb)
+			}
+		}
+		out = v
+	}
+	red := monoReduce(out, N, dw, dw)
+	varOut = monoVariance(red)
+	rho1 = monoLag1(red, dw, dw)
+	return
 }
 
 // newMonoGrain builds the field; on false (the GPU path) only the numbers are
@@ -166,27 +393,43 @@ func (b *Base) newMonoGrain(p preset.Params, on bool) *monoGrain {
 	if !on {
 		return nil
 	}
-	gp := b.monoGrainFor(p)
+	return b.newMonoGrainFrom(b.monoGrainFor(p))
+}
+
+// newMonoGrainDeferred builds the reduced view's grain field (task 81).
+func (b *Base) newMonoGrainDeferred(p preset.Params) *monoGrain {
+	g := b.newMonoGrainFrom(b.monoGrainDeferredFor(p))
+	if g != nil {
+		if v, ok := preset.MonoToneOffset(p.MonoTone); ok {
+			for i := range v {
+				g.toning[i] = float32(v[i] / 255)
+			}
+		}
+	}
+	return g
+}
+
+func (b *Base) newMonoGrainFrom(gp *monoGrainParams) *monoGrain {
 	if gp == nil {
 		return nil
 	}
-	g := &monoGrain{sigma: gp.sigma, mean: gp.mean, q: gp.q, seed: gp.seed}
-	amp := math.Sqrt(1 - gp.fine)
-	g.oct = []grainOctave{{cell: gp.cell, amp: float32(amp)}}
-	g.fine = float32(math.Sqrt(gp.fine))
+	g := &monoGrain{sigma: gp.sigma, mean: gp.mean, q: gp.q, seed: gp.seed,
+		oct: gp.oct, fine: float32(math.Sqrt(math.Max(0, gp.fine))),
+		deferred: gp.deferred, gain: float32(gp.gain)}
 	w, h := b.W, b.H
 	g.noise = make([]float32, w*h)
-	// Coarse value noise.
-	lw := int(math.Ceil(float64(w)/gp.cell)) + 3
-	lh := int(math.Ceil(float64(h)/gp.cell)) + 3
-	lat := grainLattice(lw, lh, gp.seed^0x1234567)
-	parallelRows(h, func(y0, y1 int) {
-		for y := y0; y < y1; y++ {
-			for x := 0; x < w; x++ {
-				g.noise[y*w+x] = float32(amp) * grainSample(lat, lw, x, y, gp.cell)
+	for j, o := range gp.oct {
+		lw := int(math.Ceil(float64(w)/o.cell)) + 3
+		lh := int(math.Ceil(float64(h)/o.cell)) + 3
+		lat := grainLattice(lw, lh, gp.seed^0x1234567^uint32(j)*0x9e3779b9)
+		parallelRows(h, func(y0, y1 int) {
+			for y := y0; y < y1; y++ {
+				for x := 0; x < w; x++ {
+					g.noise[y*w+x] += o.amp * grainSample(lat, lw, x, y, o.cell)
+				}
 			}
-		}
-	})
+		})
+	}
 	if g.fine > 0 {
 		parallelRows(h, func(y0, y1 int) {
 			for y := y0; y < y1; y++ {
@@ -241,4 +484,60 @@ func (g *monoGrain) apply(i int, r, gg, bl float32) (float32, float32, float32) 
 	u = math.Max(0, math.Min(1, u))
 	v := dec(float32(u))
 	return v, v, v
+}
+
+// add8 lays the deferred grain on the sharpened 8-bit image (task 81). The
+// grain is applied to the encoded value, as apply does before Render's
+// encoding, and the same delta goes to all three channels so SPP's toning
+// (already applied) is preserved.
+func (g *monoGrain) add8(img *image.RGBA, gain float64) {
+	if g == nil || len(g.noise) == 0 || !g.deferred {
+		return
+	}
+	w, h := img.Rect.Dx(), img.Rect.Dy()
+	gg := float32(gain)
+	parallelRows(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			for x := 0; x < w; x++ {
+				i := y*w + x
+				o := i * 4
+				u := float32(img.Pix[o])/255 - g.toning[0]
+				wt := monoGrainWeight(u)
+				d := (g.mean + g.sigma*g.noise[i]*gg) / 255 * wt
+				for c := 0; c < 3; c++ {
+					v := float32(img.Pix[o+c])/255 + d
+					img.Pix[o+c] = uint8(max(0, min(255, v*255+0.5)))
+				}
+			}
+		}
+	})
+}
+
+// add16 is add8 for 16-bit sRGB (big-endian samples).
+func (g *monoGrain) add16(img *image.RGBA64, gain float64) {
+	if g == nil || len(g.noise) == 0 || !g.deferred {
+		return
+	}
+	w, h := img.Rect.Dx(), img.Rect.Dy()
+	gg := float32(gain)
+	parallelRows(h, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			for x := 0; x < w; x++ {
+				i := y*w + x
+				o := i * 8
+				u0 := uint16(img.Pix[o])<<8 | uint16(img.Pix[o+1])
+				u := float32(u0)/65535 - g.toning[0]
+				wt := monoGrainWeight(u)
+				d := (g.mean + g.sigma*g.noise[i]*gg) / 255 * wt
+				for c := 0; c < 3; c++ {
+					p := o + c*2
+					v := uint16(img.Pix[p])<<8 | uint16(img.Pix[p+1])
+					e := float32(v)/65535 + d
+					e = max(0, min(1, e))
+					nv := uint16(e*65535 + 0.5)
+					img.Pix[p], img.Pix[p+1] = uint8(nv>>8), uint8(nv)
+				}
+			}
+		}
+	})
 }

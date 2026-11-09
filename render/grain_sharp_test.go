@@ -76,7 +76,7 @@ func TestGrainDeferredGain(t *testing.T) {
 func TestGrainDeferredRender(t *testing.T) {
 	for _, scale := range []float64{1, 1600.0 / 4704.0} {
 		b, p, _ := t58GrainOp(t, scale, "Kodak Tri-X Pan 400 (TX)")
-		film := renderIntoOpt(b, p, Compensation{}, true, func(int, float32, float32, float32) {})
+		film, _ := renderIntoOpt(b, p, Compensation{}, true, func(int, float32, float32, float32) {})
 		if film == nil {
 			t.Fatalf("scale %.3f: no film op", scale)
 		}
