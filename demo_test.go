@@ -24,9 +24,14 @@ func TestHandleDemoUnavailable(t *testing.T) {
 }
 
 func TestHandleDemoOpenCopiesIntoTheCacheOnly(t *testing.T) {
-	cache := t.TempDir()
+	isolateUserDirs(t)
+	// Where the cache is depends on the system (%LocalAppData%,
+	// $XDG_CACHE_HOME, $HOME/Library/Caches), so ask for it.
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	meta := filepath.Join(t.TempDir(), "meta.json")
-	t.Setenv("LOCALAPPDATA", cache)
 	t.Setenv("FOVEON_META_CACHE", meta)
 	src := filepath.Join(t.TempDir(), "chosen.X3F")
 	if err := os.WriteFile(src, []byte("a demo test file, not a real X3F"), 0o644); err != nil {

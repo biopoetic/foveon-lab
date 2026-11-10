@@ -15,10 +15,7 @@ import (
 // never touches the owner's real favourites.
 func cullTestConfig(t *testing.T) {
 	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("APPDATA", dir)
-	t.Setenv("LOCALAPPDATA", dir)
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	isolateUserDirs(t)
 }
 
 func writeCullPhoto(t *testing.T, dir, name string) (path string, sum [32]byte) {

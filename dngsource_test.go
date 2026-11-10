@@ -51,7 +51,7 @@ func dngTestServer(ps []*Photo) *server {
 }
 
 func TestDNGPhotoEndToEnd(t *testing.T) {
-	t.Setenv("LOCALAPPDATA", t.TempDir()) // thumbnails/caches stay in the test folder
+	isolateUserDirs(t) // thumbnails/caches stay in the test folder
 	dir := t.TempDir()
 	ph, path := writeTestCameraDNG(t, dir, 6) // 90° clockwise
 	if !loadMeta(ph) {
