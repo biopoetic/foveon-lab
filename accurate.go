@@ -801,9 +801,10 @@ func (s *server) handleAccurate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.accurate.Store(req.On)
-		cfg, _ := loadConfig()
-		cfg.Accurate = &req.On
-		if err := saveConfig(cfg); err != nil {
+		if err := updateConfig(func(c *appConfig) bool {
+			c.Accurate = &req.On
+			return true
+		}); err != nil {
 			httpErr(w, 500, err)
 			return
 		}

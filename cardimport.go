@@ -420,10 +420,11 @@ func (s *server) addLibraryRoot(library string) {
 	if !found {
 		roots = append(roots, library)
 	}
-	cfg, _ := loadConfig()
-	cfg.Library = library
-	cfg.Photos = roots
-	if err := saveConfig(cfg); err != nil {
+	if err := updateConfig(func(c *appConfig) bool {
+		c.Library = library
+		c.Photos = roots
+		return true
+	}); err != nil {
 		return
 	}
 	s.setPhotos(roots, all)
@@ -590,11 +591,10 @@ func (s *server) handleCardSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	cfgMu.Lock()
-	cfg, _ := loadConfig()
-	cfg.Library, cfg.PhotosApp, cfg.ICloud = lib, req.PhotosApp, req.ICloud
-	err := saveConfig(cfg)
-	cfgMu.Unlock()
+	err := updateConfig(func(c *appConfig) bool {
+		c.Library, c.PhotosApp, c.ICloud = lib, req.PhotosApp, req.ICloud
+		return true
+	})
 	if err != nil {
 		httpErr(w, 500, err)
 		return
@@ -724,8 +724,9 @@ func (s *server) handleCardImport(w http.ResponseWriter, r *http.Request) {
 	if len(ids) > 0 {
 		s.addLibraryRoot(library)
 	}
-	cfg, _ = loadConfig()
-	cfg.Library = library
-	_ = saveConfig(cfg)
+	_ = updateConfig(func(c *appConfig) bool {
+		c.Library = library
+		return true
+	})
 	send(cardImportLine{Done: true, Copied: copied, Failed: failed, Skipped: already, Library: library, IDs: ids})
 }

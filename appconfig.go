@@ -54,13 +54,77 @@ func loadConfig() (appConfig, bool) {
 	return c, json.Unmarshal(data, &c) == nil
 }
 
+// saveConfig replaces the config file in one step: the new text goes to a
+// temporary file beside it, which is then renamed over the old one. Writing
+// the file in place left it empty or half-written if the app died mid-write,
+// and the next start then read no folders, favourites or API key.
+//
+// A caller that changes one setting uses updateConfig, not this: a bare
+// load-then-save can overwrite a change another request made in between.
 func saveConfig(c appConfig) error {
 	p := configPath()
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
-	data, _ := json.MarshalIndent(c, "", "  ")
-	return os.WriteFile(p, data, 0o600) // may hold an API key
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(p), "config-*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	_, werr := tmp.Write(data)
+	if werr == nil {
+		werr = tmp.Sync()
+	}
+	if cerr := tmp.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr == nil {
+		werr = os.Chmod(name, 0o600) // may hold an API key
+	}
+	if werr == nil {
+		werr = os.Rename(name, p)
+	}
+	if werr != nil {
+		os.Remove(name)
+	}
+	return werr
+}
+
+// cfgMu serialises read-modify-write of the config file.
+var cfgMu sync.Mutex
+
+// updateConfig changes the saved config under cfgMu: it reads the file,
+// lets change edit it, and saves the result. change returns false to leave
+// the file as it is. Every setting goes through here, so two requests at
+// once (a star and a folder change, say) cannot overwrite each other.
+//
+// A config file that is there but cannot be read as JSON is kept as
+// config.json.bad before a fresh one replaces it, so nothing in it is lost
+// for good.
+func updateConfig(change func(c *appConfig) bool) error {
+	cfgMu.Lock()
+	defer cfgMu.Unlock()
+	p := configPath()
+	var c appConfig
+	if data, err := os.ReadFile(p); err == nil {
+		if json.Unmarshal(data, &c) != nil {
+			c = appConfig{}
+			if werr := os.WriteFile(p+".bad", data, 0o600); werr != nil {
+				return fmt.Errorf("the settings file is damaged and could not be set aside: %w", werr)
+			}
+			log.Printf("config: %s is not valid JSON; kept as %s.bad and started fresh", p, p)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if !change(&c) {
+		return nil
+	}
+	return saveConfig(c)
 }
 
 // defaultPhotoRoots: the Desktop plus the Pictures folder when present.
@@ -141,9 +205,6 @@ func (s *server) handleFavorite(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"favorite": rating == 5, "rating": rating})
 }
 
-// cfgMu serialises read-modify-write of the config file.
-var cfgMu sync.Mutex
-
 func (s *server) lookup(id string) *Photo {
 	s.photoMu.RLock()
 	defer s.photoMu.RUnlock()
@@ -191,9 +252,10 @@ func (s *server) handleFolders(w http.ResponseWriter, r *http.Request) {
 		s.photoMu.RLock()
 		all := s.allImages
 		s.photoMu.RUnlock()
-		cfg, _ := loadConfig()
-		cfg.Photos, cfg.Presets, cfg.AllImages = roots, presets, all
-		if err := saveConfig(cfg); err != nil {
+		if err := updateConfig(func(c *appConfig) bool {
+			c.Photos, c.Presets, c.AllImages = roots, presets, all
+			return true
+		}); err != nil {
 			httpErr(w, 500, err)
 			return
 		}
@@ -234,12 +296,13 @@ func (s *server) handleAllImages(w http.ResponseWriter, r *http.Request) {
 	s.pmu.RLock()
 	presets := s.presetsDir
 	s.pmu.RUnlock()
-	cfg, _ := loadConfig()
-	cfg.AllImages = req.On
-	if len(cfg.Photos) == 0 {
-		cfg.Photos, cfg.Presets = roots, presets
-	}
-	if err := saveConfig(cfg); err != nil {
+	if err := updateConfig(func(c *appConfig) bool {
+		c.AllImages = req.On
+		if len(c.Photos) == 0 {
+			c.Photos, c.Presets = roots, presets
+		}
+		return true
+	}); err != nil {
 		httpErr(w, 500, err)
 		return
 	}

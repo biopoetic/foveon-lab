@@ -74,18 +74,19 @@ func (s *server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	s.photoMu.Unlock()
 	if ph.Favorite {
-		cfgMu.Lock()
-		if c, ok := loadConfig(); ok {
+		_ = updateConfig(func(c *appConfig) bool {
 			var keep []string
 			for _, f := range c.Favorites {
 				if f != ph.path {
 					keep = append(keep, f)
 				}
 			}
+			if len(keep) == len(c.Favorites) {
+				return false
+			}
 			c.Favorites = keep
-			saveConfig(c)
-		}
-		cfgMu.Unlock()
+			return true
+		})
 	}
 	writeJSON(w, map[string]string{"deleted": ph.Name})
 }

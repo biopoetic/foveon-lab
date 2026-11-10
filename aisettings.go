@@ -116,8 +116,10 @@ func (s *server) handleAISettings(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg, _ := loadConfig()
 	if req.Remove {
-		cfg.AI = nil
-		if err := saveConfig(cfg); err != nil {
+		if err := updateConfig(func(c *appConfig) bool {
+			c.AI = nil
+			return true
+		}); err != nil {
 			httpErr(w, 500, err)
 			return
 		}
@@ -157,8 +159,12 @@ func (s *server) handleAISettings(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, errors.New("the provider refused the test request: "+err.Error()))
 		return
 	}
-	cfg.AI = &st
-	if err := saveConfig(cfg); err != nil {
+	// The test request above can take seconds, so the file is read again
+	// here, under the lock, and only the AI part is replaced.
+	if err := updateConfig(func(c *appConfig) bool {
+		c.AI = &st
+		return true
+	}); err != nil {
 		httpErr(w, 500, err)
 		return
 	}

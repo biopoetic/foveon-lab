@@ -152,28 +152,27 @@ func saveCullDecision(photoPath string, rating int, reject bool) (string, error)
 // with the new five-star rating, so a photo starred here is still starred in
 // an older build and a share of config.json loses nothing.
 func syncFavoriteConfig(path string, on bool) error {
-	cfgMu.Lock()
-	defer cfgMu.Unlock()
-	c, _ := loadConfig()
-	var out []string
-	have := false
-	for _, f := range c.Favorites {
-		if f == path {
-			have = true
-			if !on {
-				continue
+	return updateConfig(func(c *appConfig) bool {
+		var out []string
+		have := false
+		for _, f := range c.Favorites {
+			if f == path {
+				have = true
+				if !on {
+					continue
+				}
 			}
+			out = append(out, f)
 		}
-		out = append(out, f)
-	}
-	if on && !have {
-		out = append(out, path)
-	}
-	if len(out) == len(c.Favorites) && have == on {
-		return nil
-	}
-	c.Favorites = out
-	return saveConfig(c)
+		if on && !have {
+			out = append(out, path)
+		}
+		if len(out) == len(c.Favorites) && have == on {
+			return false
+		}
+		c.Favorites = out
+		return true
+	})
 }
 
 // setCullState is the one place a decision is made: validate, write the
