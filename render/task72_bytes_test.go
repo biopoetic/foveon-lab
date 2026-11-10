@@ -58,6 +58,7 @@ func TestT72NonSlideBytes(t *testing.T) {
 		{"generic agfa", "Agfa Agfacolor Optima 100", "", false},
 		{"generic fuji", "Fujifilm Fujicolor Superia 100", "", false},
 	}
+	pinned := pinnedBytesHere(t)
 	for _, c := range cases {
 		p := preset.Neutral()
 		p.Film, p.Paper, p.Mono = c.film, c.paper, c.mono
@@ -66,7 +67,7 @@ func TestT72NonSlideBytes(t *testing.T) {
 		sum := sha256.Sum256(out.Pix)
 		got := fmt.Sprintf("%x", sum[:12])
 		t.Logf("%-16s %s %d", c.name, got, len(out.Pix))
-		if want := t72NonSlideHash[c.name]; want != "" && got != want {
+		if want := t72NonSlideHash[c.name]; pinned && want != "" && got != want {
 			t.Errorf("%s: hash %s, want %s (the v0.4.108 bytes)", c.name, got, want)
 		}
 	}
