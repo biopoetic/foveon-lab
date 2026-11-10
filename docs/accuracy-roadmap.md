@@ -2,9 +2,10 @@
 
 > The project's mission, principles and current goals are in the [manifest](MANIFEST.md). This file
 > is the detailed record of the "match SPP" work; the "Where we are" table below is from
-> 13 October 2026. The 2 November 2026 regression is 6.705 over 183 photos (DP 4.792, DPM 6.388,
-> Quattro 5.616, SD1 3.625, SD9 8.741, SD10 8.865, SD14 8.772, SD15 10.689), and the work since
-> 28 October is in "Since 28 October" below.
+> 13 October 2026. The 10 November 2026 regression (v0.4.114) is 6.687 over 183 photos (DP 4.780,
+> DPM 6.352, Quattro 5.592, SD1 3.625, SD9 8.741, SD10 8.865, SD14 8.755, SD15 10.689; 2 November:
+> 6.705), saved in `docs/spp-check.json` (the 181 sample-folder photos; the SD1 pair is run with
+> `-only SD1`). The work since 28 October is in "Since 28 October" below.
 
 Where Foveon Lab's preview stands against Sigma Photo Pro 6.9, and what each further step would
 take. All numbers are mean absolute difference per pixel and channel, 0–255, measured on photos the
