@@ -80,7 +80,7 @@ func t81Stats(v []float32, w, h, margin int) (mean, sd float64) {
 	return mean, math.Sqrt(math.Max(0, s2/float64(n)-mean*mean))
 }
 
-// t81Width is the integral autocorrelation width (1 + 2·Σρ) of a field,
+// t81Width is the integral autocorrelation width (1 + 2Â·ÎŁĎ) of a field,
 // averaged over both axes. A white field is 1; the mono grain's reduced field
 // is close to it.
 func t81Width(v []float32, w, h int) float64 {
@@ -161,8 +161,11 @@ func TestMonoGrainScaleConsistency(t *testing.T) {
 	}
 }
 
-// TestMonoGrainFullResolutionUnchanged pins the 1:1 parameters to the old
-// model: the deferred reduced-view path must not touch n = 1.
+// TestMonoGrainFullResolutionUnchanged pins the 1:1 parameters so the
+// deferred reduced-view path cannot touch n = 1. Task 83 replaced the single
+// coarse octave plus the .175 white share with two lattice octaves; the .5/.5
+// pin is now the new field (coarse 2.18, finer 1.25, weight .555), not the
+// task-82 one, because the two-scale fit at .5/.5 is the model's own value.
 func TestMonoGrainFullResolutionUnchanged(t *testing.T) {
 	b := t81MonoBase(120, 80, 1, 120)
 	p := preset.Neutral()
@@ -173,17 +176,19 @@ func TestMonoGrainFullResolutionUnchanged(t *testing.T) {
 	if gp == nil || gp.deferred {
 		t.Fatalf("1:1 params %+v, want the old non-deferred model", gp)
 	}
-	if len(gp.oct) != 1 || math.Abs(gp.oct[0].cell-1.875) > 1e-9 {
-		t.Errorf("1:1 coarse octave %+v, want cell 1.875", gp.oct)
+	if len(gp.oct) != 2 || math.Abs(gp.oct[0].cell-2.18) > 1e-9 || math.Abs(gp.oct[1].cell-1.25) > 1e-9 {
+		t.Errorf("1:1 octaves %+v, want cells 2.18 and 1.25", gp.oct)
 	}
-	if math.Abs(gp.fine-0.175) > 1e-9 {
-		t.Errorf("1:1 fine share %.6f, want 0.175", gp.fine)
+	if math.Abs(gp.fine) > 1e-9 {
+		t.Errorf("1:1 fine share %.6f, want 0", gp.fine)
 	}
+	const w2 = 0.555
 	want := float32((16.9*.25 + 13*.5 + 1.25) / b.monoGrainSharpGainAt(&monoGrainParams{
-		oct: []grainOctave{{cell: 1.875, amp: float32(math.Sqrt(0.825))}}, fine: .175,
+		oct: []grainOctave{{cell: 2.18, amp: float32(math.Sqrt(1 - w2))},
+			{cell: 1.25, amp: float32(math.Sqrt(w2))}}, fine: 0,
 		sigma: 1, mean: 1, q: monoGrainQ, seed: monoGrainSeed(p), n: 1}, 1))
 	if math.Abs(float64(gp.sigma-want)) > 1e-5 {
-		t.Errorf("1:1 sigma %.6f, want the old %.6f", gp.sigma, want)
+		t.Errorf("1:1 sigma %.6f, want %.6f", gp.sigma, want)
 	}
 	if got := b.newMonoGrainDeferred(p); got != nil && got.deferred {
 		t.Errorf("a 1:1 base took the deferred path")

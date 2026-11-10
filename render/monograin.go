@@ -85,44 +85,80 @@ func (b *Base) monoGrainN() float64 {
 	return n
 }
 
-// monoGrainBase is the 1:1 model: the measured peak SD and mean, the coarse
-// correlation length c1 in full-resolution pixels, and the roughness
-// variance share f.
+// monoGrainCoarseCell is the coarse lattice's cell in full-resolution pixels
+// (task 83). SPP's coarse cell is 2.1-2.3 px at every exported point with no
+// significant Size or Roughness trend; the per-point fits scatter by +-0.07 px
+// around 2.18, so the smooth function is a constant.
+func monoGrainCoarseCell(size float64) float64 { return 2.18 }
+
+// monoGrainFineCell is the finer lattice's cell (task 83). It is 1.25 px at
+// Roughness .5 and below (a 1.25-px lattice, not a per-pixel white share), and
+// gets finer with Roughness above .5, more so at small Size than at Size 1:
+// 1.15 px at Size .5 / Roughness 1, 1.25 px at Size 1 / Roughness 1. SPP's
+// export needs the finer field to match the high band, and the size-shaped
+// roughness term is what lets the 01 and 06 exports share one curve.
+func monoGrainFineCell(size, rough float64) float64 {
+	return 1.25 - 0.20*math.Max(0, rough-0.5)*(1-size)
+}
+
+// monoGrainFineShare is the finer lattice's amplitude-squared weight, fitted
+// to SPP's six-band spectrum (task 83). It rises with Roughness and falls with
+// Size, as SPP's high band does. R is a Hill curve through SPP's .1/.5/1
+// roughness rows (0.13/0.555/0.60); Q is the Size fall-off, zero at Size .5
+// and growing with Roughness (4.0 at .1, 2.18 at .5, 1.6 at 1). Both curves
+// are monotone, so the weight is monotone in Size and Roughness.
+func monoGrainFineShare(size, rough float64) float64 {
+	const rMax, rC, rP = 0.61369191, 0.18110551, 2.21231266
+	rp := math.Pow(rough, rP)
+	r := 0.0
+	if rp > 0 {
+		r = rMax * rp / (rp + math.Pow(rC, rP))
+	}
+	q := 1.6 + 3.12*math.Pow(1-rough, 2.424)
+	ds := math.Max(0, size-0.5)
+	w := r * (1 - q*ds*ds)
+	return math.Max(0, math.Min(0.95, w))
+}
+
+// monoGrainBase is the 1:1 model: the measured peak SD and mean and the two
+// lattice scales, each with its own cell and weight.
 //
-// Task 82 refit the clump and its spectrum from the SPP 1:1 exports, keeping
-// the .5/.5 point (the task-81 test's pin) exactly: c1 is 1.875 at Size .5,
-// 1.90 at .1 and 2.15 at 1. The measured SPP integral ACF width grows from
-// about 1.9 to 2.15 px over that range. The fine share is a quadratic in
-// Roughness (0 at .1, .175 at .5, .27 at 1 at Size .5), reduced with Size
-// above .5 (SPP's large-size clumps are coarser, so a smaller white share
-// gives the same ACF) and raised a little below .5.
+// Task 82 matched the clump width with one coarse cell (1.875-2.15 px) plus a
+// white share; that field could match either the width or SPP's high band, not
+// both (REPORT-82 section 9.1). Task 83 replaced the white share with a second,
+// finer lattice. The coarse cell is monoGrainCoarseCell(Size); the finer one is
+// monoGrainFineCell(Size, Roughness); the finer weight is monoGrainFineShare
+// (Size, Roughness). The two amplitudes' squares sum to 1, so A(size) and the
+// sharpening-mask pre-compensation are unchanged in method; the mask gain is
+// recomputed from the new octaves like any other field.
+//
+// A(size): the peak SD, interpolating the measured .1/.5/1 points
+// (2.72, 11.97, 31.14 at Roughness .5); B the measured roughness gain,
+// whose slope is steeper on the finer sizes. Task 82 refit the slope at
+// Size .1 (the measured .1/.1 is 0.57 of .1/.5, not 0.63); it is
+// unchanged at .5 and 1 (.650 and .300).
 func (b *Base) monoGrainBase(p preset.Params) (*monoGrainParams, float64, float64) {
 	size := math.Max(0, math.Min(1, p.MonoGrainSize))
 	rough := math.Max(0, math.Min(1, p.MonoGrainRough))
 	if size <= 0 {
 		return nil, 0, 0
 	}
-	// A(size): the peak SD, interpolating the measured .1/.5/1 points
-	// (2.72, 11.97, 31.14 at Roughness .5); B the measured roughness gain,
-	// whose slope is steeper on the finer sizes. Task 82 refit the slope at
-	// Size .1 (the measured .1/.1 is 0.57 of .1/.5, not 0.63); it is
-	// unchanged at .5 and 1 (.650 and .300).
 	slope := 1.2014 - 1.3042*size + 0.4028*size*size
 	bb := 1 + (rough-0.5)*slope
 	a := 16.9*size*size + 13.0*size + 1.25
 	sd := a * bb
-	ds := size - 0.5
-	c1 := 1.875 + 0.2097*ds + 0.6806*ds*ds
-	f0 := -0.275*rough*rough + 0.6025*rough - 0.0575
-	fine := f0 - (0.15+0.04*rough)*math.Max(0, size-0.5) + 0.125*math.Max(0, 0.5-size)*rough
-	if fine < 1e-6 {
-		fine = 0
+	c1 := monoGrainCoarseCell(size)
+	c2 := monoGrainFineCell(size, rough)
+	w2 := monoGrainFineShare(size, rough)
+	w1 := 1 - w2
+	oct := []grainOctave{{cell: c1, amp: float32(math.Sqrt(w1))}}
+	if w2 > 1e-6 {
+		oct = append(oct, grainOctave{cell: c2, amp: float32(math.Sqrt(w2))})
 	}
-	fine = math.Max(0, math.Min(0.5, fine))
 	gp := &monoGrainParams{
 		size: size, rough: rough,
-		oct:   []grainOctave{{cell: c1, amp: float32(math.Sqrt(1 - fine))}},
-		fine:  fine,
+		oct:   oct,
+		fine:  0,
 		sigma: float32(sd), mean: float32(0.16*a*bb - 0.95),
 		q:    monoGrainQ,
 		seed: monoGrainSeed(p),
@@ -163,18 +199,18 @@ func (b *Base) monoGrainFor(p preset.Params) *monoGrainParams {
 // monoGrainDeferredFor is the reduced-view model (task 81). The export's
 // grain, sharpened at 1:1 and area-reduced to this view, keeps:
 //
-//	V = (1-f)·R(c1,n) + f·F(n)
+//	V = (1-f)Â·R(c1,n) + fÂ·F(n)
 //
 // of the 1:1 field's variance (R the discrete box-reduction ratio for the
 // coarse lattice, F the per-pixel white factor) and the sharpening gain
-// G = sppGrainGain(1/n) × sliderGrainGain(n, Sharpness). The view draws a
+// G = sppGrainGain(1/n) Ă— sliderGrainGain(n, Sharpness). The view draws a
 // unit field with that variance at the view's scale, is laid on after SPP and
 // the slider, and is scaled by G.  The clump is below one view pixel
 // (c1/n < 1 at every view width), so it is drawn as white noise with a small
-// one-pixel correlated share λ that keeps the reduced export's correlation
-// width; λ is the coarse variance's share and is fitted from the 1:1 reduced
+// one-pixel correlated share Î» that keeps the reduced export's correlation
+// width; Î» is the coarse variance's share and is fitted from the 1:1 reduced
 // field (the same small share task 58 fitted for the film grain's sub-pixel
-// clumps, but smaller here because SPP's mono clump is only 1–2 px at 1:1).
+// clumps, but smaller here because SPP's mono clump is only 1â€“2 px at 1:1).
 func (b *Base) monoGrainDeferredFor(p preset.Params) *monoGrainParams {
 	base, sd, _ := b.monoGrainBase(p)
 	if base == nil {
@@ -212,7 +248,7 @@ func (b *Base) monoGrainDeferredFor(p preset.Params) *monoGrainParams {
 	gp.fine = 1 - lambda
 	gp.oct = nil
 	if lambda > 0 {
-		// grainSample at cell 1 keeps 0.75² of a unit lattice, so the
+		// grainSample at cell 1 keeps 0.75Â˛ of a unit lattice, so the
 		// amplitude carries the 1/0.75.
 		gp.oct = []grainOctave{{cell: 1, amp: float32(math.Sqrt(lambda) / 0.75)}}
 	}
@@ -253,7 +289,7 @@ func (b *Base) monoGrainSharpGainAt(gp *monoGrainParams, scale float64) float64 
 }
 
 // monoUnitField builds a unit-variance field with gp's octaves and fine
-// share: the same lattice and Gaussian as the real field, on an n×n patch.
+// share: the same lattice and Gaussian as the real field, on an nĂ—n patch.
 func monoUnitField(n int, gp *monoGrainParams) []float32 {
 	field := make([]float32, n*n)
 	for j, o := range gp.oct {
@@ -274,7 +310,7 @@ func monoUnitField(n int, gp *monoGrainParams) []float32 {
 	return field
 }
 
-// monoUSMField applies SPP's separable 7-tap unsharp mask to an n×n field.
+// monoUSMField applies SPP's separable 7-tap unsharp mask to an nĂ—n field.
 func monoUSMField(field []float32, n int, a float32, k [7]float32) []float32 {
 	tmp := make([]float32, n*n)
 	blur := make([]float32, n*n)
@@ -313,7 +349,7 @@ func monoVariance(v []float32) float64 {
 	return s2/n - (s/n)*(s/n)
 }
 
-// monoReduce area-reduces an n×n field to dw×dh (boxTaps, the app's own
+// monoReduce area-reduces an nĂ—n field to dwĂ—dh (boxTaps, the app's own
 // fractional box) and returns the reduced field.
 func monoReduce(src []float32, n, dw, dh int) []float32 {
 	tx, ty := boxTaps(n, dw), boxTaps(n, dh)
@@ -342,7 +378,7 @@ func monoReduce(src []float32, n, dw, dh int) []float32 {
 }
 
 // monoLag1 is the lag-1 autocorrelation (both axes, mean removed) of a
-// dw×dh field.
+// dwĂ—dh field.
 func monoLag1(v []float32, dw, dh int) float64 {
 	var mean float64
 	for _, x := range v {
@@ -375,7 +411,7 @@ func monoLag1(v []float32, dw, dh int) float64 {
 // rho1 the reduced field's lag-1 correlation. This is grainBoxRatio/grainFineFactor
 // derived for the mono lattice, with the two sharpeners' interaction kept
 // instead of approximating them as white-grain gains (which overestimated
-// the retained gain at Sharpness +1 by 20–30%).
+// the retained gain at Sharpness +1 by 20â€“30%).
 func (b *Base) monoGrainRetained(gp *monoGrainParams, n, sharpness float64) (varRed, varOut, rho1 float64) {
 	const N = 256
 	dw := max(1, int(math.Round(float64(N)/n)))
@@ -462,7 +498,7 @@ func (b *Base) newMonoGrainFrom(gp *monoGrainParams) *monoGrain {
 }
 
 // monoGrainQ is the tone weight's exponent, fitted to the exports: the
-// measured grain SD is flatter across the tones than 2√(u(1-u)).
+// measured grain SD is flatter across the tones than 2âš(u(1-u)).
 const monoGrainQ = 0.45
 
 // monoGrainTone is SPP's tone weight (4u(1-u))^q at the model's fixed q,

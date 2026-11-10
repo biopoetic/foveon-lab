@@ -1,9 +1,10 @@
 package render
 
 // Task 82: the 1:1 monochrome grain was refit against SPP's 1:1 exports.
-// These are the SPP flat-block numbers (the text's "high-pass residual std in
-// flat regions" and the integral autocorrelation width), and a pin of the
-// model's 1:1 render against them.
+// Task 83 kept the pin and changed the fixture's sensor from "Merrill" to
+// "DPM": the exports are DP3 Merrills, which take the DPM sharpening row
+// (amount 1.67, sigma .7), not the SD1's "Merrill" row. The numbers below are
+// still SPP's flat-block std and width.
 //
 // The fixture is a flat mid-grey frame. That is the hardest case for the
 // 8-bit unsharp-mask clamp (there is no scene texture to widen the 3x3
@@ -41,7 +42,7 @@ var sppFit = []sppFitPoint{
 
 func sppFitBase(w, h int) *Base {
 	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1,
-		Frame: w, NativeFrame: w, Raw: true, ISO: 100, Sensor: "Merrill"}
+		Frame: w, NativeFrame: w, Raw: true, ISO: 100, Sensor: "DPM"}
 	for i := range l.Pix {
 		l.Pix[i] = 0.2158 // sRGB 128
 	}
