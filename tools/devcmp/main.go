@@ -232,13 +232,6 @@ func sgFor(f *x3f.File, c *x3f.CAMF) *x3f.SpatialGain {
 	return x3f.NewSpatialGain(c, f.Props, "Sunlight")
 }
 
-// wbOf maps the photo's WB_DESC to CAMF's name, as camfread.go does.
-func wbOf(f *x3f.File) string {
-	m := map[string]string{"Daylight": "Sunlight", "Sunlight": "Sunlight", "Shade": "Shade", "Overcast": "Overcast",
-		"Incandescent": "Incandescent", "Fluorescent": "Fluorescent", "Flash": "Flash", "Auto": "Auto", "Custom": "Custom"}
-	return m[strings.TrimSpace(f.Props["WB_DESC"])]
-}
-
 // linearSRGB develops raw to linear sRGB (clipped to 0..1) with the photo's
 // CAMF white balance and colour matrix.
 func linearSRGB(raw *x3f.RawImage, c *x3f.CAMF, sg *x3f.SpatialGain, wb string) (*image.RGBA64, error) {

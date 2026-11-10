@@ -81,11 +81,6 @@ func photoCC(ph *Photo) *[9]float64 {
 // linear camera RGB (noise below black kept) and the transform to linear
 // output RGB — its CAMF white balance + colour matrix (x3f.WBTransform,
 // which also covers the SD9/SD10/SD14/DP1's camera-to-XYZ form).
-const (
-	despeckleFraction = 0.6
-	despeckleFloor    = 0.0015
-)
-
 func goDevelop(ph *Photo) (*x3f.CamImage, render.CamTransform, error) {
 	return goDevelopFor(ph, false, false, "")
 }
@@ -714,9 +709,6 @@ func whiteInput(ph *Photo) float32 {
 	}
 	return 1.8
 }
-
-// binCam averages b×b blocks of camera RGB.
-func binCam(c *x3f.CamImage, b int) *x3f.CamImage { return binCam2(c, b, b) }
 
 // binCam2 averages bx×by blocks of camera RGB.
 func binCam2(c *x3f.CamImage, bx, by int) *x3f.CamImage {

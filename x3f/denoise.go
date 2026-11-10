@@ -1105,12 +1105,6 @@ func boxBlurRef(p []float32, w, h, r int) []float32 {
 	return out
 }
 
-// guided is He et al.'s guided filter of p by guide I (radius r, eps).
-func guided(I, p []float32, w, h, r int, eps float32) []float32 {
-	mI, mII := boxBlur(I, w, h, r), boxBlurSq(I, w, h, r)
-	return guidedPre(I, p, w, h, r, eps, mI, mII)
-}
-
 // boxBlurSq blurs I*I without materialising the square.
 func boxBlurSq(I []float32, w, h, r int) []float32 {
 	II := make([]float32, len(I))

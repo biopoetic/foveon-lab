@@ -134,13 +134,6 @@ func cardRoots() []string {
 	}
 }
 
-// isCardRoot reports whether root is a mounted card: a volume whose DCIM
-// folder holds X3F files (directly or one camera folder down).
-func isCardRoot(root string) bool {
-	st, err := os.Stat(filepath.Join(root, cardDCIM))
-	return err == nil && st.IsDir()
-}
-
 // scanCard walks the card's DCIM folder for X3F files. Camera JPEGs that sit
 // beside an X3F are not photographs of their own and are never listed.
 func scanCard(root string) ([]cardFile, error) {

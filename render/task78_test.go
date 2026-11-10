@@ -11,20 +11,6 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-// xAt is the log H where density d is reached on the curve.
-func t78xAt(c *FilmCurve, d float64) float64 {
-	lo, hi := c.LgH[0], c.LgH[len(c.LgH)-1]
-	for i := 0; i < 60; i++ {
-		m := (lo + hi) / 2
-		if c.Density(c.GammaRef())(m) < d {
-			lo = m
-		} else {
-			hi = m
-		}
-	}
-	return (lo + hi) / 2
-}
-
 // t78CI is Kodak's contrast index (and Fuji's G): 0.9 density over the log H
 // span from 0.1 to 1.0 above base + fog.
 func t78CI(c *FilmCurve) float64 {

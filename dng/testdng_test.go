@@ -53,8 +53,6 @@ func srat(v ...float64) []byte {
 	return b
 }
 
-func ascii(s string) []byte { return append([]byte(s), 0) }
-
 // packSamples packs integer samples MSB-first, padding every row to a byte.
 func packSamples(vals []uint32, bits, rows, rowSamples int) []byte {
 	stride := (rowSamples*bits + 7) / 8

@@ -26,19 +26,6 @@ type edgeSample struct {
 	nx, ny float64
 }
 
-// edgeMeasure is the aggregate over the edges of one frame against its own
-// ISO 100 reference. Spread is the median excess width in px (the area between
-// the observed step and an ideal one), Gain the median excess over the
-// reference's, Contrast the median step kept at +-R (1 = the same step as
-// ISO 100, below 1 = pulled towards the surround).
-type edgeMeasure struct {
-	N         int
-	Spread    float64
-	Gain      float64
-	Contrast  float64
-	RefSpread float64
-}
-
 // edgeScale maps the analysis width to the sensor's full width, so the +-R
 // sampling covers the same scene distance on a 1548 px sd Quattro H export
 // as on a 4704 px Merrill export.

@@ -185,19 +185,6 @@ func sppFullAmount(iso float64, sensor string) float64 {
 	return interp(steps, tab, math.Log2(iso/100)) * sharpAmountScale
 }
 
-// sppAmount is the amount of a sigma-1 mask at a view of scale s that
-// matches the full-size mask's gain at the view's Nyquist frequency (the
-// model before v0.4.51; sppView replaced it).
-func sppAmount(s, iso float64, sensor string) float32 {
-	a := sppFullAmount(iso, sensor)
-	if s >= 1 {
-		return float32(a)
-	}
-	hp := func(sigma, f float64) float64 { return 1 - math.Exp(-2*math.Pi*math.Pi*sigma*sigma*f*f) }
-	sg := sppSharpSigmaOf(sensor)
-	return float32(a * hp(sg, 0.5*s) / hp(sg, 0.5))
-}
-
 // sppView is the mask (amount and kernel) for a view of scale s whose
 // gain matches, at every frequency the view holds, SPP's full-size mask
 // seen through the reduction: a·(1-K(f·s)) for view frequency f. A
@@ -254,9 +241,6 @@ func gaussKernel(sigma float64) [7]float32 {
 	}
 	return k
 }
-
-// gauss1 is a normalised Gaussian kernel of sigma 1 (radius 3).
-var gauss1 = gaussKernel(1)
 
 // sppGrainGain is the gain SPP's sharpening keeps on grain after the export
 // (sharpened at full size) is area-reduced to a view n times coarser. The

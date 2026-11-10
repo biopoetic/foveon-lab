@@ -74,14 +74,6 @@ func tgSRational(tag uint16, v ...float64) st {
 	return st{tag, 10, uint32(len(v)), b}
 }
 
-func tgDouble(tag uint16, v ...float64) st {
-	b := make([]byte, 8*len(v))
-	for i, x := range v {
-		binary.LittleEndian.PutUint64(b[8*i:], mathFloat64bits(x))
-	}
-	return st{tag, 12, uint32(len(v)), b}
-}
-
 // buildTIFF lays out the directories, then their out-of-line values, then the
 // blobs. StripOffsets/TileOffsets entries are filled with the blob offsets;
 // SubIFDs entries with the directory offsets.
@@ -224,8 +216,6 @@ func buildTIFF(t testing.TB, dirs []sdir, blobs [][]byte) []byte {
 	return out
 }
 
-func mathFloat64bits(f float64) uint64 { return math.Float64bits(f) }
-
 // patchTagValue overwrites the 4-byte value/offset field of the first entry
 // with the given tag in IFD0. It is used by the bad-input tests.
 func patchTagValue(b []byte, tag uint16, val uint32) bool {
@@ -307,14 +297,6 @@ func raw16(vals []uint32) []byte {
 	b := make([]byte, 2*len(vals))
 	for i, v := range vals {
 		binary.LittleEndian.PutUint16(b[2*i:], uint16(v))
-	}
-	return b
-}
-
-func raw8(vals []uint32) []byte {
-	b := make([]byte, len(vals))
-	for i, v := range vals {
-		b[i] = byte(v)
 	}
 	return b
 }

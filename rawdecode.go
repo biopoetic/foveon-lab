@@ -55,10 +55,6 @@ func findRawTool(explicit string) string {
 	return ""
 }
 
-// rawCachePath is where the decoded TIFF of a file is kept; it changes when
-// the X3F does, so edits or replacements never serve a stale decode.
-func rawCachePath(ph *Photo) (string, error) { return rawCachePathFor(ph, "sRGB") }
-
 // rawCachePathFor is the cache file of a decode in colour mode color.
 func rawCachePathFor(ph *Photo, color string) (string, error) {
 	st, err := os.Stat(ph.path)

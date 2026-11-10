@@ -609,10 +609,6 @@ func (s *server) sourceMode(ph *Photo) string {
 	return "jpg"
 }
 
-func (s *server) source(ph *Photo) (*render.Linear, error) {
-	return s.sourceAs(ph, s.sourceMode(ph))
-}
-
 func (s *server) sourceAs(ph *Photo, mode string) (*render.Linear, error) {
 	if ph.Kind == "dng" {
 		// A DNG has one development; the page's source names ("jpg", "raw")

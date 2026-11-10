@@ -27,7 +27,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -470,10 +469,4 @@ func (s *server) handleLookImport(w http.ResponseWriter, r *http.Request) {
 	payload["savedTo"] = path
 	payload["imported"] = l.Name
 	writeJSON(w, payload)
-}
-
-// sortLookNames is used by the tests and the report to print a stable list.
-func sortLookNames(names []string) []string {
-	sort.Strings(names)
-	return names
 }

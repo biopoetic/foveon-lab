@@ -243,22 +243,6 @@ func mulPixels(l *Linear, m [9]float64) {
 	})
 }
 
-// guidedGauss is a guided filter (He et al.) with Gaussian windows: p
-// smoothed where the guide I is flat, kept where I has edges.
-func guidedGauss(I, p []float32, w, h int, sigma, eps float64) []float32 {
-	n := len(I)
-	ip := make([]float32, n)
-	ii := make([]float32, n)
-	parallelRows(n, func(i0, i1 int) {
-		for i := i0; i < i1; i++ {
-			ip[i] = I[i] * p[i]
-			ii[i] = I[i] * I[i]
-		}
-	})
-	mI, mII := GaussBlur(I, w, h, sigma), GaussBlur(ii, w, h, sigma)
-	return guidedGaussPre(I, p, w, h, sigma, eps, mI, mII, ip)
-}
-
 // guidedGaussPre is guidedGauss with the guide's statistics and I*p already
 // computed: the guide's blurs are shared instead of rebuilt.
 func guidedGaussPre(I, p []float32, w, h int, sigma, eps float64, mI, mII, ip []float32) []float32 {

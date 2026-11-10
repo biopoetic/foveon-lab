@@ -25,9 +25,6 @@ type localFit struct {
 	amount []float64          // high-pass amount per radius
 }
 
-// lumaEnc is perceptual brightness (sRGB-encoded luma).
-func lumaEnc(p []float32, i int) float32 { return render.ToSRGB(luma(p, i)) }
-
 // splitChroma returns encoded luma and the linear chroma (rgb - Y).
 func splitChroma(l *render.Linear) (y []float32, c []float32) {
 	n := l.W * l.H

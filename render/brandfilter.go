@@ -1,8 +1,8 @@
 package render
 
 // Photographic filters by brand and model (brandfilters.json): the list a
-// photographer actually shops from — B+W 022, Hoya R72, Cokin 007,
-// K&F Concept IR720 — instead of Wratten designations alone.
+// photographer actually shops from â€” B+W 022, Hoya R72, Cokin 007,
+// K&F Concept IR720 â€” instead of Wratten designations alone.
 //
 // Every entry carries its basis:
 //   - glass:   a SCHOTT filter glass whose measured internal transmittance is
@@ -20,7 +20,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"math"
-	"strings"
 	"sync"
 )
 
@@ -28,7 +27,7 @@ import (
 var brandFiltersJSON []byte
 
 // BrandFilter is one catalogue entry, as served to the UI. Physical is the
-// entry's identity — the thing actually modelled (a glass, a Wratten number,
+// entry's identity â€” the thing actually modelled (a glass, a Wratten number,
 // a cutoff, a density). Brand and Model say which product uses that
 // physical filter, so the UI can present the specification as the primary
 // name and the product only as a compatibility note.
@@ -165,20 +164,9 @@ func brandFilterMatrix(sensor, id string) *[9]float64 {
 	return m
 }
 
-// brandFilterNames reports whether id names a catalogue entry.
-func brandFilterNames(id string) bool {
-	_, ok := brandFilter(id)
-	return ok
-}
-
 // IsBrandIR reports whether id is a brand infrared filter (its look is served
 // through the infrared path, irlooks.json).
 func IsBrandIR(id string) bool {
 	f, ok := brandFilter(id)
 	return ok && f.Kind == "ir"
-}
-
-// brandID strips the "br-" prefix the UI filters carry.
-func brandID(filter string) string {
-	return strings.TrimPrefix(filter, "br-")
 }

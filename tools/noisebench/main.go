@@ -221,10 +221,6 @@ func blurred(c cam, k int) []float32 {
 	return boxBlur(p, c.w, c.h, 12)
 }
 
-// matchFrom fits the per-layer map on from (normally the undenoised test
-// frame, blurred) and applies it to test.
-func match(ref, test cam) cam { return matchFrom(ref, test, test) }
-
 func matchFrom(ref, from, test cam) cam {
 	out := cam{w: test.w, h: test.h, pix: make([]float32, len(test.pix)), t: test.t}
 	for k := 0; k < 3; k++ {

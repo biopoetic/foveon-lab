@@ -254,51 +254,6 @@ func crop(p []float32, w, x0, y0, cw, ch int) []float32 {
 	return o
 }
 
-// align finds SPP's offset (±96 px) for ours' crop by normalised
-// correlation of 4×-binned luminance, then refines to 1 px.
-func align(ours, spp []float32, w, h, x0, y0, cw, ch int) (int, int) {
-	bin := func(p []float32) ([]float32, int, int) {
-		bw, bh := w/4, h/4
-		o := make([]float32, bw*bh)
-		for y := 0; y < bh*4; y++ {
-			for x := 0; x < bw*4; x++ {
-				o[(y/4)*bw+x/4] += p[y*w+x] / 16
-			}
-		}
-		return o, bw, bh
-	}
-	corr := func(a, b []float32, aw, bw, ax, ay, bx, by, cw, ch, step int) float64 {
-		var sa, sb, saa, sbb, sab, n float64
-		for y := 0; y < ch; y += step {
-			for x := 0; x < cw; x += step {
-				u, v := float64(a[(ay+y)*aw+ax+x]), float64(b[(by+y)*bw+bx+x])
-				sa, sb, saa, sbb, sab, n = sa+u, sb+v, saa+u*u, sbb+v*v, sab+u*v, n+1
-			}
-		}
-		return (sab - sa*sb/n) / math.Sqrt(math.Max(1e-12, (saa-sa*sa/n)*(sbb-sb*sb/n)))
-	}
-	bo, bw, _ := bin(ours)
-	bsp, _, _ := bin(spp)
-	best, bx, by := -2.0, 0, 0
-	for dy := -24; dy <= 24; dy++ {
-		for dx := -24; dx <= 24; dx++ {
-			if c := corr(bo, bsp, bw, bw, x0/4, y0/4, x0/4+dx, y0/4+dy, cw/4, ch/4, 2); c > best {
-				best, bx, by = c, dx*4, dy*4
-			}
-		}
-	}
-	fx, fy := bx, by
-	best = -2
-	for dy := by - 4; dy <= by+4; dy++ {
-		for dx := bx - 4; dx <= bx+4; dx++ {
-			if c := corr(ours, spp, w, w, x0, y0, x0+dx, y0+dy, cw, ch, 4); c > best {
-				best, fx, fy = c, dx, dy
-			}
-		}
-	}
-	return fx, fy
-}
-
 func boxBlur(p []float32, w, h, r int) []float32 {
 	if r == 0 {
 		return p
