@@ -35,3 +35,9 @@ SDIM0076@SD1 # wrong camera: the export is a SIGMA DP2 Merrill image for the SD1
 # out the EV makes it worse, so this is not a pure exposure difference but
 # another SPP colour/contrast setting.
 SDIM1013 # non-neutral: 0.57 EV darker and much more saturated than the camera JPEG (other SPP settings)
+
+# SDIM9031 is SDIM0031 with one property changed (20 bytes longer, made
+# for the Adobe RGB colour-space test in foveon-calibration\adobergb). The
+# pixels are the same, so spp-check scored it identically to 15 decimals
+# (3.6252128972211115) and the SD1 group read "2 photos" from one image.
+SDIM9031 # a copy of SDIM0031 with one property changed: the same pixels, so it counted one photo twice

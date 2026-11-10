@@ -728,15 +728,6 @@
                      "ev":  -0.13446301172686878,
                      "areaEV0":  9.556881705463399
                  },
-    "SDIM9031":  {
-                     "group":  "SD1",
-                     "model":  "SIGMA SD1 Merrill",
-                     "all":  3.6252128972211115,
-                     "area":  2.8455679911243106,
-                     "shadow":  2.453702717951576,
-                     "ev":  0.017461193469037295,
-                     "areaEV0":  2.8656442704154954
-                 },
     "SIGMA_DP0_QUATTRO_05":  {
                                  "group":  "Quattro",
                                  "model":  "SIGMA dp0 Quattro",

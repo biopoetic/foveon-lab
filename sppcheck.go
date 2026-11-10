@@ -55,7 +55,19 @@ func sppCheckCommand(desk string) {
 	only := fs.String("only", "", "comma-separated camera groups and/or photo names to check (default: all)")
 	worse := fs.Float64("worse", 0.3, "with -compare: flag photos worse by more than this")
 	stepCode := fs.String("step", "A00", "calibration step to score (e.g. A17 = Fill Light +1): developed with its settings, against <name>_<step>.tif")
+	summary := fs.String("summary", "", "print the summary of a JSON file from an earlier -save and stop (nothing is developed)")
 	fs.Parse(os.Args[2:])
+
+	if *summary != "" {
+		var saved map[string]sppScore
+		if b, err := os.ReadFile(*summary); err != nil || json.Unmarshal(b, &saved) != nil {
+			fmt.Printf("can't read %s\n", *summary)
+			os.Exit(2)
+		}
+		fmt.Printf("%d photos in %s\n", len(saved), *summary)
+		printSPPSummary(saved)
+		return
+	}
 
 	step := strings.ToUpper(*stepCode)
 	params := preset.Neutral()
@@ -233,48 +245,98 @@ func sppCheckPhoto(ph *Photo, export string, p preset.Params) (sppScore, error) 
 
 func clamp01(v float32) float32 { return max(0, min(1, v)) }
 
-func printSPPSummary(scores map[string]sppScore) {
-	type agg struct {
-		n                 int
-		all, area, shadow float64
+// sppTarget is the project's goal for colour and tone against SPP: a mean
+// error under it is invisible side by side.
+const sppTarget = 3.0
+
+// sppGroupStat is one camera group's summary. The mean is what the project
+// has always quoted, but a few bad photos move it a long way; the median
+// and the count under the target say where a typical photo stands.
+type sppGroupStat struct {
+	Group                      string
+	N                          int
+	All, Area, Shadow          float64 // means
+	AreaMedian                 float64
+	UnderTarget                int // photos with Area < sppTarget
+	OffExposure                int // photos with |EV| > 0.25
+	OffExposureAll, OffExpArea float64
+}
+
+func sppGroupStats(scores map[string]sppScore) []sppGroupStat {
+	type acc struct {
+		st    sppGroupStat
+		areas []float64
 	}
-	by := map[string]*agg{}
+	by := map[string]*acc{}
 	for _, s := range scores {
 		for _, g := range []string{s.Group, "ALL"} {
 			a := by[g]
 			if a == nil {
-				a = &agg{}
+				a = &acc{st: sppGroupStat{Group: g}}
 				by[g] = a
 			}
-			a.n++
-			a.all += s.All
-			a.area += s.Area
-			a.shadow += s.Shadow
+			a.st.N++
+			a.st.All += s.All
+			a.st.Area += s.Area
+			a.st.Shadow += s.Shadow
+			a.areas = append(a.areas, s.Area)
+			if s.Area < sppTarget {
+				a.st.UnderTarget++
+			}
+			if math.Abs(s.EV) > 0.25 {
+				a.st.OffExposure++
+				a.st.OffExposureAll += s.All
+				a.st.OffExpArea += s.Area
+			}
 		}
 	}
-	var gs []string
-	for g := range by {
-		gs = append(gs, g)
+	var out []sppGroupStat
+	for _, a := range by {
+		n := float64(a.st.N)
+		a.st.All, a.st.Area, a.st.Shadow = a.st.All/n, a.st.Area/n, a.st.Shadow/n
+		sort.Float64s(a.areas)
+		if m := len(a.areas); m%2 == 1 {
+			a.st.AreaMedian = a.areas[m/2]
+		} else {
+			a.st.AreaMedian = (a.areas[m/2-1] + a.areas[m/2]) / 2
+		}
+		if a.st.OffExposure > 0 {
+			a.st.OffExposureAll /= float64(a.st.OffExposure)
+			a.st.OffExpArea /= float64(a.st.OffExposure)
+		}
+		out = append(out, a.st)
 	}
-	sort.Strings(gs)
-	for _, g := range gs {
-		a := by[g]
-		fmt.Printf("%-8s %3d photos: all %.3f  area %.3f  shadows %.3f\n", g, a.n, a.all/float64(a.n), a.area/float64(a.n), a.shadow/float64(a.n))
+	sort.Slice(out, func(i, j int) bool { return out[i].Group < out[j].Group })
+	return out
+}
+
+func printSPPSummary(scores map[string]sppScore) {
+	stats := sppGroupStats(scores)
+	for _, a := range stats {
+		fmt.Printf("%-8s %3d photos: all %.3f  area %.3f  shadows %.3f  | area median %.2f, %d of %d under %.0f\n",
+			a.Group, a.N, a.All, a.Area, a.Shadow, a.AreaMedian, a.UnderTarget, a.N, sppTarget)
 	}
 	// A neutral SPP export lands within a few hundredths of a stop of our own
-	// brightness. A row far off that is a reference developed with other
-	// settings (a "processing" test shot, say), and its error is mostly that
-	// difference: say how much of the average such rows carry, so the group
-	// figure can be read honestly.
-	n, sum := 0, 0.0
-	for _, s := range scores {
-		if math.Abs(s.EV) > 0.25 {
-			n++
-			sum += s.All
+	// brightness. A row far off that is one of two things: a reference made
+	// with other SPP settings, or a render of ours that is too dark or too
+	// bright. Both have been found here (RAW_SIGMA_DP1S, ISO 50: SPP's export
+	// is normally exposed and ours is 1.2 stops dark and red), so these rows
+	// are listed, not excused: look at each before blaming the reference.
+	for _, a := range stats {
+		if a.Group == "ALL" && a.OffExposure > 0 {
+			fmt.Printf("          %d of %d photos are off in exposure (|ev| > 0.25), averaging %.2f: the reference or our render, check each\n", a.OffExposure, a.N, a.OffExposureAll)
 		}
 	}
-	if n > 0 {
-		fmt.Printf("          %d of %d photos are non-neutral (|ev| > 0.25), averaging %.2f: read area@ev0 for those\n", n, len(scores), sum/float64(n))
+	var names []string
+	for name, s := range scores {
+		if math.Abs(s.EV) > 0.25 {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		s := scores[name]
+		fmt.Printf("            %-36s %-8s area %6.2f  ev %+5.2f  area@ev0 %6.2f\n", name, s.Group, s.Area, s.EV, s.AreaEV0)
 	}
 }
 

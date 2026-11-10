@@ -13,7 +13,7 @@ var sppGaps = []sppGap{
 	{Body: "DP2 Merrill", Model: "SIGMA DP2 Merrill", Mean: 3.7986, Area: 2.5351, Photos: 3},
 	{Body: "DP2X", Model: "SIGMA DP2X", Mean: 4.3446, Area: 3.6877, Photos: 18},
 	{Body: "DP3 Merrill", Model: "SIGMA DP3 Merrill", Mean: 4.9058, Area: 3.7757, Photos: 13},
-	{Body: "SD1 Merrill", Model: "SIGMA SD1 Merrill", Mean: 3.6252, Area: 2.8456, Photos: 2},
+	{Body: "SD1 Merrill", Model: "SIGMA SD1 Merrill", Mean: 3.6252, Area: 2.8456, Photos: 1},
 	{Body: "SD10", Model: "SIGMA SD10", Mean: 8.8142, Area: 8.1367, Photos: 18},
 	{Body: "SD14", Model: "SIGMA SD14", Mean: 8.4573, Area: 7.9370, Photos: 24},
 	{Body: "SD15", Model: "SIGMA SD15", Mean: 10.6889, Area: 9.8206, Photos: 4},

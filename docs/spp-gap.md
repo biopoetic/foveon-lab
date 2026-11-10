@@ -11,7 +11,7 @@ ignores fine detail). The app shows the same line in the photo info.
 | DP2 Merrill | 3.8 | 2.5 | 3 |
 | DP2X | 4.3 | 3.7 | 18 |
 | DP3 Merrill | 4.9 | 3.8 | 13 |
-| SD1 Merrill | 3.6 | 2.8 | 2 |
+| SD1 Merrill | 3.6 | 2.8 | 1 |
 | SD10 | 8.8 | 8.1 | 18 |
 | SD14 | 8.5 | 7.9 | 24 |
 | SD15 | 10.7 | 9.8 | 4 |
