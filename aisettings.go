@@ -172,6 +172,30 @@ func (s *server) handleAISettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.ai.status())
 }
 
+// The largest non-GET request bodies. Most endpoints take a small JSON
+// command; a batch export or publish carries one parameter block per
+// selected photo (about 220 bytes in the neutral case, so a whole large
+// library is still far below 16 MiB), and a look file may use its own limit.
+// /api/export is one photo's 321-byte body and keeps the ordinary limit.
+const (
+	requestBodyLimit = 1 << 20  // every ordinary JSON command
+	bulkBodyLimit    = 16 << 20 // /api/export/batch and /api/publish: one block per photo
+)
+
+// bodyLimitFor is the body limit of one non-GET endpoint. A path not listed
+// gets the ordinary command limit.
+func bodyLimitFor(path string) int64 {
+	switch path {
+	case "/api/look/import":
+		// The handler owns this limit (lookMaxBytes) and reads one byte past
+		// it to tell "at the limit" from "over it"; do not cut it short.
+		return lookMaxBytes + 1
+	case "/api/export/batch", "/api/publish":
+		return bulkBodyLimit
+	}
+	return requestBodyLimit
+}
+
 // sameOrigin rejects state-changing requests from other web sites: a page
 // elsewhere could otherwise POST to this local server (e.g. swap in its own
 // AI endpoint and receive your photos).
@@ -184,6 +208,13 @@ func sameOrigin(next http.Handler) http.Handler {
 		if !loopbackHost(r.Host) {
 			http.Error(w, "unknown host", http.StatusForbidden)
 			return
+		}
+		// One size limit for every request that can carry a body; the few
+		// endpoints that need more say so in bodyLimitFor. MaxBytesReader
+		// makes the handler's first read return *http.MaxBytesError, which
+		// httpErr turns into a 413.
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			r.Body = http.MaxBytesReader(w, r.Body, bodyLimitFor(r.URL.Path))
 		}
 		// Browsers label every request with where it came from.
 		if sf := r.Header.Get("Sec-Fetch-Site"); sf != "" && sf != "same-origin" && sf != "none" && strings.HasPrefix(r.URL.Path, "/api/") {

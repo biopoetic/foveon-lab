@@ -145,7 +145,6 @@ func main() {
 		fmt.Println("(outputs linearized through the ramp's tone curve)")
 	}
 	// Fit out = M * raw on patches where no SPP channel is near clipping.
-	var X, Y []float64
 	var used []obs
 	for _, o := range all {
 		bad := math.IsNaN(o.out[0] + o.out[1] + o.out[2])
@@ -157,8 +156,6 @@ func main() {
 		if bad {
 			continue
 		}
-		X = append(X, o.in[:]...)
-		Y = append(Y, o.out[:]...)
 		used = append(used, o)
 	}
 	n := len(used)

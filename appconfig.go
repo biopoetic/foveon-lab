@@ -181,8 +181,14 @@ func (s *server) handleFavorite(w http.ResponseWriter, r *http.Request) {
 		ID string `json:"id"`
 		On bool   `json:"on"`
 	}
-	if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&req) != nil {
+	if r.Method != http.MethodPost {
 		httpErr(w, 400, errors.New("POST {id, on}"))
+		return
+	}
+	// Pass the decoder's own error on: httpErr turns a body over the size
+	// limit into a 413 instead of a generic 400.
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpErr(w, 400, err)
 		return
 	}
 	ph := s.lookup(req.ID)

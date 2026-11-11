@@ -387,7 +387,9 @@ func newFilmTone(p preset.Params) *filmTone {
 	density := c.Density(dv.Gamma)
 	fog := density(c.LgH[0])
 	dGrey := density(lgGrey)
-	printY := func(d float64) float64 { return 0 }
+	// Both branches below assign printY before the table is filled; the
+	// earlier zero-value initialiser was dead (staticcheck SA4006).
+	var printY func(d float64) float64
 	if pp, ok := papers()[p.Paper]; ok {
 		// The print: the enlarger's light through the negative (paper
 		// exposure ∝ 10^-D), the printer exposing so that the negative's

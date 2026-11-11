@@ -744,6 +744,11 @@ function toast(html, ms=4000){
   clearTimeout(toast.h); toast.h = setTimeout(()=> t.style.display="none", ms);
 }
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+// revealInFolder asks the server to show an exported file in the OS's file
+// browser. It is a POST because it has an effect outside the page.
+function revealInFolder(path){
+  return fetch("/api/reveal", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({path})});
+}
 const comp = () => $("#comp").checked ? "1" : "0";
 const tileW = () => Math.min(1600, Math.round(+$("#tileSize").value * (window.devicePixelRatio||1) / 40) * 40);
 function renderURL(opts){
@@ -2936,7 +2941,7 @@ async function batchStart(){
     if (last) msg += ` <a id="bReveal">Show in folder</a>`;
     if (errors.length) msg += `<br>${errors.slice(0, 3).map(esc).join("<br>")}`;
     $("#bMsg").innerHTML = msg;
-    if ($("#bReveal")) $("#bReveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(last));
+    if ($("#bReveal")) $("#bReveal").onclick = () => revealInFolder(last);
     $("#bProg div").style.width = "100%";
     BATCH.done = true;
     $("#bStart").disabled = false; $("#bStart").textContent = "Done";
@@ -3148,7 +3153,7 @@ async function publishStart(){
     if (last) msg += ` <a id="pubReveal">Show in folder</a>`;
     if (errors.length) msg += `<br>${errors.slice(0, 3).map(esc).join("<br>")}`;
     $("#pubMsg").innerHTML = msg;
-    if ($("#pubReveal")) $("#pubReveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(last));
+    if ($("#pubReveal")) $("#pubReveal").onclick = () => revealInFolder(last);
     $("#pubProg div").style.width = "100%";
     $("#pubGo").textContent = "Done";
   } else {
@@ -3492,7 +3497,7 @@ async function exportImage(format, destination, space){
   if (!res.ok){ toast("Could not save the picture: " + esc(await res.text()), 9000); return null; }
   const {path, lut} = await res.json();
   toast(`Saved: ${esc(path)}${lut ? `<br>+ the look as a LUT for your raw editor: ${esc(lut.split(/[\\/]/).pop())}` : ""} <a id="reveal">Show in folder</a>`, 9000);
-  $("#reveal").onclick = () => fetch("/api/reveal?path=" + encodeURIComponent(path));
+  $("#reveal").onclick = () => revealInFolder(path);
   return {path, lut};
 }
 

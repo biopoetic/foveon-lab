@@ -792,6 +792,11 @@ func writeJSON(w http.ResponseWriter, v any) {
 }
 
 func httpErr(w http.ResponseWriter, code int, err error) {
+	// A body over the limit is refused with 413, not the handler's usual 400.
+	var tooBig *http.MaxBytesError
+	if errors.As(err, &tooBig) {
+		code = http.StatusRequestEntityTooLarge
+	}
 	http.Error(w, err.Error(), code)
 }
 
@@ -1605,9 +1610,29 @@ func (s *server) exportDNG(w http.ResponseWriter, ph *Photo, dir, stem string, p
 	writeJSON(w, map[string]string{"path": path, "lut": cube})
 }
 
-// handleReveal opens Explorer on a file this app exported.
+// revealFile shows p in the OS's file browser. It is a variable so a test
+// can replace it: no test may start Explorer.
+var revealFile = func(p string) {
+	if runtime.GOOS == "windows" {
+		exec.Command("explorer.exe", "/select,", p).Start()
+	}
+}
+
+// handleReveal opens Explorer on a file this app exported. It has an effect
+// outside the page, so it is a POST {"path"} and never a GET.
 func (s *server) handleReveal(w http.ResponseWriter, r *http.Request) {
-	p := filepath.Clean(r.URL.Query().Get("path"))
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpErr(w, 400, err)
+		return
+	}
+	p := filepath.Clean(req.Path)
 	ext := strings.ToLower(filepath.Ext(p))
 	if ext != ".jpg" && ext != ".tif" && ext != ".dng" {
 		httpErr(w, 403, errors.New("only allowed for exported images"))
@@ -1617,9 +1642,7 @@ func (s *server) handleReveal(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 404, errors.New("that file is not there"))
 		return
 	}
-	if runtime.GOOS == "windows" {
-		exec.Command("explorer.exe", "/select,", p).Start()
-	}
+	revealFile(p)
 	w.WriteHeader(204)
 }
 

@@ -456,7 +456,6 @@ func scoreLadder(l *nrLadder, nr float64, crop nrCrop, fixedW int) ([]nrRecord, 
 			continue
 		}
 		sppMS := time.Since(t).Seconds() * 1000
-		t = time.Now()
 		ours, oursMS, err := ourFullRender(it.ph, nr)
 		if err != nil {
 			fmt.Printf("  %s: %v\n", it.ph.Name, err)
