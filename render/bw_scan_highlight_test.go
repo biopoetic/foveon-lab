@@ -20,10 +20,10 @@ func bwScan8(y float64) int {
 	return int(float64(enc(float32(y)))*255 + 0.5)
 }
 
-// The shoulder is one fixed function: identity at the knee, continuous with
-// slope 1, monotone, asymptotic to the paper white, and never reaching the
-// 254-255 clip.
-func TestBWScanShoulder66(t *testing.T) {
+// Task 66: guards the B&W scan shoulder: identity at the knee, slope 1, monotone, below the 254 clip.
+// A failure means the scanner's white point or shoulder moved and highlights can burn out.
+// Change only when the scan shoulder is deliberately retuned; re-check the knee/white prints.
+func TestBWScanShoulder(t *testing.T) {
 	if bwScanKnee <= 0 || bwScanKnee >= 0.95 {
 		t.Fatalf("knee %.3f is not well below white", bwScanKnee)
 	}
@@ -58,36 +58,35 @@ func TestBWScanShoulder66(t *testing.T) {
 		t.Errorf("scene white maps to %.4f: the shoulder starts too high", v)
 	}
 	t.Logf("knee %.2f L* %.1f; paper white %.4f = 8-bit %d; scene Y=1 -> %.4f (L* %.1f)",
-		bwScanKnee, t65L(bwScanKnee), bwScanWhite, bwScan8(bwScanWhite),
-		bwScanShoulder(1), t65L(bwScanShoulder(1)))
+		bwScanKnee, cieLightness(bwScanKnee), bwScanWhite, bwScan8(bwScanWhite),
+		bwScanShoulder(1), cieLightness(bwScanShoulder(1)))
 }
 
-// Every film's scan now ends below the clip and keeps the films distinct in
-// the highlights: the high-gamma films (FP4, Pan F, APX 25) are brighter at
-// +2 and +4 stops than T-Max 100, but none reaches white. The wedge is still
-// monotone and never below L* 2, and 18% grey is still 18%.
-func TestBWScanHighlight66(t *testing.T) {
+// Task 66: guards every B&W film's highlight wedge and 8-bit ceiling (< 254).
+// A failure means a film's scan reaches white, loses monotonicity, or stops differing in the highlights.
+// Change only when the scan shoulder or a film's curve is deliberately changed; re-check all 11 films.
+func TestBWScanHighlight(t *testing.T) {
 	type row struct {
 		name         string
 		plus2, plus4 float64
 		max8         int
 	}
 	var rows []row
-	for _, film := range t65Films {
+	for _, film := range bwScanFilms {
 		p := preset.Neutral()
 		p.Film, p.NoGrain = film, true
 		tone := newFilmTone(p)
 		if tone == nil {
 			t.Fatalf("%s: no tone", film)
 		}
-		if mid := t65L(float64(tone.at(0.18))); math.Abs(mid-49.5) > 0.1 {
+		if mid := cieLightness(float64(tone.at(0.18))); math.Abs(mid-49.5) > 0.1 {
 			t.Errorf("%s: 18%% grey is L* %.2f, want 49.5", film, mid)
 		}
 		max8 := 0
 		prev := -1.0
 		for s := -8; s <= 4; s++ {
 			y := float32(0.18 * math.Exp2(float64(s)))
-			L := t65L(float64(tone.at(y)))
+			L := cieLightness(float64(tone.at(y)))
 			if L < prev-0.05 {
 				t.Errorf("%s: wedge is not monotonic at %+d stops (%.1f after %.1f)", film, s, L, prev)
 			}
@@ -105,8 +104,8 @@ func TestBWScanHighlight66(t *testing.T) {
 			t.Errorf("%s: tone LUT reaches 8-bit %d", film, max8)
 		}
 		rows = append(rows, row{film,
-			t65L(float64(tone.at(float32(0.18 * 4)))),
-			t65L(float64(tone.at(float32(0.18 * 16)))), max8})
+			cieLightness(float64(tone.at(float32(0.18 * 4)))),
+			cieLightness(float64(tone.at(float32(0.18 * 16)))), max8})
 	}
 	by := map[string]row{}
 	for _, r := range rows {
@@ -130,10 +129,10 @@ func TestBWScanHighlight66(t *testing.T) {
 	}
 }
 
-// The GPU preview must equal the CPU in the highlights too. On a Foveon body
-// the film tone is inside the measured pre table; this frame reaches scene
-// white and the shoulder, which the task-65 GPU test's 0.55 frame did not.
-func TestBWScanGPUHighlights66(t *testing.T) {
+// Task 66: guards GPU = CPU in the highlights, including scene white and the shoulder.
+// A failure means web/gpu.js's measured pre table no longer matches the CPU above the knee.
+// Change only when the shader's table path changes; update the Go mirror and this frame with it.
+func TestBWScanGPUHighlights(t *testing.T) {
 	const w, h = 40, 30
 	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, ISO: 100, Sensor: "Merrill"}
 	for y := 0; y < h; y++ {
@@ -164,8 +163,8 @@ func TestBWScanGPUHighlights66(t *testing.T) {
 			c := [3]float32{l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2]}
 			Y := float32(0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2])
 			x := enc(Y)
-			x = t65GPULut(r.Pre, 0, x)
-			x = t65GPULut(r.Post, 0, x)
+			x = gpuLutSample(r.Pre, 0, x)
+			x = gpuLutSample(r.Post, 0, x)
 			Y = dec(x)
 			for k := 0; k < 3; k++ {
 				want := int(float32(enc(Y))*255 + 0.5)

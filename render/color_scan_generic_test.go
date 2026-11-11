@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func t63Lab(r, g, b float64) (L, a, bb float64) {
+func labWithL(r, g, b float64) (L, a, bb float64) {
 	a, bb, _ = testLab(r, g, b)
 	y := 0.2126*r + 0.7152*g + 0.0722*b
 	if y > 216.0/24389 {
@@ -22,7 +22,7 @@ func t63Lab(r, g, b float64) (L, a, bb float64) {
 	return
 }
 
-func t63Hue(a, b float64) float64 {
+func hueDegrees(a, b float64) float64 {
 	h := math.Atan2(b, a) * 180 / math.Pi
 	if h < 0 {
 		h += 360
@@ -30,20 +30,21 @@ func t63Hue(a, b float64) float64 {
 	return h
 }
 
-func t63HueDiff(h0, h1 float64) float64 {
+func hueDistance(h0, h1 float64) float64 {
 	return math.Abs(math.Mod(h1-h0+540, 360) - 180)
 }
 
-var t63Films = []string{
+var genericScanFilms = []string{
 	"Kodak Portra 400", "Kodak Ektar 100",
 	"Fujifilm Fujicolor Superia X-TRA 400", "Fujifilm Fujicolor Pro 400H",
 	"Kodak Portra 800",
 }
 
-// A neutral wedge must stay neutral: the table's neutral tube and the
-// near-neutral guard carry the scan from 2% grey to white.
-func TestColorScanGenericWedge63(t *testing.T) {
-	for _, key := range t63Films {
+// Task 63: guards the generic colour-scan neutral wedge from 2% grey to white (|a*|,|b*| <= 1.5).
+// A failure means a film's generic scan carries a colour cast at some grey level.
+// Change only when the generic scan's neutral path is deliberately retuned; update REPORT-63/64.
+func TestColorScanGenericWedge(t *testing.T) {
+	for _, key := range genericScanFilms {
 		f := colorFilmOn(key, PaperScan, "sRGB", ColorPrint{})
 		if f == nil {
 			t.Fatalf("%s: no scan", key)
@@ -62,11 +63,10 @@ func TestColorScanGenericWedge63(t *testing.T) {
 	}
 }
 
-// The scanner's negative profile is one fixed 3x3, pinned to the task-63
-// average over the library's negatives (task 64 froze it so correcting one
-// film cannot move every other film's scan), and each row sums to 1 so an
-// exact neutral reading maps to neutral.
-func TestColorScanGenericProfile63(t *testing.T) {
+// Task 63: guards the one fixed scan matrix and its row sums (task 64 froze it).
+// A failure means a film's scan profile moved, or the generic matrix is no longer neutrally normalised.
+// Change only when a fresh library-wide fit is deliberately made; then re-freeze and say why.
+func TestColorScanGenericProfile(t *testing.T) {
 	M := scanProfile()
 	for k := 0; k < 3; k++ {
 		s := M[k*3] + M[k*3+1] + M[k*3+2]
@@ -92,11 +92,10 @@ func TestColorScanGenericProfile63(t *testing.T) {
 	}
 }
 
-// The generic scan keeps the scene's hue: skin stays within 10 degrees of the
-// scene (film character is allowed, the old -22 degrees magenta is not), and
-// foliage and sky stay in a visibly sane range. Chroma is not forced to 1:
-// each film keeps its own.
-func TestColorScanGenericColours63(t *testing.T) {
+// Task 63: guards scene hue and chroma through the generic scan (skin <= 10 deg, etc.).
+// A failure means a film's scan moved skin/foliage/sky hue or chroma outside the stated bands.
+// Change only when the generic scan's colour model is deliberately changed; re-run the patch set.
+func TestColorScanGenericColours(t *testing.T) {
 	patches := []struct {
 		name       string
 		r, g, b    float64
@@ -107,16 +106,16 @@ func TestColorScanGenericColours63(t *testing.T) {
 		{"foliage", 0.10, 0.22, 0.07, 20, 0.7, 1.5},
 		{"sky", 0.22, 0.42, 0.72, 20, 0.7, 1.6},
 	}
-	for _, key := range t63Films {
+	for _, key := range genericScanFilms {
 		f := colorFilmOn(key, PaperScan, "sRGB", ColorPrint{})
 		if f == nil {
 			t.Fatalf("%s: no scan", key)
 		}
 		for _, p := range patches {
 			r, g, b := f.apply(float32(p.r), float32(p.g), float32(p.b))
-			L0, a0, b0 := t63Lab(p.r, p.g, p.b)
-			L1, a1, b1 := t63Lab(float64(r), float64(g), float64(b))
-			dh := t63HueDiff(t63Hue(a0, b0), t63Hue(a1, b1))
+			L0, a0, b0 := labWithL(p.r, p.g, p.b)
+			L1, a1, b1 := labWithL(float64(r), float64(g), float64(b))
+			dh := hueDistance(hueDegrees(a0, b0), hueDegrees(a1, b1))
 			cr := math.Hypot(a1, b1) / math.Hypot(a0, b0)
 			if dh > p.maxHue {
 				t.Errorf("%s %s: hue moved %.1f deg", key, p.name, dh)
@@ -131,19 +130,17 @@ func TestColorScanGenericColours63(t *testing.T) {
 	}
 }
 
-// The point of a generic scan: the films must not collapse onto one look. The
-// mean Lab distance between two films' scans of the same six patches must
-// stay clearly non-zero, and the visibly different pairs (Portra against
-// Fuji) well above that. (The task's half-the-print-DeltaE check is measured
-// on the three photos; this is its unit-level guard.)
-func TestColorScanGenericFilmsDiffer63(t *testing.T) {
+// Task 63: guards that the films keep distinct looks (Portra 400 vs 800 >= 0.5, vs Fuji >= 3).
+// A failure means the generic scan collapsed two films onto one look.
+// Change only when the film data or the scan model is deliberately changed; update the distances.
+func TestColorScanGenericFilmsDiffer(t *testing.T) {
 	patches := [][3]float64{
 		{0.45, 0.28, 0.20}, {0.55, 0.38, 0.30}, {0.10, 0.22, 0.07},
 		{0.22, 0.42, 0.72}, {0.45, 0.08, 0.06}, {0.06, 0.12, 0.45},
 	}
 	type scan struct{ r, g, b []float64 }
 	outs := map[string]scan{}
-	for _, key := range t63Films {
+	for _, key := range genericScanFilms {
 		f := colorFilmOn(key, PaperScan, "sRGB", ColorPrint{})
 		var s scan
 		for _, p := range patches {
@@ -175,10 +172,10 @@ func TestColorScanGenericFilmsDiffer63(t *testing.T) {
 	if d := dist(p400, outs["Fujifilm Fujicolor Pro 400H"]); d < 3 {
 		t.Errorf("Portra 400 and Pro 400H scans differ by only %.2f", d)
 	}
-	for i := 0; i < len(t63Films); i++ {
-		for j := i + 1; j < len(t63Films); j++ {
-			if d := dist(outs[t63Films[i]], outs[t63Films[j]]); d < 0.4 {
-				t.Errorf("%s and %s scans are the same look (%.2f)", t63Films[i], t63Films[j], d)
+	for i := 0; i < len(genericScanFilms); i++ {
+		for j := i + 1; j < len(genericScanFilms); j++ {
+			if d := dist(outs[genericScanFilms[i]], outs[genericScanFilms[j]]); d < 0.4 {
+				t.Errorf("%s and %s scans are the same look (%.2f)", genericScanFilms[i], genericScanFilms[j], d)
 			}
 		}
 	}

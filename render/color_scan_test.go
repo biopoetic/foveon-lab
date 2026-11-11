@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// The colour paper library: the two old papers keep their places, and the
-// three papers digitised from E-7020/E-7021/AF3-212E carry all three data
-// sets with the D-max and contrast their sheets draw.
+// Task 61: guards the colour-paper library against the digitised E-7020/E-7021/AF3-212E sheets.
+// A failure means a paper's D-max, contrast, sensitivity or dye peak left its sheet, or a citation is missing.
+// Change only when a paper's data sheet is re-digitised; update the values and cite the sheet.
 func TestColorPapersFromSheets(t *testing.T) {
 	want := []string{
 		"Kodak Portra Endura", "Kodak Supra Endura",
@@ -115,9 +115,9 @@ func TestColorPapersFromSheets(t *testing.T) {
 	}
 }
 
-// A colour negative as a scan: the same film prepared without a paper, its
-// own D-min removed, inverted with per-channel black and white points, and
-// balanced to 18% mid-grey. It is flatter than any print and neutral.
+// Task 61: guards the colour-negative scan: own D-min removed, 18% mid-grey, flatter than the print.
+// A failure means the scan stopped being neutral, stopped being flatter than the paper print, or became the print.
+// Change only when the scan model is deliberately changed; update REPORT-72 and the film list with it.
 func TestColorScan(t *testing.T) {
 	if p := colorNegs().papers[PaperScan]; p != nil {
 		t.Fatalf("scan must not be a paper entry")
@@ -163,8 +163,8 @@ func TestColorScan(t *testing.T) {
 		// no longer a thin-negative exception.
 		p := colorFilmOn(key, "Kodak Portra Endura", "Merrill", ColorPrint{})
 		gamma := func(f *colorFilm) float64 {
-			y1 := task61Luma(f.apply(0.032, 0.032, 0.032))
-			y2 := task61Luma(f.apply(0.512, 0.512, 0.512))
+			y1 := filmLuma(f.apply(0.032, 0.032, 0.032))
+			y2 := filmLuma(f.apply(0.512, 0.512, 0.512))
 			return math.Log(y2/y1) / math.Log(16)
 		}
 		gs, gp := gamma(s), gamma(p)
@@ -185,13 +185,13 @@ func TestColorScan(t *testing.T) {
 	}
 }
 
-func task61Luma(r, g, b float32) float64 {
+func filmLuma(r, g, b float32) float64 {
 	return 0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)
 }
 
-// An edit saved before the paper menu (paper "") keeps printing on the first
-// colour paper. The scan is a distinct value, so it cannot silently take over
-// those edits.
+// Task 61: guards old edits whose paper is "" so they keep printing on the first colour paper.
+// A failure means an empty paper silently resolved to the scan, changing saved edits.
+// Change only when that compatibility is deliberately dropped; then migrate the saved edits first.
 func TestColorScanLegacyEmptyPaper(t *testing.T) {
 	for _, key := range []string{"Kodak Portra 400", "Kodak Ektar 100", "Fujifilm Fujicolor Superia X-TRA 400"} {
 		old := colorFilmOn(key, "", "Merrill", ColorPrint{})

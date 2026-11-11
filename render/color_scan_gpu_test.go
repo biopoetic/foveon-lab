@@ -2,7 +2,7 @@ package render
 
 // A colour-negative scan is one more 3-D table over the negative's densities,
 // so the GPU preview uses the same shader path as a printed negative. This
-// mirrors web/gpu.js's film pass (as task60_gpu_test.go does for [WB]) over a
+// mirrors web/gpu.js's film pass (as film_wb_gpu_test.go does for [WB]) over a
 // scan recipe and checks it against the CPU render to one 8-bit level.
 
 import (
@@ -12,6 +12,9 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
+// Task 61: guards GPU = CPU for a colour-negative scan (max 1 level).
+// A failure means a scan recipe no longer matches the shader's film pass.
+// Change only when web/gpu.js's film pass or the scan recipe changes; update the mirror with it.
 func TestColorScanGPURecipeMirrorsCPU(t *testing.T) {
 	const w, h = 32, 24
 	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, ISO: 100, Sensor: "Merrill"}
@@ -45,7 +48,7 @@ func TestColorScanGPURecipeMirrorsCPU(t *testing.T) {
 	maxd, mism := 0, 0
 	for i := 0; i < w*h; i++ {
 		c := [3]float32{l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2]}
-		c = t60GPUFilm(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
+		c = gpuFilmPass(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
 		for k := 0; k < 3; k++ {
 			c[k] = c[k] * r.Gain[k] / r.ColorFilm.Exp
 		}

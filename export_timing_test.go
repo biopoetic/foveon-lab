@@ -3,9 +3,9 @@ package main
 // Task 36 measurement harness: how long a raw export takes, where its stages
 // go, and how a batch of twenty behaves per body group. Manual only, set
 // FOVEON_T36_DIR (default: the samples folder on the Desktop) and run
-// TestTask36. Nothing here is part of the app.
+// TestExportTiming. Nothing here is part of the app.
 //
-//	FOVEON_T36_DIR=... FOVEON_T36=1 go test -run TestTask36 -v -count=1 .
+//	FOVEON_T36_DIR=... FOVEON_T36=1 go test -run TestExportTiming -v -count=1 .
 //
 // Set FOVEON_TIMING=1 to have the production path print every stage (the
 // "one" subtest).
@@ -33,7 +33,7 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-type t36mem struct {
+type exportMem struct {
 	mu      sync.Mutex
 	peak    uint64
 	peakSys uint64
@@ -41,8 +41,8 @@ type t36mem struct {
 	done    chan struct{}
 }
 
-func t36startMem() *t36mem {
-	m := &t36mem{stop: make(chan struct{}), done: make(chan struct{})}
+func startExportMem() *exportMem {
+	m := &exportMem{stop: make(chan struct{}), done: make(chan struct{})}
 	go func() {
 		defer close(m.done)
 		var ms runtime.MemStats
@@ -68,7 +68,7 @@ func t36startMem() *t36mem {
 	return m
 }
 
-func (m *t36mem) finish() (peak, sys uint64) {
+func (m *exportMem) finish() (peak, sys uint64) {
 	close(m.stop)
 	<-m.done
 	m.mu.Lock()
@@ -76,7 +76,7 @@ func (m *t36mem) finish() (peak, sys uint64) {
 	return m.peak, m.peakSys
 }
 
-func t36cpu() float64 {
+func processCPUSeconds() float64 {
 	s := []metrics.Sample{{Name: "/cpu/classes/total:cpu-seconds"}}
 	metrics.Read(s)
 	if s[0].Value.Kind() == metrics.KindFloat64 {
@@ -85,7 +85,7 @@ func t36cpu() float64 {
 	return 0
 }
 
-func t36dir(t *testing.T) string {
+func exportSamplesDir(t *testing.T) string {
 	d := os.Getenv("FOVEON_T36_DIR")
 	if d == "" {
 		home, _ := os.UserHomeDir()
@@ -97,7 +97,7 @@ func t36dir(t *testing.T) string {
 	return d
 }
 
-func t36photos(t *testing.T, dir string) []*Photo {
+func exportPhotos(t *testing.T, dir string) []*Photo {
 	t.Helper()
 	var out []*Photo
 	for _, p := range scanPhotos([]string{dir}, false) {
@@ -108,13 +108,13 @@ func t36photos(t *testing.T, dir string) []*Photo {
 	return out
 }
 
-// t36groups is the four body groups the task names. SD9/SD10 are picked out
+// exportBodyGroups is the four body groups the task names. SD9/SD10 are picked out
 // of the archive by their model name.
-func t36groups(t *testing.T, root string) map[string][]*Photo {
+func exportBodyGroups(t *testing.T, root string) map[string][]*Photo {
 	t.Helper()
 	g := map[string][]*Photo{}
 	add := func(group, sub string) {
-		for _, p := range t36photos(t, filepath.Join(root, sub)) {
+		for _, p := range exportPhotos(t, filepath.Join(root, sub)) {
 			g[group] = append(g[group], p)
 		}
 	}
@@ -128,9 +128,9 @@ func t36groups(t *testing.T, root string) map[string][]*Photo {
 	if d := os.Getenv("FOVEON_T36_SD14_DIR"); d != "" {
 		// Hard links to the one SD14 sample, so a 20-photo batch is twenty
 		// distinct paths (the raw cache is keyed by path) without 20 copies.
-		g["SD14"] = t36photos(t, d)
+		g["SD14"] = exportPhotos(t, d)
 	}
-	arch := t36photos(t, filepath.Join(root, "archive"))
+	arch := exportPhotos(t, filepath.Join(root, "archive"))
 	for _, p := range arch {
 		m := modelOf(p)
 		if strings.Contains(m, "SD9") || strings.Contains(m, "SD10") {
@@ -147,14 +147,14 @@ func t36groups(t *testing.T, root string) map[string][]*Photo {
 	return g
 }
 
-func t36server() *server {
+func exportServer() *server {
 	s := &server{sem: make(chan struct{}, max(2, runtime.NumCPU()/2)), rawState: map[string]string{}}
 	s.accurate.Store(true)
 	return s
 }
 
-// t36one exports one photo cold with the stage trace on (FOVEON_TIMING).
-func t36one(t *testing.T, root string, groups map[string][]*Photo, out string) {
+// measureOneExport exports one photo cold with the stage trace on (FOVEON_TIMING).
+func measureOneExport(t *testing.T, root string, groups map[string][]*Photo, out string) {
 	only := os.Getenv("FOVEON_T36_GROUP")
 	for _, name := range []string{"Merrill", "Quattro", "SD14", "SD9/SD10"} {
 		if only != "" && only != name {
@@ -165,15 +165,15 @@ func t36one(t *testing.T, root string, groups map[string][]*Photo, out string) {
 		devRawOne = nil
 		devRawMu.Unlock()
 		runtime.GC()
-		s := t36server()
+		s := exportServer()
 		dir := filepath.Join(out, "one-"+strings.ReplaceAll(name, "/", "-"))
 		os.MkdirAll(dir, 0o755)
-		mem := t36startMem()
-		c0 := t36cpu()
+		mem := startExportMem()
+		c0 := processCPUSeconds()
 		t0 := time.Now()
 		path, err := s.exportImage(ph, preset.Neutral(), "Neutral", false, "jpeg", nil, "", dir)
 		wall := time.Since(t0)
-		cpu := t36cpu() - c0
+		cpu := processCPUSeconds() - c0
 		peak, sys := mem.finish()
 		if err != nil {
 			t.Errorf("%s %s: %v", name, ph.Name, err)
@@ -186,23 +186,23 @@ func t36one(t *testing.T, root string, groups map[string][]*Photo, out string) {
 	}
 }
 
-// t36batch exports twenty photos (all distinct where the group has them; the
+// measureBatchExport exports twenty photos (all distinct where the group has them; the
 // single SD14 sample is re-decoded) one at a time, as the app does today.
-func t36batch(t *testing.T, groups map[string][]*Photo, out string) {
+func measureBatchExport(t *testing.T, groups map[string][]*Photo, out string) {
 	only := os.Getenv("FOVEON_T36_GROUP")
 	for _, name := range []string{"Merrill", "Quattro", "SD14", "SD9/SD10"} {
 		if only != "" && only != name {
 			continue
 		}
 		list := groups[name]
-		s := t36server()
+		s := exportServer()
 		dir := filepath.Join(out, "batch-"+strings.ReplaceAll(name, "/", "-"))
 		os.MkdirAll(dir, 0o755)
 		devRawMu.Lock()
 		devRawOne = nil
 		devRawMu.Unlock()
-		mem := t36startMem()
-		c0 := t36cpu()
+		mem := startExportMem()
+		c0 := processCPUSeconds()
 		t0 := time.Now()
 		var slow time.Duration
 		for i := 0; i < 20; i++ {
@@ -223,7 +223,7 @@ func t36batch(t *testing.T, groups map[string][]*Photo, out string) {
 			}
 		}
 		wall := time.Since(t0)
-		cpu := t36cpu() - c0
+		cpu := processCPUSeconds() - c0
 		peak, sys := mem.finish()
 		fmt.Printf("T36 BATCH\t%s\t20\t%s\t%.3f\t%.2f\t%.2f\t%.0f\t%.0f\t%s\n",
 			name, wall.Round(time.Millisecond), wall.Seconds(), cpu,
@@ -232,9 +232,9 @@ func t36batch(t *testing.T, groups map[string][]*Photo, out string) {
 	}
 }
 
-// t36batchHTTP drives the real /api/export/batch handler, so it measures the
+// measureHTTPBatchExport drives the real /api/export/batch handler, so it measures the
 // scheduler (workers, memory gate, progress lines) and not just exportImage.
-func t36batchHTTP(t *testing.T, groups map[string][]*Photo, out string) {
+func measureHTTPBatchExport(t *testing.T, groups map[string][]*Photo, out string) {
 	only := os.Getenv("FOVEON_T36_GROUP")
 	for _, name := range []string{"Merrill", "Quattro", "SD14", "SD9/SD10"} {
 		if only != "" && only != name {
@@ -248,7 +248,7 @@ func t36batchHTTP(t *testing.T, groups map[string][]*Photo, out string) {
 			ids[i] = ph.ID
 			byID[ph.ID] = ph
 		}
-		s := t36server()
+		s := exportServer()
 		s.byID = byID
 		dir := filepath.Join(out, "http-"+strings.ReplaceAll(name, "/", "-"))
 		os.MkdirAll(dir, 0o755)
@@ -258,12 +258,12 @@ func t36batchHTTP(t *testing.T, groups map[string][]*Photo, out string) {
 		})
 		req := httptest.NewRequest("POST", "/api/export/batch", bytes.NewReader(body))
 		rec := httptest.NewRecorder()
-		mem := t36startMem()
-		c0 := t36cpu()
+		mem := startExportMem()
+		c0 := processCPUSeconds()
 		t0 := time.Now()
 		s.handleExportBatch(rec, req)
 		wall := time.Since(t0)
-		cpu := t36cpu() - c0
+		cpu := processCPUSeconds() - c0
 		peak, sys := mem.finish()
 		lines := 0
 		done := false
@@ -291,10 +291,10 @@ func t36batchHTTP(t *testing.T, groups map[string][]*Photo, out string) {
 	}
 }
 
-// t36cancel starts a batch and closes the page (cancels the request) after a
+// measureCancelExport starts a batch and closes the page (cancels the request) after a
 // few seconds, then reports what is left on disk and how long the handler took
 // to stop.
-func t36cancel(t *testing.T, groups map[string][]*Photo, out string) {
+func measureCancelExport(t *testing.T, groups map[string][]*Photo, out string) {
 	list := groups["Merrill"]
 	if len(list) < 4 {
 		t.Skip("need four Merrill photos")
@@ -311,7 +311,7 @@ func t36cancel(t *testing.T, groups map[string][]*Photo, out string) {
 		"ids": ids, "format": "jpeg", "preset": "", "look": "Neutral",
 		"destination": dir, "space": "",
 	})
-	s := t36server()
+	s := exportServer()
 	s.byID = byID
 	ctx, cancel := context.WithCancel(context.Background())
 	req := httptest.NewRequest("POST", "/api/export/batch", bytes.NewReader(body)).WithContext(ctx)
@@ -332,11 +332,14 @@ func t36cancel(t *testing.T, groups map[string][]*Photo, out string) {
 	}
 }
 
-func TestTask36(t *testing.T) {
+// Task 36: guards export time, memory, batch scheduling and cancellation on real samples.
+// A failure means an export errored or a cancelled batch left a temporary file behind.
+// Change only when the export/batch path or this harness changes deliberately; re-run one process at a time.
+func TestExportTiming(t *testing.T) {
 	if os.Getenv("FOVEON_T36") == "" {
 		t.Skip("set FOVEON_T36=1")
 	}
-	root := t36dir(t)
+	root := exportSamplesDir(t)
 	out := os.Getenv("FOVEON_T36_OUT")
 	if out == "" {
 		out = filepath.Join("zz-out", "task36", "run")
@@ -344,24 +347,24 @@ func TestTask36(t *testing.T) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	groups := t36groups(t, root)
+	groups := exportBodyGroups(t, root)
 	mode := os.Getenv("FOVEON_T36_MODE")
 	if mode == "" || mode == "one" {
-		t.Run("one", func(t *testing.T) { t36one(t, root, groups, out) })
+		t.Run("one", func(t *testing.T) { measureOneExport(t, root, groups, out) })
 	}
 	if mode == "" || mode == "batch" {
-		t.Run("batch20", func(t *testing.T) { t36batch(t, groups, out) })
+		t.Run("batch20", func(t *testing.T) { measureBatchExport(t, groups, out) })
 	}
 	if mode == "httpbatch" {
-		t.Run("httpbatch20", func(t *testing.T) { t36batchHTTP(t, groups, out) })
+		t.Run("httpbatch20", func(t *testing.T) { measureHTTPBatchExport(t, groups, out) })
 	}
 	if mode == "cancel" {
-		t.Run("cancel", func(t *testing.T) { t36cancel(t, groups, out) })
+		t.Run("cancel", func(t *testing.T) { measureCancelExport(t, groups, out) })
 	}
 }
 
-// t36median is for repeated timings in the report.
-func t36median(v []float64) float64 {
+// medianDuration is for repeated timings in the report.
+func medianDuration(v []float64) float64 {
 	if len(v) == 0 {
 		return 0
 	}
@@ -371,4 +374,4 @@ func t36median(v []float64) float64 {
 }
 
 var _ = math.Max
-var _ = t36median
+var _ = medianDuration

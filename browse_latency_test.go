@@ -1,7 +1,7 @@
 package main
 
 // Task 33 measurement harness. Manual only: set FOVEON_T33_DIR to a folder
-// of at least 100 X3F files and run TestTask33. It times the three first-time
+// of at least 100 X3F files and run TestBrowseLatency. It times the three first-time
 // waits (folder thumbnails, a cold next photo, the preset grid) and breaks
 // each into file read, X3F parse, JPEG decode, resize, render and encode.
 //
@@ -30,7 +30,7 @@ import (
 	"github.com/biopoetic/foveon-lab/x3f"
 )
 
-func t33sum(st []t33stage, name string) time.Duration {
+func sumStageTime(st []stageTime, name string) time.Duration {
 	var d time.Duration
 	for _, s := range st {
 		if s.name == name {
@@ -40,7 +40,7 @@ func t33sum(st []t33stage, name string) time.Duration {
 	return d
 }
 
-func t33photos(t *testing.T, dir string) []*Photo {
+func browsePhotos(t *testing.T, dir string) []*Photo {
 	t.Helper()
 	photos := scanPhotos([]string{dir}, false)
 	var out []*Photo
@@ -55,46 +55,49 @@ func t33photos(t *testing.T, dir string) []*Photo {
 	return out
 }
 
-// t33preview reads an embedded preview the way decodePreview does, timing the
+// timePreview reads an embedded preview the way decodePreview does, timing the
 // container parse, the JPEG byte read and the decode apart.
-func t33preview(t *testing.T, ph *Photo) (image.Image, []t33stage) {
+func timePreview(t *testing.T, ph *Photo) (image.Image, []stageTime) {
 	t.Helper()
-	var st []t33stage
+	var st []stageTime
 	t0 := time.Now()
 	f, err := x3f.Open(ph.path)
 	if err != nil {
 		t.Logf("%s: %v", ph.Name, err)
 		return nil, st
 	}
-	st = append(st, t33stage{"x3f parse", time.Since(t0)})
+	st = append(st, stageTime{"x3f parse", time.Since(t0)})
 	t0 = time.Now()
 	data, _, err := f.PreviewJPEG()
 	if err != nil {
-		st = append(st, t33stage{"file read", 0}, t33stage{"jpeg decode", 0})
+		st = append(st, stageTime{"file read", 0}, stageTime{"jpeg decode", 0})
 		t.Logf("%s: %v", ph.Name, err)
 		return nil, st
 	}
-	st = append(st, t33stage{"file read", time.Since(t0)})
+	st = append(st, stageTime{"file read", time.Since(t0)})
 	t0 = time.Now()
 	img, err := jpeg.Decode(bytes.NewReader(data))
 	if err != nil {
 		t.Logf("%s: %v", ph.Name, err)
 		return nil, st
 	}
-	st = append(st, t33stage{"jpeg decode", time.Since(t0)})
+	st = append(st, stageTime{"jpeg decode", time.Since(t0)})
 	return img, st
 }
 
-func TestTask33(t *testing.T) {
+// Task 33: guards the first-open timings: thumbnails, cold step, preset grid, tile diff.
+// A failure means one of those paths errored (the timing printouts themselves assert nothing).
+// Change only when the browse path or this harness changes deliberately; re-run on the samples folder.
+func TestBrowseLatency(t *testing.T) {
 	dir := os.Getenv("FOVEON_T33_DIR")
 	if dir == "" {
 		t.Skip("FOVEON_T33_DIR not set")
 	}
-	photos := t33photos(t, dir)
+	photos := browsePhotos(t, dir)
 	t.Logf("photos: %d in %s", len(photos), dir)
 
 	t.Run("thumbnails", func(t *testing.T) {
-		t33clearThumbCache()
+		clearRedirectedThumbCache()
 		s := &server{thumbs: newLRU(4000), byID: map[string]*Photo{}}
 		for _, p := range photos {
 			s.byID[p.ID] = p
@@ -163,9 +166,9 @@ func TestTask33(t *testing.T) {
 			if w.Code != 200 {
 				t.Fatalf("%s: %d %s", p.Name, w.Code, w.Body.String())
 			}
-			base, rr, enc := t33serverTiming(w)
+			base, rr, enc := serverRenderTimings(w)
 			// Stage split of the decode itself, on a fresh read.
-			img, st := t33preview(t, p)
+			img, st := timePreview(t, p)
 			if img == nil {
 				fmt.Printf("COLD %-22s %-10s total %s | non-JPEG preview, no stage split\n", p.Name, key, total.Round(time.Millisecond))
 				continue
@@ -185,8 +188,8 @@ func TestTask33(t *testing.T) {
 			_ = time.Since(t1)
 			fmt.Printf("COLD %-22s %-10s total %s | parse %s read %s decode %s downscale %s newbase %s render %s | srv base %s render %s encode %s\n",
 				p.Name, key, total.Round(time.Millisecond),
-				t33sum(st, "x3f parse").Round(time.Millisecond), t33sum(st, "file read").Round(time.Millisecond),
-				t33sum(st, "jpeg decode").Round(time.Millisecond), down.Round(time.Millisecond),
+				sumStageTime(st, "x3f parse").Round(time.Millisecond), sumStageTime(st, "file read").Round(time.Millisecond),
+				sumStageTime(st, "jpeg decode").Round(time.Millisecond), down.Round(time.Millisecond),
 				mkbase.Round(time.Millisecond), rd.Round(time.Millisecond),
 				base.Round(time.Millisecond), rr.Round(time.Millisecond), enc.Round(time.Millisecond))
 		}
@@ -227,7 +230,7 @@ func TestTask33(t *testing.T) {
 			if p.previewW > 0 && p.previewH > 0 {
 				ni = cropToAspect(ni, p.previewW, p.previewH)
 			}
-			oldImg, _ := t33preview(t, p)
+			oldImg, _ := timePreview(t, p)
 			if oldImg == nil {
 				continue
 			}
@@ -287,7 +290,7 @@ func TestTask33(t *testing.T) {
 	})
 
 	t.Run("click-during-open", func(t *testing.T) {
-		t33clearThumbCache()
+		clearRedirectedThumbCache()
 		// The person opens the first photo while the six thumbnail
 		// connections are still pulling the folder. The click's 1600 px view
 		// must not wait for the remaining tiles.
@@ -371,7 +374,7 @@ func TestTask33(t *testing.T) {
 	})
 
 	t.Run("first-open", func(t *testing.T) {
-		t33clearThumbCache()
+		clearRedirectedThumbCache()
 		// The page's first click on a folder: scan the headers, list them, then
 		// six browser connections pull the 183 list tiles in folder order,
 		// while the first photo's 1600 px view is asked for.
@@ -526,7 +529,7 @@ func TestTask33(t *testing.T) {
 			if rec.Code != 200 {
 				t.Fatalf("%s: %d %s", id, rec.Code, rec.Body.String())
 			}
-			b, rr, e := t33serverTiming(rec)
+			b, rr, e := serverRenderTimings(rec)
 			baseS += b
 			renderS += rr
 			encodeS += e
@@ -556,7 +559,7 @@ func TestTask33(t *testing.T) {
 			rec := httptest.NewRecorder()
 			t0 := time.Now()
 			srv.handleRender(rec, httptest.NewRequest("GET", url(filmID), nil))
-			_, rr, _ := t33serverTiming(rec)
+			_, rr, _ := serverRenderTimings(rec)
 			fmt.Printf("  repeat film tile %s: wall %s (srv render %s)\n", filmID,
 				time.Since(t0).Round(time.Millisecond), rr.Round(time.Millisecond))
 		}
@@ -603,10 +606,10 @@ func TestTask33(t *testing.T) {
 					srv2.handleRender(rec, r)
 					mu.Lock()
 					lat = append(lat, time.Since(t1))
-					waitSum += t33timing(rec, "wait")
-					baseSum += t33timing(rec, "base")
-					renderSum += t33timing(rec, "render")
-					encSum += t33timing(rec, "encode")
+					waitSum += serverTimingPart(rec, "wait")
+					baseSum += serverTimingPart(rec, "base")
+					renderSum += serverTimingPart(rec, "render")
+					encSum += serverTimingPart(rec, "encode")
 					mu.Unlock()
 				}
 			}()
@@ -659,11 +662,11 @@ func TestTask33(t *testing.T) {
 	})
 }
 
-func t33serverTiming(w *httptest.ResponseRecorder) (base, rnd, enc time.Duration) {
-	return t33timing(w, "base"), t33timing(w, "render"), t33timing(w, "encode")
+func serverRenderTimings(w *httptest.ResponseRecorder) (base, rnd, enc time.Duration) {
+	return serverTimingPart(w, "base"), serverTimingPart(w, "render"), serverTimingPart(w, "encode")
 }
 
-func t33timing(w *httptest.ResponseRecorder, key string) time.Duration {
+func serverTimingPart(w *httptest.ResponseRecorder, key string) time.Duration {
 	h := w.Header().Get("Server-Timing")
 	i := strings.Index(h, key+";dur=")
 	if i < 0 {
@@ -678,7 +681,7 @@ func t33timing(w *httptest.ResponseRecorder, key string) time.Duration {
 	return time.Duration(v * float64(time.Millisecond))
 }
 
-type t33stage struct {
+type stageTime struct {
 	name string
 	d    time.Duration
 }
@@ -720,7 +723,7 @@ func (p *memPeak) stop() uint64 {
 	return p.max
 }
 
-func t33clearThumbCache() {
+func clearRedirectedThumbCache() {
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		return

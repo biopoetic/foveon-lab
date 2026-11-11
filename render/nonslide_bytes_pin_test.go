@@ -13,8 +13,8 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-// t72NonSlideHash is the v0.4.108 hash of the rendered frame, first 12 bytes.
-var t72NonSlideHash = map[string]string{
+// nonSlideHash is the v0.4.108 hash of the rendered frame, first 12 bytes.
+var nonSlideHash = map[string]string{
 	"no film":        "3ccccfdb37310b97ab75b29b",
 	"negative print": "bd4f5b40972bccbaaf41f565",
 	"negative scan":  "62661061d05c267614721ccb",
@@ -27,7 +27,10 @@ var t72NonSlideHash = map[string]string{
 	"generic fuji":   "3ccccfdb37310b97ab75b29b",
 }
 
-func TestT72NonSlideBytes(t *testing.T) {
+// Task 72: guards the rendered bytes of every non-modelled-slide path against v0.4.108.
+// A failure means a non-slide render path moved a byte, or a deliberate change was not re-pinned.
+// Change only when that path is deliberately changed; then re-pin the hashes and say why.
+func TestNonSlideBytesPinned(t *testing.T) {
 	const w, h = 32, 24
 	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, ISO: 100, Sensor: "Merrill"}
 	for y := 0; y < h; y++ {
@@ -67,7 +70,7 @@ func TestT72NonSlideBytes(t *testing.T) {
 		sum := sha256.Sum256(out.Pix)
 		got := fmt.Sprintf("%x", sum[:12])
 		t.Logf("%-16s %s %d", c.name, got, len(out.Pix))
-		if want := t72NonSlideHash[c.name]; pinned && want != "" && got != want {
+		if want := nonSlideHash[c.name]; pinned && want != "" && got != want {
 			t.Errorf("%s: hash %s, want %s (the v0.4.108 bytes)", c.name, got, want)
 		}
 	}

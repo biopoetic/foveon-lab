@@ -14,25 +14,25 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-// t73StatusAFilms is the complete list of films kept on the integrated read
+// statusASlideFilms is the complete list of films kept on the integrated read
 // with a mid-grey registration. It is deliberately a literal list: a film may
 // not drift into build C silently.
-var t73StatusAFilms = []string{
+var statusASlideFilms = []string{
 	"Kodak Ektachrome E100G",
 	"Kodak Ektachrome E100GX",
 	"Kodak Ektachrome 64 (EPR)",
 	"Kodak Ektachrome 64T (EPY)",
 }
 
-// t73Tolerance is the largest log-H registration the digitisation can justify:
+// registrationTolerance is the largest log-H registration the digitisation can justify:
 // a 1.0 pt curve stroke on a 0.5-decade, 20 pt grid cell is 0.025 decade; the
 // 0.05-decade sampling adds 0.025; the measured axis residual is at most 0.060
 // decade (the 64T II label scatter; the grid fits are 0.002). The quadrature
 // sum is 0.070, so 0.10 decade is the stated envelope. See REPORT-73 section 3.
-const t73Tolerance = 0.10
+const registrationTolerance = 0.10
 
-func t73IsStatusA(key string) bool {
-	for _, k := range t73StatusAFilms {
+func isStatusAFilm(key string) bool {
+	for _, k := range statusASlideFilms {
 		if k == key {
 			return true
 		}
@@ -40,24 +40,23 @@ func t73IsStatusA(key string) bool {
 	return false
 }
 
-// t73MidLab is the CIELAB of the ISO mid-grey through the app's own path.
-func t73MidLab(f *colorFilm) (L, a, b float64) {
+// slideMidLab is the CIELAB of the ISO mid-grey through the app's own path.
+func slideMidLab(f *colorFilm) (L, a, b float64) {
 	r, g, bb := f.apply(midGreyLayer, midGreyLayer, midGreyLayer)
 	return labOf(float64(r), float64(g), float64(bb))
 }
 
-// TestT73Registration pins the read split and the registration. A kept film
-// carries one shift per film (never a second hidden one), inside the stated
-// tolerance, and its mid-grey and deep shadow are neutral. Every other slide
-// keeps the fitted read, including EIR.
-func TestT73Registration(t *testing.T) {
+// Task 73: guards the read split and one mid-grey registration per kept film, inside 0.10 decade.
+// A failure means a film changed read path silently or its registration/mid-grey left tolerance.
+// Change only when new sheet evidence justifies moving a film; say which film and why, and re-pin.
+func TestSlideRegistrationPinned(t *testing.T) {
 	for key := range colorFilmData_() {
 		d := colorFilmData_()[key]
 		f := colorFilmFor(key, "Merrill")
 		if f == nil {
 			t.Fatalf("%s: no model", key)
 		}
-		want := t73IsStatusA(key)
+		want := isStatusAFilm(key)
 		if d.ReadStatusA != want {
 			t.Errorf("%s: read_statusa %v, want %v", key, d.ReadStatusA, want)
 		}
@@ -93,8 +92,8 @@ func TestT73Registration(t *testing.T) {
 		if d.Shift[1] != 0 {
 			t.Errorf("%s: G shift %.4f, must stay 0", key, d.Shift[1])
 		}
-		if math.Abs(d.Shift[0]) > t73Tolerance || math.Abs(d.Shift[2]) > t73Tolerance {
-			t.Errorf("%s: registration %v is outside the %.2f decade tolerance", key, d.Shift, t73Tolerance)
+		if math.Abs(d.Shift[0]) > registrationTolerance || math.Abs(d.Shift[2]) > registrationTolerance {
+			t.Errorf("%s: registration %v is outside the %.2f decade tolerance", key, d.Shift, registrationTolerance)
 		}
 		if f.shift[0] != d.Shift[0] || f.shift[1] != d.Shift[1] || f.shift[2] != d.Shift[2] {
 			t.Errorf("%s: film shift %v is not the single JSON shift %v", key, f.shift, d.Shift)
@@ -102,7 +101,7 @@ func TestT73Registration(t *testing.T) {
 		// The registration is solved on the same exposure the wedge's 0-stop
 		// sample uses (midGreyLayer·hWhite); the rendered mid-grey must be
 		// neutral relative to D-min white.
-		if L, a, b := t73MidLab(f); math.Abs(a) > 0.5 || math.Abs(b) > 0.5 || L < 45 || L > 55 {
+		if L, a, b := slideMidLab(f); math.Abs(a) > 0.5 || math.Abs(b) > 0.5 || L < 45 || L > 55 {
 			t.Errorf("%s: mid-grey L* %.2f a* %+.2f b* %+.2f, want neutral 18%% grey", key, L, a, b)
 		}
 		// Deep shadow: L* 3-10 with a neutral cast (the task-67 criterion).
@@ -122,19 +121,20 @@ func oldShift(d *colorFilmData, k int) float64 {
 	return 0
 }
 
-// TestT73FallbackList pins the exact split: four kept films, EIR and the rest
-// on the fitted read. A new model must be added here, not silently switched.
-func TestT73FallbackList(t *testing.T) {
+// Task 73: guards the exact Status A split: four kept films, EIR and the rest on the fitted read.
+// A failure means a film was silently switched between read paths.
+// Change only when a film's sheet evidence is deliberately re-assessed; update this literal list and REPORT-73.
+func TestSlideReadSplitPinned(t *testing.T) {
 	var got []string
 	for key := range colorFilmData_() {
 		if colorFilmData_()[key].ReadStatusA {
 			got = append(got, key)
 		}
 	}
-	if len(got) != len(t73StatusAFilms) {
-		t.Fatalf("status-A films %v, want %v", got, t73StatusAFilms)
+	if len(got) != len(statusASlideFilms) {
+		t.Fatalf("status-A films %v, want %v", got, statusASlideFilms)
 	}
-	for _, k := range t73StatusAFilms {
+	for _, k := range statusASlideFilms {
 		if !colorFilmData_()[k].ReadStatusA {
 			t.Errorf("%s is missing from read_statusa", k)
 		}
@@ -144,9 +144,10 @@ func TestT73FallbackList(t *testing.T) {
 	}
 }
 
-// TestT73GPU checks the GPU preview against the CPU on the four films the task
-// names. The shader is unchanged; the table is the only difference.
-func TestT73GPU(t *testing.T) {
+// Task 73: guards GPU = CPU for the four films on the registered read.
+// A failure means the shader's slide pass or a registered table drifted from the CPU.
+// Change only when web/gpu.js's slide pass changes; update the Go mirror with it.
+func TestSlideRegisteredGPU(t *testing.T) {
 	const w, h = 32, 24
 	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, ISO: 100, Sensor: "Merrill"}
 	for y := 0; y < h; y++ {
@@ -179,7 +180,7 @@ func TestT73GPU(t *testing.T) {
 		maxd := 0
 		for i := 0; i < w*h; i++ {
 			c := [3]float32{l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2]}
-			c = t60GPUFilm(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
+			c = gpuFilmPass(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
 			for k := 0; k < 3; k++ {
 				c[k] = c[k] * r.Gain[k] / r.ColorFilm.Exp
 			}

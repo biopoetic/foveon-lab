@@ -11,15 +11,15 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-// t78CI is Kodak's contrast index (and Fuji's G): 0.9 density over the log H
+// contrastIndex is Kodak's contrast index (and Fuji's G): 0.9 density over the log H
 // span from 0.1 to 1.0 above base + fog.
-func t78CI(c *FilmCurve) float64 {
+func contrastIndex(c *FilmCurve) float64 {
 	dens := c.Density(c.GammaRef())
 	fog := dens(c.LgH[0])
-	return 0.9 / (t78xAtDens(c, fog+1.0, dens) - t78xAtDens(c, fog+0.1, dens))
+	return 0.9 / (logHAtDensity(c, fog+1.0, dens) - logHAtDensity(c, fog+0.1, dens))
 }
 
-func t78xAtDens(c *FilmCurve, d float64, dens func(float64) float64) float64 {
+func logHAtDensity(c *FilmCurve, d float64, dens func(float64) float64) float64 {
 	lo, hi := c.LgH[0], c.LgH[len(c.LgH)-1]
 	for i := 0; i < 60; i++ {
 		m := (lo + hi) / 2
@@ -32,7 +32,10 @@ func t78xAtDens(c *FilmCurve, d float64, dens func(float64) float64) float64 {
 	return (lo + hi) / 2
 }
 
-func TestT78NewFilmCurves(t *testing.T) {
+// Task 78: guards the new B&W curves' speed point, contrast index and printed curve ends.
+// A failure means a curve was digitised outside its sheet's EI/CI or lost a shoulder.
+// Change only when a film's sheet curve is re-digitised; update the case and say which sheet changed.
+func TestNewFilmCurves(t *testing.T) {
 	type want struct {
 		film string
 		ei   float64 // the speed the sheet states for its developer
@@ -88,7 +91,7 @@ func TestT78NewFilmCurves(t *testing.T) {
 		// Contrast: CI or gamma, within 0.05 of the sheet.
 		var got float64
 		if w.measure == "CI" {
-			got = t78CI(c)
+			got = contrastIndex(c)
 		} else {
 			got = c.GammaRef()
 		}
@@ -100,7 +103,10 @@ func TestT78NewFilmCurves(t *testing.T) {
 	}
 }
 
-func TestT78NoCurveStaysGeneric(t *testing.T) {
+// Task 78: guards that a film without a curve stays generic and a curve is picked up only by name.
+// A failure means newFilmTone invented a tone or failed to find an added curve.
+// Change only when a curve is deliberately added/removed; update the two film lists with it.
+func TestNoCurveStaysGeneric(t *testing.T) {
 	for _, film := range []string{"Foma Fomapan 100 Classic", "Rollei RPX 100"} {
 		if _, ok := FilmCurveFor(film); ok {
 			t.Errorf("%s: has a curve, want generic", film)

@@ -17,9 +17,9 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-// t71MaxStep samples f over [lo,hi] in n steps and returns the largest
+// maxStep samples f over [lo,hi] in n steps and returns the largest
 // difference between neighbouring samples and where it occurs.
-func t71MaxStep(f func(float64) float64, lo, hi float64, n int) (float64, float64) {
+func maxStep(f func(float64) float64, lo, hi float64, n int) (float64, float64) {
 	step := (hi - lo) / float64(n)
 	prev := f(lo)
 	worst, at := 0.0, lo
@@ -34,12 +34,15 @@ func t71MaxStep(f func(float64) float64, lo, hi float64, n int) (float64, float6
 	return worst, at
 }
 
+// Task 71: guards that irEstimate is continuous through the old 0.04 threshold and its transitions.
+// A failure means the estimator has a hard step again, which posterises dark hair or shadowed skin.
+// Change only when the IR estimator is deliberately changed; re-run the fine ramps and REPORT-71.
 func TestEIRContinuous(t *testing.T) {
 	// The old threshold: a neutral grey ramp through Y = 0.04. With a
 	// 1e-6 input step the old code jumped 0.26; the ramp's steepest
 	// legitimate slope is about 5, so a step of a few 1e-6 is expected.
 	const step = 1e-6
-	d, at := t71MaxStep(func(y float64) float64 { return irEstimate(y, y, y) }, 0, 0.20, 200000)
+	d, at := maxStep(func(y float64) float64 { return irEstimate(y, y, y) }, 0, 0.20, 200000)
 	if d > 1e-5 {
 		t.Errorf("irEstimate neutral ramp: largest step %.3g at Y %.6f, want <= 1e-5 (input step %g)", d, at, step)
 	}
@@ -54,14 +57,14 @@ func TestEIRContinuous(t *testing.T) {
 
 	// Vegetation: Vary G so the green-magenta index crosses its 0..0.06
 	// smoothstep and B/G crosses 0.80..1.02.
-	d, at = t71MaxStep(func(g float64) float64 { return irEstimate(0.10, g, 0.08) }, 0.05, 0.25, 200000)
+	d, at = maxStep(func(g float64) float64 { return irEstimate(0.10, g, 0.08) }, 0.05, 0.25, 200000)
 	if d > 1e-4 {
 		t.Errorf("irEstimate vegetation transition: largest step %.3g at G %.6f", d, at)
 	}
 	t.Logf("vegetation G 0.05..0.25: largest IR step %.3g at G %.6f", d, at)
 
 	// Sky: Vary B so (B-R)/(R+G+B) crosses its 0.06..0.22 smoothstep.
-	d, at = t71MaxStep(func(bb float64) float64 { return irEstimate(0.15, 0.20, bb) }, 0.05, 0.35, 300000)
+	d, at = maxStep(func(bb float64) float64 { return irEstimate(0.15, 0.20, bb) }, 0.05, 0.35, 300000)
 	if d > 1e-4 {
 		t.Errorf("irEstimate sky transition: largest step %.3g at B %.6f", d, at)
 	}
@@ -80,10 +83,10 @@ func TestEIRContinuous(t *testing.T) {
 	}
 }
 
-// TestSlideGPU71 pins GPU = CPU (max one 8-bit level) on a frame that crosses
-// EIR's old threshold, its vegetation and sky branches, and on Sensia 200
-// after its re-digitisation.
-func TestSlideGPU71(t *testing.T) {
+// Task 71: guards GPU = CPU for EIR and Sensia 200 after its re-digitisation.
+// A failure means the shader's IR branch or Sensia 200's table drifted.
+// Change only when web/gpu.js's slide/IR pass changes; update the Go mirror with it.
+func TestSlideGPUEIR(t *testing.T) {
 	for _, key := range []string{
 		"Kodak Ektachrome Professional Infrared (EIR)",
 		"Fujifilm Fujichrome Sensia 200",
@@ -130,7 +133,7 @@ func TestSlideGPU71(t *testing.T) {
 		maxd := 0
 		for i := 0; i < w*h; i++ {
 			c := [3]float32{l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2]}
-			c = t60GPUFilm(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
+			c = gpuFilmPass(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
 			for k := 0; k < 3; k++ {
 				c[k] = c[k] * r.Gain[k] / r.ColorFilm.Exp
 			}

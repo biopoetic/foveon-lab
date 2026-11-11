@@ -40,8 +40,8 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-// t74Check is one sheet's dye-neutral result.
-type t74Check struct {
+// dyeNeutralResult is one sheet's dye-neutral result.
+type dyeNeutralResult struct {
 	Film string
 	Temp float64 // the sheet's viewing illuminant, K
 	L    float64 // CIELAB of c = (1,1,1) in the app's viewing model
@@ -57,25 +57,25 @@ type t74Check struct {
 	DP float64
 }
 
-// t74Temp is the sheet's stated viewing illuminant. Only E-55 (the three
+// sheetIlluminant is the sheet's stated viewing illuminant. Only E-55 (the three
 // Kodachromes) is 3200 K; every Ektachrome sheet says 5000 K. EIR's TI-2323
 // says D5000, reported but out of scope.
-func t74Temp(key string) float64 {
+func sheetIlluminant(key string) float64 {
 	if len(key) >= 9 && key[:9] == "Kodak Kod" {
 		return 3200
 	}
 	return 5000
 }
 
-// t74Planck is Planck's law on the app's spectral grid, the same normalisation
+// planckRadiance is Planck's law on the app's spectral grid, the same normalisation
 // the render uses (only ratios matter).
-func t74Planck(l, T float64) float64 {
+func planckRadiance(l, T float64) float64 {
 	lm := l * 1e-9
 	return 1 / (math.Pow(lm, 5) * (math.Exp(1.4388e-2/(lm*T)) - 1))
 }
 
-// t74DyeEps samples a film's three dye curves on the app's spectral grid.
-func t74DyeEps(d *colorFilmData) [][3]float64 {
+// dyeExtinctions samples a film's three dye curves on the app's spectral grid.
+func dyeExtinctions(d *colorFilmData) [][3]float64 {
 	sp := spectral()
 	names := [3]string{"C", "M", "Y"}
 	eps := make([][3]float64, len(sp.lams))
@@ -87,8 +87,8 @@ func t74DyeEps(d *colorFilmData) [][3]float64 {
 	return eps
 }
 
-// t74XYZ is the illuminant-weighted tristimulus of the dye set c.
-func t74XYZ(eps [][3]float64, illum []float64, c [3]float64) [3]float64 {
+// dyeXYZ is the illuminant-weighted tristimulus of the dye set c.
+func dyeXYZ(eps [][3]float64, illum []float64, c [3]float64) [3]float64 {
 	sp := spectral()
 	var xyz [3]float64
 	for i, l := range sp.lams {
@@ -101,10 +101,10 @@ func t74XYZ(eps [][3]float64, illum []float64, c [3]float64) [3]float64 {
 	return xyz
 }
 
-// t74SlideRGB is the app's slide path: the transmitted spectrum of c through
+// slideRGB is the app's slide path: the transmitted spectrum of c through
 // the sheet's illuminant, seen by the CIE 1931 2° observer, in linear sRGB.
-func t74SlideRGB(eps [][3]float64, illum []float64, c [3]float64) [3]float64 {
-	xyz := t74XYZ(eps, illum, c)
+func slideRGB(eps [][3]float64, illum []float64, c [3]float64) [3]float64 {
+	xyz := dyeXYZ(eps, illum, c)
 	return [3]float64{
 		xyzToLinSRGB[0]*xyz[0] + xyzToLinSRGB[1]*xyz[1] + xyzToLinSRGB[2]*xyz[2],
 		xyzToLinSRGB[3]*xyz[0] + xyzToLinSRGB[4]*xyz[1] + xyzToLinSRGB[5]*xyz[2],
@@ -112,8 +112,8 @@ func t74SlideRGB(eps [][3]float64, illum []float64, c [3]float64) [3]float64 {
 	}
 }
 
-// t74LabXYZ is CIELAB from tristimulus values against an explicit white.
-func t74LabXYZ(xyz, white [3]float64) (L, a, b float64) {
+// labFromXYZ is CIELAB from tristimulus values against an explicit white.
+func labFromXYZ(xyz, white [3]float64) (L, a, b float64) {
 	f := func(t float64) float64 {
 		if t > 216.0/24389 {
 			return math.Cbrt(t)
@@ -124,10 +124,10 @@ func t74LabXYZ(xyz, white [3]float64) (L, a, b float64) {
 	return 116*fy - 16, 500 * (fx - fy), 200 * (fy - fz)
 }
 
-// t74DminAmounts solves the integrated Status A densities of the film's curve
+// dminAmounts solves the integrated Status A densities of the film's curve
 // minima. This is the D-min white the app adapts to, for every film; task 73
 // could only do it for the films already on the integrated read.
-func t74DminAmounts(d *colorFilmData, dmin [3]float64) [3]float64 {
+func dminAmounts(d *colorFilmData, dmin [3]float64) [3]float64 {
 	f := &colorFilm{}
 	f.curve[0], f.curve[1], f.curve[2] = d.Char["R"], d.Char["G"], d.Char["B"]
 	f.readLam = [3]float64{620, 530, 440}
@@ -150,14 +150,14 @@ func t74DminAmounts(d *colorFilmData, dmin [3]float64) [3]float64 {
 }
 
 // dyeNeutralCheckData is the check on one film's sheet data.
-func dyeNeutralCheckData(d *colorFilmData) t74Check {
-	T := t74Temp(d.Film)
+func dyeNeutralCheckData(d *colorFilmData) dyeNeutralResult {
+	T := sheetIlluminant(d.Film)
 	sp := spectral()
 	illum := make([]float64, len(sp.lams))
 	for i, l := range sp.lams {
-		illum[i] = t74Planck(l, T)
+		illum[i] = planckRadiance(l, T)
 	}
-	eps := t74DyeEps(d)
+	eps := dyeExtinctions(d)
 	var dmin [3]float64
 	for k, ch := range [3]string{"R", "G", "B"} {
 		dmin[k] = d.Char[ch][0][1]
@@ -165,40 +165,40 @@ func dyeNeutralCheckData(d *colorFilmData) t74Check {
 			dmin[k] = math.Min(dmin[k], p[1])
 		}
 	}
-	amt := t74DminAmounts(d, dmin)
-	white := t74SlideRGB(eps, illum, amt)
-	v := t74SlideRGB(eps, illum, [3]float64{1, 1, 1})
+	amt := dminAmounts(d, dmin)
+	white := slideRGB(eps, illum, amt)
+	v := slideRGB(eps, illum, [3]float64{1, 1, 1})
 	L, a, b := labOf(v[0]/white[0], v[1]/white[1], v[2]/white[2])
-	zero := t74SlideRGB(eps, illum, [3]float64{0, 0, 0})
+	zero := slideRGB(eps, illum, [3]float64{0, 0, 0})
 	y := func(rgb [3]float64) float64 { return 0.2126729*rgb[0] + 0.7151522*rgb[1] + 0.0721750*rgb[2] }
 	D := -math.Log10(y(v) / y(zero))
 	// The colour of the dyes alone, against the illuminant.
-	xv := t74XYZ(eps, illum, [3]float64{1, 1, 1})
-	xw := t74XYZ(eps, illum, [3]float64{0, 0, 0})
-	_, ap, bp := t74LabXYZ(xv, xw)
+	xv := dyeXYZ(eps, illum, [3]float64{1, 1, 1})
+	xw := dyeXYZ(eps, illum, [3]float64{0, 0, 0})
+	_, ap, bp := labFromXYZ(xv, xw)
 	dp := -math.Log10(xv[1] / xw[1])
-	return t74Check{Film: d.Film, Temp: T, L: L, A: a, B: b, D: D, AP: ap, BP: bp, DP: dp}
+	return dyeNeutralResult{Film: d.Film, Temp: T, L: L, A: a, B: b, D: D, AP: ap, BP: bp, DP: dp}
 }
 
 // dyeNeutralCheck is the task's check by film key.
-func dyeNeutralCheck(key string) (t74Check, bool) {
+func dyeNeutralCheck(key string) (dyeNeutralResult, bool) {
 	d := colorFilmData_()[key]
 	if d == nil {
-		return t74Check{}, false
+		return dyeNeutralResult{}, false
 	}
 	return dyeNeutralCheckData(d), true
 }
 
-// t74Want is the expected result on the committed v0.4.109 traces. A = pass
+// dyeNeutralWant is the expected result on the committed v0.4.109 traces. A = pass
 // when |a*| and |b*| are both within the task's 2-unit envelope.
-type t74Want struct {
+type dyeNeutralWant struct {
 	Film string
 	A, B float64
 	D    float64
 	Pass bool
 }
 
-var t74Wants = []t74Want{
+var dyeNeutralWants = []dyeNeutralWant{
 	// Kodak Ektachrome, 5000 K.
 	{"Kodak Ektachrome 100 (EPN)", -0.55, +2.12, 0.994, false},
 	{"Kodak Ektachrome 100 Plus (EPP)", -0.59, +3.48, 0.997, false},
@@ -223,18 +223,18 @@ var t74Wants = []t74Want{
 	{"Agfa Agfachrome RSX II 200", -4.59, +0.40, 1.027, false},
 }
 
-func t74Within2(a, b float64) bool { return math.Abs(a) <= 2 && math.Abs(b) <= 2 }
+func withinTwo(a, b float64) bool { return math.Abs(a) <= 2 && math.Abs(b) <= 2 }
 
-// TestDyeNeutral74 runs the corrected check on every Kodak and Agfa film and
-// pins the six that fail their sheet's own claim. The six are exactly the
-// films task 73 left on build A for their dye set.
-func TestDyeNeutral74(t *testing.T) {
-	if len(t74Wants) != 18 {
-		t.Fatalf("want 18 Kodak/Agfa films, have %d", len(t74Wants))
+// Task 74: guards the sheet's dye-neutral check on every Kodak/Agfa film and pins the six failures.
+// A failure means a film's dye trace, illuminant or the within-2 verdict moved.
+// Change only when a sheet is re-digitised or the viewing model changes; re-pin all 18 and REPORT-74.
+func TestDyeNeutral(t *testing.T) {
+	if len(dyeNeutralWants) != 18 {
+		t.Fatalf("want 18 Kodak/Agfa films, have %d", len(dyeNeutralWants))
 	}
 	seen := map[string]bool{}
 	fails := []string{}
-	for _, w := range t74Wants {
+	for _, w := range dyeNeutralWants {
 		seen[w.Film] = true
 		c, ok := dyeNeutralCheck(w.Film)
 		if !ok {
@@ -247,7 +247,7 @@ func TestDyeNeutral74(t *testing.T) {
 		if math.Abs(c.D-w.D) > 0.01 {
 			t.Errorf("%s: visual density %.3f, want %.3f", w.Film, c.D, w.D)
 		}
-		got := t74Within2(c.A, c.B)
+		got := withinTwo(c.A, c.B)
 		if got != w.Pass {
 			t.Errorf("%s: within 2 = %v, want %v (a* %+.2f b* %+.2f)", w.Film, got, w.Pass, c.A, c.B)
 		}
@@ -286,13 +286,12 @@ func TestDyeNeutral74(t *testing.T) {
 	}
 }
 
-// TestDyeNeutral74Level checks the second half of the sheet's claim: the same
-// c = (1,1,1) set must have a visual density of 1.0. Every Kodak film is
-// within 0.031; E200, the largest, is 3.1% low. The trace is exact (REPORT-74
-// section 4), so this is the sheet's own normalisation, not a trace scale.
-func TestDyeNeutral74Level(t *testing.T) {
+// Task 74: guards the sheet's visual-density claim (1.0 +/- 0.05, Kodak) on the same 18 films.
+// A failure means the density axis of a trace moved or the sheet's own normalization changed.
+// Change only when a trace is re-digitised or the check is redefined; re-pin and say why.
+func TestDyeNeutralLevel(t *testing.T) {
 	worst, worstFilm := 0.0, ""
-	for _, w := range t74Wants {
+	for _, w := range dyeNeutralWants {
 		c, _ := dyeNeutralCheck(w.Film)
 		if e := math.Abs(c.D - 1); e > worst {
 			worst, worstFilm = e, w.Film
@@ -307,16 +306,14 @@ func TestDyeNeutral74Level(t *testing.T) {
 	t.Logf("worst |D_Y - 1| = %.3f D (%s)", worst, worstFilm)
 }
 
-// TestDyeNeutral74Model tells the two failures apart. With the illuminant
-// itself as the white, four of the six old suspects are within 2 units: their
-// traces are right and it is the app's D-min-adapted viewing model that moves
-// them. K200 and RSX II 200 are outside under both references, so their
-// sheets are not colorimetric neutrals in either model.
-func TestDyeNeutral74Model(t *testing.T) {
+// Task 74: guards the split between model-only and sheet residuals under the dye-only white.
+// A failure means a film moved between "our viewing model" and "the sheet is not neutral".
+// Change only when the illuminant/white model is deliberately changed; re-check the two groups.
+func TestDyeNeutralModel(t *testing.T) {
 	within := map[string]bool{}
-	for _, w := range t74Wants {
+	for _, w := range dyeNeutralWants {
 		c, _ := dyeNeutralCheck(w.Film)
-		within[w.Film] = t74Within2(c.AP, c.BP)
+		within[w.Film] = withinTwo(c.AP, c.BP)
 	}
 	for _, key := range []string{
 		"Kodak Ektachrome 100 (EPN)",
@@ -338,9 +335,10 @@ func TestDyeNeutral74Model(t *testing.T) {
 	}
 }
 
-// TestT74GPU is the GPU/CPU check on one re-traced film that stays on A
-// (Kodachrome 200), one on the integrated read (EPY), and E100G.
-func TestT74GPU(t *testing.T) {
+// Task 74: guards GPU = CPU for Kodachrome 200, EPY and E100G after the re-trace.
+// A failure means the shader's slide pass or a re-traced table drifted from the CPU.
+// Change only when web/gpu.js's slide pass changes; update the Go mirror with it.
+func TestSlideDyeNeutralGPU(t *testing.T) {
 	const w, h = 32, 24
 	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, ISO: 100, Sensor: "Merrill"}
 	for y := 0; y < h; y++ {
@@ -372,7 +370,7 @@ func TestT74GPU(t *testing.T) {
 		maxd := 0
 		for i := 0; i < w*h; i++ {
 			c := [3]float32{l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2]}
-			c = t60GPUFilm(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
+			c = gpuFilmPass(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
 			for k := 0; k < 3; k++ {
 				c[k] = c[k] * r.Gain[k] / r.ColorFilm.Exp
 			}
@@ -401,11 +399,11 @@ func TestT74GPU(t *testing.T) {
 	}
 }
 
-// t74SlideHashes pins every slide's rendered bytes. All are the v0.4.109
+// slideHashes pins every slide's rendered bytes. All are the v0.4.109
 // hashes except Agfa RSX II 200, the only dye array task 74 changed: its
 // re-trace is on the sheet's printed grid, and the report's proof overlay
 // shows the old trace off the ink. The v0.4.109 hash was d9193c670e319162c245105f.
-var t74SlideHashes = map[string]string{
+var slideHashes = map[string]string{
 	"Agfa Agfachrome RSX II 100":                   "47e7e978a9f697ef394280fb",
 	"Agfa Agfachrome RSX II 200":                   "8688d883855d3a58b65d8daa",
 	"Agfa Agfachrome RSX II 50":                    "ec4e3794c6d3c785f34a40de",
@@ -438,10 +436,10 @@ var t74SlideHashes = map[string]string{
 	"Kodak Kodachrome 64":                          "7304e62d748abc6b4a0ddac3",
 }
 
-// TestT74SlideBytes renders a fixed 32x24 frame through every slide and
-// compares the SHA-256 of the 8-bit frame with the pinned hash. 29 of the 30
-// are v0.4.109 byte for byte; the Agfa RSX II 200 is the one re-traced film.
-func TestT74SlideBytes(t *testing.T) {
+// Task 74: guards every modelled slide's rendered bytes against the pinned hashes.
+// A failure means a slide's output moved (29 are v0.4.109; RSX II 200 is the re-traced one).
+// Change only when a slide's data sheet is re-digitised; then re-pin and say why.
+func TestSlideBytesPinned(t *testing.T) {
 	const w, h = 32, 24
 	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, ISO: 100, Sensor: "Merrill"}
 	for y := 0; y < h; y++ {
@@ -457,8 +455,8 @@ func TestT74SlideBytes(t *testing.T) {
 	b := NewBase(l)
 	cc := [9]float64{1.5, -0.4, -0.1, -0.2, 1.4, -0.2, 0.0, -0.5, 1.5}
 	comp := Compensation{Family: "SD1", Sensor: "Merrill", CC: &cc, SatFactor: 1}
-	if len(t74SlideHashes) != len(colorFilmData_()) {
-		t.Fatalf("hash table has %d films, library has %d", len(t74SlideHashes), len(colorFilmData_()))
+	if len(slideHashes) != len(colorFilmData_()) {
+		t.Fatalf("hash table has %d films, library has %d", len(slideHashes), len(colorFilmData_()))
 	}
 	pinned := pinnedBytesHere(t)
 	for key := range colorFilmData_() {
@@ -468,7 +466,7 @@ func TestT74SlideBytes(t *testing.T) {
 		out := Render(b, p, comp)
 		sum := sha256.Sum256(out.Pix)
 		got := hex12(sum[:12])
-		want, ok := t74SlideHashes[key]
+		want, ok := slideHashes[key]
 		if !ok {
 			t.Errorf("%s: no pinned hash", key)
 			continue

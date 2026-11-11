@@ -16,7 +16,7 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-func t60Mat3(m [9]float32, v [3]float32) [3]float32 {
+func multiplyMat3(m [9]float32, v [3]float32) [3]float32 {
 	return [3]float32{
 		m[0]*v[0] + m[1]*v[1] + m[2]*v[2],
 		m[3]*v[0] + m[4]*v[1] + m[5]*v[2],
@@ -24,27 +24,27 @@ func t60Mat3(m [9]float32, v [3]float32) [3]float32 {
 	}
 }
 
-func t60Clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(hi, x)) }
+func clampRange(x, lo, hi float64) float64 { return math.Max(lo, math.Min(hi, x)) }
 
-// t60GPUCurve mirrors web/gpu.js cfCurve over GPUColorFilmData's table.
-func t60GPUCurve(f *colorFilm, k int, lg float64) float64 {
+// gpuFilmCurve mirrors web/gpu.js cfCurve over GPUColorFilmData's table.
+func gpuFilmCurve(f *colorFilm, k int, lg float64) float64 {
 	n := float64(gpuCFCurveN)
-	fpos := t60Clamp((lg-gpuCFLgMin)/(gpuCFLgMax-gpuCFLgMin), 0, 1) * (n - 1)
+	fpos := clampRange((lg-gpuCFLgMin)/(gpuCFLgMax-gpuCFLgMin), 0, 1) * (n - 1)
 	i := int(math.Min(fpos, n-2))
 	a := f.density(k, gpuCFLgMin+(gpuCFLgMax-gpuCFLgMin)*float64(i)/(n-1))
 	b := f.density(k, gpuCFLgMin+(gpuCFLgMax-gpuCFLgMin)*float64(i+1)/(n-1))
 	return a + (b-a)*(fpos-float64(i))
 }
 
-// t60GPUFilm mirrors web/gpu.js colorFilm(): linear sRGB -> layers, root
+// gpuFilmPass mirrors web/gpu.js colorFilm(): linear sRGB -> layers, root
 // polynomial -> log exposure, each layer's curve, the 3-D table, 10^-D.
-func t60GPUFilm(r *GPURecipe, c [3]float32) [3]float32 {
+func gpuFilmPass(r *GPURecipe, c [3]float32) [3]float32 {
 	cf := r.ColorFilm
 	f := gpuCFKeys[cf.Key]
 	if f == nil {
 		panic("no colour film " + cf.Key)
 	}
-	l := t60Mat3(cf.Inv, c)
+	l := multiplyMat3(cf.Inv, c)
 	q := [3]float32{max(l[0], 0), max(l[1], 0), max(l[2], 0)}
 	s := [3]float32{
 		float32(math.Sqrt(float64(q[0] * q[1]))),
@@ -54,8 +54,8 @@ func t60GPUFilm(r *GPURecipe, c [3]float32) [3]float32 {
 	var rpA, rpB [9]float32
 	copy(rpA[:], cf.RP[0:9])
 	copy(rpB[:], cf.RP[9:18])
-	ha := t60Mat3(rpA, l)
-	hb := t60Mat3(rpB, s)
+	ha := multiplyMat3(rpA, l)
+	hb := multiplyMat3(rpB, s)
 	var D [3]float64
 	for k := 0; k < 3; k++ {
 		h := (float64(ha[k]) + float64(hb[k])) * float64(cf.HWhite)
@@ -64,7 +64,7 @@ func t60GPUFilm(r *GPURecipe, c [3]float32) [3]float32 {
 			// false-colour estimate (web/gpu.js irEstimate).
 			h = irEstimate(float64(l[0]), float64(l[1]), float64(l[2])) * float64(cf.HWhite)
 		}
-		D[k] = t60GPUCurve(f, k, math.Log10(math.Max(h, 1e-6)))
+		D[k] = gpuFilmCurve(f, k, math.Log10(math.Max(h, 1e-6)))
 	}
 	// The texture is sampled with t = (D/dmax*(N-1)+0.5)/N and LINEAR
 	// filtering: x = D/dmax*(N-1), clamped, then trilinear. N comes from the
@@ -74,7 +74,7 @@ func t60GPUFilm(r *GPURecipe, c [3]float32) [3]float32 {
 	var i0 [3]int
 	var fr [3]float64
 	for k := 0; k < 3; k++ {
-		x[k] = t60Clamp(D[k]/cfLutDMax, 0, 1) * float64(n-1)
+		x[k] = clampRange(D[k]/cfLutDMax, 0, 1) * float64(n-1)
 		i0[k] = int(math.Min(x[k], float64(n)-2))
 		fr[k] = x[k] - float64(i0[k])
 	}
@@ -106,6 +106,9 @@ func t60GPUFilm(r *GPURecipe, c [3]float32) [3]float32 {
 	}
 }
 
+// Task 60: guards GPU = CPU when a [WB] preset is used under a colour film (max 1 level).
+// A failure means the film shader re-applied the balance or the recipe/shader mirror drifted.
+// Change only when web/gpu.js's film pass changes; update the Go mirror in the same commit.
 func TestFilmWBGPURecipeMirrorsCPU(t *testing.T) {
 	const w, h = 32, 24
 	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, ISO: 100, Sensor: "Merrill"}
@@ -148,7 +151,7 @@ func TestFilmWBGPURecipeMirrorsCPU(t *testing.T) {
 	maxd := 0
 	for i := 0; i < w*h; i++ {
 		c := [3]float32{l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2]}
-		c = t60GPUFilm(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
+		c = gpuFilmPass(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
 		for k := 0; k < 3; k++ {
 			c[k] = c[k] * r.Gain[k] / r.ColorFilm.Exp
 		}

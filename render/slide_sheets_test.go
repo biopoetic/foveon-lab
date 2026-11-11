@@ -18,7 +18,7 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-var t68Films = []string{
+var sheetSlideFilms = []string{
 	"Kodak Kodachrome 25",
 	"Kodak Kodachrome 64",
 	"Kodak Kodachrome 200",
@@ -39,10 +39,11 @@ var t68Films = []string{
 	"Agfa Agfachrome RSX II 200",
 }
 
-// The nineteen new films have a model, and the model is built from three
-// characteristic curves, three sensitivities and three dyes.
-func TestSlideData68(t *testing.T) {
-	for _, key := range t68Films {
+// Task 68: guards that each sheet-derived slide has three characteristic, sensitivity and dye sets.
+// A failure means a film's digitised data is incomplete or its curves no longer cover -4..+2 stops.
+// Change only when a film's sheets are re-digitised; update the data and REPORT-68.
+func TestSlideSheetData(t *testing.T) {
+	for _, key := range sheetSlideFilms {
 		d := colorFilmData_()[key]
 		if d == nil {
 			t.Errorf("%s: no data entry", key)
@@ -72,20 +73,22 @@ func TestSlideData68(t *testing.T) {
 	}
 }
 
-// The five task-67 films must keep the axis exactly as digitised: no shift.
-func TestSlideNoShift67(t *testing.T) {
-	for _, key := range t67Slides {
+// Task 67: guards that the original five task-67 slides keep no axis shift.
+// A failure means a re-digitisation silently changed a task-67 film's axis.
+// Change only when one of those five sheets is deliberately re-registered; say why and re-pin.
+func TestSlideSheetsNoShift(t *testing.T) {
+	for _, key := range viewingSlideFilms {
 		if s := colorFilmData_()[key].Shift; len(s) != 0 {
 			t.Errorf("%s: shift %v, want none", key, s)
 		}
 	}
 }
 
-// The neutral wedge of every new film, -4..+2 stops: the film may carry its
-// own balance, but must not drift from it by more than 3 in a* or b*. This is
-// the task-67 target, applied to the new sheets.
-func TestSlideWedge68(t *testing.T) {
-	for _, key := range t68Films {
+// Task 68: guards the new slides' neutral wedge, registration tolerance and mid-grey neutrality.
+// A failure means a sheet-derived film drifts in colour or its registration left the 0.10 decade envelope.
+// Change only when the slide model or a film's data is deliberately changed; re-check the wedge.
+func TestSlideSheetWedge(t *testing.T) {
+	for _, key := range sheetSlideFilms {
 		f := colorFilmOn(key, "", "Merrill", ColorPrint{})
 		if f == nil {
 			t.Fatalf("%s: no model", key)
@@ -97,10 +100,10 @@ func TestSlideWedge68(t *testing.T) {
 		if f.integrated {
 			// Task 73: one registration per kept film, inside the stated
 			// tolerance, and the ISO mid-grey is neutral.
-			if len(d.Shift) != 3 || math.Abs(d.Shift[0]) > t73Tolerance || math.Abs(d.Shift[2]) > t73Tolerance {
-				t.Errorf("%s: registration %v is outside %.2f decade", key, d.Shift, t73Tolerance)
+			if len(d.Shift) != 3 || math.Abs(d.Shift[0]) > registrationTolerance || math.Abs(d.Shift[2]) > registrationTolerance {
+				t.Errorf("%s: registration %v is outside %.2f decade", key, d.Shift, registrationTolerance)
 			}
-			if L, a, b := t73MidLab(f); math.Abs(a) > 0.5 || math.Abs(b) > 0.5 || L < 45 || L > 55 {
+			if L, a, b := slideMidLab(f); math.Abs(a) > 0.5 || math.Abs(b) > 0.5 || L < 45 || L > 55 {
 				t.Errorf("%s: mid-grey L* %.2f a* %+.2f b* %+.2f", key, L, a, b)
 			}
 		}
@@ -109,7 +112,7 @@ func TestSlideWedge68(t *testing.T) {
 		for s := -4.0; s <= 2.01; s += 1 {
 			v := float32(midGreyLayer * math.Exp2(s))
 			r, g, b := f.apply(v, v, v)
-			_, a, bb := t67Lab(float64(r), float64(g), float64(b))
+			_, a, bb := slideLab(float64(r), float64(g), float64(b))
 			pts = append(pts, [2]float64{a, bb})
 			ys = append(ys, 0.2126*float64(r)+0.7152*float64(g)+0.0722*float64(b))
 		}
@@ -140,10 +143,11 @@ func TestSlideWedge68(t *testing.T) {
 	}
 }
 
-// Every new film shares the task-67 viewing black level and its deep shadow
-// is a neutral L* 3-10, not crushed black.
-func TestSlideBlack68(t *testing.T) {
-	for _, key := range t68Films {
+// Task 68: guards the new slides' viewing black and neutral deep shadow.
+// A failure means a sheet-derived slide lost the task-67 viewing black or gained a shadow cast.
+// Change only when the slide model is deliberately changed; re-check the five-film criterion.
+func TestSlideSheetBlack(t *testing.T) {
+	for _, key := range sheetSlideFilms {
 		f := colorFilmOn(key, "", "Merrill", ColorPrint{})
 		if f == nil {
 			t.Fatalf("%s: no model", key)
@@ -152,7 +156,7 @@ func TestSlideBlack68(t *testing.T) {
 			t.Errorf("%s: viewing black %.5f, want %.5f", key, f.black, slideBlack)
 		}
 		vr, vg, vb := f.apply(2e-4, 2e-4, 2e-4)
-		L, a, bb := t67Lab(float64(vr), float64(vg), float64(vb))
+		L, a, bb := slideLab(float64(vr), float64(vg), float64(vb))
 		if L < 3.0 || L > 12.0 {
 			t.Errorf("%s: deep shadow L* %.2f", key, L)
 		}
@@ -161,17 +165,17 @@ func TestSlideBlack68(t *testing.T) {
 		}
 		// A task-73 film carries the registration into the shadow too: the
 		// measured deep shadow is neutral to the task-67 tolerance, not just
-		// the wide t68 band.
+		// the wide task-68 band.
 		if f.integrated && (math.Abs(a) > 1 || math.Abs(bb) > 1) {
 			t.Errorf("%s: registered deep shadow a* %+.2f b* %+.2f, want neutral", key, a, bb)
 		}
 	}
 }
 
-// GPU = CPU for three new films, one of them a Kodachrome. The shader is
-// unchanged (task 67 added uCFBlack); this mirrors its slide pass on a
-// deep-shadow frame and compares it with the CPU render to one 8-bit level.
-func TestSlideGPU68(t *testing.T) {
+// Task 68: guards GPU = CPU for three sheet-derived slides, including a Kodachrome.
+// A failure means the slide shader mirror or a film's table drifted.
+// Change only when web/gpu.js's slide pass changes; update the Go mirror with it.
+func TestSlideSheetGPU(t *testing.T) {
 	for _, key := range []string{"Kodak Kodachrome 64", "Kodak Ektachrome E100G", "Kodak Ektachrome E200"} {
 		const w, h = 32, 24
 		l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, ISO: 100, Sensor: "Merrill"}
@@ -199,7 +203,7 @@ func TestSlideGPU68(t *testing.T) {
 		maxd, mism := 0, 0
 		for i := 0; i < w*h; i++ {
 			c := [3]float32{l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2]}
-			c = t60GPUFilm(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
+			c = gpuFilmPass(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
 			for k := 0; k < 3; k++ {
 				c[k] = c[k] * r.Gain[k] / r.ColorFilm.Exp
 			}

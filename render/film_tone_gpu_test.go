@@ -11,7 +11,7 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-func t78GPUFilmTone(t *filmTone, y float32) float32 {
+func gpuFilmTone(t *filmTone, y float32) float32 {
 	x := float32(math.Sqrt(math.Sqrt(float64(y)))) * t.scale
 	if x >= filmToneN {
 		return t.lut[filmToneN]
@@ -21,7 +21,10 @@ func t78GPUFilmTone(t *filmTone, y float32) float32 {
 	return t.lut[i] + fr*(t.lut[i+1]-t.lut[i])
 }
 
-func TestT78GPUFilmTone(t *testing.T) {
+// Task 78: guards GPU = CPU for the B&W film-tone LUT (x = Y^(1/4)*scale, linear interpolation).
+// A failure means web/gpu.js's filmTone path or the LUT layout drifted from the CPU.
+// Change only when the shader's film-tone path changes; update this mirror in the same commit.
+func TestGPUFilmToneMirror(t *testing.T) {
 	for _, film := range []string{
 		"Foma Fomapan 400 Action", "Fujifilm Neopan Acros 100",
 		"Rollei Retro 400S", "Kodak Technical Pan",
@@ -36,7 +39,7 @@ func TestT78GPUFilmTone(t *testing.T) {
 			worst := 0.0
 			for k := -40; k <= 200; k++ {
 				y := float32(math.Pow(10, float64(k)/100))
-				d := math.Abs(float64(tone.at(y) - t78GPUFilmTone(tone, y)))
+				d := math.Abs(float64(tone.at(y) - gpuFilmTone(tone, y)))
 				if d > worst {
 					worst = d
 				}

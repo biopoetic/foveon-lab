@@ -12,6 +12,9 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
+// Task 60: guards which layer source a preset selects: film, film@wb, IR or normal raw.
+// A failure means a [WB] preset under a colour film stopped developing the balance into the Base.
+// Change only when the layer-source rules or preset set change deliberately; re-pin this table and say why.
 func TestFilmWBSourceSelection(t *testing.T) {
 	if !goRaw {
 		t.Skip("native raw development is off (FOVEON_RAW=x3f)")
@@ -39,6 +42,9 @@ func TestFilmWBSourceSelection(t *testing.T) {
 	}
 }
 
+// Task 60: guards splitFilterWB and modeDevelopedWB, the film/WB spec split.
+// A failure means a film@wb:... mode string no longer selects film plus a developed balance.
+// Change only when the mode-string grammar changes deliberately; update the table and its callers together.
 func TestFilmWBModeAndSplit(t *testing.T) {
 	for _, c := range []struct {
 		spec, filter, wb string

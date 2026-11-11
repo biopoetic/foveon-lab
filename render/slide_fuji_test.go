@@ -19,7 +19,7 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-var t69Films = []string{
+var fujiSlideFilms = []string{
 	"Fujifilm Fujichrome Velvia 50",
 	"Fujifilm Fujichrome Provia 100F",
 	"Fujifilm Fujichrome Sensia 100",
@@ -29,8 +29,11 @@ var t69Films = []string{
 	"Kodak Ektachrome Professional Infrared (EIR)",
 }
 
-func TestSlideData69(t *testing.T) {
-	for _, key := range t69Films {
+// Task 69: guards the last slide films' three curve sets, coverage and sampling gaps.
+// A failure means a Fuji/EIR film's digitised data is incomplete or its curves have a gap over 0.1 decade.
+// Change only when those sheets are re-digitised; update the data and REPORT-69.
+func TestSlideFujiData(t *testing.T) {
+	for _, key := range fujiSlideFilms {
 		d := colorFilmData_()[key]
 		if d == nil {
 			t.Errorf("%s: no data entry", key)
@@ -66,11 +69,11 @@ func TestSlideData69(t *testing.T) {
 	}
 }
 
-// The wedge, -4..+2 stops. P1600 has no model (its pushed layers cannot be
-// registered to better than ~7, so it keeps the generic look); EIR is false
-// colour and has no neutral. Every other film is inside the task's 3.
-func TestSlideWedge69(t *testing.T) {
-	for _, key := range t69Films {
+// Task 69: guards the last slides' wedge drift and Status A read wavelengths (EIR exempt).
+// A failure means a film drifts in colour, a read wavelength left its band, or the EIR exemption moved.
+// Change only when the slide model or a film's data is deliberately changed; re-check all seven.
+func TestSlideFujiWedge(t *testing.T) {
+	for _, key := range fujiSlideFilms {
 		f := colorFilmOn(key, "", "Merrill", ColorPrint{})
 		if f == nil {
 			t.Fatalf("%s: no model", key)
@@ -80,7 +83,7 @@ func TestSlideWedge69(t *testing.T) {
 		for s := -4.0; s <= 2.01; s += 1 {
 			v := float32(midGreyLayer * math.Exp2(s))
 			r, g, b := f.apply(v, v, v)
-			_, a, bb := t67Lab(float64(r), float64(g), float64(b))
+			_, a, bb := slideLab(float64(r), float64(g), float64(b))
 			pts = append(pts, [2]float64{a, bb})
 			ys = append(ys, 0.2126*float64(r)+0.7152*float64(g)+0.0722*float64(b))
 		}
@@ -119,8 +122,11 @@ func TestSlideWedge69(t *testing.T) {
 	}
 }
 
-func TestSlideBlack69(t *testing.T) {
-	for _, key := range t69Films {
+// Task 69: guards the last slides' viewing black and deep-shadow neutrality (EIR cast exempt).
+// A failure means a film lost the slide black level or its shadow gained a cast.
+// Change only when the slide model is deliberately changed; re-check the task-67 criterion.
+func TestSlideFujiBlack(t *testing.T) {
+	for _, key := range fujiSlideFilms {
 		f := colorFilmOn(key, "", "Merrill", ColorPrint{})
 		if f == nil {
 			t.Fatalf("%s: no model", key)
@@ -129,7 +135,7 @@ func TestSlideBlack69(t *testing.T) {
 			t.Errorf("%s: viewing black %.5f, want %.5f", key, f.black, slideBlack)
 		}
 		vr, vg, vb := f.apply(2e-4, 2e-4, 2e-4)
-		L, a, bb := t67Lab(float64(vr), float64(vg), float64(vb))
+		L, a, bb := slideLab(float64(vr), float64(vg), float64(vb))
 		if L < 3.0 || L > 12.0 {
 			t.Errorf("%s: deep shadow L* %.2f", key, L)
 		}
@@ -139,9 +145,10 @@ func TestSlideBlack69(t *testing.T) {
 	}
 }
 
-// GPU = CPU for Velvia 50, Provia 100F and EIR. EIR has a shader branch for
-// its estimated IR layer (web/gpu.js irEstimate), mirrored by t60GPUFilm.
-func TestSlideGPU69(t *testing.T) {
+// Task 69: guards GPU = CPU for Velvia 50, Provia 100F and EIR's estimated IR layer.
+// A failure means the shader's IR branch or a film's table drifted from the CPU.
+// Change only when web/gpu.js's slide/IR pass changes; update the Go mirror with it.
+func TestSlideFujiGPU(t *testing.T) {
 	for _, key := range []string{"Fujifilm Fujichrome Velvia 50", "Fujifilm Fujichrome Provia 100F", "Kodak Ektachrome Professional Infrared (EIR)"} {
 		const w, h = 32, 24
 		l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, ISO: 100, Sensor: "Merrill"}
@@ -169,7 +176,7 @@ func TestSlideGPU69(t *testing.T) {
 		maxd := 0
 		for i := 0; i < w*h; i++ {
 			c := [3]float32{l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2]}
-			c = t60GPUFilm(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
+			c = gpuFilmPass(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
 			for k := 0; k < 3; k++ {
 				c[k] = c[k] * r.Gain[k] / r.ColorFilm.Exp
 			}
@@ -198,9 +205,9 @@ func TestSlideGPU69(t *testing.T) {
 	}
 }
 
-// EIR is false colour and its IR layer is an estimate from visible light.
-// The flag travels to /api/films, the model marks itself approximate, and
-// the documented mapping puts vegetation on the red side and sky on blue.
+// Task 69: guards EIR's approximate flag, its IR estimate and the vegetation/sky mapping.
+// A failure means EIR stopped being flagged approximate or its estimated IR layer lost its documented behaviour.
+// Change only when a real infrared channel or new EIR data lands; then revise the estimate and report.
 func TestEIRApprox(t *testing.T) {
 	const key = "Kodak Ektachrome Professional Infrared (EIR)"
 	d := colorFilmData_()[key]

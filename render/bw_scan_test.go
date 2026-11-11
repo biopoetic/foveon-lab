@@ -14,43 +14,42 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-var t65Films = []string{
+var bwScanFilms = []string{
 	"Kodak Tri-X Pan 400 (TX)", "Kodak T-Max 100", "Ilford HP5 Plus",
 	"Kodak T-Max 400", "Ilford FP4 Plus", "Ilford Pan F Plus",
 	"Ilford Delta 400", "Ilford Delta 3200", "Agfa Agfapan APX 25",
 	"Agfa Agfapan APX 100", "Agfa Agfapan APX 400",
 }
 
-// t65L is the CIE L* of a linear Y.
-func t65L(y float64) float64 {
+// cieLightness is the CIE L* of a linear Y.
+func cieLightness(y float64) float64 {
 	if y > 216.0/24389 {
 		return 116*math.Cbrt(y) - 16
 	}
 	return 24389.0 / 27 * y
 }
 
-// The scan's wedge: mid-grey is 18%, the base+fog keeps a small headroom
-// (L* 3-10, never pure black), and the wedge from -8 to +4 stops never
-// reaches L* < 2. The film's own curve still spreads the shadows: at -4 stops
-// the films differ by more than a level.
-func TestBWScanWedge65(t *testing.T) {
+// Task 65: guards the B&W scan wedge: 18% grey at L* 49.5, base+fog headroom 3-10, no clipped black.
+// A failure means the scanner's fixed inversion or black point moved.
+// Change only when the B&W scan model is deliberately retuned; re-check the 11 films and REPORT-65.
+func TestBWScanWedge(t *testing.T) {
 	lows := map[string]float64{}
-	for _, film := range t65Films {
+	for _, film := range bwScanFilms {
 		p := preset.Neutral()
 		p.Film, p.NoGrain = film, true
 		tone := newFilmTone(p)
 		if tone == nil {
 			t.Fatalf("%s: no tone", film)
 		}
-		if mid := t65L(float64(tone.at(0.18))); math.Abs(mid-49.5) > 0.1 {
+		if mid := cieLightness(float64(tone.at(0.18))); math.Abs(mid-49.5) > 0.1 {
 			t.Errorf("%s: 18%% grey is L* %.2f, want 49.5", film, mid)
 		}
-		if floor := t65L(float64(tone.at(1e-9))); floor < 3 || floor > 10 {
+		if floor := cieLightness(float64(tone.at(1e-9))); floor < 3 || floor > 10 {
 			t.Errorf("%s: base+fog is L* %.2f, want 3-10", film, floor)
 		}
 		prev := -1.0
 		for s := -8; s <= 4; s++ {
-			L := t65L(float64(tone.at(float32(0.18 * math.Exp2(float64(s))))))
+			L := cieLightness(float64(tone.at(float32(0.18 * math.Exp2(float64(s))))))
 			if L < prev-0.05 {
 				t.Errorf("%s: wedge is not monotonic at %+d stops (%.1f after %.1f)", film, s, L, prev)
 			}
@@ -73,9 +72,10 @@ func TestBWScanWedge65(t *testing.T) {
 	t.Logf("-4 stops: %.1f-%.1f L* across the 11 films", lo, hi)
 }
 
-// A black-and-white film without a characteristic curve keeps the generic
-// tone: newFilmTone must not invent one.
-func TestBWScanGenericUnchanged65(t *testing.T) {
+// Task 65: guards that a B&W film without a curve still gets no film tone.
+// A failure means newFilmTone invented a curve for a generic film.
+// Change only when curves are deliberately added for those films; update the film list with them.
+func TestBWScanGenericUnchanged(t *testing.T) {
 	for _, f := range Films() {
 		if !f.BW {
 			continue
@@ -92,15 +92,12 @@ func TestBWScanGenericUnchanged65(t *testing.T) {
 	}
 }
 
-// The print path (a B&W film on paper, with grades) must keep computing the
-// old print formula exactly: the scan change must not touch it. This
-// recomputes that formula from the same film and paper data and compares it
-// with every entry of the tone LUT. (The 626-case hash probe, run outside the
-// commit, additionally shows the rendered print bytes are identical; a float
-// LUT hash would be platform-brittle.)
-func TestBWPrintPathUnchanged65(t *testing.T) {
+// Task 65: guards the B&W print LUT against the old formula, entry by entry.
+// A failure means the scan change touched the print path's tone.
+// Change only when the print formula is deliberately changed; update this independent recomputation.
+func TestBWPrintPathUnchanged(t *testing.T) {
 	const paper = "Ilford Multigrade IV RC"
-	for _, film := range t65Films {
+	for _, film := range bwScanFilms {
 		c, ok := FilmCurveFor(film)
 		if !ok {
 			t.Fatalf("%s: no curve", film)
@@ -156,8 +153,8 @@ func TestBWPrintPathUnchanged65(t *testing.T) {
 	}
 }
 
-// t65GPULut mirrors web/gpu.js lut(): one table row sampled on x in 0..1.
-func t65GPULut(tab []float32, row int, x float32) float32 {
+// gpuLutSample mirrors web/gpu.js lut(): one table row sampled on x in 0..1.
+func gpuLutSample(tab []float32, row int, x float32) float32 {
 	f := x
 	if f < 0 {
 		f = 0
@@ -174,12 +171,10 @@ func t65GPULut(tab []float32, row int, x float32) float32 {
 	return a + (b-a)*(f-float32(i))
 }
 
-// The GPU preview must equal the CPU for the new scan. On a Foveon body the
-// film's tone goes into the measured pre table (applyMeasured): the recipe
-// carries that table and web/gpu.js reads it; the mirrored shader matches the
-// CPU within one 8-bit level. No shader change and no texture unit added or
-// reused.
-func TestBWScanGPURecipe65(t *testing.T) {
+// Task 65: guards GPU = CPU for the B&W scan through the measured pre/post tables.
+// A failure means a scan recipe or web/gpu.js's measured-table path drifted.
+// Change only when the measured path or shader changes; update the Go mirror in the same commit.
+func TestBWScanGPURecipe(t *testing.T) {
 	const w, h = 32, 24
 	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, ISO: 100, Sensor: "Merrill"}
 	for y := 0; y < h; y++ {
@@ -209,8 +204,8 @@ func TestBWScanGPURecipe65(t *testing.T) {
 			t.Fatalf("%s: recipe is not the measured pre table (%v, tone %d, pre %d)", film, r.Measured, len(r.FilmTone), len(r.Pre))
 		}
 		// Mid-grey inside the pre table is the scan's 18% grey.
-		mid := dec(t65GPULut(r.Pre, 0, enc(0.18)))
-		if L := t65L(float64(mid)); math.Abs(L-49.5) > 0.1 {
+		mid := dec(gpuLutSample(r.Pre, 0, enc(0.18)))
+		if L := cieLightness(float64(mid)); math.Abs(L-49.5) > 0.1 {
 			t.Errorf("%s: measured pre table puts 18%% grey at L* %.2f", film, L)
 		}
 		mism, maxd := 0, 0
@@ -219,8 +214,8 @@ func TestBWScanGPURecipe65(t *testing.T) {
 			// applyMeasured: no WB/mode map, unit tint, no fill, mono.
 			Y := float32(0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2])
 			x := enc(Y)
-			x = t65GPULut(r.Pre, 0, x)
-			x = t65GPULut(r.Post, 0, x)
+			x = gpuLutSample(r.Pre, 0, x)
+			x = gpuLutSample(r.Post, 0, x)
 			Y = dec(x)
 			for k := 0; k < 3; k++ {
 				want := int(float32(enc(Y))*255 + 0.5)

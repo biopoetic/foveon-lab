@@ -6,14 +6,17 @@ package render
 // forward integral; the measured wedge and the 14-photo tables are in
 // REPORT-72.md. Task 73 keeps the integrated read only on the films whose
 // mid-grey registration and measured grey balance support it, so the inverse
-// test runs on that kept list (task73_test.go).
+// test runs on that kept list (slide_registration_test.go).
 
 import (
 	"math"
 	"testing"
 )
 
-func TestStatusATable72(t *testing.T) {
+// Task 72: guards the ISO 5-3 Status A table against the printed values and edge slopes.
+// A failure means the table was re-digitised wrong or its normalization/peaks moved.
+// Change only when the published standard's table is re-read; update every printed point and cite it.
+func TestStatusATable(t *testing.T) {
 	d := statusA_()
 	if d.Normalized != 5 {
 		t.Errorf("normalized %.1f, want 5", d.Normalized)
@@ -68,8 +71,11 @@ func TestStatusATable72(t *testing.T) {
 	}
 }
 
-func TestStatusAIntegrated72(t *testing.T) {
-	for _, key := range t73StatusAFilms {
+// Task 72: guards the integrated Status A inverse on the kept films (round trip <= 0.005 D).
+// A failure means the forward/inverse products no longer agree or a dye amount went negative.
+// Change only when the Status A read or the kept-film list changes; re-run on that list.
+func TestStatusAIntegrated(t *testing.T) {
+	for _, key := range statusASlideFilms {
 		f := colorFilmFor(key, "Merrill")
 		if f == nil {
 			t.Fatalf("%s: no model", key)

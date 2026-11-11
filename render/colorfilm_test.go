@@ -23,14 +23,14 @@ func TestColorFilmSlides(t *testing.T) {
 			t.Fatalf("no model for %s", key)
 		}
 		t.Logf("%s: layers -> film %.3f; reading wavelengths R/G/B %.0f nm, grey error %.3f, integrated %v", key, f.rp, f.readLam, f.greyRMS, f.integrated)
-		if t73IsStatusA(key) != f.integrated {
-			t.Errorf("%s: integrated %v but read_statusa %v", key, f.integrated, t73IsStatusA(key))
+		if isStatusAFilm(key) != f.integrated {
+			t.Errorf("%s: integrated %v but read_statusa %v", key, f.integrated, isStatusAFilm(key))
 		}
 		if f.integrated {
 			// A task-73 film is read through the full Status A products and
 			// registered at the ISO mid-grey: that exposure, not a fitted
 			// wavelength, must be neutral.
-			L, a, b := t73MidLab(f)
+			L, a, b := slideMidLab(f)
 			if math.Abs(a) > 0.5 || math.Abs(b) > 0.5 || L < 45 || L > 55 {
 				t.Errorf("%s: mid-grey L* %.2f a* %+.2f b* %+.2f, want neutral 18%% grey", key, L, a, b)
 			}
@@ -44,7 +44,7 @@ func TestColorFilmSlides(t *testing.T) {
 				// three curves are drawn on per-layer effective exposures
 				// (stored as Shift) carries its own balance; a push family or
 				// a false-colour film (OwnBalance) has none to meet. The wedge
-				// drift is tested in task68_test.go / task69_test.go instead.
+				// drift is tested in slide_sheets_test.go / slide_fuji_test.go instead.
 				if len(colorFilmData_()[key].Shift) == 0 && !colorFilmData_()[key].OwnBalance && !colorFilmData_()[key].IRApprox {
 					t.Errorf("%s: grey %.2f not neutral: %.4f %.4f %.4f", key, g, r, gg, b)
 				}

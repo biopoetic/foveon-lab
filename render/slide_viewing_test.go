@@ -20,7 +20,7 @@ import (
 	"github.com/biopoetic/foveon-lab/preset"
 )
 
-var t67Slides = []string{
+var viewingSlideFilms = []string{
 	"Fujifilm Fujichrome Velvia 100",
 	"Fujifilm Fujichrome Provia 400F",
 	"Fujifilm Fujichrome Provia 400X",
@@ -28,13 +28,14 @@ var t67Slides = []string{
 	"Fujifilm Fujichrome T64",
 }
 
-// t67Lab is the CIELAB of a linear sRGB value (D65/2 deg).
-func t67Lab(r, g, b float64) (L, a, bb float64) { return labOf(r, g, b) }
+// slideLab is the CIELAB of a linear sRGB value (D65/2 deg).
+func slideLab(r, g, b float64) (L, a, bb float64) { return labOf(r, g, b) }
 
-// The viewing black level: D-max keeps a little light, the mid-grey stays at
-// 18%, and a deeper exposure cannot fall below the black level.
-func TestSlideBlackPoint67(t *testing.T) {
-	for _, key := range t67Slides {
+// Task 67: guards the slide viewing black: D-max keeps light, mid-grey 18%, deep shadow L* 3-10.
+// A failure means a slide's D-max was crushed to black or the black level moved.
+// Change only when the slide viewing model is deliberately changed; re-check the five films and REPORT-67.
+func TestSlideViewingBlack(t *testing.T) {
+	for _, key := range viewingSlideFilms {
 		f := colorFilmOn(key, "", "Merrill", ColorPrint{})
 		if f == nil {
 			t.Fatalf("%s: no model", key)
@@ -60,7 +61,7 @@ func TestSlideBlackPoint67(t *testing.T) {
 			t.Errorf("%s: deep shadow %.5f %.5f %.5f is below the viewing black %.5f",
 				key, vr, vg, vb, slideBlack)
 		}
-		L, a, bb := t67Lab(float64(vr), float64(vg), float64(vb))
+		L, a, bb := slideLab(float64(vr), float64(vg), float64(vb))
 		if L < 3.0 || L > 10.0 {
 			t.Errorf("%s: deep shadow L* %.2f, want 3-10", key, L)
 		}
@@ -72,13 +73,11 @@ func TestSlideBlackPoint67(t *testing.T) {
 	}
 }
 
-// The neutral wedge: a slide's grey may carry the sheet's own balance (the
-// model's neutral path is not forced to 0), but it must not drift by more
-// than 3 in a* or b* from that balance anywhere between -4 and +2 stops.
-// The balance is taken as the mean of the path, so a constant cast is the
-// film's, not a drift.
-func TestSlideWedge67(t *testing.T) {
-	for _, key := range t67Slides {
+// Task 67: guards a slide's neutral wedge drift (<= 3 in a*/b* from its own balance, -4..+2 stops).
+// A failure means a slide's grey path drifts in colour across exposure.
+// Change only when the slide model is deliberately retuned; re-run the wedge on the five films.
+func TestSlideViewingWedge(t *testing.T) {
+	for _, key := range viewingSlideFilms {
 		f := colorFilmOn(key, "", "Merrill", ColorPrint{})
 		if f == nil {
 			t.Fatalf("%s: no model", key)
@@ -92,7 +91,7 @@ func TestSlideWedge67(t *testing.T) {
 		for s := -4.0; s <= 2.01; s += 1 {
 			v := float32(midGreyLayer * math.Exp2(s))
 			r, g, b := f.apply(v, v, v)
-			_, a, bb := t67Lab(float64(r), float64(g), float64(b))
+			_, a, bb := slideLab(float64(r), float64(g), float64(b))
 			pts = append(pts, [2]float64{a, bb})
 			ys = append(ys, 0.2126*float64(r)+0.7152*float64(g)+0.0722*float64(b))
 		}
@@ -123,9 +122,9 @@ func TestSlideWedge67(t *testing.T) {
 	}
 }
 
-// t67NaturalLayers is the 400-reflectance daylight set through the sensor,
+// naturalLayers is the 400-reflectance daylight set through the sensor,
 // white = 1: the same scene colours the report's patch mean uses.
-func t67NaturalLayers(sensor string) [][3]float64 {
+func naturalLayers(sensor string) [][3]float64 {
 	sp := spectral()
 	S := layerSens(sensor)
 	var ws [3]float64
@@ -151,20 +150,21 @@ func t67NaturalLayers(sensor string) [][3]float64 {
 	return out
 }
 
-// The slides must still be different films: Velvia the most saturated, and
-// each pair clearly apart on the natural-reflectance set.
-func TestSlideFilmsDiffer67(t *testing.T) {
-	patches := t67NaturalLayers("Merrill")
+// Task 67: guards that the five slides remain distinct (Velvia most saturated, Astia softer).
+// A failure means two slide films collapsed onto one look.
+// Change only when slide data is re-digitised; re-check the pair distances and mean chroma.
+func TestSlideFilmsDiffer(t *testing.T) {
+	patches := naturalLayers("Merrill")
 	type out struct {
 		a, b, C []float64
 	}
 	outs := map[string]out{}
-	for _, key := range t67Slides {
+	for _, key := range viewingSlideFilms {
 		f := colorFilmOn(key, "", "Merrill", ColorPrint{})
 		o := out{}
 		for _, p := range patches {
 			r, g, b := f.apply(float32(p[0]), float32(p[1]), float32(p[2]))
-			_, a, bb := t67Lab(float64(r), float64(g), float64(b))
+			_, a, bb := slideLab(float64(r), float64(g), float64(b))
 			o.a = append(o.a, a)
 			o.b = append(o.b, bb)
 			o.C = append(o.C, math.Hypot(a, bb))
@@ -179,7 +179,7 @@ func TestSlideFilmsDiffer67(t *testing.T) {
 		return s / float64(len(outs[k].C))
 	}
 	velvia := meanC("Fujifilm Fujichrome Velvia 100")
-	for _, k := range t67Slides[1:] {
+	for _, k := range viewingSlideFilms[1:] {
 		if meanC(k) >= velvia {
 			t.Errorf("%s C* %.2f is not below Velvia's %.2f", k, meanC(k), velvia)
 		}
@@ -220,24 +220,23 @@ func TestSlideFilmsDiffer67(t *testing.T) {
 		}
 		return s / float64(len(outs[x].a))
 	}
-	for i := 0; i < len(t67Slides); i++ {
-		for j := i + 1; j < len(t67Slides); j++ {
-			d := dist(t67Slides[i], t67Slides[j])
+	for i := 0; i < len(viewingSlideFilms); i++ {
+		for j := i + 1; j < len(viewingSlideFilms); j++ {
+			d := dist(viewingSlideFilms[i], viewingSlideFilms[j])
 			if d < 2.0 {
-				t.Errorf("%s and %s differ by only %.2f on the patches", t67Slides[i], t67Slides[j], d)
+				t.Errorf("%s and %s differ by only %.2f on the patches", viewingSlideFilms[i], viewingSlideFilms[j], d)
 			}
-			t.Logf("%-42s / %-42s mean CIE76 %.2f", t67Slides[i], t67Slides[j], d)
+			t.Logf("%-42s / %-42s mean CIE76 %.2f", viewingSlideFilms[i], viewingSlideFilms[j], d)
 		}
 	}
 	t.Logf("mean C*: Velvia %.2f, 400F %.2f, 400X %.2f, Astia %.2f, T64 %.2f",
-		velvia, meanC(t67Slides[1]), meanC(t67Slides[2]), meanC(t67Slides[3]), meanC(t67Slides[4]))
+		velvia, meanC(viewingSlideFilms[1]), meanC(viewingSlideFilms[2]), meanC(viewingSlideFilms[3]), meanC(viewingSlideFilms[4]))
 }
 
-// The GPU preview reads the same 3-D table and adds the slide's viewing black
-// level from the recipe (web/gpu.js uCFBlack). This mirrors the shader pass
-// for a slide and checks it against the CPU to one 8-bit level, on a frame
-// with deep shadows as well as midtones.
-func TestSlideGPUBlack67(t *testing.T) {
+// Task 67: guards GPU = CPU for a slide with the viewing black added after the gain.
+// A failure means the shader's uCFBlack addition or the slide recipe drifted.
+// Change only when web/gpu.js's slide pass changes; update the Go mirror with it.
+func TestSlideViewingGPU(t *testing.T) {
 	const w, h = 32, 24
 	l := &Linear{W: w, H: h, Pix: make([]float32, w*h*3), Scale: 1, ISO: 100, Sensor: "Merrill"}
 	for y := 0; y < h; y++ {
@@ -269,7 +268,7 @@ func TestSlideGPUBlack67(t *testing.T) {
 	maxd, mism := 0, 0
 	for i := 0; i < w*h; i++ {
 		c := [3]float32{l.Pix[i*3], l.Pix[i*3+1], l.Pix[i*3+2]}
-		c = t60GPUFilm(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
+		c = gpuFilmPass(r, [3]float32{c[0] * r.ColorFilm.Exp, c[1] * r.ColorFilm.Exp, c[2] * r.ColorFilm.Exp})
 		for k := 0; k < 3; k++ {
 			c[k] = c[k] * r.Gain[k] / r.ColorFilm.Exp
 		}
