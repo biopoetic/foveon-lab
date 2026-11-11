@@ -3,8 +3,11 @@ package main
 // spp-check: the accuracy regression check against Sigma Photo Pro. Every
 // photo with a neutral SPP export (<name>_A00.tif) is developed exactly as
 // the app shows its preview (decoded at the working width with the app's
-// noise reduction, turned, reduced, raw base, neutral render with SPP's
-// sharpening) and compared with the export at the analysis width.
+// noise reduction, turned, reduced, raw base or camera-JPEG balance,
+// neutral render with SPP's sharpening) and compared with the export at the
+// analysis width. The printed source says which image was scored: "raw" for
+// the app's accurate raw-based preview, "jpg" for the camera's embedded
+// JPEG, which the app shows when it has no usable raw path.
 //
 //	foveon-lab spp-check [-save now.json] [-compare before.json] [-only SD1,SDIM0031] [-step A17]
 //
@@ -44,6 +47,11 @@ type sppScore struct {
 	// a perfect exposure match would leave.
 	EV      float64 `json:"ev"`
 	AreaEV0 float64 `json:"areaEV0"`
+	// Source is the image that was scored: "raw" (the app's accurate
+	// raw-based preview) or "jpg" (the camera's embedded JPEG, which the app
+	// shows when it has no usable raw path). Old JSON files have no field and
+	// load with an empty Source.
+	Source string `json:"source,omitempty"`
 }
 
 func sppCheckCommand(desk string) {
@@ -125,7 +133,7 @@ func sppCheckCommand(desk string) {
 		}
 		s.Group, s.Model = group, modelOf(ph)
 		scores[name] = s
-		fmt.Printf("  %-10s %-8s all %6.2f  area %5.2f  shadows %5.2f  ev %+5.2f  area@ev0 %5.2f  ref %s\n", name, group, s.All, s.Area, s.Shadow, s.EV, s.AreaEV0, filepath.Base(filepath.Dir(exp))+"/"+filepath.Base(exp))
+		fmt.Printf("  %-10s %-8s %-4s all %6.2f  area %5.2f  shadows %5.2f  ev %+5.2f  area@ev0 %5.2f  ref %s\n", name, group, s.Source, s.All, s.Area, s.Shadow, s.EV, s.AreaEV0, filepath.Base(filepath.Dir(exp))+"/"+filepath.Base(exp))
 	}
 	if excluded > 0 {
 		fmt.Printf("%d excluded reference(s), not scored\n", excluded)
@@ -148,6 +156,25 @@ func sppCheckCommand(desk string) {
 			fmt.Println("saved", *save)
 		}
 	}
+}
+
+// sppCheckSource names the image the app shows for ph, and therefore the one
+// spp-check scores: "raw" when the accurate preview has a raw path, "jpg"
+// otherwise. It mirrors useRaw/wantRaw in accurate.go with accurate mode on
+// (its default): a photo whose raw decode the app refuses (ph.Accurate is
+// RawDecoded or a fitted raw base, and rawDecodable refuses the others) is
+// shown from the camera's embedded JPEG.
+func sppCheckSource(ph *Photo) string {
+	if ph.Kind != "x3f" {
+		return "raw"
+	}
+	if !rawAvailable() {
+		return "jpg"
+	}
+	if ph.RawDecoded || rawCorrectionFor(ph) != nil {
+		return "raw"
+	}
+	return "jpg"
 }
 
 // linearForCheck decodes ph and brings it to spp's analysis size with its
@@ -181,6 +208,18 @@ func linearForCheck(ph *Photo, spp *render.Linear) (*render.Linear, error) {
 	return l, nil
 }
 
+// linearForCheckJPEG decodes the camera JPEG the app shows for ph (the jpg
+// path of sourceAs) and brings it to the analysis size with the app's JPEG
+// balance. It is used when sppCheckSource says the app shows that image.
+func linearForCheckJPEG(ph *Photo, spp *render.Linear) (*render.Linear, error) {
+	img, err := decodePreview(ph)
+	if err != nil {
+		return nil, err
+	}
+	l := balanceJPEG(ph, render.FromImage(img, sourceW, ph.Rotation))
+	return fitAspect(l.Downscale(spp.W), spp.W, spp.H), nil
+}
+
 // checkRender develops ph as the app shows its preview in the neutral
 // preset and returns the render and its SPP export, both at the analysis
 // size. spp-check and spp-decomp share it so both judge the same image.
@@ -198,17 +237,32 @@ func checkRender(ph *Photo, export string) (*render.Linear, *render.Linear, erro
 }
 
 // sppCheckPhoto develops ph as the app's preview with settings p and scores
-// it against its SPP export.
+// it against its SPP export. The source is the one the app shows, and is
+// recorded in the score.
 func sppCheckPhoto(ph *Photo, export string, p preset.Params) (sppScore, error) {
 	spp, err := calib.LoadLinear(export)
 	if err != nil {
 		return sppScore{}, err
 	}
-	l, err := linearForCheck(ph, spp)
+	src := sppCheckSource(ph)
+	var l *render.Linear
+	if src == "jpg" {
+		l, err = linearForCheckJPEG(ph, spp)
+	} else {
+		l, err = linearForCheck(ph, spp)
+	}
 	if err != nil {
 		return sppScore{}, err
 	}
 	v := rgbaToLinear(render.Render(render.NewBase(l), p, rawCompensation(ph)))
+	s := sppCheckScore(v, spp)
+	s.Source = src
+	return s, nil
+}
+
+// sppCheckScore is the three-number comparison of a developed image v with
+// its SPP export, both at the analysis size.
+func sppCheckScore(v, spp *render.Linear) sppScore {
 	s := sppScore{All: calib.MeanError(v, spp)}
 	s.Area = calib.MeanError(v.Downscale(spp.W/4), spp.Downscale(spp.W/4))
 	var sum float64
@@ -240,7 +294,7 @@ func sppCheckPhoto(ph *Photo, export string, p preset.Params) (sppScore, error) 
 		}
 		s.AreaEV0 = calib.MeanError(m, spp.Downscale(spp.W/4))
 	}
-	return s, nil
+	return s
 }
 
 func clamp01(v float32) float32 { return max(0, min(1, v)) }
@@ -316,6 +370,18 @@ func printSPPSummary(scores map[string]sppScore) {
 		fmt.Printf("%-8s %3d photos: all %.3f  area %.3f  shadows %.3f  | area median %.2f, %d of %d under %.0f\n",
 			a.Group, a.N, a.All, a.Area, a.Shadow, a.AreaMedian, a.UnderTarget, a.N, sppTarget)
 	}
+	raw, jpg := 0, 0
+	for _, s := range scores {
+		switch s.Source {
+		case "raw":
+			raw++
+		case "jpg":
+			jpg++
+		}
+	}
+	if raw+jpg > 0 {
+		fmt.Printf("          scored %d raw and %d jpg (the source the app shows)\n", raw, jpg)
+	}
 	// A neutral SPP export lands within a few hundredths of a stop of our own
 	// brightness. A row far off that is one of two things: a reference made
 	// with other SPP settings, or a render of ours that is too dark or too
@@ -336,7 +402,7 @@ func printSPPSummary(scores map[string]sppScore) {
 	sort.Strings(names)
 	for _, name := range names {
 		s := scores[name]
-		fmt.Printf("            %-36s %-8s area %6.2f  ev %+5.2f  area@ev0 %6.2f\n", name, s.Group, s.Area, s.EV, s.AreaEV0)
+		fmt.Printf("            %-36s %-8s %-4s area %6.2f  ev %+5.2f  area@ev0 %6.2f\n", name, s.Group, s.Source, s.Area, s.EV, s.AreaEV0)
 	}
 }
 
@@ -368,7 +434,7 @@ func printSPPCompare(before, now map[string]sppScore, worse float64) {
 		}
 		if x.diff > worse {
 			flagged++
-			fmt.Printf("  WORSE %-10s %-8s %+.2f (now %.2f)\n", x.name, x.s.Group, x.diff, x.s.All)
+			fmt.Printf("  WORSE %-10s %-8s %-4s %+.2f (now %.2f)\n", x.name, x.s.Group, x.s.Source, x.diff, x.s.All)
 		}
 	}
 	fmt.Printf("%d better by > 0.05, %d worse by > %.2f\n", better, flagged, worse)

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -34,5 +36,68 @@ func TestSPPGroupStatsMedianAndTarget(t *testing.T) {
 	}
 	if a := by["ALL"]; a.N != 5 || a.AreaMedian != 3.5 || a.UnderTarget != 2 {
 		t.Fatalf("ALL: %+v", a)
+	}
+}
+
+// The source rule: spp-check must score the image the app shows. With
+// accurate mode on (the default) a photo with a fitted raw base is shown
+// from raw; a readout the raw path refuses (LOW) is shown from the camera
+// JPEG; SD9/SD10 have only their raw data, so they are always raw.
+func TestSPPCheckSource(t *testing.T) {
+	oldRaw := goRaw
+	goRaw = true
+	t.Cleanup(func() { goRaw = oldRaw })
+	mk := func(model, res string) *Photo {
+		return &Photo{Kind: "x3f", Camera: "SD1", props: map[string]string{
+			"CAMMODEL": model, "RESOLUTION": res, "WB_DESC": "Auto",
+		}}
+	}
+	for _, tc := range []struct {
+		name string
+		ph   *Photo
+		want string
+	}{
+		{"DPM HI has a raw base", mk("SIGMA DP2 Merrill", "HI"), "raw"},
+		{"DPM LOW is refused by rawDecodable", mk("SIGMA DP2 Merrill", "LOW"), "jpg"},
+		{"DP HI has a raw base", mk("SIGMA DP2", "HI"), "raw"},
+		{"unknown resolution is refused", mk("SIGMA DP2 Merrill", "SMALL"), "jpg"},
+		{"SD10 has no full preview, so its raw data is the picture", func() *Photo {
+			p := mk("SIGMA SD10", "LOW")
+			p.RawDecoded = true
+			return p
+		}(), "raw"},
+	} {
+		if got := sppCheckSource(tc.ph); got != tc.want {
+			t.Errorf("%s: source %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Old saved JSON files have no source field; they must still load. New files
+// carry it. This is the compatibility the queue asked for.
+func TestSPPScoreSourceJSON(t *testing.T) {
+	const oldJSON = `{"X":{"group":"DPM","model":"SIGMA DP2 Merrill","all":58.62,"area":58.62,"shadow":9.1,"ev":-1.4,"areaEV0":9.68}}`
+	var old map[string]sppScore
+	if err := json.Unmarshal([]byte(oldJSON), &old); err != nil {
+		t.Fatalf("old JSON without source: %v", err)
+	}
+	if old["X"].Source != "" {
+		t.Fatalf("old JSON source %q, want empty", old["X"].Source)
+	}
+
+	now := map[string]sppScore{"X": {Group: "DPM", All: 5.0, Source: "jpg"}}
+	b, err := json.Marshal(now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"source":"jpg"`) {
+		t.Fatalf("new JSON has no source: %s", b)
+	}
+	var back map[string]sppScore
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatalf("new JSON: %v", err)
+	}
+	if back["X"].Source != "jpg" {
+		t.Fatalf("new JSON source %q, want jpg", back["X"].Source)
 	}
 }

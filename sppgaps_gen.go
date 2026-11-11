@@ -10,7 +10,7 @@ const sppGapSource = "docs/spp-check.json"
 var sppGaps = []sppGap{
 	{Body: "DP1 Merrill", Model: "SIGMA DP1 Merrill", Mean: 4.6450, Area: 3.3221, Photos: 15},
 	{Body: "DP2", Model: "SIGMA DP2", Mean: 4.3995, Area: 4.0729, Photos: 8},
-	{Body: "DP2 Merrill", Model: "SIGMA DP2 Merrill", Mean: 3.7986, Area: 2.5351, Photos: 3},
+	{Body: "DP2 Merrill", Model: "SIGMA DP2 Merrill", Mean: 5.0620, Area: 3.5502, Photos: 4},
 	{Body: "DP2X", Model: "SIGMA DP2X", Mean: 4.3446, Area: 3.6877, Photos: 18},
 	{Body: "DP3 Merrill", Model: "SIGMA DP3 Merrill", Mean: 4.9058, Area: 3.7757, Photos: 13},
 	{Body: "SD1 Merrill", Model: "SIGMA SD1 Merrill", Mean: 3.6252, Area: 2.8456, Photos: 1},

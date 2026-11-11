@@ -8,7 +8,7 @@ ignores fine detail). The app shows the same line in the photo info.
 |---|---:|---:|---:|
 | DP1 Merrill | 4.6 | 3.3 | 15 |
 | DP2 | 4.4 | 4.1 | 8 |
-| DP2 Merrill | 3.8 | 2.5 | 3 |
+| DP2 Merrill | 5.1 | 3.6 | 4 |
 | DP2X | 4.3 | 3.7 | 18 |
 | DP3 Merrill | 4.9 | 3.8 | 13 |
 | SD1 Merrill | 3.6 | 2.8 | 1 |
