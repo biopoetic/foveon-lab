@@ -227,6 +227,21 @@ func sppView(s, iso float64, sensor string) (float32, [7]float32) {
 	return float32(bestA), bestK
 }
 
+// DetailScale is the factor preset.Params.SPPDetail puts on SPP's sharpening
+// amount: 1 at the default 0, 0 at -1 (no sharpening), 2 at +1.
+func DetailScale(detail float64) float64 {
+	return math.Max(0, math.Min(2, 1+detail))
+}
+
+// sppViewDetail is sppView with the amount scaled by the Detail control.
+// Every place that sharpens, or that models what the sharpening does to
+// grain, goes through it, so the CPU render, the GPU recipe and the grain
+// laid on after the sharpening all use the same mask.
+func sppViewDetail(s, iso float64, sensor string, detail float64) (float32, [7]float32) {
+	a, k := sppView(s, iso, sensor)
+	return a * float32(DetailScale(detail)), k
+}
+
 // gaussKernel is a normalised Gaussian kernel of the given sigma (radius 3).
 func gaussKernel(sigma float64) [7]float32 {
 	var k [7]float32
@@ -250,8 +265,8 @@ func gaussKernel(sigma float64) [7]float32 {
 // preview's scale, which is far stronger at high frequencies: at 1600 that
 // added 84% where the export keeps 35%. This is the retained gain used when
 // the grain is laid on after SPP instead (render.go, film.go deferredGain).
-func sppGrainGain(s, iso float64, sensor string) float64 {
-	a, k := sppView(s, iso, sensor)
+func sppGrainGain(s, iso float64, sensor string, detail float64) float64 {
+	a, k := sppViewDetail(s, iso, sensor, detail)
 	if a == 0 {
 		return 1
 	}

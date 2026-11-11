@@ -657,7 +657,7 @@ func (f *filmOp) deferredGain(b *Base, p preset.Params, sharp bool) float64 {
 	if b.Raw {
 		// The export's full-size SPP mask, seen through the reduction, is
 		// the mask at the view's true scale (1/n).
-		g *= sppGrainGain(1/f.n, b.ISO, b.Sensor)
+		g *= sppGrainGain(1/f.n, b.ISO, b.Sensor, p.SPPDetail)
 	}
 	if p.Sharpness != 0 {
 		g *= sliderGrainGain(f.n, p.Sharpness)

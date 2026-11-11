@@ -220,7 +220,7 @@ func (b *Base) monoGrainDeferredFor(p preset.Params) *monoGrainParams {
 	if n <= 1.0000001 {
 		return b.monoGrainFor(p)
 	}
-	varRed, varOut, rho1 := b.monoGrainRetained(base, n, p.Sharpness)
+	varRed, varOut, rho1 := b.monoGrainRetained(base, n, p.Sharpness, p.SPPDetail)
 	if varRed <= 0 || varOut <= 0 {
 		return nil
 	}
@@ -412,14 +412,14 @@ func monoLag1(v []float32, dw, dh int) float64 {
 // derived for the mono lattice, with the two sharpeners' interaction kept
 // instead of approximating them as white-grain gains (which overestimated
 // the retained gain at Sharpness +1 by 20â€“30%).
-func (b *Base) monoGrainRetained(gp *monoGrainParams, n, sharpness float64) (varRed, varOut, rho1 float64) {
+func (b *Base) monoGrainRetained(gp *monoGrainParams, n, sharpness, detail float64) (varRed, varOut, rho1 float64) {
 	const N = 256
 	dw := max(1, int(math.Round(float64(N)/n)))
 	raw := monoUnitField(N, gp)
 	varRed = monoVariance(monoReduce(raw, N, dw, dw))
 	out := raw
 	if b.Raw {
-		if a, k := sppView(1, b.ISO, b.Sensor); a != 0 {
+		if a, k := sppViewDetail(1, b.ISO, b.Sensor, detail); a != 0 {
 			out = monoUSMField(raw, N, a, k)
 		}
 	}

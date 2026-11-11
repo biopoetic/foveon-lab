@@ -160,6 +160,13 @@ type Params struct {
 	// fallback plus the user's adjustments, so a tuned mode still opens in
 	// Sigma Photo Pro with a sensible approximation.
 	MaxDetail bool `json:"maxDetail,omitempty"`
+	// SPPDetail (Foveon Lab only; not in SPP's XML) scales the sharpening
+	// Sigma Photo Pro applies to every raw development, which SPP gives no
+	// control over: -1 = none, 0 = as SPP (the default), +1 = twice. SPP's
+	// Merrill sharpening is strong (an unsharp mask of amount 2.7 at ISO 100)
+	// and reads as harsh micro-contrast on portraits; this turns it down
+	// without touching the Sharpness slider, which is a separate filter.
+	SPPDetail float64 `json:"sppDetail,omitempty"`
 	// SPPFallback (Foveon Lab only; not in SPP's XML) is the mode's SPP
 	// slider bundle, as above. Nil for an ordinary preset.
 	SPPFallback *Params `json:"sppFallback,omitempty"`

@@ -364,7 +364,7 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 		}
 	}
 	if b.Raw {
-		a, k := sppView(b.scale(), b.ISO, b.Sensor)
+		a, k := sppViewDetail(b.scale(), b.ISO, b.Sensor, p.SPPDetail)
 		r.SppSharpen, r.SppKernel = a, k[:]
 		r.SppThr = usmThresh(b.ISO)
 	}
