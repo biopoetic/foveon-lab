@@ -53,6 +53,8 @@ main{overflow:auto;position:relative}
 .chips{display:flex;flex-wrap:wrap;gap:4px}
 .chip{padding:2px 8px;border-radius:12px;border:1px solid var(--line);cursor:pointer;color:var(--dim);user-select:none}
 .chip.on{background:var(--accent);color:#1a1300;border-color:var(--accent)}
+.chip.cal{border-style:dashed;opacity:.75}
+.chip.cal.on{background:none;color:var(--dim);border-color:var(--line)}
 .note{color:var(--dim);font-size:12px;padding:6px 12px}
 .note b{color:var(--accent)}
 #grid{display:grid;gap:10px;padding:10px 12px 40px}
@@ -352,7 +354,7 @@ button.ai{border-color:var(--accent2);color:#cfe6fa}
         <div id="sourceNote"></div>
         <div id="stage"><img id="big" alt=""><canvas id="bigGL"></canvas><img id="bigOrig" alt=""><canvas id="clipCv"></canvas><div id="splitLine"></div><div id="stageTag"></div><div id="zoomPct"></div><div id="busy">rendering…</div><div id="cropBox"><i class="nw"></i><i class="ne"></i><i class="sw"></i><i class="se"></i></div><div id="cropBar">Straighten <input type="range" id="cropAng" min="-45" max="45" step="0.1" value="0"><input type="number" id="cropAngN" min="-45" max="45" step="0.1" value="0">° Aspect <select id="cropAsp"><option value="0">Free</option><option value="orig">Original</option><option value="1.5">3:2</option><option value="1.3333">4:3</option><option value="1">1:1</option><option value="1.7778">16:9</option><option value="0.8">4:5</option><option value="0.6667">2:3</option></select><button id="cropReset">Reset</button><button id="cropCancel">Cancel</button><button id="cropDone" class="primary">Done</button></div></div>
         <div id="nav">
-          <button id="back" title="Esc">← Grid</button>
+          <button id="back" style="white-space:nowrap" title="Every look, preset and film on this photo, side by side (Esc)">← Looks</button>
           <button id="prev" title="←">‹</button>
           <div class="name" id="dName"></div>
           <button id="next" title="→">›</button>
@@ -733,6 +735,7 @@ const NEUTRAL = {exposure:0,contrast:0,blackness:0,highlight:0,saturation:0,shar
 const S = {
   photos: [], presets: [], photo: null,
   groups: new Set(store.get("groups", [])),
+  showCal: !!store.get("showCal", false), // the [CAL] calibration presets, hidden by default
   cam: store.get("cam","auto"), src: store.get("src",""), q: "",
   list: [], idx: -1, params: null, base: null,
   looks: store.get("looks", ""), lookKey: "", lookGroups: null, lookOpen: null,
@@ -964,7 +967,7 @@ You can restore it from there.`)) return;
   toast(`${esc(p.name)} moved to the Recycle Bin.`, 5000);
   if (S.photo?.id === id){
     const next = S.photos[i] || S.photos[i - 1];
-    if (next) selectPhoto(next.id); else closeDetail();
+    if (next) selectPhoto(next.id); else closeDetail(true);
   }
 }
 
@@ -1154,7 +1157,7 @@ function selectPhoto(id){
   // can change with the camera) and any slider tweaks.
   const keep = current()?.id;
   refreshList();
-  if ($("#detail").classList.contains("on") && p.unsupported){ closeDetail(); return; }
+  if ($("#detail").classList.contains("on") && p.unsupported){ closeDetail(true); return; }
   if ($("#detail").classList.contains("on")){
     // The mixer's unset state is per photo, so the sliders must be repainted
     // when a different file's header is now the source of the default.
@@ -1166,6 +1169,10 @@ function selectPhoto(id){
       renderBig();
     } else if (S.idx < 0) renderBig();
     else openDetail(S.list.length ? 0 : -1); // preset not offered for this camera
+  } else if (!p.unsupported && store.get("view", "edit") === "edit") {
+    // The editor was closed by the app (the last photo could not be shown),
+    // not by the user: return to it for a photo that can be.
+    openDetail(-1);
   } else drawGrid();
 }
 
@@ -1364,6 +1371,7 @@ function baseFiltered(){
   // modes cannot mean anything there.
   const noLayers = !!S.photo && S.photo.kind !== "x3f";
   return S.presets.filter(p =>
+    (S.showCal || p.group !== "CAL") &&
     (!noLayers || (p.group !== "IR" && p.group !== "WB" && p.group !== "CAMERA" && !p.camera)) &&
     (!cam || !p.camera || p.camera === cam) &&
     (!S.src || p.source === S.src) &&
@@ -1374,11 +1382,21 @@ function drawChips(){
   const counts = {};
   for (const p of baseFiltered()) counts[p.group] = (counts[p.group]||0) + 1;
   const groups = Object.keys(counts).sort();
-  $("#chips").innerHTML = groups.map(g => `<span class="chip ${S.groups.has(g)?"on":""}" data-g="${esc(g)}">${esc(g)} ${counts[g]}</span>`).join("");
-  document.querySelectorAll(".chip").forEach(c => c.onclick = () => {
+  // The calibration presets ([CAL] …: one slider step each, made to measure
+  // Sigma Photo Pro) are not looks. They stay out of the list unless asked
+  // for; the last chip says how many there are and brings them back.
+  const cal = S.presets.filter(p => p.group === "CAL").length;
+  const calChip = cal ? `<span class="chip cal ${S.showCal?"on":""}" id="calChip" title="Calibration presets: single slider steps used to measure Sigma Photo Pro, not looks. Click to ${S.showCal?"hide":"show"} them.">${S.showCal ? "hide" : "show"} calibration (${cal})</span>` : "";
+  $("#chips").innerHTML = groups.map(g => `<span class="chip ${S.groups.has(g)?"on":""}" data-g="${esc(g)}">${esc(g)} ${counts[g]}</span>`).join("") + calChip;
+  document.querySelectorAll(".chip[data-g]").forEach(c => c.onclick = () => {
     const g = c.dataset.g; S.groups.has(g) ? S.groups.delete(g) : S.groups.add(g);
     store.set("groups", [...S.groups]); refreshList(); drawGrid(); drawChips();
   });
+  if ($("#calChip")) $("#calChip").onclick = () => {
+    S.showCal = !S.showCal; store.set("showCal", S.showCal);
+    if (!S.showCal && S.groups.delete("CAL")) store.set("groups", [...S.groups]);
+    refreshList(); drawGrid(); drawChips();
+  };
 }
 
 function refreshList(){
@@ -2287,7 +2305,16 @@ function syncSliders(){
 function current(){ return S.idx >= 0 ? S.list[S.idx] : null; }
 function dirty(){ return Object.keys(NEUTRAL).some(k => typeof NEUTRAL[k] === "string" ? (S.params[k] || "") !== (S.base[k] || "") : Math.abs(S.params[k] - S.base[k]) > 1e-9); }
 
-function openDetail(i){
+// The app opens in the editor on the neutral development (what Sigma Photo
+// Pro would show), not on the grid of looks: a newcomer wants to see and
+// adjust the photo first. The grid is one click away, and whichever of the
+// two views was used last is where the next start opens ("view" in the
+// store; "edit" until the user goes to the grid).
+//
+// noRender: only switch the view. selectPhoto renders once the photo is set
+// (the start-up path), so the picture is not developed twice.
+function openDetail(i, noRender){
+  store.set("view", "edit");
   S.idx = i;
   const p = current();
   S.base = {...NEUTRAL, ...(p ? p.params : {})};
@@ -2295,15 +2322,19 @@ function openDetail(i){
   $("#pName").textContent = p ? p.name : (i === -2 ? "Original (camera JPEG)" : "Neutral");
   $("#pSrc").textContent = p && p.params?.maxDetail
     ? "Max Detail develops the raw sensor layers. The sliders below start at zero and adjust that development; Reset returns them to zero."
-    : p ? p.source : "Start from zero and tune with the sliders.";
+    : p ? p.source : i === -2 ? "The camera's own picture, with no processing."
+    : "The neutral development, as Sigma Photo Pro shows the file. Tune it with the sliders, or press ← Looks to compare looks and films.";
   $("#dName").textContent = p ? `${i+1}/${S.list.length} · ${p.name}` : $("#pName").textContent;
   $("#gridView").style.display = "none";
   $("#detail").classList.add("on");
   syncSliders();
-  renderBig();
+  if (!noRender) renderBig();
 }
 
-function closeDetail(){
+// keepView: the app closed the editor itself (the photo cannot be shown, or
+// the last photo was deleted), so the user's choice of start view stays.
+function closeDetail(keepView){
+  if (!keepView) store.set("view", "grid");
   if (ZOOM.on){ ZOOM.on = false; $("#stage").classList.remove("zoomed"); $("#zoomBtn")?.classList.remove("on"); $("#big").style.width = ""; }
   $("#detail").classList.remove("on");
   $("#gridView").style.display = "";
@@ -4128,7 +4159,7 @@ function bind(){
   $("#looksSel").onchange = e => { S.looks = e.target.value; store.set("looks", S.looks); S.lookOpen = null; S.lookKey = ""; e.target.blur(); refreshList(); drawGrid(); };
   $("#comp").checked = store.get("comp", true);
   $("#comp").onchange = e => { store.set("comp", e.target.checked); $("#detail").classList.contains("on") ? renderBig() : drawGrid(); };
-  $("#back").onclick = closeDetail;
+  $("#back").onclick = () => closeDetail(); // not the click event as keepView
   $("#prev").onclick = () => stepPreset(-1);
   $("#next").onclick = () => stepPreset(1);
   const orig = $("#orig");
@@ -4347,7 +4378,12 @@ function bind(){
   const linked = want && S.photos.find(p => p.id === want || p.name.toLowerCase() === want.toLowerCase());
   drawChips();
   refreshList();
-  selectPhoto(linked ? linked.id : store.get("photo", S.photos[0]?.id));
+  // Open in the editor unless the user last worked in the grid, or the link
+  // asks for the grid (it filters the looks).
+  const first = S.photos.find(p => p.id === (linked ? linked.id : store.get("photo", S.photos[0]?.id))) || S.photos[0];
+  const gridLink = qp.has("groups") || qp.has("q") || qp.has("tile");
+  if (first && !first.unsupported && !gridLink && store.get("view", "edit") === "edit") openDetail(-1, true);
+  selectPhoto(first?.id);
 })();
 </script>
 </body>
