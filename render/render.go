@@ -507,6 +507,11 @@ type Base struct {
 	mPix, da, db []float32
 	// fillMean is the whole frame's mean brightness (Linear.FillMean).
 	fillMean float32
+
+	// The Colour blotches control's change at full strength (chromasmooth.go),
+	// computed the first time the control is used.
+	chromaOnce sync.Once
+	chromaD    []float32
 }
 
 // fields computes the per-pixel Fill Light inputs once.
@@ -754,6 +759,13 @@ func renderIntoOpt(b *Base, p preset.Params, c Compensation, deferGrain bool, pu
 		b.fields()
 	}
 	multi := op.fillM != nil && op.fillM.multi()
+	// Colour blotches: the developed image with its coarse chroma smoothed,
+	// blended in by the control. At 0 nothing here runs.
+	var cd []float32
+	ct := chromaStrength(p.ChromaSmooth)
+	if ct > 0 {
+		cd = b.chromaDelta()
+	}
 	parallelRows(h, func(y0, y1 int) {
 		for y := y0; y < y1; y++ {
 			for x := 0; x < w; x++ {
@@ -766,7 +778,11 @@ func renderIntoOpt(b *Base, p preset.Params, c Compensation, deferGrain bool, pu
 						da, db = b.da[j], b.db[j]
 					}
 				}
-				r, g, bl := film.addHalo(y*w+x, b.Pix[i], b.Pix[i+1], b.Pix[i+2])
+				pr, pg, pb := b.Pix[i], b.Pix[i+1], b.Pix[i+2]
+				if cd != nil {
+					pr, pg, pb = max(0, pr+ct*cd[i]), max(0, pg+ct*cd[i+1]), max(0, pb+ct*cd[i+2])
+				}
+				r, g, bl := film.addHalo(y*w+x, pr, pg, pb)
 				r, g, bl = op.applyAt(y*w+x, r, g, bl, m, da, db)
 				r, g, bl = op.monoShade(b, x, y, r, g, bl)
 				if film != nil && !film.deferGrain {

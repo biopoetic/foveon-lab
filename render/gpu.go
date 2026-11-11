@@ -291,6 +291,11 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 	if p.Halation > 0 {
 		r.CPU = "halation"
 	}
+	// Colour blotches reads a second, smoothed copy of the image: the page
+	// renders it on the CPU instead of taking another texture unit.
+	if p.ChromaSmooth > 0 {
+		r.CPU = "colour blotches"
+	}
 	// Density filters: a constant gain and/or a gradient, applied after the
 	// grain exactly as renderInto does.
 	dens := densitySetupFor(p)

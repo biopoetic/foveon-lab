@@ -167,6 +167,10 @@ type Params struct {
 	// and reads as harsh micro-contrast on portraits; this turns it down
 	// without touching the Sharpness slider, which is a separate filter.
 	SPPDetail float64 `json:"sppDetail,omitempty"`
+	// ChromaSmooth (Foveon Lab only; not in SPP's XML) smooths the coarse
+	// colour blotches of a high-ISO Foveon frame at render time, 0 (off, the
+	// default) to 1. See render/chromasmooth.go.
+	ChromaSmooth float64 `json:"chromaSmooth,omitempty"`
 	// SPPFallback (Foveon Lab only; not in SPP's XML) is the mode's SPP
 	// slider bundle, as above. Nil for an ordinary preset.
 	SPPFallback *Params `json:"sppFallback,omitempty"`
