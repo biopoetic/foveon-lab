@@ -975,8 +975,51 @@ func (s *server) renderBase(w http.ResponseWriter, r *http.Request) (*render.Bas
 		comp = layerCompensation(comp)
 	}
 	comp.WBDeveloped = modeDevelopedWB(mode)
+	if ev, key, ok := s.negAuto(ph, p); ok {
+		comp.NegEV = ev
+		w.Header().Set("X-Neg-Key", strconv.FormatFloat(key, 'f', 5, 64))
+		w.Header().Set("X-Neg-EV", strconv.FormatFloat(ev, 'f', 3, 64))
+	}
 	return b, p, comp, true
 }
+
+// negAuto is the lab's automatic exposure for p's colour negative on ph
+// (render.NegAutoEV), and the frame's key it comes from. It is measured once
+// per photo and source on the whole frame at the preview's source size, so
+// the grid, the editor, the 1:1 window and the export all print the frame
+// with the same exposure. ok is false when p has no colour negative.
+func (s *server) negAuto(ph *Photo, p preset.Params) (ev, key float64, ok bool) {
+	// A scan is left at its fixed exposure for now. Its source is the
+	// already tone-mapped no-film base, and on a dark frame the scan is
+	// harsh (black shadows, a white shirt flat white) whatever its exposure:
+	// a lift blew the highlights, and held under them it lifted nothing. That
+	// is the scan's contrast, a separate fault, and is open.
+	if !render.IsColorNegative(p.Film) || p.Paper == render.PaperScan {
+		return 0, 0, false
+	}
+	// The key is read on the source the film renders from, the raw layers,
+	// in the units render.negKeyRef was measured in.
+	mode := s.sourceMode(ph)
+	if lf, isLayers := layersSource(ph, p); isLayers {
+		mode = "rawlayers:" + lf
+	}
+	k := ph.ID + "|" + mode
+	if v, hit := negKeys.Load(k); hit {
+		key = v.(float64)
+	} else {
+		l, err := s.sourceAs(ph, mode)
+		if err != nil {
+			return 0, 0, false
+		}
+		key = render.FrameLogKey(l)
+		negKeys.Store(k, key)
+	}
+	return render.NegAutoEV(key), key, true
+}
+
+// negKeys holds each photo's frame key by source (negAuto): one number per
+// photo, kept apart from the source cache so it never evicts a picture.
+var negKeys sync.Map
 
 // handleGPUBase sends the Base of a render request for the GPU preview
 // (render.GPUBase: half floats).
@@ -1884,6 +1927,10 @@ func calibCommand(desk string) bool {
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "spp-check" {
 		sppCheckCommand(desk)
+		return true
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "mfilm-compare" {
+		mfilmCompareCommand(desk)
 		return true
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "showcase" {

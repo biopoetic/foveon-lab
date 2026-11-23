@@ -583,6 +583,11 @@ type Compensation struct {
 	// SD14): SPP ignores the setting on those bodies, so the emulation must
 	// too — its export with Colour mode 6/7 is identical to the neutral.
 	NoModes bool
+	// NegEV is the lab's automatic exposure for a colour negative, in stops
+	// of scene light (NegAutoEV of the whole frame; 0 = none). The caller
+	// measures it on the photo's full frame, so a reduced view, a 1:1 window
+	// and the export all print the frame alike.
+	NegEV float64
 }
 
 // CompensationFor derives the compensation from X3F PROP metadata:
@@ -952,7 +957,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 		// the scan is measured against the no-film render. Fit the film to
 		// the colourimetric sRGB response and feed it the pixels directly (the
 		// DNG/GenericFilm treatment).
-		if f := colorFilmOnPush(p.Film, p.Paper, "sRGB", p.Push, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}); f != nil {
+		if f := colorFilmOnPush(p.Film, p.Paper, "sRGB", p.Push, negPrintFor(p, c)); f != nil {
 			op.cfilm = f
 			for i := range op.cfInv {
 				op.cfInv[i] = 0
@@ -960,7 +965,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 			op.cfInv[0], op.cfInv[4], op.cfInv[8] = 1, 1, 1
 		}
 	} else if c.CC != nil {
-		if f := colorFilmOnPush(p.Film, p.Paper, c.Sensor, p.Push, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}); f != nil {
+		if f := colorFilmOnPush(p.Film, p.Paper, c.Sensor, p.Push, negPrintFor(p, c)); f != nil {
 			op.cfilm = f
 			if inv, ok := invert3x3(*c.CC); ok {
 				for i, v := range inv {
@@ -973,7 +978,7 @@ func newPixOp(p preset.Params, c Compensation) pixOp {
 		// the film to the colourimetric sRGB response (spectralfilter.go,
 		// srgbSens) and feed it the pixels directly: no Foveon matrix, no
 		// pretence that the file carries silicon layer data.
-		if f := colorFilmOnPush(p.Film, p.Paper, "sRGB", p.Push, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}); f != nil {
+		if f := colorFilmOnPush(p.Film, p.Paper, "sRGB", p.Push, negPrintFor(p, c)); f != nil {
 			op.cfilm = f
 			for i := range op.cfInv {
 				op.cfInv[i] = 0

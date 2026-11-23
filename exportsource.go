@@ -95,5 +95,10 @@ func (s *server) developSource(ctx context.Context, ph *Photo, p preset.Params, 
 		wbDeveloped = modeDevelopedWB(lf)
 	}
 	c.WBDeveloped = wbDeveloped
+	// The lab's exposure, measured as the preview measures it (negAuto), so
+	// the export prints the frame as the preview showed it.
+	if ev, _, ok := s.negAuto(ph, p); ok {
+		c.NegEV = ev
+	}
 	return src, p, c, md, nil
 }

@@ -733,7 +733,7 @@ func scanAB(r, g, b float64) (a, bb float64) {
 }
 
 // newColorScan prepares negative d as a scan for sensor, at push stops.
-func newColorScan(d *colorNegData, sensor string, push float64) *colorFilm {
+func newColorScan(d *colorNegData, sensor string, push, exp float64) *colorFilm {
 	S := layerSens(sensor)
 	if S == nil {
 		return nil
@@ -761,7 +761,9 @@ func newColorScan(d *colorNegData, sensor string, push float64) *colorFilm {
 	for k := 0; k < 3; k++ {
 		Dg := f.density(k, lgGrey)
 		Lg := scanCurve(Dg - dmin[k])
-		gain[k] = scanMidGrey / math.Max(Lg, 1e-9)
+		// exp is the scanner's exposure in stops of scene light, more =
+		// darker (the lab's automatic exposure, negPrintFor).
+		gain[k] = scanMidGrey / math.Max(Lg, 1e-9) * math.Exp2(-exp)
 	}
 	prof := scanProfile()
 	// core: the negative's densities -> the scan's linear sRGB (steps 2-5).

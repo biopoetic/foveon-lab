@@ -313,7 +313,7 @@ func NewGPURecipe(b *Base, p preset.Params, c Compensation) *GPURecipe {
 			// the same film the CPU built.
 			keySensor = "sRGB"
 		}
-		key := fmt.Sprintf("%s|%s|%s|%s", p.Film, p.Paper, keySensor, ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}.key())
+		key := fmt.Sprintf("%s|%s|%s|%s", p.Film, p.Paper, keySensor, negPrintFor(p, c).key())
 		gpuCFMu.Lock()
 		gpuCFKeys[key] = f
 		gpuCFMu.Unlock()

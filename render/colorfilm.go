@@ -282,6 +282,10 @@ func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *co
 		}
 		colorFilmMu.Lock()
 		k := key + "|" + paper + "|" + sensor + "|" + strconv.FormatFloat(push, 'g', -1, 64)
+		if scan && cp.Exp != 0 {
+			// The scanner's exposure is part of the scan's table.
+			k += "|scan:" + strconv.FormatFloat(cp.Exp, 'g', -1, 64)
+		}
 		f, ok := colorFilmCache[k]
 		colorFilmMu.Unlock()
 		if !ok {
@@ -290,7 +294,7 @@ func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *co
 			// build on different cores instead of one after another. A
 			// duplicate build for the same key is harmless.
 			if scan {
-				f = newColorScan(n, sensor, push)
+				f = newColorScan(n, sensor, push, cp.Exp)
 			} else {
 				f = newColorNeg(n, pp, sensor, push)
 			}
