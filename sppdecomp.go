@@ -90,14 +90,8 @@ func sppDecompCommand(desk string) {
 	refs := fs.Bool("refs", false, "also audit each export against the camera's embedded JPEG")
 	fs.Parse(os.Args[2:])
 
-	exports := map[string]string{}
-	matches, _ := filepath.Glob(filepath.Join(*dir, "*", "*_A00.tif"))
-	for _, m := range matches {
-		name := strings.ToUpper(strings.TrimSuffix(filepath.Base(m), "_A00.tif"))
-		if _, ok := exports[name]; !ok || filepath.Base(filepath.Dir(m)) == "exports" {
-			exports[name] = m
-		}
-	}
+	exports := calib.ExportsAnywhere(*dir, "A00")
+
 	want := map[string]bool{}
 	for _, s := range strings.Split(*only, ",") {
 		if s = strings.TrimSpace(s); s != "" {

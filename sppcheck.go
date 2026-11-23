@@ -89,15 +89,8 @@ func sppCheckCommand(desk string) {
 		fmt.Printf("no calibration step %s\n", step)
 		os.Exit(2)
 	}
-	suffix := "_" + step + ".tif"
-	exports := map[string]string{}
-	matches, _ := filepath.Glob(filepath.Join(*dir, "*", "*"+suffix))
-	for _, m := range matches {
-		name := strings.ToUpper(strings.TrimSuffix(filepath.Base(m), suffix))
-		if _, ok := exports[name]; !ok || filepath.Base(filepath.Dir(m)) == "exports" {
-			exports[name] = m
-		}
-	}
+	exports := calib.ExportsAnywhere(*dir, step)
+
 	want := map[string]bool{}
 	for _, s := range strings.Split(*only, ",") {
 		if s = strings.TrimSpace(s); s != "" {

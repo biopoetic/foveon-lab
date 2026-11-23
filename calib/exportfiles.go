@@ -24,6 +24,26 @@ func ExportFile(dir, name, code string) string {
 	return ""
 }
 
+// ExportsAnywhere finds step code's exports in every subfolder of the
+// calibration folder dir, in either format, by upper-case photo name. A
+// name found in several folders keeps the one in ExportsDir. The tools that
+// score against SPP (spp-check and its relatives) used to look for "*.tif"
+// only, which a compressed export folder would have emptied.
+func ExportsAnywhere(dir, code string) map[string]string {
+	out := map[string]string{}
+	for _, ext := range exportExts {
+		suffix := "_" + code + ext
+		m, _ := filepath.Glob(filepath.Join(dir, "*", "*"+suffix))
+		for _, p := range m {
+			name := strings.ToUpper(strings.TrimSuffix(filepath.Base(p), suffix))
+			if _, ok := out[name]; !ok || filepath.Base(filepath.Dir(p)) == ExportsDir {
+				out[name] = p
+			}
+		}
+	}
+	return out
+}
+
 // ExportsFor lists every exported step code's files, as path → photo name.
 func ExportsFor(dir, code string) (paths, names []string) {
 	seen := map[string]bool{}

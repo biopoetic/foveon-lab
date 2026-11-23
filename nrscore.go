@@ -205,14 +205,7 @@ func nrScoreCommand(desk string) {
 	}
 
 	// The neutral exports, keyed by photo name, as spp-check finds them.
-	exports := map[string]string{}
-	matches, _ := filepath.Glob(filepath.Join(*dir, "*", "*_A00.tif"))
-	for _, m := range matches {
-		name := strings.ToUpper(strings.TrimSuffix(filepath.Base(m), "_A00.tif"))
-		if _, ok := exports[name]; !ok || filepath.Base(filepath.Dir(m)) == "exports" {
-			exports[name] = m
-		}
-	}
+	exports := calib.ExportsAnywhere(*dir, "A00")
 
 	var phs []*Photo
 	for _, ph := range scanPhotos(strings.Split(*photos, ";"), false) {

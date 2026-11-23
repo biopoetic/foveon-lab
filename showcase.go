@@ -141,7 +141,11 @@ func showcaseCommand() bool {
 		}
 		sppPath := it.SPP
 		if sppPath == "" {
-			sppPath = filepath.Join(exports, strings.TrimSuffix(ph.Name, filepath.Ext(ph.Name))+"_A00.tif")
+			stem := strings.TrimSuffix(ph.Name, filepath.Ext(ph.Name))
+			sppPath = filepath.Join(exports, stem+"_A00.tif")
+			if _, err := os.Stat(sppPath); err != nil {
+				sppPath = filepath.Join(exports, stem+"_A00.png") // compressed (tools/compress-exports)
+			}
 		}
 		sppFull, err := calib.LoadLinear(sppPath)
 		if err != nil {

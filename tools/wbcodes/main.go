@@ -27,7 +27,11 @@ func main() {
 	flag.Parse()
 	names := strings.Split(*photos, ",")
 	load := func(n string, code int) *render.Linear {
-		l, err := calib.LoadLinear(filepath.Join(*dir, fmt.Sprintf("%s_K%02d.tif", n, code)))
+		p := filepath.Join(*dir, fmt.Sprintf("%s_K%02d.tif", n, code))
+		if _, err := os.Stat(p); err != nil {
+			p = strings.TrimSuffix(p, ".tif") + ".png" // compressed (tools/compress-exports)
+		}
+		l, err := calib.LoadLinear(p)
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -79,14 +79,8 @@ func pmEnc(v float32) float64 { return float64(render.ToSRGB(float32(pmClamp01(f
 
 // pmLoad reads (or builds) the study samples for the wanted groups.
 func pmLoad(dir string, photos string, want map[string]bool, stride int, cache string) map[string][]*pmSample {
-	exports := map[string]string{}
-	matches, _ := filepath.Glob(filepath.Join(dir, "*", "*_A00.tif"))
-	for _, m := range matches {
-		name := strings.ToUpper(strings.TrimSuffix(filepath.Base(m), "_A00.tif"))
-		if _, ok := exports[name]; !ok || filepath.Base(filepath.Dir(m)) == "exports" {
-			exports[name] = m
-		}
-	}
+	exports := calib.ExportsAnywhere(dir, "A00")
+
 	byName := map[string]*Photo{}
 	for _, p := range scanPhotos(strings.Split(photos, ";"), false) {
 		if p.Kind != "x3f" || p.Unsupported != "" {
