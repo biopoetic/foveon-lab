@@ -100,5 +100,8 @@ func (s *server) developSource(ctx context.Context, ph *Photo, p preset.Params, 
 	if ev, _, ok := s.negAuto(ph, p); ok {
 		c.NegEV = ev
 	}
+	// The scanner's levels, likewise measured once from the preview's source
+	// so the export scans the frame as the preview showed it.
+	c.ScanLevels = s.scanLevels(ph, p)
 	return src, p, c, md, nil
 }

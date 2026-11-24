@@ -86,19 +86,24 @@ func NegAutoEV(key float64) float64 {
 // and by the negative's slope (a stop more scene light makes the negative
 // scanNegGamma stops denser), so a frame brightened by e stops is printed
 // scanNegGamma*e stops shorter. A scan is linear in the scene's light after
-// its inversion, so its exposure moves by e itself. Other films keep their
-// setting as it was.
+// its inversion, so its exposure moves by e itself, and it also carries the
+// scanner's per-frame levels (ScanLevels). Other films keep their setting as
+// it was.
 func negPrintFor(p preset.Params, c Compensation) ColorPrint {
-	cp := ColorPrint{p.CCY, p.CCM, p.CCC, p.PrintExp}
-	if c.NegEV == 0 || !IsColorNegative(p.Film) {
+	cp := ColorPrint{Y: p.CCY, M: p.CCM, C: p.CCC, Exp: p.PrintExp}
+	if !IsColorNegative(p.Film) {
 		if isScanPaper(p.Paper) {
 			return ColorPrint{}
 		}
 		return cp
 	}
 	if isScanPaper(p.Paper) {
-		// A scan has no colour head; its one setting is the exposure.
-		return ColorPrint{Exp: -c.NegEV}
+		// A scan has no colour head; its settings are the exposure and the
+		// per-frame levels.
+		return ColorPrint{Exp: -c.NegEV, Scan: c.ScanLevels}
+	}
+	if c.NegEV == 0 {
+		return cp
 	}
 	cp.Exp -= scanNegGamma * c.NegEV
 	return cp

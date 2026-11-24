@@ -588,6 +588,11 @@ type Compensation struct {
 	// measures it on the photo's full frame, so a reduced view, a 1:1 window
 	// and the export all print the frame alike.
 	NegEV float64
+	// ScanLevels is the lab scanner's per-frame black and white points for a
+	// colour negative scanned on PaperScan (FrameScanLevels; nil = the fixed
+	// scan curve, as before). Like NegEV it is measured on the photo's full
+	// frame and cached, so every view and the export scan the frame alike.
+	ScanLevels *ScanLevels
 }
 
 // CompensationFor derives the compensation from X3F PROP metadata:

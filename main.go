@@ -975,7 +975,11 @@ func (s *server) renderBase(w http.ResponseWriter, r *http.Request) (*render.Bas
 		comp = layerCompensation(comp)
 	}
 	comp.WBDeveloped = modeDevelopedWB(mode)
-	if ev, key, ok := s.negAuto(ph, p); ok {
+	if p.Paper == render.PaperScan {
+		// A scan's tones are set by the scanner's per-frame levels, not by
+		// the print's automatic exposure.
+		comp.ScanLevels = s.scanLevels(ph, p)
+	} else if ev, key, ok := s.negAuto(ph, p); ok {
 		comp.NegEV = ev
 		w.Header().Set("X-Neg-Key", strconv.FormatFloat(key, 'f', 5, 64))
 		w.Header().Set("X-Neg-EV", strconv.FormatFloat(ev, 'f', 3, 64))
@@ -1020,6 +1024,41 @@ func (s *server) negAuto(ph *Photo, p preset.Params) (ev, key float64, ok bool) 
 // negKeys holds each photo's frame key by source (negAuto): one number per
 // photo, kept apart from the source cache so it never evicts a picture.
 var negKeys sync.Map
+
+// scanLevels is the lab scanner's per-frame levels for p's colour negative
+// scan on ph (render.FrameScanLevels), measured once per photo, film and
+// push on the source the scan renders from — the whole frame at the
+// preview's source size — so the grid, the editor, a 1:1 window and the
+// export all scan the frame with the same black and white points. nil when p
+// is not a colour negative scanned on PaperScan, or the frame has nothing to
+// correct.
+func (s *server) scanLevels(ph *Photo, p preset.Params) *render.ScanLevels {
+	if !render.IsColorNegative(p.Film) || p.Paper != render.PaperScan {
+		return nil
+	}
+	mode := s.sourceMode(ph)
+	if lf, isLayers := layersSource(ph, p); isLayers {
+		mode = "rawlayers:" + lf
+	}
+	k := ph.ID + "|" + mode + "|" + p.Film + "|" + strconv.FormatFloat(p.Push, 'g', -1, 64)
+	if v, hit := scanLevelsCache.Load(k); hit {
+		return v.(scanLevelsEntry).lv
+	}
+	l, err := s.sourceAs(ph, mode)
+	if err != nil {
+		return nil
+	}
+	ent := scanLevelsEntry{lv: render.FrameScanLevels(l, p.Film, p.Push)}
+	scanLevelsCache.Store(k, ent)
+	return ent.lv
+}
+
+// scanLevelsCache holds each photo's scanner levels by source, film and
+// push (scanLevels); like negKeys it is kept apart from the source cache so
+// it never evicts a picture.
+var scanLevelsCache sync.Map
+
+type scanLevelsEntry struct{ lv *render.ScanLevels }
 
 // handleGPUBase sends the Base of a render request for the GPU preview
 // (render.GPUBase: half floats).

@@ -732,8 +732,10 @@ func scanAB(r, g, b float64) (a, bb float64) {
 	return 500 * (fx - fy), 200 * (fy - fz)
 }
 
-// newColorScan prepares negative d as a scan for sensor, at push stops.
-func newColorScan(d *colorNegData, sensor string, push, exp float64) *colorFilm {
+// newColorScan prepares negative d as a scan for sensor, at push stops,
+// with the scanner's exposure exp and its per-frame levels lv (nil = the
+// fixed curve).
+func newColorScan(d *colorNegData, sensor string, push, exp float64, lv *ScanLevels) *colorFilm {
 	S := layerSens(sensor)
 	if S == nil {
 		return nil
@@ -757,20 +759,22 @@ func newColorScan(d *colorNegData, sensor string, push, exp float64) *colorFilm 
 	// 2 + 3. The fixed inversion, and the film's grey balance at mid-grey,
 	// folded together into the one exposure gain for 18%.
 	lgGrey := math.Log10(grey * f.hWhite)
-	var gain [3]float64
+	var gain, mid [3]float64
 	for k := 0; k < 3; k++ {
 		Dg := f.density(k, lgGrey)
-		Lg := scanCurve(Dg - dmin[k])
+		mid[k] = Dg - dmin[k]
 		// exp is the scanner's exposure in stops of scene light, more =
 		// darker (the lab's automatic exposure, negPrintFor).
-		gain[k] = scanMidGrey / math.Max(Lg, 1e-9) * math.Exp2(-exp)
+		gain[k] = scanMidGrey / math.Max(scanCurve(mid[k]), 1e-9) * math.Exp2(-exp)
 	}
 	prof := scanProfile()
 	// core: the negative's densities -> the scan's linear sRGB (steps 2-5).
+	// The scanner's levels (lv) set the frame's black and white points in
+	// the density before the fixed inversion (task 89).
 	core := func(D [3]float64) [3]float64 {
 		var L [3]float64
 		for k := 0; k < 3; k++ {
-			L[k] = scanCurve(D[k]-dmin[k]) * gain[k]
+			L[k] = scanCurve(lv.apply(k, D[k]-dmin[k])) * gain[k]
 			if L[k] > scanLinMax {
 				L[k] = scanLinMax
 			}
@@ -883,10 +887,22 @@ func newColorScan(d *colorNegData, sensor string, push, exp float64) *colorFilm 
 // exposure in stops. As in the darkroom, adding a colour's filter takes
 // that colour out of the print (Y holds back blue light: the blue-
 // sensitive layer forms less yellow dye), and more exposure prints darker.
-type ColorPrint struct{ Y, M, C, Exp float64 }
+//
+// On a scan there is no colour head: Exp is the scanner's exposure and Scan
+// is the scanner's per-frame levels, which are part of the scan's table.
+type ColorPrint struct {
+	Y, M, C, Exp float64
+	Scan         *ScanLevels
+}
 
 // key identifies cp in caches.
-func (cp ColorPrint) key() string { return fmt.Sprintf("cp:%g,%g,%g,%g", cp.Y, cp.M, cp.C, cp.Exp) }
+func (cp ColorPrint) key() string {
+	k := fmt.Sprintf("cp:%g,%g,%g,%g", cp.Y, cp.M, cp.C, cp.Exp)
+	if cp.Scan != nil {
+		k += "|" + cp.Scan.key()
+	}
+	return k
+}
 
 // offsets is the log10 gain per paper layer (R, G, B) of the print.
 func (cp ColorPrint) offsets() [3]float64 {

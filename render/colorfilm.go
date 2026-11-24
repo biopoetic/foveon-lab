@@ -246,7 +246,17 @@ type colorFilm struct {
 var (
 	colorFilmMu    sync.Mutex
 	colorFilmCache = map[string]*colorFilm{}
+	// scanCacheOrder bounds the per-frame scan tables build with levels: a
+	// scan preset on the grid builds one table per photo (each frame has its
+	// own black and white points), and 65³ tables must not pile up. The
+	// oldest leveled scan table is dropped when the bound is passed; the
+	// frames it evicts simply rebuild their table when shown again.
+	scanCacheOrder []string
 )
+
+// scanCacheMax is the number of per-frame scan tables kept (about 3.3 MB
+// each at 65³ float32).
+const scanCacheMax = 12
 
 // colorFilmFor is film key prepared for sensor, nil if either has no model.
 func colorFilmFor(key, sensor string) *colorFilm { return colorFilmOn(key, "", sensor, ColorPrint{}) }
@@ -282,9 +292,10 @@ func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *co
 		}
 		colorFilmMu.Lock()
 		k := key + "|" + paper + "|" + sensor + "|" + strconv.FormatFloat(push, 'g', -1, 64)
-		if scan && cp.Exp != 0 {
-			// The scanner's exposure is part of the scan's table.
-			k += "|scan:" + strconv.FormatFloat(cp.Exp, 'g', -1, 64)
+		if scan && cp != (ColorPrint{}) {
+			// The scanner's exposure and per-frame levels are part of the
+			// scan's table.
+			k += "|" + cp.key()
 		}
 		f, ok := colorFilmCache[k]
 		colorFilmMu.Unlock()
@@ -294,7 +305,7 @@ func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *co
 			// build on different cores instead of one after another. A
 			// duplicate build for the same key is harmless.
 			if scan {
-				f = newColorScan(n, sensor, push, cp.Exp)
+				f = newColorScan(n, sensor, push, cp.Exp, cp.Scan)
 			} else {
 				f = newColorNeg(n, pp, sensor, push)
 			}
@@ -303,6 +314,16 @@ func colorFilmOnPush(key, paper, sensor string, push float64, cp ColorPrint) *co
 				f = old
 			} else {
 				colorFilmCache[k] = f
+				if scan && cp.Scan != nil {
+					scanCacheOrder = append(scanCacheOrder, k)
+					for len(scanCacheOrder) > scanCacheMax {
+						old := scanCacheOrder[0]
+						scanCacheOrder = scanCacheOrder[1:]
+						if old != k {
+							delete(colorFilmCache, old)
+						}
+					}
+				}
 			}
 			colorFilmMu.Unlock()
 		}
