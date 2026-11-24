@@ -29,6 +29,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"sync"
 )
 
 const sppSharpSigma = 1.0
@@ -150,8 +151,47 @@ var sppSharpByISO = map[string][]float64{
 	"Quattro": {0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5},
 }
 
+// SharpResearch is a research-only override of SPP's sharpening mask, for the
+// task-92 radius and kernel-shape study. The app never sets it; the zero value
+// leaves the shipped mask bit-identical. The command that uses it is
+// foveon-lab sharpen-radius.
+type SharpResearch struct {
+	// Sigma replaces the full-size mask sigma both in sppSharpSigmaOf and in
+	// the reduced-view fit when > 0.
+	Sigma float64
+	// Kernel replaces the reduced-view 7-tap kernel when KernelSet. The
+	// amount is still the fitted view amount, so a photo keeps its own
+	// scale- and ISO-dependent strength; AmountScale scales that amount.
+	Kernel    [7]float32
+	KernelSet bool
+	// AmountScale multiplies the fitted amount when KernelSet (0 = 1).
+	AmountScale float64
+}
+
+var (
+	sharpResearchMu sync.Mutex
+	sharpResearch   SharpResearch
+)
+
+// SetSharpResearch installs the research override; the zero value clears it.
+// Callers must not change it while a render is running.
+func SetSharpResearch(r SharpResearch) {
+	sharpResearchMu.Lock()
+	sharpResearch = r
+	sharpResearchMu.Unlock()
+}
+
+func sharpResearchNow() SharpResearch {
+	sharpResearchMu.Lock()
+	defer sharpResearchMu.Unlock()
+	return sharpResearch
+}
+
 // sppSharpSigmaOf is the full-size mask's sigma for a sharpening key.
 func sppSharpSigmaOf(key string) float64 {
+	if r := sharpResearchNow(); r.Sigma > 0 {
+		return r.Sigma
+	}
 	if key == "DPM" {
 		return 0.7
 	}
@@ -197,7 +237,24 @@ func sppFullAmount(iso float64, sensor string) float64 {
 func sppView(s, iso float64, sensor string) (float32, [7]float32) {
 	a := sppFullAmount(iso, sensor)
 	full := gaussKernel(sppSharpSigmaOf(sensor))
-	if a == 0 || s >= 1 {
+	res := sharpResearchNow()
+	amount := func(fitted float64) float32 {
+		if res.KernelSet {
+			scale := res.AmountScale
+			if scale <= 0 {
+				scale = 1
+			}
+			return float32(fitted * scale)
+		}
+		return float32(fitted)
+	}
+	if a == 0 {
+		return 0, full
+	}
+	if s >= 1 {
+		if res.KernelSet {
+			return amount(a), res.Kernel
+		}
 		return float32(a), full
 	}
 	resp := func(k [7]float32, f float64) float64 { // 1 - the blur's gain
@@ -224,7 +281,19 @@ func sppView(s, iso float64, sensor string) (float32, [7]float32) {
 			bestE, bestA, bestK = e, av, k
 		}
 	}
+	if res.KernelSet {
+		return amount(bestA), res.Kernel
+	}
 	return float32(bestA), bestK
+}
+
+// SPPViewMask returns the mask SPP sharpening applies at view scale s: the
+// fitted amount and the 7-tap kernel. It is a research view of sppView, used
+// by foveon-lab sharpen-radius to write down what a full-size radius becomes
+// at the 1200 px analysis frame. It honours SetSharpResearch.
+func SPPViewMask(s, iso float64, sensor string) (float64, [7]float32) {
+	a, k := sppView(s, iso, sensor)
+	return float64(a), k
 }
 
 // DetailScale is the factor preset.Params.SPPDetail puts on SPP's sharpening

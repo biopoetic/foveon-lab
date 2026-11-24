@@ -215,10 +215,12 @@ func t90Load(photosRoot, calibDir, cacheDir string, limit int, logf func(string,
 			return nil, fmt.Errorf("%s: %w", p.name, err)
 		}
 		p.spp = spp
-		if l, ok := t90LoadCache(t90CachePath(cacheDir, p.ph)); ok {
-			p.raw = l
-			logf("  [%d/%d] %s %s ISO %.0f (cached) %dx%d", i+1, len(out), p.body, p.name, p.iso, l.W, l.H)
-			continue
+		if cacheDir != "" {
+			if l, ok := t90LoadCache(t90CachePath(cacheDir, p.ph)); ok {
+				p.raw = l
+				logf("  [%d/%d] %s %s ISO %.0f (cached) %dx%d", i+1, len(out), p.body, p.name, p.iso, l.W, l.H)
+				continue
+			}
 		}
 		maxW := sourceW
 		if p.ph.Rotation == 90 || p.ph.Rotation == 270 {
@@ -233,7 +235,9 @@ func t90Load(photosRoot, calibDir, cacheDir string, limit int, logf func(string,
 		}
 		l = fitAspect(l.Downscale(spp.W), spp.W, spp.H)
 		p.raw = l
-		t90SaveCache(t90CachePath(cacheDir, p.ph), l)
+		if cacheDir != "" {
+			t90SaveCache(t90CachePath(cacheDir, p.ph), l)
+		}
 		logf("  [%d/%d] %s %s ISO %.0f %dx%d", i+1, len(out), p.body, p.name, p.iso, l.W, l.H)
 	}
 	logf("  %d photos, %d without an export", len(out), skipped)

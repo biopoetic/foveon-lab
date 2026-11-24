@@ -315,13 +315,35 @@ func bestShift(po, ps []float64) float64 {
 // other by the shift that minimises their profile difference, so a
 // lens-correction displacement does not count as blur.
 func edgeProfileStats(ours, spp []float32, w, h int) (o, s edgeStat) {
+	meanO, meanS, cnt, shiftSum, unSum, alSum := edgeAccumulate(ours, spp, w, h)
+	if cnt == 0 {
+		return edgeStat{}, edgeStat{}
+	}
+	o, s = edgeStat{N: cnt}, edgeStat{N: cnt}
+	o.Width, o.Overshoot, o.Halo, o.Slope = profileNumbers(meanO)
+	s.Width, s.Overshoot, s.Halo, s.Slope = profileNumbers(meanS)
+	o.Shift = shiftSum / float64(cnt)
+	o.ProfileUnaligned = unSum / float64(cnt)
+	o.ProfileAligned = alSum / float64(cnt)
+	return o, s
+}
+
+// edgeMeanProfiles returns the same mean registered profiles edgeProfileStats
+// measures, for fitting a mask kernel to the average edge shape (task 92).
+func edgeMeanProfiles(ours, spp []float32, w, h int) (meanO, meanS []float64, cnt int) {
+	meanO, meanS, cnt, _, _, _ = edgeAccumulate(ours, spp, w, h)
+	return meanO, meanS, cnt
+}
+
+// edgeAccumulate is the shared edge scan: SPP's thinned high-gradient pixels,
+// each image's profile normalised by its own plateaus and ours registered onto
+// SPP's. It returns the mean aligned profiles and the per-edge sums.
+func edgeAccumulate(ours, spp []float32, w, h int) (meanO, meanS []float64, cnt int, shiftSum, unSum, alSum float64) {
 	lo := t90Lumas(ours)
 	ls := t90Lumas(spp)
 	mag, gx, gy := t90Sobel(ls, w, h)
 	n := edgeSamples()
 	accO, accS := make([]float64, n), make([]float64, n)
-	var cnt int
-	var shiftSum, unSum, alSum float64
 	const border = 8
 	for y := border; y < h-border; y++ {
 		for x := border; x < w-border; x++ {
@@ -363,20 +385,14 @@ func edgeProfileStats(ours, spp []float32, w, h int) (o, s edgeStat) {
 		}
 	}
 	if cnt == 0 {
-		return edgeStat{}, edgeStat{}
+		return nil, nil, 0, 0, 0, 0
 	}
-	meanO, meanS := make([]float64, n), make([]float64, n)
+	meanO, meanS = make([]float64, n), make([]float64, n)
 	for j := 0; j < n; j++ {
 		meanO[j] = accO[j] / float64(cnt)
 		meanS[j] = accS[j] / float64(cnt)
 	}
-	o, s = edgeStat{N: cnt}, edgeStat{N: cnt}
-	o.Width, o.Overshoot, o.Halo, o.Slope = profileNumbers(meanO)
-	s.Width, s.Overshoot, s.Halo, s.Slope = profileNumbers(meanS)
-	o.Shift = shiftSum / float64(cnt)
-	o.ProfileUnaligned = unSum / float64(cnt)
-	o.ProfileAligned = alSum / float64(cnt)
-	return o, s
+	return meanO, meanS, cnt, shiftSum, unSum, alSum
 }
 
 // profileNumbers reads width, overshoot, halo and slope from a mean normalised
