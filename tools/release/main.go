@@ -291,6 +291,7 @@ func main() {
 	notesFile := flag.String("notes-file", "", "Markdown \"What's new\": shown in the app once after updating (signed manifest) and put at the top of the GitHub release notes")
 	skipX3F := flag.Bool("skip-x3f-extract", false, "ship without x3f_extract (the app decodes every body natively since v0.4.2; x3f_extract is then only a test reference)")
 	skipDMG := flag.Bool("skip-dmg", false, "do not build the macOS .app/.dmg")
+	windowsOnly := flag.Bool("windows-only", false, "build, sign and ship only the Windows zip (no macOS or Linux archives, no DMG): for a release while Apple notarization is unavailable. Mac and Linux installs are told by the updater that this release has no file for them")
 	branch := flag.String("branch", "main", "branch to release from (its HEAD must be pushed to origin)")
 	checkOnly := flag.Bool("check", false, "only run the publish preflight (branch, clean tree, pushed, tag free) and exit")
 	genKey := flag.Bool("gen-update-key", false, "create the self-update signing key (once) and print its public key")
@@ -351,6 +352,9 @@ func main() {
 	var assets, unsigned []string
 	updates := map[string]string{} // self-update platform key → asset
 	for _, t := range targets {
+		if *windowsOnly && t.goos != "windows" {
+			continue
+		}
 		exe := "foveon-lab"
 		if t.goos == "windows" {
 			exe += ".exe"
@@ -446,8 +450,8 @@ func main() {
 
 	// The Mac download people should use: a universal, stapled app in a DMG.
 	// A bare CLI binary is refused by Gatekeeper when started from Finder.
-	if *skipDMG {
-		log.Printf("skipping the macOS DMG (-skip-dmg)")
+	if *skipDMG || *windowsOnly {
+		log.Printf("skipping the macOS DMG (-skip-dmg / -windows-only)")
 	} else if len(unsigned) > 0 {
 		log.Printf("skipping the macOS DMG: it needs signed binaries")
 	} else {
@@ -513,6 +517,11 @@ func main() {
 		"**Windows:** unpack the zip and double-click `foveon-lab.exe`. **Linux:** unpack and run `./foveon-lab`.\n" +
 		"It opens in your browser — see the README. The `.tar.gz` macOS archives are for command-line use.\n\n" +
 		"The Windows build is Authenticode-signed and the macOS builds are signed with a Developer ID and notarized by Apple."
+	if *windowsOnly {
+		notes = "**Windows:** unpack the zip and double-click `foveon-lab.exe`. It opens in your browser — see the README.\n\n" +
+			"This release is **Windows only**. There is no macOS or Linux build of it; macOS and Linux installs keep their current version and are not offered this one. " +
+			"The Windows build is Authenticode-signed."
+	}
 	if len(unsigned) > 0 {
 		notes += fmt.Sprintf("\n\nNote: %s build(s) in this release are NOT signed.", strings.Join(unsigned, ", "))
 	}
