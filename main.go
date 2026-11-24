@@ -1996,6 +1996,10 @@ func calibCommand(desk string) bool {
 		fitRawCommand(desk)
 		return true
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "sharpen-study" {
+		sharpenStudyCommand(desk)
+		return true
+	}
 	if len(os.Args) < 2 || (os.Args[1] != "calibrate" && os.Args[1] != "analyze") {
 		return false
 	}
